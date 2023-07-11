@@ -1,0 +1,5 @@
+# Enable automatic end-of-line normalization.
+* text
+*.pdf -text
+
+*.gr.bin binary
