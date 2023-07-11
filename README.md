@@ -5,21 +5,20 @@ This repository contains the C++17 source code used in
 * Moritz Laupichler, and Peter Sanders. Fast Many-to-Many Routing for Ridesharing with Multiple 
   Pickup and Dropoff Locations. arXiv: https://doi.org/10.48550/arXiv.2305.05417
 
-
-This source code is based on a fork of https://github.com/vbuchhold/routing-framework. 
-Large parts of the project structure as well as basic data structures and shortest path algorithms
-are directly taken or adapted from the original framework.
-The copyright statements in each file state the respective author or authors of that file.
-
 ## License
 
 All files in this repository except the files in the directory `External` are licensed under the MIT
 license. External libraries are licensed under their respective licenses. 
 
+This source code is based on a fork of https://github.com/vbuchhold/routing-framework.
+Large parts of the project structure as well as basic data structures and shortest path algorithms
+are directly taken or adapted from the original framework.
+The copyright statements in each file state the respective author or authors of the file.
+
 ## Prerequisites
 
-You need to have some tools and libraries installed. On Debian and its derivatives (such as Ubuntu)
-the `apt-get` tool can be used:
+To build KaRRi, you need to have some tools and libraries installed. On Debian and its derivatives 
+(such as Ubuntu) the `apt-get` tool can be used:
 
 ```
 $ sudo apt-get install build-essential
@@ -57,7 +56,7 @@ We provide bash scripts to generate the input data for the ```Berlin-1pct```, ``
 $ cd Publications/KaRRi
 $ bash DownloadGermanyOSMData.sh .
 $ bash FilterGermanyOSMData.sh .
-$ bash PreprocessOSMData.sh . Germany Berlin ./BoundaryPolygons
+$ bash PreprocessOSMData.sh . Germany Berlin BoundaryPolygons
 $ bash GenerateKnownInstancesInputData.sh . Berlin-1pct pedestrian
 ```
 
@@ -68,7 +67,7 @@ Ruhr instances.
 
 ## Running KaRRi
 To run KaRRi in its default configuration (using collective last stop searches, sorted buckets, and 
-SIMD instructions), use the provided bash script by typing the following commands at the top-level directory
+SIMD instructions), use the provided bash script by typing the following commands at the top-level directory:
 
 ```
 $ cd Publications/KaRRi
