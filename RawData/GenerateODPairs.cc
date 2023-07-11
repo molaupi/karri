@@ -48,7 +48,7 @@
 #include "DataStructures/Graph/Attributes/SequentialVertexIdAttribute.h"
 #include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
 #include "DataStructures/Graph/Graph.h"
-#include "Experiments/ODPairGenerator.h"
+#include "ODPairGenerator.h"
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "Tools/CommandLine/ProgressBar.h"
 #include "Tools/Constants.h"
