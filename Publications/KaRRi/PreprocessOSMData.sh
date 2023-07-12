@@ -13,7 +13,12 @@ fi
 
 osmDir=${baseDir}/Inputs/RawData/OSM
 
+# For inner area take all roads, streets and pedestrian pathways
 $osmium extract -p $boundariesDir/${networkName}_Inner.poly -o $osmDir/${networkName}_Inner.osm.pbf $osmDir/${surroundingNetworkName}_Highways.osm.pbf
-$osmium extract -p $boundariesDir/${networkName}_Outer.poly -o $osmDir/${networkName}_Outer.osm.pbf $osmDir/${surroundingNetworkName}_Highways.osm.pbf
+
+# For outer area take only major roads
+$osmium extract -p $boundariesDir/${networkName}_Outer.poly -o $osmDir/${networkName}_Outer.osm.pbf $osmDir/${surroundingNetworkName}_MainHighways.osm.pbf
+
+# Merge to a shared network
 $osmium merge -o $osmDir/${networkName}.osm.pbf $osmDir/${networkName}_Inner.osm.pbf $osmDir/${networkName}_Outer.osm.pbf
 rm $osmDir/${networkName}_Inner.osm.pbf $osmDir/${networkName}_Outer.osm.pbf

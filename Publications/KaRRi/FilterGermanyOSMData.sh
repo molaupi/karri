@@ -11,7 +11,10 @@ fi
 
 cd $osmDir
 
+# Network containing all roads, streets and pathways accessible to motor traffic and/or pedestrian traffic
 $osmium tags-filter -o Germany_Highways.osm.pbf Germany_Complete.osm.pbf w/highway=motorway,motorway_link,trunk,trunk_link,primary,primary_link,secondary,secondary_link,tertiary,tertiary_link,unclassified,residential,living_street,service,pedestrian,track,footway,bridleway,cycleway,steps,path #,corridor
 $osmium sort -o Germany_Highways_Sorted.osm.pbf Germany_Highways.osm.pbf
 mv -f Germany_Highways_Sorted.osm.pbf Germany_Highways.osm.pbf
-#osmium tags-filter -o Germany_MainHighways.osm.pbf Germany_Highways.osm.pbf w/highway=motorway,motorway_link,trunk,trunk_link,primary,primary_link,secondary,secondary_link,tertiary,tertiary_link
+
+# Network containing only larger roads meant for through traffic
+$osmium tags-filter -o Germany_MainHighways.osm.pbf Germany_Highways.osm.pbf w/highway=motorway,motorway_link,trunk,trunk_link,primary,primary_link,secondary,secondary_link,tertiary,tertiary_link

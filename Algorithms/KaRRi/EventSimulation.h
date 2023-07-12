@@ -114,7 +114,20 @@ namespace karri {
             while (!(vehicleEvents.empty() && requestEvents.empty())) {
                 // Pop next event from either queue. Request event has precedence if at the same time as vehicle event.
                 int id, occTime;
-                if (requestEvents.empty() || vehicleEvents.minKey() < requestEvents.minKey()) {
+
+                if (requestEvents.empty()) {
+                    vehicleEvents.min(id, occTime);
+                    handleVehicleEvent(id, occTime);
+                    continue;
+                }
+
+                if (vehicleEvents.empty()) {
+                    requestEvents.min(id, occTime);
+                    handleRequestEvent(id, occTime);
+                    continue;
+                }
+
+                if (vehicleEvents.minKey() < requestEvents.minKey()) {
                     vehicleEvents.min(id, occTime);
                     handleVehicleEvent(id, occTime);
                     continue;
@@ -267,41 +280,43 @@ namespace karri {
             Timer timer;
 
             const auto &request = requests[reqId];
-            const auto &bestAssignment = assignmentFinder.findBestAssignment(request);
+            const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request);
             systemStateUpdater.writeBestAssignmentToLogger();
 
-            applyAssignment(bestAssignment, reqId, occTime);
+            applyAssignment(asgnFinderResponse, reqId, occTime);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",RequestReceipt," << time << '\n';
         }
 
-        template<typename AssignmentT>
-        void applyAssignment(const AssignmentT &bestAssignment, const int reqId, const int occTime) {
-            if (bestAssignment.isNotUsingVehicleBest()) {
+        template<typename AssignmentFinderResponseT>
+        void applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, const int reqId, const int occTime) {
+            if (asgnFinderResponse.isNotUsingVehicleBest()) {
                 requestState[reqId] = WALKING_TO_DEST;
-                requestData[reqId].assignmentCost = bestAssignment.getBestCost();
+                requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
                 requestData[reqId].depTime = occTime;
                 requestData[reqId].walkingTimeToPickup = 0;
-                requestData[reqId].walkingTimeFromDropoff = bestAssignment.getNotUsingVehicleDist();
-                requestEvents.increaseKey(reqId, occTime + bestAssignment.getNotUsingVehicleDist());
+                requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.getNotUsingVehicleDist();
+                requestEvents.increaseKey(reqId, occTime + asgnFinderResponse.getNotUsingVehicleDist());
                 systemStateUpdater.writePerformanceLogs();
                 return;
             }
 
-            const auto &bestAsgn = bestAssignment.getBestAssignment();
-            requestState[reqId] = ASSIGNED_TO_VEH;
-            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
-            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
-            requestData[reqId].assignmentCost = bestAssignment.getBestCost();
             int id, key;
             requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dropoff
             assert(id == reqId && key == occTime);
 
-            if (bestAsgn.vehicle == nullptr) {
+            const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
+            if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
+                requestState[reqId] = FINISHED;
                 systemStateUpdater.writePerformanceLogs();
                 return;
             }
+
+            requestState[reqId] = ASSIGNED_TO_VEH;
+            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
+            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
+            requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
 
             int pickupStopId, dropoffStopId;
             systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId);
