@@ -113,6 +113,8 @@ inline void printUsage() {
               "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
               "  -p-radius <sec>        walking radius (in s) for pickup locations around origin. (dflt: 300s)\n"
               "  -d-radius <sec>        walking radius (in s) for dropoff locations around destination. (dflt: 300s)\n"
+              "  -max-num-p <int>       max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
+              "  -max-num-d <int>       max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
               "  -veh-h <file>          contraction hierarchy for the vehicle network in binary format.\n"
               "  -psg-h <file>          contraction hierarchy for the passenger network in binary format.\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
@@ -136,11 +138,12 @@ int main(int argc, char *argv[]) {
         inputConfig.maxWaitTime = clp.getValue<int>("w", 300) * 10;
         inputConfig.pickupRadius = clp.getValue<int>("p-radius", inputConfig.maxWaitTime / 10) * 10;
         inputConfig.dropoffRadius = clp.getValue<int>("d-radius", inputConfig.maxWaitTime / 10) * 10;
+        inputConfig.maxNumPickups = clp.getValue<int>("max-num-p", INFTY);
+        inputConfig.maxNumDropoffs = clp.getValue<int>("max-num-d", INFTY);
+        if (inputConfig.maxNumPickups == 0) inputConfig.maxNumPickups = INFTY;
+        if (inputConfig.maxNumDropoffs == 0) inputConfig.maxNumDropoffs = INFTY;
         inputConfig.alpha = clp.getValue<double>("a", 1.7);
         inputConfig.beta = clp.getValue<int>("b", 120) * 10;
-//        inputConfig.alwaysUseVehicle = clp.isSet("always-use-vehicle");
-//        inputConfig.outputVehiclePaths = clp.isSet("output-vehicle-paths");
-//        inputConfig.outputPsgPaths = clp.isSet("output-passenger-paths");
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");

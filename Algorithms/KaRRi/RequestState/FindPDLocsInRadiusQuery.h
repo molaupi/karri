@@ -28,6 +28,7 @@
 #include <vector>
 #include <cstdint>
 #include <Algorithms/KaRRi/BaseObjects//Request.h>
+#include <random>
 #include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 
 namespace karri {
@@ -86,7 +87,8 @@ namespace karri {
                                {searchSpace}),
                   dropoffSearch(reversePsgGraph, {inputConfig.dropoffRadius},
                                 {searchSpace}),
-                  searchSpace() {}
+                  searchSpace(),
+                  rand(seed) {}
 
         // Pickups will be collected into the given pickups vector and dropoffs will be collected into the given dropoffs vector
         void findPDLocs(const int origin, const int destination) {
@@ -105,8 +107,8 @@ namespace karri {
             dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
             turnSearchSpaceIntoDropoffLocations();
 
-            finalizePDLocs(origin, pickups);
-            finalizePDLocs(destination, dropoffs);
+            finalizePDLocs(origin, pickups, inputConfig.maxNumPickups);
+            finalizePDLocs(destination, dropoffs, inputConfig.maxNumDropoffs);
         }
 
     private:
@@ -140,7 +142,8 @@ namespace karri {
             }
         }
 
-        void finalizePDLocs(const int centerInPsgGraph, std::vector<PDLoc> &pdLocs) {
+        void finalizePDLocs(const int centerInPsgGraph, std::vector<PDLoc> &pdLocs, const int maxNumber) {
+            assert(maxNumber > 0);
             // Add center to PD locs
             const int nextSeqId = pdLocs.size();
             const int centerInVehGraph = forwardGraph.toCarEdge(centerInPsgGraph);
@@ -155,6 +158,18 @@ namespace karri {
             assert(centerIt < pdLocs.end());
             const auto idx = centerIt - pdLocs.begin();
             std::swap(pdLocs[0], pdLocs[idx]);
+
+            if (maxNumber > 1 && pdLocs.size() > maxNumber) {
+                // If there are more PD-locs than the maximum number, then we permute the PD-locs randomly and
+                // use only the first maxNumber ones. We make sure that the center is included and stays at the
+                // beginning of the PD-locs.
+                const auto perm = Permutation::getRandomPermutation(pdLocs.size(), rand);
+                perm.applyTo(pdLocs);
+                std::swap(pdLocs[perm[0]], pdLocs[0]);
+            }
+
+            const int desiredSize = std::min(static_cast<int>(pdLocs.size()), maxNumber);
+            pdLocs.resize(desiredSize);
 
             // Assign sequential ids
             for (int i = 0; i < pdLocs.size(); ++i) {
@@ -197,5 +212,8 @@ namespace karri {
         DropoffSearch dropoffSearch;
 
         std::vector<int> searchSpace;
+
+        static constexpr int seed = 42;
+        std::minstd_rand rand;
     };
 }

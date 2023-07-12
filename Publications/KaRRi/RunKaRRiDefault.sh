@@ -8,11 +8,13 @@ outputDir=$3 # Directory to write output to
 passengerMode=$4 # Optional: mode of transportation of passenger (pedestrian or cyclist), default = pedestrian
 radius=$5 # Optional: Walking radius, default = 300
 waitTime=$6 # Optional: Maximum wait time, default = 300
-dependencyInstallDir=$7 # Optional: Path to dependencies if not on PATH variable
+maxNumPDLocs=$7 # Optional: Sample maxNumPDLocs pickups/dropoffs from the radius around the origin/destination
+dependencyInstallDir=$8 # Optional: Path to dependencies if not on PATH variable
 
 [ -z ${passengerMode} ] && passengerMode=pedestrian
 [ -z ${radius} ] && radius=300
 [ -z ${waitTime} ] && waitTime=300
+[ -z ${maxNumPDLocs} ] && maxNumPDLocs=0
 
 inputDir=$baseDir/Inputs
 
@@ -43,6 +45,8 @@ mkdir -p $outputDir/${name}
 $binaryDir/Launchers/karri \
   -p-radius ${radius} \
   -d-radius ${radius} \
+  -max-num-p ${maxNumPDLocs} \
+  -max-num-d ${maxNumPDLocs} \
   -w ${waitTime} \
   -veh-g $inputDir/Graphs/${vehName}.gr.bin \
   -psg-g $inputDir/Graphs/${psgName}.gr.bin \
@@ -50,4 +54,4 @@ $binaryDir/Launchers/karri \
   -r $inputDir/Requests/${name}.csv \
   -veh-h $inputDir/CHs/${vehName}_time.ch.bin \
   -psg-h $inputDir/CHs/${psgName}_time.ch.bin \
-  -o $outputDir/${name}/karri-col-simd_${radius}_${waitTime}
+  -o $outputDir/${name}/karri-col-simd_${radius}_${waitTime}_${maxNumPDLocs}

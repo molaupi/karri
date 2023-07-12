@@ -32,6 +32,8 @@ namespace karri {
         int stopTime = -1;
         int pickupRadius = -1;
         int dropoffRadius = -1;
+        int maxNumPickups = -1;
+        int maxNumDropoffs = -1;
         double alpha = -1;
         int beta = -1;
         bool alwaysUseVehicle = false;
