@@ -47,10 +47,9 @@ $ cd vectorclass && sudo mkdir /usr/local/include/vectorclass && sudo cp *.h $_ 
 
 ## Constructing KaRRi Input
 We provide bash scripts to generate the input data for the ```Berlin-1pct```, ```Berlin-10pct```, 
-```Ruhr-1pct```, and ```Ruhr-10pct``` problem instances for the <ins>Ka</ins>rlsruhe <ins>R</ins>apid 
-<ins>Ri</ins>desharing (KaRRi) algorithm. For example, you can generate the input data for the 
-```Berlin-1pct``` instance by typing the following commands at the top-level directory: 
-(Downloads multiple GiB of raw OSM data and requires at least 10 GiB of RAM.)
+```Ruhr-1pct```, and ```Ruhr-10pct``` problem instances for the KaRRi algorithm. For example, you 
+can generate the input data for the ```Berlin-1pct``` instance by typing the following commands 
+at the top-level directory: (Downloads multiple GiB of raw OSM data and requires at least 10 GiB of RAM.)
 
 ```
 $ cd Publications/KaRRi
