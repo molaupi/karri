@@ -87,7 +87,7 @@ perfStats <- function(file_base, type_name) {
   stats <- stats[, ! colnames(stats) %in% c("request_id")]
   stats <- apply(stats, 2, mean)
   stats <- round(stats, 2)
-  print(stats)
+  return(stats)
 }
 
 # Given the path to the result files of a KaRRi run, this function returns an 
