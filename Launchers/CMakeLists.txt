@@ -72,6 +72,25 @@ else(KARRI_ELLIPTIC_BCH_SORTED_BUCKETS)
 endif (KARRI_ELLIPTIC_BCH_SORTED_BUCKETS)
 
 ## PD-Distance Searches Config
+set(PD_BCH_CODE 1)
+set(PD_CH_CODE 2)
+target_compile_definitions(karri PRIVATE KARRI_BCH_PD_STRAT=${PD_BCH_CODE})
+target_compile_definitions(karri PRIVATE KARRI_CH_PD_STRAT=${PD_CH_CODE})
+set(KARRI_PD_STRAT_ARG_VALUES BCH CH)
+
+set(KARRI_PD_STRATEGY BCH CACHE STRING "PD-Distance query strategy to use. Possible values: BCH (dflt), CH")
+set_property(CACHE KARRI_PD_STRATEGY PROPERTY STRINGS ${KARRI_PD_STRAT_ARG_VALUES})
+list(FIND KARRI_PD_STRAT_ARG_VALUES ${KARRI_PD_STRATEGY} index)
+if (index EQUAL -1)
+    message(FATAL_ERROR "KARRI_PD_STRATEGY must be one of ${KARRI_PD_STRAT_ARG_VALUES}")
+endif ()
+
+if (${KARRI_PD_STRATEGY} STREQUAL BCH)
+    target_compile_definitions(karri PRIVATE KARRI_PD_STRATEGY=${PD_BCH_CODE}) # BCH Strategy
+else()
+    target_compile_definitions(karri PRIVATE KARRI_PD_STRATEGY=${PD_CH_CODE}) # P2P CH Strategy
+endif()
+
 set(KARRI_PD_DISTANCES_LOG_K 0 CACHE STRING "Given value i, KaRRi runs 2^i PD-distance searches simultaneously as bundled search.")
 target_compile_definitions(karri PRIVATE KARRI_PD_DISTANCES_LOG_K=${KARRI_PD_DISTANCES_LOG_K})
 

@@ -49,12 +49,12 @@ template <
 class CHQuery {
  private:
   static constexpr int K = LabelSetT::K; // The number of simultaneous shortest-path computations.
+    using DistLabel = typename LabelSetT::DistanceLabel; // The distance label of a vertex.
 
  public:
   // The pruning criterion for a CH query, also known as stall-on-demand.
   struct PruningCriterion {
     using LabelMask = typename LabelSetT::LabelMask;     // Marks a subset of components in a label.
-    using DistLabel = typename LabelSetT::DistanceLabel; // The distance label of a vertex.
 
     // Constructs a pruning criterion for a CH query.
     PruningCriterion(const CH::SearchGraph& oppositeGraph) noexcept
@@ -96,6 +96,10 @@ class CHQuery {
   // Returns the length of the i-th shortest path.
   int getDistance(const int i = 0) {
     return search.getDistance(i);
+  }
+
+  DistLabel getAllDistances() {
+      return search.getAllDistances();
   }
 
   // Returns the edges in the upward graph on the up segment of the up-down path (in reverse order).

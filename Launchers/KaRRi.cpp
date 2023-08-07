@@ -55,9 +55,8 @@
 #include "Algorithms/KaRRi/CostCalculator.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
-#include "Algorithms/KaRRi/RequestState/PDDistances.h"
+#include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocsFilter.h"
-#include "Algorithms/KaRRi/PDDistanceQuery.h"
 #include "Algorithms/KaRRi/OrdinaryAssignments/OrdinaryAssignmentsFinder.h"
 #include "Algorithms/KaRRi/PbnsAssignments/PBNSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/PalsAssignments/PALSAssignmentsFinder.h"
@@ -68,6 +67,13 @@
 #include "Algorithms/KaRRi/AssignmentFinder.h"
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
+
+#if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
+    #include "Algorithms/KaRRi/PDDistanceQueries/BCHStrategy.h"
+#else // KARRI_PD_STRATEGY == KARRI_CH_PD_STRAT
+    #include "Algorithms/KaRRi/PDDistanceQueries/CHStrategy.h"
+#endif
+
 
 #if KARRI_PALS_STRATEGY == KARRI_COL
 
@@ -371,20 +377,27 @@ int main(int argc, char *argv[]) {
                                                       relOrdinaryPickups, relOrdinaryDropoffs, relPickupsBeforeNextStop,
                                                       relDropoffsBeforeNextStop);
 
+
+        const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
+        using VehicleToPDLocQueryImpl = VehicleToPDLocQuery<VehicleInputGraph>;
+        VehicleToPDLocQueryImpl vehicleToPdLocQuery(vehicleInputGraph, revVehicleGraph);
+
+
+        // Construct PD-distance query
         using PDDistancesLabelSet = std::conditional_t<KARRI_PD_DISTANCES_USE_SIMD,
                 SimdLabelSet<KARRI_PD_DISTANCES_LOG_K, ParentInfo::NO_PARENT_INFO>,
                 BasicLabelSet<KARRI_PD_DISTANCES_LOG_K, ParentInfo::NO_PARENT_INFO>>;
         using PDDistancesImpl = PDDistances<PDDistancesLabelSet>;
         PDDistancesImpl pdDistances(reqState);
 
-        // Construct PD-distance query
-        const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
-        using VehicleToPDLocQueryImpl = VehicleToPDLocQuery<VehicleInputGraph>;
-        VehicleToPDLocQueryImpl vehicleToPdLocQuery(vehicleInputGraph, revVehicleGraph);
-
-        using PDDistanceQueryImpl = PDDistanceQuery<VehicleInputGraph, VehCHEnv, VehicleToPDLocQueryImpl, PDDistancesLabelSet>;
+#if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
+        using PDDistanceQueryImpl = PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, VehicleToPDLocQueryImpl, PDDistancesLabelSet>;
         PDDistanceQueryImpl pdDistanceQuery(vehicleInputGraph, *vehChEnv, pdDistances, reqState, vehicleToPdLocQuery);
 
+#else // KARRI_PD_STRATEGY == KARRI_CH_PD_STRAT
+        using PDDistanceQueryImpl = PDDistanceQueryStrategies::CHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>;
+        PDDistanceQueryImpl pdDistanceQuery(vehicleInputGraph, *vehChEnv, pdDistances, reqState);
+#endif
 
         // Construct ordinary assignments finder:
         using OrdinaryAssignmentsFinderImpl = OrdinaryAssignmentsFinder<PDDistancesImpl>;

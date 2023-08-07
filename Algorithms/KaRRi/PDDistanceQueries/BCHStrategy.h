@@ -31,15 +31,15 @@
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "DataStructures/Labels/SimdLabelSet.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
-#include "Algorithms/KaRRi/RequestState/PDDistances.h"
+#include "PDDistances.h"
 
-namespace karri {
+namespace karri::PDDistanceQueryStrategies {
 
     template<typename InputGraphT,
             typename CHEnvT,
             typename VehicleToPDLocQueryT,
             typename LabelSetT>
-    class PDDistanceQuery {
+    class BCHStrategy {
 
     public:
 
@@ -85,7 +85,7 @@ namespace karri {
         };
 
         struct WriteBucketEntry {
-            explicit WriteBucketEntry(PDDistanceQuery &computer) : computer(computer) {}
+            explicit WriteBucketEntry(BCHStrategy &computer) : computer(computer) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, const DistLabelT &distToV, const DistLabelContT &) {
@@ -95,11 +95,11 @@ namespace karri {
 
         private:
 
-            PDDistanceQuery &computer;
+            BCHStrategy &computer;
         };
 
         struct ScanDropoffBucketAndUpdatePDDistances {
-            explicit ScanDropoffBucketAndUpdatePDDistances(PDDistanceQuery &computer) : computer(computer) {}
+            explicit ScanDropoffBucketAndUpdatePDDistances(BCHStrategy &computer) : computer(computer) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, const DistLabelT &distToV, const DistLabelContT &) {
@@ -118,7 +118,7 @@ namespace karri {
 
         private:
 
-            PDDistanceQuery &computer;
+            BCHStrategy &computer;
         };
 
         using FillBucketsSearch = typename CHEnvT::template UpwardSearch<WriteBucketEntry, StopWhenMaxDistExceeded, LabelSetT>;
@@ -130,10 +130,10 @@ namespace karri {
 
     public:
 
-        PDDistanceQuery(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                        PDDistances<LabelSetT> &distances,
-                        RequestState &requestState,
-                        VehicleToPDLocQueryT &vehicleToPDLocQuery)
+        BCHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
+                    PDDistances<LabelSetT> &distances,
+                    RequestState &requestState,
+                    VehicleToPDLocQueryT &vehicleToPDLocQuery)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   requestState(requestState),
@@ -247,7 +247,7 @@ namespace karri {
             requestState.minDirectPDDist = distances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.pickupBchSearchTime = +pickupSearchesTime;
+            requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
         }
 
         void init() {
@@ -255,7 +255,7 @@ namespace karri {
             distances.clear();
             distances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime = +time;
+            requestState.stats().pdDistancesStats.initializationTime += time;
         }
 
     private:

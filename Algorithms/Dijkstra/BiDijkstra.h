@@ -76,6 +76,10 @@ class BiDijkstra {
 private:
     static constexpr int K = DijkstraT::K; // The number of simultaneous shortest-path computations.
 
+    using StoppingCriterion = StoppingCriterionT<typename DijkstraT::Queue>;
+    using DistanceLabel = typename DijkstraT::DistanceLabel;
+    using ParentLabel = typename DijkstraT::ParentLabel;
+
     template<typename, typename>
     friend
     class FindPDLocsInRadiusQuery;
@@ -145,6 +149,10 @@ public:
         return tentativeDistances[i];
     }
 
+    DistanceLabel getAllDistances() {
+        return tentativeDistances;
+    }
+
     // Returns the edges in the forward graph on the path to the meeting vertex (in reverse order).
     const std::vector<int32_t> &getEdgePathToMeetingVertex(const int i = 0) {
         assert(tentativeDistances[i] != INFTY);
@@ -166,9 +174,6 @@ private:
         maxTentativeDistance = tentativeDistances.horizontalMax();
     }
 
-    using StoppingCriterion = StoppingCriterionT<typename DijkstraT::Queue>;
-    using DistanceLabel = typename DijkstraT::DistanceLabel;
-    using ParentLabel = typename DijkstraT::ParentLabel;
 
     DijkstraT forwardSearch;             // The forward search from the source(s).
     DijkstraT reverseSearch;             // The reverse search from the target(s).

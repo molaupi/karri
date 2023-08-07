@@ -28,7 +28,7 @@
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
-#include "Algorithms/KaRRi/RequestState/PDDistances.h"
+#include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
 
 namespace karri {
 
