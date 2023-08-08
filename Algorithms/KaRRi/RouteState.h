@@ -251,9 +251,10 @@ namespace karri {
                         std::max(requestState.getMaxDepTimeAtPickup(), requestState.getPassengerArrAtPickup(pickup.id));
                 maxArrTimes[start + pickupIndex] = std::min(maxArrTimes[start + pickupIndex], psgMaxDepTime - stopTime);
             } else {
-                // If pickup is inserted as new stop after current last stop, the vehicle can leave that last stop at the
-                // earliest when the request is made.
+                // If vehicle is currently idle, the vehicle can leave its current stop at the earliest when the
+                // request is made. In that case, we update the arrival time to count the idling as one stopTime.
                 schedDepTimes[end - 1] = std::max(schedDepTimes[end - 1], requestState.originalRequest.requestTime);
+                schedArrTimes[end - 1] = schedDepTimes[end - 1] - stopTime;
                 ++pickupIndex;
                 ++dropoffIndex;
                 stableInsertion(vehId, pickupIndex, getUnusedStopId(), pos, stopIds, stopLocations,
