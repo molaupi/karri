@@ -39,22 +39,7 @@
 
 namespace karri {
 
-// A facility for computing the cost of an assignment of a request into a vehicle's route. The cost
-// of such an assignment is defined as the vehicle's detour plus the violations of the soft
-// constraints (if any). More precisely, this facility computes the pickup detour, the dropoff
-// detour, verifies all hard constraints, and returns the objective value of the assignment. If any
-// hard constraint (i.e., a waiting or trip time constraint for any request already matched to the
-// vehicle or the service time constraint) is violated, it returns INFTY as the assignment cost. For
-// the request to be inserted, the waiting and trip time constraint may be violated but the
-// violations are added to the objective value. The waiting time violation is weighted with the
-// member variable WAIT_TIME_VIOLATION_WEIGHT, and the trip time violation with the member variable
-// TRIP_TIME_VIOLATION_WEIGHT.
-//
-// This facility can deal with all special cases, such as pickups and dropoffs coinciding with
-// existing stops or being inserted after the last stop on a vehicle's route. Note that for the
-// special case of an assignment (nu, r, i, i) where the dropoff is inserted immediately after the
-// pickup, the pickup detour time is defined as dist(s[i], p(r)) + stopTime and the dropoff detour
-// time as dist(p(r), d(r)) + stopTime + dist(d(r), s[i + 1]) - dist(s[i], s[i + 1]).
+// A facility for computing the cost of an assignment of a request into a vehicle's route.
     template<typename CostFunctionT>
     class CostCalculatorTemplate {
 
@@ -80,7 +65,7 @@ namespace karri {
             return calcBase<false>(asgn, context);
         }
 
-        // Calculates the objective value for a given assignment of a given pickup and dropoff spot.
+        // Calculates the objective value for a given assignment.
         template<bool checkHardConstraints, typename RequestContext>
         int calcBase(const Assignment &asgn, const RequestContext &context) const {
             using namespace time_utils;
@@ -146,8 +131,8 @@ namespace karri {
             const auto walkingCost = F::calcWalkingCost(originSideDist, inputConfig.pickupRadius) +
                                      F::calcWalkingCost(destSideDist, inputConfig.dropoffRadius);
             const auto tripCost = F::calcTripCost(originSideDist + destSideDist, context);
-            return walkingCost +
-                   tripCost; // no costs for detour, wait violation or change in trip time of other passengers
+            // no costs for detour, wait violation or change in trip time of other passengers
+            return walkingCost + tripCost;
         }
 
         // For lower bound, pass the assignment consisting of the pickup with the smallest distance from the
@@ -585,5 +570,8 @@ namespace karri {
 
     static constexpr int PSG_COST_SCALE = KARRI_PSG_COST_SCALE; // CMake compile time parameter
     static constexpr int VEH_COST_SCALE = KARRI_VEH_COST_SCALE; // CMake compile time parameter
-    using CostCalculator = CostCalculatorTemplate<TimeIsMoneyCostFunction<PSG_COST_SCALE, VEH_COST_SCALE>>;
+    static constexpr int WALKING_COST_SCALE = KARRI_WALKING_COST_SCALE; // CMake compile time parameter
+    static constexpr int WAIT_PENALTY_SCALE = KARRI_WAIT_PENALTY_SCALE; // CMake compile time parameter
+    static constexpr int TRIP_PENALTY_SCALE = KARRI_TRIP_PENALTY_SCALE; // CMake compile time parameter
+    using CostCalculator = CostCalculatorTemplate<TimeIsMoneyCostFunction<PSG_COST_SCALE, WALKING_COST_SCALE, VEH_COST_SCALE, WAIT_PENALTY_SCALE, TRIP_PENALTY_SCALE>>;
 }

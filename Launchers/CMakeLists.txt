@@ -46,11 +46,20 @@ if (KARRI_OUTPUT_VEHICLE_PATHS)
 endif (KARRI_OUTPUT_VEHICLE_PATHS)
 
 # Cost function tuning
-set(KARRI_PSG_COST_SCALE 1 CACHE STRING "Importance of passenger travel times in cost function.")
+set(KARRI_PSG_COST_SCALE 1 CACHE STRING "Importance of passenger trip times in cost function.")
 target_compile_definitions(karri PRIVATE KARRI_PSG_COST_SCALE=${KARRI_PSG_COST_SCALE})
+
+set(KARRI_WALKING_COST_SCALE 0 CACHE STRING "Importance of walking times in cost function")
+target_compile_definitions(karri PRIVATE KARRI_WALKING_COST_SCALE=${KARRI_WALKING_COST_SCALE})
 
 set(KARRI_VEH_COST_SCALE 1 CACHE STRING "Importance of vehicle travel times in cost function.")
 target_compile_definitions(karri PRIVATE KARRI_VEH_COST_SCALE=${KARRI_VEH_COST_SCALE})
+
+set(KARRI_WAIT_PENALTY_SCALE 1 CACHE STRING "Weights penalties for violating wait time soft constraint.")
+target_compile_definitions(karri PRIVATE KARRI_WAIT_PENALTY_SCALE=${KARRI_WAIT_PENALTY_SCALE})
+
+set(KARRI_TRIP_PENALTY_SCALE 10 CACHE STRING "Weights penalties for violating trip time soft constraint.")
+target_compile_definitions(karri PRIVATE KARRI_TRIP_PENALTY_SCALE=${KARRI_TRIP_PENALTY_SCALE})
 
 
 ## Elliptic BCH Searches Config

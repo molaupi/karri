@@ -28,7 +28,7 @@
 namespace karri {
 
 
-    template<int PASSENGER_COST_SCALE = 1, int VEHICLE_COST_SCALE = 1, int WAIT_TIME_VIOLATION_WEIGHT = 1, int TRIP_TIME_VIOLATION_WEIGHT = 10>
+    template<int PASSENGER_COST_SCALE = 1, int WALKING_COST_SCALE = 0, int VEHICLE_COST_SCALE = 1, int WAIT_TIME_VIOLATION_WEIGHT = 1, int TRIP_TIME_VIOLATION_WEIGHT = 10>
     struct TimeIsMoneyCostFunction {
 
         template<typename RequestContext>
@@ -84,15 +84,17 @@ namespace karri {
             return cost;
         }
 
-        static constexpr inline int calcWalkingCost(const int, const int) {
+        static constexpr inline int calcWalkingCost(const int walkingDist, const int) {
             // Time is money => walking time is part of passengers trip time so do not count it again
-            return PASSENGER_COST_SCALE * 0;
+            return WALKING_COST_SCALE * walkingDist;
         }
 
         template<typename DistanceLabel>
-        static constexpr inline DistanceLabel calcKWalkingCosts(const DistanceLabel &, const int) {
+        static constexpr inline DistanceLabel calcKWalkingCosts(const DistanceLabel &walkingDist, const int) {
             // Time is money => walking time is part of passengers trip time so do not count it again
-            return PASSENGER_COST_SCALE * 0;
+            auto cost = walkingDist;
+            cost.multiplyWithScalar(WALKING_COST_SCALE);
+            return cost;
         }
 
         template<typename RequestContext>
