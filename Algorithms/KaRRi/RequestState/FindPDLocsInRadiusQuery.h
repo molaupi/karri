@@ -30,6 +30,7 @@
 #include <Algorithms/KaRRi/BaseObjects//Request.h>
 #include <random>
 #include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
+#include "Algorithms/Dijkstra/Dijkstra.h"
 
 namespace karri {
 

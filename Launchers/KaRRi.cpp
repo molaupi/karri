@@ -47,7 +47,6 @@
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
-#include "Algorithms/KaRRi/CHEnvironment.h"
 #include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
 #include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBucketsEnvironment.h"
@@ -68,10 +67,18 @@
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
 
+#ifdef KARRI_USE_CCHS
+#include "Algorithms/KaRRi/CCHEnvironment.h"
+#else
+#include "Algorithms/KaRRi/CHEnvironment.h"
+#endif
+
 #if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
-    #include "Algorithms/KaRRi/PDDistanceQueries/BCHStrategy.h"
+
+#include "Algorithms/KaRRi/PDDistanceQueries/BCHStrategy.h"
+
 #else // KARRI_PD_STRATEGY == KARRI_CH_PD_STRAT
-    #include "Algorithms/KaRRi/PDDistanceQueries/CHStrategy.h"
+#include "Algorithms/KaRRi/PDDistanceQueries/CHStrategy.h"
 #endif
 
 
@@ -123,6 +130,8 @@ inline void printUsage() {
               "  -max-num-d <int>       max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
               "  -veh-h <file>          contraction hierarchy for the vehicle network in binary format.\n"
               "  -psg-h <file>          contraction hierarchy for the passenger network in binary format.\n"
+              "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
+              "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
               "  -help                  show usage help text.\n";
@@ -156,6 +165,8 @@ int main(int argc, char *argv[]) {
         const auto requestFileName = clp.getValue<std::string>("r");
         const auto vehHierarchyFileName = clp.getValue<std::string>("veh-h");
         const auto psgHierarchyFileName = clp.getValue<std::string>("psg-h");
+        const auto vehSepDecompFileName = clp.getValue<std::string>("veh-d");
+        const auto psgSepDecompFileName = clp.getValue<std::string>("psg-d");
         const bool csvFilesInLoudFormat = clp.isSet("csv-in-LOUD-format");
         auto outputFileName = clp.getValue<std::string>("o");
         if (endsWith(outputFileName, ".csv"))
@@ -253,8 +264,8 @@ int main(int argc, char *argv[]) {
 
         while ((csvFilesInLoudFormat &&
                 vehiclesFileReader.read_row(location, capacity, startOfServiceTime, endOfServiceTime)) ||
-                (!csvFilesInLoudFormat &&
-                 vehiclesFileReader.read_row(location, startOfServiceTime, endOfServiceTime, capacity))) {
+               (!csvFilesInLoudFormat &&
+                vehiclesFileReader.read_row(location, startOfServiceTime, endOfServiceTime, capacity))) {
             if (location < 0 || location >= vehGraphOrigIdToSeqId.size() ||
                 vehGraphOrigIdToSeqId[location] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(location) + "'");
@@ -298,8 +309,50 @@ int main(int argc, char *argv[]) {
         }
         std::cout << "done.\n";
 
+#ifdef KARRI_USE_CCHS
 
-        // Prepare vehicle CH environment and vehicle locator
+        // Prepare vehicle CH environment
+        using VehCHEnv = CCHEnvironment<VehicleInputGraph, TravelTimeAttribute>;
+        std::unique_ptr<VehCHEnv> vehChEnv;
+        if (vehSepDecompFileName.empty()) {
+            std::cout << "Building Separator Decomposition and CCH... " << std::flush;
+            vehChEnv = std::make_unique<VehCHEnv>(vehicleInputGraph);
+            std::cout << "done.\n";
+        } else {
+            // Read the separator decomposition from file, construct and customize CCH.
+            std::cout << "Reading Seperator Decomposition from file and building CCH... " << std::flush;
+            std::ifstream vehSepDecompFile(vehSepDecompFileName, std::ios::binary);
+            if (!vehSepDecompFile.good())
+                throw std::invalid_argument("file not found -- '" + vehSepDecompFileName + "'");
+            SeparatorDecomposition vehSepDecomp;
+            vehSepDecomp.readFrom(vehSepDecompFile);
+            vehSepDecompFile.close();
+            std::cout << "done.\n";
+            vehChEnv = std::make_unique<VehCHEnv>(vehicleInputGraph, vehSepDecomp);
+        }
+
+        // Prepare passenger CH environment
+        using PsgCHEnv = CCHEnvironment<PsgInputGraph , TravelTimeAttribute>;
+        std::unique_ptr<PsgCHEnv> psgChEnv;
+        if (psgSepDecompFileName.empty()) {
+            std::cout << "Building Separator Decomposition and CCH... " << std::flush;
+            psgChEnv = std::make_unique<PsgCHEnv >(psgInputGraph);
+            std::cout << "done.\n";
+        } else {
+            // Read the separator decomposition from file, construct and customize CCH.
+            std::cout << "Reading Seperator Decomposition from file and building CCH... " << std::flush;
+            std::ifstream psgSepDecompFile(psgSepDecompFileName, std::ios::binary);
+            if (!psgSepDecompFile.good())
+                throw std::invalid_argument("file not found -- '" + psgSepDecompFileName + "'");
+            SeparatorDecomposition psgSepDecomp;
+            psgSepDecomp.readFrom(psgSepDecompFile);
+            psgSepDecompFile.close();
+            std::cout << "done.\n";
+            psgChEnv = std::make_unique<PsgCHEnv >(psgInputGraph, psgSepDecomp);
+        }
+
+#else
+        // Prepare vehicle CH environment
         using VehCHEnv = CHEnvironment<VehicleInputGraph, TravelTimeAttribute>;
         std::unique_ptr<VehCHEnv> vehChEnv;
         if (vehHierarchyFileName.empty()) {
@@ -317,9 +370,6 @@ int main(int argc, char *argv[]) {
             std::cout << "done.\n";
             vehChEnv = std::make_unique<VehCHEnv>(std::move(vehCh));
         }
-
-        using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
-        VehicleLocatorImpl locator(vehicleInputGraph, *vehChEnv, routeState);
 
         // Prepare passenger CH environment
         using PsgCHEnv = CHEnvironment<PsgInputGraph, TravelTimeAttribute>;
@@ -339,6 +389,11 @@ int main(int argc, char *argv[]) {
             std::cout << "done.\n";
             psgChEnv = std::make_unique<PsgCHEnv>(std::move(psgCh));
         }
+#endif
+
+
+        using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
+        VehicleLocatorImpl locator(vehicleInputGraph, *vehChEnv, routeState);
 
         CostCalculator calc(routeState, inputConfig);
         RequestState reqState(calc, inputConfig);
@@ -527,7 +582,8 @@ int main(int argc, char *argv[]) {
 
         // Run simulation:
         using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
-        EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, insertionFinder, systemStateUpdater, routeState,
+        EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, insertionFinder, systemStateUpdater,
+                                            routeState,
                                             true);
         eventSimulation.run();
 

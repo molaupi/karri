@@ -53,6 +53,12 @@ namespace elimintree {
 
 }
 
+// Forward declarations for friend
+namespace karri {
+    template<typename, typename, bool>
+    class EllipticBucketsEnvironment;
+}
+
 // Implementation of an upward elimination tree search. It enumerates all vertices on the path in
 // the elimination tree from a source vertex to the root, and relaxes the edges out of each vertex.
 // Depending on the used label set, it keeps parent vertices and/or edges, and computes multiple
@@ -67,13 +73,9 @@ class UpwardEliminationTreeSearch {
     friend
     class EliminationTreeQuery;
 
-    template<typename, typename, typename>
+    template<typename, typename, bool>
     friend
-    class LoudBucketEntryGenerator;
-
-    template<typename, typename>
-    friend
-    class LastStopBucketEntryGenerator;
+    class karri::EllipticBucketsEnvironment;
 
 private:
     using DistanceLabel = typename LabelSetT::DistanceLabel; // The distance label of a vertex.

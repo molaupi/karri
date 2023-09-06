@@ -82,6 +82,14 @@ namespace karri {
             }
 
             // Reconstruct path that vehicle is taking:
+            // Attention: Depending on whether CHs or CCHs are used, the CH query can deliver different shortest paths.
+            // This can lead to different current locations of the vehicle which can lead to different distances to a
+            // pickup.
+            // Usually, one would expect this difference to be small but in very bad edge cases, a vehicle may have
+            // already entered a tunnel or stretch of highway without exits on one shortest path where it hasn't on
+            // the other shortest path leading to the first vehicle location potentially making a much larger detour
+            // to the pickup.
+            // (This sounds like a pathologically rare case, but it actually happens on the Berlin-1pct input.)
             chQuery.run(ch.rank(inputGraph.edgeHead(prevOrCurLoc)), ch.rank(inputGraph.edgeTail(nextLoc)));
             assert(schedDepTimes[0] + chQuery.getDistance() + inputGraph.travelTime(nextLoc) == schedArrTimes[1]);
 

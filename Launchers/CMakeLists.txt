@@ -36,6 +36,9 @@ endif()
 add_executable(karri KaRRi.cpp)
 target_compile_definitions(karri PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(karri ${RoutingKit_LIBRARY})
+if(OpenMP_FOUND)
+    target_link_libraries(karri OpenMP::OpenMP_CXX)
+endif()
 
 # KaRRi compile time parameters
 
@@ -61,6 +64,11 @@ target_compile_definitions(karri PRIVATE KARRI_WAIT_PENALTY_SCALE=${KARRI_WAIT_P
 set(KARRI_TRIP_PENALTY_SCALE 10 CACHE STRING "Weights penalties for violating trip time soft constraint.")
 target_compile_definitions(karri PRIVATE KARRI_TRIP_PENALTY_SCALE=${KARRI_TRIP_PENALTY_SCALE})
 
+# Use CCHs?
+option(KARRI_USE_CCHS "Use CCHs instead of standard CHs." OFF)
+if (KARRI_USE_CCHS)
+    target_compile_definitions(karri PRIVATE KARRI_USE_CCHS)
+endif (KARRI_USE_CCHS)
 
 ## Elliptic BCH Searches Config
 set(KARRI_ELLIPTIC_BCH_LOG_K 0 CACHE STRING "Given value i, KaRRi runs 2^i elliptic BCH searches simultaneously as bundled search.")
