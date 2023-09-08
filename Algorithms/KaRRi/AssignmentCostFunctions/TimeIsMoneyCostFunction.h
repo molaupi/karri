@@ -31,17 +31,28 @@ namespace karri {
     template<int PASSENGER_COST_SCALE = 1, int WALKING_COST_SCALE = 0, int VEHICLE_COST_SCALE = 1, int WAIT_TIME_VIOLATION_WEIGHT = 1, int TRIP_TIME_VIOLATION_WEIGHT = 10>
     struct TimeIsMoneyCostFunction {
 
+        static constexpr int PSG_WEIGHT = PASSENGER_COST_SCALE;
+        static constexpr int WALK_WEIGHT = WALKING_COST_SCALE;
+        static constexpr int VEH_WEIGHT = VEHICLE_COST_SCALE;
+        static constexpr int WAIT_VIO_WEIGHT = WAIT_TIME_VIOLATION_WEIGHT;
+        static constexpr int TRIP_VIO_WEIGHT = TRIP_TIME_VIOLATION_WEIGHT;
+
         template<typename RequestContext>
         static inline int calcUpperBoundTripCostDifference(const int tripTimeDifference, const RequestContext &) {
-            return PASSENGER_COST_SCALE * TRIP_TIME_VIOLATION_WEIGHT * tripTimeDifference;
+            return (PASSENGER_COST_SCALE + TRIP_TIME_VIOLATION_WEIGHT) * tripTimeDifference;
         }
 
         template<typename DistanceLabel, typename RequestContext>
         static inline DistanceLabel
         calcKUpperBoundTripCostDifferences(const DistanceLabel &tripTimeDifference, const RequestContext &) {
             auto diff = tripTimeDifference;
-            diff.multiplyWithScalar(PASSENGER_COST_SCALE * TRIP_TIME_VIOLATION_WEIGHT);
+            diff.multiplyWithScalar(PASSENGER_COST_SCALE + TRIP_TIME_VIOLATION_WEIGHT);
             return diff;
+        }
+
+        static inline int calcUpperBoundTripViolationCostDifference(const int tripTimeDifference) {
+            assert(diffInTimeTillDepAtPickup >= 0);
+            return TRIP_TIME_VIOLATION_WEIGHT * tripTimeDifference;
         }
 
         template<typename RequestContext>
@@ -59,28 +70,26 @@ namespace karri {
 
         template<typename RequestContext>
         static inline int calcTripCost(const int tripTime, const RequestContext &context) {
+
             const auto maxTripTime = context.getOriginalReqMaxTripTime();
-            if (tripTime <= maxTripTime) {
-                return PASSENGER_COST_SCALE * tripTime;
-            } else {
-                return PASSENGER_COST_SCALE * (maxTripTime + (tripTime - maxTripTime) * TRIP_TIME_VIOLATION_WEIGHT);
-            }
+            const auto regularCost = PASSENGER_COST_SCALE * tripTime;
+            const auto violationPenalty = TRIP_TIME_VIOLATION_WEIGHT * std::max(tripTime - maxTripTime, 0);
+
+            return regularCost + violationPenalty;
         }
 
         template<typename DistanceLabel, typename RequestContext>
         static inline DistanceLabel calcKTripCosts(const DistanceLabel &tripTime, const RequestContext &context) {
 
-            const auto maxTripTime = context.getOriginalReqMaxTripTime();
+            DistanceLabel regularCost = tripTime;
+            regularCost.multiplyWithScalar(PASSENGER_COST_SCALE);
+
+            const DistanceLabel maxTripTime = DistanceLabel(context.getOriginalReqMaxTripTime());
             DistanceLabel violationCost = tripTime - maxTripTime;
             violationCost.max(0);
             violationCost.multiplyWithScalar(TRIP_TIME_VIOLATION_WEIGHT);
 
-            DistanceLabel regularCost = tripTime;
-            regularCost.min(maxTripTime);
-
-            auto cost = regularCost + violationCost;
-            cost.multiplyWithScalar(PASSENGER_COST_SCALE);
-
+            const DistanceLabel cost = regularCost + violationCost;
             return cost;
         }
 
@@ -99,25 +108,21 @@ namespace karri {
 
         template<typename RequestContext>
         static inline int calcWaitViolationCost(const int actualDepTimeAtPickup, const RequestContext &context) {
-            if (actualDepTimeAtPickup <= context.getMaxDepTimeAtPickup())
-                return 0;
-            return PASSENGER_COST_SCALE * WAIT_TIME_VIOLATION_WEIGHT *
-                   (actualDepTimeAtPickup - context.getMaxDepTimeAtPickup());
+            return WAIT_TIME_VIOLATION_WEIGHT * std::max(actualDepTimeAtPickup - context.getMaxDepTimeAtPickup(), 0);
         }
 
         template<typename DistanceLabel, typename RequestContext>
         static inline DistanceLabel calcKWaitViolationCosts(const DistanceLabel &actualDepTimeAtPickup,
                                                             const RequestContext &context) {
-            DistanceLabel violationCost = actualDepTimeAtPickup - context.getMaxDepTimeAtPickup();
+            DistanceLabel violationCost = actualDepTimeAtPickup - DistanceLabel(context.getMaxDepTimeAtPickup());
             violationCost.max(0);
             violationCost.multiplyWithScalar(WAIT_TIME_VIOLATION_WEIGHT);
-            violationCost.multiplyWithScalar(PASSENGER_COST_SCALE);
             return violationCost;
         }
 
         static inline int calcUpperBoundWaitViolationCostDifference(const int diffInTimeTillDepAtPickup) {
             assert(diffInTimeTillDepAtPickup >= 0);
-            return PASSENGER_COST_SCALE * WAIT_TIME_VIOLATION_WEIGHT * diffInTimeTillDepAtPickup;
+            return WAIT_TIME_VIOLATION_WEIGHT * diffInTimeTillDepAtPickup;
         }
 
         static inline int calcChangeInTripCostsOfExistingPassengers(const int addedTripTimeForExistingPassengers) {

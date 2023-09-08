@@ -38,6 +38,10 @@ quality <- function(file_base) {
              ride_time_q95 = c(quantile(asgnstats$ride_time, 0.95) / 10), # q95 ride time for each request
              trip_time_avg = c(mean(asgnstats$trip_time) / 10), # avg trip time for each request
              trip_time_q95 = c(quantile(asgnstats$trip_time, 0.95) / 10), # q95 trip time for each request
+             walk_to_pickup_avg=c(mean(asgnstats$walk_to_pickup_time) / 10), # avg walking time to pickup
+             walk_to_pickup_q95=c(quantile(asgnstats$walk_to_pickup_time, 0.95) / 10), # q95 walking time to pickup
+             walk_to_dropoff_avg=c(mean(asgnstats$walk_to_dropoff_time) / 10), # avg walking time to dropoff
+             walk_to_dropoff_q95=c(quantile(asgnstats$walk_to_dropoff_time, 0.95) / 10), # q95 walking time to dropoff
              stop_time_avg = c(sum(legstats$stop_time) / num.Vehicles / 10), # avg total stop time for each vehicle
              empty_time_avg = c(sum(legstats[legstats$occupancy == 0, "drive_time"]) / num.Vehicles / 10), # avg time spent driving empty for each vehicle
              occ_time_avg = c(sum(legstats[legstats$occupancy > 0, "drive_time"]) / num.Vehicles / 10) # avg time spent driving occupied for each vehicle
@@ -50,7 +54,10 @@ quality <- function(file_base) {
   # Reformat passenger times to MM:SS
   psg_time_cols <- c("wait_time_avg", "wait_time_q95", 
                      "ride_time_avg", "ride_time_q95", 
-                     "trip_time_avg", "trip_time_q95")
+                     "trip_time_avg", "trip_time_q95",
+                     "walk_to_pickup_avg", "walk_to_pickup_q95",
+                     "walk_to_dropoff_avg", "walk_to_dropoff_q95"
+                     )
   df[, colnames(df) %in% psg_time_cols] <- convertToMMSS(df[, colnames(df) %in% psg_time_cols])
   
   # Reformat vehicle times to HH:MM

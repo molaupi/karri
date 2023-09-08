@@ -284,35 +284,24 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &pickup2 = requestState.pickups[label2.pickupId];
             const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
-            const auto &directDist1 = label1.directDistance;
-            const auto &directDist2 = label2.directDistance;
-
             assert(dropoff1.id != dropoff2.id);
             if (pickup1.id != pickup2.id || label1.distToPickup != label2.distToPickup)
                 return false;
 
             // pickup1 == pickup2 and label1.distToPickup == label2.distToPickup => domination only depends on the part
             // after the pickup, i.e. direct distance and walking distance from dropoff:
-            const int tripTimeFromPickup1 = directDist1 + dropoff1.walkingDist;
-            const int tripTimeFromPickup2 = directDist2 + dropoff2.walkingDist;
-            if (directDist1 < directDist2) {
-                if (tripTimeFromPickup1 <= tripTimeFromPickup2)
-                    return true;
 
-                const int detourCostAdvFor1 = CostCalculator::CostFunction::calcVehicleCost(directDist2 - directDist1);
-                const int maxTripCostAdvFor2 = CostCalculator::CostFunction::calcUpperBoundTripCostDifference(
-                        tripTimeFromPickup1 - tripTimeFromPickup2, requestState);
-                return detourCostAdvFor1 > maxTripCostAdvFor2;
-            }
+            using F = CostCalculator::CostFunction;
+            const auto maxDetourDiff = label1.directDistance - label2.directDistance;
+            const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
+            const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
+            const auto maxTripVioDiff = F::TRIP_VIO_WEIGHT * std::max(maxTripDiff, 0);
 
-            // directDist1 >= directDist2
-            if (tripTimeFromPickup1 >= tripTimeFromPickup2)
-                return false;
-
-            const int detourCostAdvFor2 = CostCalculator::CostFunction::calcVehicleCost(directDist1 - directDist2);
-            const int minTripCostAdvFor1 = CostCalculator::CostFunction::calcLowerBoundTripCostDifference(
-                    tripTimeFromPickup2 - tripTimeFromPickup1, requestState);
-            return minTripCostAdvFor1 > detourCostAdvFor2;
+            const auto maxCostDiff =    F::VEH_WEIGHT * maxDetourDiff +
+                                        F::PSG_WEIGHT * maxTripDiff +
+                                        F::WALK_WEIGHT * walkDiff +
+                                        maxTripVioDiff;
+            return maxCostDiff < 0;
         }
 
         PDLabelMask batchInitialLabelDominates(const unsigned int dropoffId1,
@@ -320,36 +309,34 @@ namespace karri::PickupAfterLastStopStrategies {
                                                const unsigned int dropoffId2,
                                                const PDDistanceLabel &distancesToDropoff2) {
             static const PDDistanceLabel INVALID_DIST_LABEL = PDDistanceLabel(INVALID_DIST);
+            static const PDDistanceLabel ZERO_DIST_LABEL = PDDistanceLabel(0);
 
             ++numDominationRelationTests;
             const auto &dropoff1 = requestState.dropoffs[dropoffId1];
             const auto &dropoff2 = requestState.dropoffs[dropoffId2];
+            const auto walkDiff = PDDistanceLabel(dropoff1.walkingDist - dropoff2.walkingDist);
 
-            // pickup1 == pickup2 and label1.distToPickup == label2.distToPickup => domination only depends on the part
-            // after the pickup, i.e. direct distance and walking distance from dropoff:
-            const PDDistanceLabel tripTimesFromPickup1 = distancesToDropoff1 + PDDistanceLabel(dropoff1.walkingDist);
-            const PDDistanceLabel tripTimesFromPickup2 = distancesToDropoff2 + PDDistanceLabel(dropoff2.walkingDist);
+            using F = CostCalculator::CostFunction;
+            PDDistanceLabel maxDetourDiff = distancesToDropoff1 - distancesToDropoff2;
+            PDDistanceLabel maxTripDiff = maxDetourDiff + walkDiff;
 
-            // Construct mask for the case where distanceToDropoff1 < distanceToDropoff2
-            const PDDistanceLabel detourCostAdvFor1 = CostCalculator::CostFunction::calcKVehicleCosts(
-                    distancesToDropoff2 - distancesToDropoff1);
-            const PDDistanceLabel maxTripCostAdvFor2 = CostCalculator::CostFunction::calcKUpperBoundTripCostDifferences(
-                    tripTimesFromPickup1 - tripTimesFromPickup2, requestState);
-            const PDLabelMask isDominatedWithSmallerDist =
-                    (distancesToDropoff1 < distancesToDropoff2) & (detourCostAdvFor1 > maxTripCostAdvFor2);
+            PDDistanceLabel maxTripVioDiff = maxTripDiff;
+            maxTripVioDiff.max(ZERO_DIST_LABEL);
+            maxTripVioDiff.multiplyWithScalar(F::TRIP_VIO_WEIGHT);
 
-            // Construct mask for the case where distanceToDropoff1 >= distanceToDropoff2
-            const PDDistanceLabel detourCostAdvFor2 = CostCalculator::CostFunction::calcKVehicleCosts(
-                    distancesToDropoff1 - distancesToDropoff2);
-            const PDDistanceLabel minTripCostAdvFor1 = CostCalculator::CostFunction::calcKLowerBoundTripCostDifferences(
-                    tripTimesFromPickup2 - tripTimesFromPickup1, requestState);
-            const PDLabelMask isDominatedWithNotSmallerDist =
-                    (distancesToDropoff1 >= distancesToDropoff2) & (minTripCostAdvFor1 > detourCostAdvFor2);
+            maxDetourDiff.multiplyWithScalar(F::VEH_WEIGHT);
+            maxTripDiff.multiplyWithScalar(F::PSG_WEIGHT);
+            walkDiff.multiplyWithScalar(F::WALK_WEIGHT);
+
+            const auto maxCostDiff =    maxDetourDiff +
+                                        maxTripDiff +
+                                        walkDiff +
+                                        maxTripVioDiff;
 
             // Construct mask that is set wherever distancesToDropoff1 is INVALID_DIST
             const PDLabelMask invalidMask = distancesToDropoff1 == INVALID_DIST_LABEL;
 
-            return ~invalidMask & (isDominatedWithSmallerDist | isDominatedWithNotSmallerDist);
+            return ~invalidMask & (maxCostDiff < ZERO_DIST_LABEL);
         }
 
 
@@ -529,49 +516,20 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &pickup2 = requestState.pickups[label2.pickupId];
             const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
-            const auto &directDist1 = label1.directDistance;
-            const auto &directDist2 = label2.directDistance;
-
-            const int &reqTime = requestState.originalRequest.requestTime;
-            const int minDepTimeAtPickup2 = reqTime + label2.distToPickup + inputConfig.stopTime;
-            const int maxDepTimeAtPickup1 = reqTime +  std::max(label1.distToPickup + inputConfig.stopTime, pickup1.walkingDist);
-
             using F = CostCalculator::CostFunction;
-            int waitVioAdvantageFor2;
-            if (maxDepTimeAtPickup1 <= minDepTimeAtPickup2) {
-                waitVioAdvantageFor2 = F::calcWaitViolationCost(maxDepTimeAtPickup1, requestState) -
-                                       F::calcWaitViolationCost(minDepTimeAtPickup2, requestState);
-            } else {
-                waitVioAdvantageFor2 = F::calcUpperBoundWaitViolationCostDifference(
-                        maxDepTimeAtPickup1 - minDepTimeAtPickup2);
-            }
+            const auto maxDepTimeDiff = std::max(label1.distToPickup + inputConfig.stopTime, pickup1.walkingDist) - (label2.distToPickup + inputConfig.stopTime);
+            const auto maxDetourDiff = maxDepTimeDiff + label1.directDistance - label2.directDistance;
+            const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
+            const auto walkDiff = pickup1.walkingDist + dropoff1.walkingDist - pickup2.walkingDist - dropoff2.walkingDist;
 
-            const int maxArrTime1 = maxDepTimeAtPickup1 + directDist1 + dropoff1.walkingDist;
-            const int minArrTime2 =
-                    reqTime + label2.distToPickup + inputConfig.stopTime + directDist2 + dropoff2.walkingDist;
-            int tripCostAdvantageFor2;
-            if (maxArrTime1 <= minArrTime2) {
-                tripCostAdvantageFor2 = -F::calcLowerBoundTripCostDifference(minArrTime2 - maxArrTime1, requestState);
-            } else {
-                tripCostAdvantageFor2 = F::calcUpperBoundTripCostDifference(maxArrTime1 - minArrTime2, requestState);
-            }
+            const auto maxWaitVioDiff = F::WAIT_VIO_WEIGHT * std::max(maxDepTimeDiff, 0);
+            const auto maxTripVioDiff = F::TRIP_VIO_WEIGHT * std::max(maxTripDiff, 0);
 
-
-            const int detourAdvantageFor2 = maxDepTimeAtPickup1 + directDist1 - minDepTimeAtPickup2 - directDist2;
-            int vehCostAdvantageFor2;
-            if (detourAdvantageFor2 < 0) {
-                vehCostAdvantageFor2 = -F::calcLowerBoundVehicleCostDifference(-detourAdvantageFor2);
-            } else {
-                vehCostAdvantageFor2 = F::calcUpperBoundVehicleCostDifference(detourAdvantageFor2);
-            }
-
-            return waitVioAdvantageFor2 + tripCostAdvantageFor2 + vehCostAdvantageFor2 +
-                   F::calcWalkingCost(pickup1.walkingDist, inputConfig.pickupRadius) +
-                   F::calcWalkingCost(dropoff1.walkingDist, inputConfig.dropoffRadius) -
-                   F::calcWalkingCost(pickup2.walkingDist, inputConfig.pickupRadius) -
-                   F::calcWalkingCost(dropoff2.walkingDist, inputConfig.dropoffRadius)
-                   < 0;
-
+            const auto maxCostDiff =    F::VEH_WEIGHT * maxDetourDiff +
+                                        F::PSG_WEIGHT * maxTripDiff +
+                                        F::WALK_WEIGHT * walkDiff +
+                                        maxWaitVioDiff + maxTripVioDiff;
+            return maxCostDiff < 0;
         }
 
         void scanVehicleBucket(const int rank, const PDPairAfterLastStopLabel &label) {

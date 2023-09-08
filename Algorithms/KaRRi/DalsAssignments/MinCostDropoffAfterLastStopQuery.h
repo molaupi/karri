@@ -184,30 +184,18 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         bool dominates(const DropoffLabel &label1, const DropoffLabel &label2) {
             ++numDominationRelationTests;
-            if (label1.dropoffId == label2.dropoffId)
-                return label1.distToDropoff <= label2.distToDropoff;
 
-            const auto cost1 = costOf(label1);
-            const auto cost2 = costOf(label2);
+            const auto& dropoff1 = requestState.dropoffs[label1.dropoffId];
+            const auto& dropoff2 = requestState.dropoffs[label2.dropoffId];
 
-            if (cost1 > cost2)
-                return false;
+            const auto maxDetourDiff = label1.distToDropoff - label2.distToDropoff;
+            const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
+            const auto maxTripDiff = maxDetourDiff + walkDiff;
 
-            const auto tripTime1 =
-                    label1.distToDropoff + inputConfig.stopTime + requestState.dropoffs[label1.dropoffId].walkingDist;
-            const auto tripTime2 =
-                    label2.distToDropoff + inputConfig.stopTime + requestState.dropoffs[label2.dropoffId].walkingDist;
-
-            if (cost1 == cost2 && tripTime1 == tripTime2)
-                return label1.dropoffId < label2.dropoffId;
-
-            if (tripTime1 < tripTime2)
-                return true;
-
-            const auto maxTripCostAdvantageFor2 = CostCalculator::CostFunction::calcUpperBoundTripCostDifference(
-                    tripTime1 - tripTime2, requestState);
-            const auto costAdvantageFor1 = cost2 - cost1;
-            return costAdvantageFor1 > maxTripCostAdvantageFor2;
+            using F = CostCalculator::CostFunction;
+            const auto costDiffNoTripVio = F::VEH_WEIGHT * maxDetourDiff + F::PSG_WEIGHT * maxTripDiff + F::WALK_WEIGHT * walkDiff;
+            const auto costDiffTripVio = costDiffNoTripVio + F::TRIP_VIO_WEIGHT * maxTripDiff;
+            return costDiffNoTripVio < 0 && costDiffTripVio < 0;
         }
 
 
