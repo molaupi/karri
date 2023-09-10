@@ -51,7 +51,7 @@ namespace karri {
         }
 
         static inline int calcUpperBoundTripViolationCostDifference(const int tripTimeDifference) {
-            assert(diffInTimeTillDepAtPickup >= 0);
+            assert(tripTimeDifference >= 0);
             return TRIP_TIME_VIOLATION_WEIGHT * tripTimeDifference;
         }
 

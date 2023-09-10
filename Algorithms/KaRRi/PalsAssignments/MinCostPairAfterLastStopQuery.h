@@ -314,7 +314,7 @@ namespace karri::PickupAfterLastStopStrategies {
             ++numDominationRelationTests;
             const auto &dropoff1 = requestState.dropoffs[dropoffId1];
             const auto &dropoff2 = requestState.dropoffs[dropoffId2];
-            const auto walkDiff = PDDistanceLabel(dropoff1.walkingDist - dropoff2.walkingDist);
+            auto walkDiff = PDDistanceLabel(dropoff1.walkingDist - dropoff2.walkingDist);
 
             using F = CostCalculator::CostFunction;
             PDDistanceLabel maxDetourDiff = distancesToDropoff1 - distancesToDropoff2;
