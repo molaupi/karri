@@ -71,6 +71,7 @@ include_directories(${CMAKE_SOURCE_DIR})
 find_package(OpenMP)
 find_library(PROJ_LIBRARY proj)
 find_library(RoutingKit_LIBRARY routingkit)
+find_package(nlohmann_json)
 
 
 

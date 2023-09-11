@@ -42,6 +42,7 @@ $ cd rapidxml && sudo cp *.hpp /usr/local/include && cd ..
 $ cd RoutingKit && make && sudo cp -r include lib /usr/local && cd ..
 $ cd stocc && sudo mkdir /usr/local/include/stocc && sudo cp *.h $_ && cd ..
 $ cd vectorclass && sudo mkdir /usr/local/include/vectorclass && sudo cp *.h $_ && cd ..
+$ cd json && cmake -B build -S . && sudo cmake --build build --target install && cd ..
 ```
 
 

@@ -56,6 +56,9 @@ target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_N
 add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
 target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
 
+add_executable(GenerateGeoJsonForVehicles GenerateGeoJsonForVehicles.cc)
+target_compile_definitions(GenerateGeoJsonForVehicles PRIVATE CSV_IO_NO_THREAD)
+
 
 add_executable(GenerateGeoJsonForRequests GenerateGeoJsonForRequests.cc)
 target_compile_definitions(GenerateGeoJsonForRequests PRIVATE CSV_IO_NO_THREAD)
