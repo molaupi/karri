@@ -555,8 +555,9 @@ namespace karri::PickupAfterLastStopStrategies {
                 //  vehicle-independent lower bound cost is a bad one as a major part of the actual waiting time (and
                 //  trip time) may be the rest of the vehicle route up to its last stop.
                 //  Can we potentially sort by arrival time of vehicle at v via upwards edges?
-                //  We would most likely need separate buckets for idle and non-idle vehicles and whenever vehicle
-                //  becomes idle, move all of its entries from non-idle bucket to idle bucket.
+                //  We would most likely need separate buckets for idle (sorted by distance to v) and non-idle vehicles
+                //  (sorted by arrival time at v) and whenever vehicle becomes idle, move all of its entries from
+                //  non-idle bucket to idle bucket.
                 if constexpr (LastStopBucketsEnvT::SORTED_BY_DIST) {
                         // Vehicles are ordered by distToTarget, i.e. once we scan a vehicle where the lower bound cost
                         // based on the vehicle distance to the pickup (i.e. irrespective of possible vehicle waiting for
