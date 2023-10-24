@@ -39,6 +39,10 @@ target_link_libraries(karri ${RoutingKit_LIBRARY})
 if(OpenMP_FOUND)
     target_link_libraries(karri OpenMP::OpenMP_CXX)
 endif()
+message(${TBB_FOUND})
+if (TBB_FOUND)
+    target_link_libraries(karri TBB::tbb)
+endif()
 
 # KaRRi compile time parameters
 

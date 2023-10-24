@@ -30,6 +30,9 @@
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Tools/Timer.h"
 
+// TBB headers can be included like so:
+// #include <tbb/tbb.h>
+
 namespace karri {
 
 
