@@ -28,7 +28,9 @@ $ sudo apt-get install libboost-all-dev
 $ sudo apt-get install libproj-dev
 $ sudo apt-get install zlib1g-dev
 $ sudo apt-get install osmium-tool
+$ sudo apt-get install intel-tbb intel-tbb-devel
 ```
+For the ```intel-tbb``` packages, you may need to set up the repository first, as instructed [here](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html?operatingsystem=linux&distributions=aptpackagemanager).
 
 Next, you need to clone, build and install the libraries in the `External` subdirectory. To do so,
 type the following commands at the top-level directory of the framework:
