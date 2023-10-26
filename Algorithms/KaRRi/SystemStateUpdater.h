@@ -167,6 +167,11 @@ namespace karri {
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
             ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1);
             routeState.removeStartOfCurrentLeg(veh.vehicleId);
+
+            // If vehicle has become idle, update last stop bucket entries
+            if (routeState.numStopsOf(veh.vehicleId) == 1) {
+                lastStopBucketsEnv.updateBucketEntries(veh, 0);
+            }
         }
 
         void notifyVehicleReachedEndOfServiceTime(const Vehicle &veh) {
@@ -280,8 +285,16 @@ namespace karri {
 
         void generateBucketStateForNewStops(const Assignment &asgn, const int pickupIndex, const int dropoffIndex) {
             const auto vehId = asgn.vehicle->vehicleId;
+            const auto& numStops = routeState.numStopsOf(vehId);
             const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
+
+            // If last stop does not change but departure time at dropoff does change, update last stop bucket entries
+            // accordingly.
+            // todo: implement. Needs flag indicating whether dep time at last stop changed
+            if ((dropoffAtExistingStop || dropoffIndex < numStops - 1) && depTimeOfLastStopChanged) {
+                lastStopBucketsEnv.updateBucketEntries(*asgn.vehicle, numStops - 1);
+            }
 
             if (!pickupAtExistingStop) {
                 ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, pickupIndex);
@@ -295,7 +308,7 @@ namespace karri {
             ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, dropoffIndex);
 
             // If dropoff is not the new last stop, we generate elliptic source buckets for it.
-            if (dropoffIndex < routeState.numStopsOf(vehId) - 1) {
+            if (dropoffIndex < numStops - 1) {
                 ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, dropoffIndex);
                 return;
             }

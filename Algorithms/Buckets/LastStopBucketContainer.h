@@ -69,6 +69,15 @@ public:
         return SortedBucket(entries.begin() + pos.start + pos.numIdleEntries, entries.begin() + pos.end);
     }
 
+    std::pair<SortedBucket, SortedBucket> getIdleAndNonIdleBucketOf(const int v) {
+        assert(v >= 0);
+        assert(v < bucketPositions.size());
+        const auto &pos = bucketPositions[v];
+        return {SortedBucket(entries.begin() + pos.start, entries.begin() + pos.start + pos.numIdleEntries),
+                SortedBucket(entries.begin() + pos.start + pos.numIdleEntries, entries.begin() + pos.end)};
+
+    }
+
     // Inserts the given entry into the bucket of idle vehicles at the specified vertex.
     bool insertIdle(const int v, const BucketEntryT &entry) {
         const auto &pos = bucketPositions[v];
@@ -94,10 +103,12 @@ public:
 
         const auto &pos = bucketPositions[v];
         int col = -1;
-        const bool found = searchForExistingEntry(entry, col, pos.start, pos.start + pos.numIdleEntries, idleComp) - pos.start;
+        const bool found = binarySearchForExistingEntry(entry, col, pos.start, pos.start + pos.numIdleEntries,
+                                                        idleComp);
         if (!found)
             return false;
 
+        col -= pos.start;
         stableRemoval(v, col, bucketPositions, entries);
         return true;
     }
@@ -111,10 +122,30 @@ public:
 
         const auto &pos = bucketPositions[v];
         int col = -1;
-        const bool found = searchForExistingEntry(entry, col,  pos.start + pos.numIdleEntries, pos.end, nonIdleComp) - pos.start;
+        const bool found =
+                binarySearchForExistingEntry(entry, col, pos.start + pos.numIdleEntries, pos.end, nonIdleComp);
         if (!found)
             return false;
 
+        col -= pos.start;
+        stableRemoval(v, col, bucketPositions, entries);
+        return true;
+    }
+
+    // Removes the given entry from the non-idle bucket of the specified vertex.
+    // Given only the vehicle id, we use linear search.
+    bool removeNonIdle(const int v, const int vehId) {
+        assert(v >= 0);
+        assert(v < bucketPositions.size());
+        numEntriesVisited = 0;
+
+        const auto &pos = bucketPositions[v];
+        int col = -1;
+        const bool found = linearSearchForExistingEntry(vehId, col, pos.start + pos.numIdleEntries, pos.end);
+        if (!found)
+            return false;
+
+        col -= pos.start;
         stableRemoval(v, col, bucketPositions, entries);
         return true;
     }
@@ -132,10 +163,10 @@ public:
 
 private:
 
-    /// Returns index between start and end (inclusive) where entry should be inserted to preserve order according to
-    /// comp. start, end, and return value are indices in entries vector.
+    // Returns index between start and end (inclusive) where entry should be inserted to preserve order according to
+    // comp. start, end, and return value are indices in entries vector.
     template<typename CompT>
-    int searchForInsertionIdx(const BucketEntryT &entry, const int start, const int end, CompT& comp) {
+    int searchForInsertionIdx(const BucketEntryT &entry, const int start, const int end, CompT &comp) {
 
         // Check if idle bucket is currently empty or new entry needs to become first element:
         if (start == end || comp(entry, entries[start]))
@@ -162,15 +193,17 @@ private:
     }
 
     // Returns whether e1 and e2 are equivalent wrt comp.
-    bool equiv(const BucketEntryT &e1, const BucketEntryT &e2) const {
+    template<typename CompT>
+    bool equiv(const BucketEntryT &e1, const BucketEntryT &e2, CompT &comp) const {
         return !comp(e1, e2) && !comp(e2, e1);
     }
 
-    /// Finds existing entry between indices start and end (inclusive) assuming entries are ordered by comp.
-    /// If found, idx is set to index of entry and true is returned. Otherwise, false is returned.
-    /// start, end, and idx are indices in entries vector.
+    // Finds existing entry between indices start and end (inclusive) assuming entries are ordered by comp.
+    // If found, idx is set to index of entry and true is returned. Otherwise, false is returned.
+    // start, end, and idx are indices in entries vector.
     template<typename CompT>
-    bool searchForExistingEntry(const BucketEntryT &entry, int& idx, const int start, const int end, CompT& comp) {
+    bool
+    binarySearchForExistingEntry(const BucketEntryT &entry, int &idx, const int start, const int end, CompT &comp) {
         // Check if bucket is currently empty or is smaller than smallest entry in bucket or larger
         // than largest entry in bucket.
         numEntriesVisited += 2;
@@ -178,9 +211,9 @@ private:
             return false;
 
         // Check if entry is equal to last entry wrt to comp. If so, scan all entries that are equal backwards linearly.
-        if (equiv(entry, entries[end - 1])) {
+        if (equiv(entry, entries[end - 1], comp)) {
             idx = end - 1;
-            while (idx >= start && equiv(entry, entries[idx]) &&
+            while (idx >= start && equiv(entry, entries[idx], comp) &&
                    entry.targetId != entries[idx].targetId) {
                 ++numEntriesVisited;
                 --idx;
@@ -204,12 +237,21 @@ private:
         // r is position right of range of entries that are equivalent to entry wrt comp (range may be empty if entry
         // does not exist). Scan through this range backwards linearly:
         idx = r - 1;
-        while (idx >= start && equiv(entry, entries[idx]) &&
+        while (idx >= start && equiv(entry, entries[idx], comp) &&
                entry.targetId != entries[idx].targetId) {
             ++numEntriesVisited;
             --idx;
         }
         return idx >= start && entry.targetId == entries[idx].targetId;
+    }
+
+
+    bool linearSearchForExistingEntry(const int vehId, int &idx, const int start, const int end) {
+        for (idx = start; idx < end; ++idx) {
+            if (entries[idx].vehicleId == vehId)
+                return true;
+        }
+        return false;
     }
 
 
