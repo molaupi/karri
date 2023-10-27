@@ -61,6 +61,8 @@ namespace karri {
 
                 int numEntriesScannedHere = 0;
 
+                // todo: implement unsorted and new sorted buckets
+
                 auto bucket = search.bucketContainer.getBucketOf(v);
                 for (const auto &entry: bucket) {
 
@@ -85,6 +87,13 @@ namespace karri {
                             break;
                         }
                     }
+
+                    // todo: This should differentiate between
+                    //  1. vehicle-independent lower bound for vehicles that have distance >= distToTarget
+                    //      (used for stopping bucket scan early)
+                    //  2. vehicle-dependent upper bound for cost of insertion with this vehicle and (at most) this
+                    //      last stop distance (used for finding out which distances need to be stored (in mask) and
+                    //      updating global upper bound cost (update already uses it))
 
                     // If this vehicle is not eligible, skip it.
                     if (!search.pruner.isVehicleEligible(vehId))

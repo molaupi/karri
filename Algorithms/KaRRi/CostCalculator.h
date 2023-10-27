@@ -392,18 +392,19 @@ namespace karri {
         }
 
         template<typename RequestContext>
-        int calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(const int distToDropoff,
-                                                                          const PDLoc &dropoff,
-                                                                          const RequestContext &context) const {
-            return calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(dropoff.walkingDist, distToDropoff,
-                                                                                 stopTime, context);
+        int calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(const int distToDropoff,
+                                                                                 const PDLoc &dropoff,
+                                                                                 const RequestContext &context) const {
+            return calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(dropoff.walkingDist,
+                                                                                        distToDropoff,
+                                                                                        stopTime, context);
         }
 
         template<typename RequestContext>
-        int calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(const int dropoffWalkingDist,
-                                                                          const int distToDropoff,
-                                                                          const int minTripTimeToLastStop,
-                                                                          const RequestContext &context) const {
+        int calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(const int dropoffWalkingDist,
+                                                                                 const int distToDropoff,
+                                                                                 const int minTripTimeToLastStop,
+                                                                                 const RequestContext &context) const {
             assert(distToDropoff < INFTY);
             if (distToDropoff >= INFTY)
                 return INFTY;
@@ -417,6 +418,24 @@ namespace karri {
 
             // Independent of vehicle so we cannot know here which existing passengers may be affected
             // const int minAddedTripCostOfOthers = 0;
+
+            return F::calcVehicleCost(minDetour) + walkingCost + minTripCost;
+        }
+
+        template<typename RequestContext>
+        int calcVehicleIndependentCostLowerBoundForDALSWithKnownMinArrTime(const int dropoffWalkingDist,
+                                                                        const int minDistToDropoff,
+                                                                        const int minArrTimeAtDropoff,
+                                                                        const RequestContext& context) const {
+            assert(arrTimeAtDropoff >= context.originalRequest.requestTime);
+            assert(minDistToDropoff < INFTY);
+            if (minDistToDropoff >= INFTY)
+                return INFTY;
+
+            const int minDetour = minDistToDropoff + stopTime;
+            const int walkingCost = F::calcWalkingCost(dropoffWalkingDist, inputConfig.dropoffRadius);
+            const int minTripTime = minArrTimeAtDropoff - context.originalRequest.requestTime + dropoffWalkingDist;
+            const int minTripCost = F::calcTripCost(minTripTime, context);
 
             return F::calcVehicleCost(minDetour) + walkingCost + minTripCost;
         }

@@ -36,10 +36,20 @@
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
+    template<typename InputGraphT, typename CHEnvT>
     class SortedLastStopBucketsEnvironment {
 
         struct LastStopEntry {
+
+            LastStopEntry() noexcept = default;
+
+            LastStopEntry(const int vehicleId, const int distOrArrTime) noexcept
+                    : vehicleId(vehicleId), distOrArrTime(distOrArrTime) {}
+
+            constexpr bool operator==(const LastStopEntry& rhs) const noexcept {
+                return vehicleId == rhs.vehicleId;
+            }
+
             int vehicleId = INVALID_ID;
             int distOrArrTime = INFTY; // For idle vehicle: dist from last stop to vertex; For non-idle vehicle: arrival time at vertex
         };
@@ -51,7 +61,7 @@ namespace karri {
         };
 
     public:
-        static constexpr bool SORTED_BY_DIST = SORTED_BUCKETS;
+        static constexpr bool SORTED = true;
 
         using BucketContainer = LastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
 
@@ -75,7 +85,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
-                auto entry = BucketEntry(curVehId, distToV[0]);
+                auto entry = LastStopEntry(curVehId, distToV[0]);
                 bucketContainer.insertIdle(v, entry);
                 ++verticesVisited;
                 return false;
@@ -94,7 +104,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
-                auto entry = BucketEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
+                auto entry = LastStopEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
                 bucketContainer.insertNonIdle(v, entry);
                 ++verticesVisited;
                 return false;
@@ -230,7 +240,7 @@ namespace karri {
                           DeleteIdleEntry(bucketContainer, vehicleId, verticesVisitedInSearch,
                                           entriesVisitedInSearch))),
                   nonIdleEntryDelSearch(chEnv.getForwardSearch(
-                          DeleteNonIdleEntry(bucketContainer, vehicleId, depTimeOfVehAtLastStop,
+                          DeleteNonIdleEntry(bucketContainer, vehicleId,
                                              verticesVisitedInSearch, entriesVisitedInSearch))),
                   stats(stats) {}
 
@@ -261,8 +271,6 @@ namespace karri {
             }
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.lastStopBucketsGenerateEntriesTime += time;
-
-//        bucketGenLogger << verticesVisitedInSearch << ',' << time << '\n';
         }
 
         // An update to the bucket entries may become necessary in two situations:
@@ -322,8 +330,6 @@ namespace karri {
             }
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.lastStopBucketsDeleteEntriesTime += time;
-
-//        bucketDelLogger << verticesVisitedInSearch << ',' << entriesVisitedInSearch << ',' << time << '\n';
         }
 
     private:
@@ -351,19 +357,12 @@ namespace karri {
 
         GenerateIdleEntriesSearch idleEntryGenSearch;
         GenerateNonIdleEntriesSearch nonIdleEntryGenSearch;
-        UpdateForVehicleHasBecomeIdleSearch updateForVehicleHasBecomeIdleSearch;
         UpdateNewScheduleOfNonIdleVehicleSearch updateNewScheduleOfNonIdleVehicleSearch;
+        UpdateForVehicleHasBecomeIdleSearch updateForVehicleHasBecomeIdleSearch;
         DeleteIdleEntriesSearch idleEntryDelSearch;
         DeleteNonIdleEntriesSearch nonIdleEntryDelSearch;
 
         karri::stats::UpdatePerformanceStats &stats;
 
-    };
-
-    struct NoOpLastStopBucketsEnvironment {
-
-        inline void generateBucketEntries(const Vehicle &, const int) {/* no op */}
-
-        inline void removeBucketEntries(const Vehicle &, const int) {/* no op */}
     };
 }

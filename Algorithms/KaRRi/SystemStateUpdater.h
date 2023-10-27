@@ -137,6 +137,7 @@ namespace karri {
 
             const auto vehId = asgn.vehicle->vehicleId;
             const auto numStopsBefore = routeState.numStopsOf(vehId);
+            const auto depTimeAtLastStopBefore = routeState.schedDepTimesFor(vehId)[numStopsBefore - 1];
 
             timer.restart();
             const auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, requestState);
@@ -148,7 +149,7 @@ namespace karri {
                 movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
             }
 
-            updateBucketState(asgn, pickupIndex, dropoffIndex);
+            updateBucketState(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore);
 
             pickupStopId = routeState.stopIdsFor(vehId)[pickupIndex];
             dropoffStopId = routeState.stopIdsFor(vehId)[dropoffIndex];
@@ -271,7 +272,8 @@ namespace karri {
         // assignment that has already been inserted into routeState as well as the stop index of the pickup and
         // dropoff after the insertion.
         void updateBucketState(const Assignment &asgn,
-                               const int pickupIndex, const int dropoffIndex) {
+                               const int pickupIndex, const int dropoffIndex,
+                               const int depTimeAtLastStopBefore) {
 
             generateBucketStateForNewStops(asgn, pickupIndex, dropoffIndex);
 
@@ -281,6 +283,19 @@ namespace karri {
                 ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(*asgn.vehicle);
                 ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(*asgn.vehicle);
             }
+
+            // If last stop does not change but departure time at last stop does change, update last stop bucket entries
+            // accordingly.
+            const int vehId = asgn.vehicle->vehicleId;
+            const auto numStopsAfter = routeState.numStopsOf(vehId);
+            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
+            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
+            const auto depTimeAtLastStopAfter = routeState.schedDepTimesFor(vehId)[numStopsAfter - 1];
+            const bool depTimeAtLastChanged = depTimeAtLastStopAfter != depTimeAtLastStopBefore;
+
+            if ((dropoffAtExistingStop || dropoffIndex < numStopsAfter - 1) && depTimeAtLastChanged) {
+                lastStopBucketsEnv.updateBucketEntries(*asgn.vehicle, numStopsAfter - 1);
+            }
         }
 
         void generateBucketStateForNewStops(const Assignment &asgn, const int pickupIndex, const int dropoffIndex) {
@@ -288,13 +303,6 @@ namespace karri {
             const auto& numStops = routeState.numStopsOf(vehId);
             const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
-
-            // If last stop does not change but departure time at dropoff does change, update last stop bucket entries
-            // accordingly.
-            // todo: implement. Needs flag indicating whether dep time at last stop changed
-            if ((dropoffAtExistingStop || dropoffIndex < numStops - 1) && depTimeOfLastStopChanged) {
-                lastStopBucketsEnv.updateBucketEntries(*asgn.vehicle, numStops - 1);
-            }
 
             if (!pickupAtExistingStop) {
                 ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, pickupIndex);

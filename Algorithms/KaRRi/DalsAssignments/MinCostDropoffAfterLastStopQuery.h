@@ -178,22 +178,23 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         int costOf(const DropoffLabel &label) const {
             if (label.distToDropoff >= INFTY) return INFTY;
-            return calculator.calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(
+            return calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
                     label.distToDropoff, requestState.dropoffs[label.dropoffId], requestState);
         }
 
         bool dominates(const DropoffLabel &label1, const DropoffLabel &label2) {
             ++numDominationRelationTests;
 
-            const auto& dropoff1 = requestState.dropoffs[label1.dropoffId];
-            const auto& dropoff2 = requestState.dropoffs[label2.dropoffId];
+            const auto &dropoff1 = requestState.dropoffs[label1.dropoffId];
+            const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
             const auto maxDetourDiff = label1.distToDropoff - label2.distToDropoff;
             const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
             const auto maxTripDiff = maxDetourDiff + walkDiff;
 
             using F = CostCalculator::CostFunction;
-            const auto costDiffNoTripVio = F::VEH_WEIGHT * maxDetourDiff + F::PSG_WEIGHT * maxTripDiff + F::WALK_WEIGHT * walkDiff;
+            const auto costDiffNoTripVio =
+                    F::VEH_WEIGHT * maxDetourDiff + F::PSG_WEIGHT * maxTripDiff + F::WALK_WEIGHT * walkDiff;
             const auto costDiffTripVio = costDiffNoTripVio + F::TRIP_VIO_WEIGHT * maxTripDiff;
             return costDiffNoTripVio < 0 && costDiffTripVio < 0;
         }
@@ -344,41 +345,70 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             int numEntriesScannedHere = 0;
 
-            auto bucket = lastStopBuckets.getBucketOf(v);
-            for (const auto &entry: bucket) {
-                ++numEntriesScannedHere;
+            if constexpr (!LastStopBucketsEnvT::SORTED) {
+                auto bucket = lastStopBuckets.getBucketOf(v);
+                for (const auto &entry: bucket) {
+                    ++numEntriesScannedHere;
 
-                const int &vehId = entry.targetId;
-                const int fullDistToDropoff = entry.distToTarget + label.distToDropoff;
+                    const int &vehId = entry.targetId;
+                    const int fullDistToDropoff = entry.distToTarget + label.distToDropoff;
 
-                const auto costFromLastStop = calculator.calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(
-                        fullDistToDropoff, dropoff, requestState);
+                    const auto costFromLastStop = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
+                            fullDistToDropoff, dropoff, requestState);
 
-                if (costFromLastStop > requestState.getBestCost()) {
-                    if constexpr (LastStopBucketsEnvT::SORTED_BY_DIST)
-                        // Entries are ordered according to entry.distToTarget, i.e. the distance from the last stop of
-                        // the vehicle with id entry.targetId to vertex v. For a cost calculation that only depends on this
-                        // distance (and other factors that can be considered constant during the bucket scan), the cost grows
-                        // monotonously with the bucket entries. Therefore, we can stop scanning the bucket once we find an entry
-                        // with cost larger than the best known assignment cost.
-                        break;
-                    else
+                    if (costFromLastStop > requestState.getBestCost())
                         continue;
+
+                    // If vehicle is not eligible for dropoff after last stop assignments, it does not need to be regarded.
+                    if (!isVehEligibleForDropoffAfterLastStop(vehId))
+                        continue;
+
+                    // If full distance to dropoff leads to violation of service time constraint, an assignment with this
+                    // vehicle and dropoff does not need to be regarded.
+                    const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId,
+                                                                                   routeState.numStopsOf(vehId) - 1,
+                                                                                   requestState, routeState);
+                    if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff + inputConfig.stopTime)
+                        continue;
+
+                    const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
+                    insertLabelAtVehicleAndClean(vehId, labelAtVeh);
                 }
+            } else {
 
-                // If vehicle is not eligible for dropoff after last stop assignments, it does not need to be regarded.
-                if (!isVehEligibleForDropoffAfterLastStop(vehId))
-                    continue;
+                // Idle vehicles cannot lead to dropoff after last stop queries, so only consider non-idle ones.
+                auto nonIdleBucket = lastStopBuckets.getNonIdleBucketOf(v);
 
-                // If full distance to dropoff leads to violation of service time constraint, an assignment with this
-                // vehicle and dropoff does not need to be regarded.
-                const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId, routeState.numStopsOf(vehId) - 1,
-                                                                               requestState, routeState);
-                if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff + inputConfig.stopTime)
-                    continue;
+                for (const auto &entry: nonIdleBucket) {
+                    ++numEntriesScannedHere;
 
-                const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
-                insertLabelAtVehicleAndClean(vehId, labelAtVeh);
+                    const int &vehId = entry.vehicleId;
+                    const int arrTimeAtDropoff = entry.distOrArrTime + label.distToDropoff;
+
+                    const auto costFromLastStop = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinArrTime(
+                            dropoff.walkingDist, label.distToDropoff, arrTimeAtDropoff, requestState);
+
+                    // Entries of idle bucket are sorted by arrival time at v. The vehicle-independent lower
+                    // bound costFromLastStop increases monotonously with this arrival time. So once we find an entry
+                    // where the lower bound exceeds the best known cost, all remaining entries in the bucket will, too.
+                    if (costFromLastStop > requestState.getBestCost())
+                        break;
+
+                    // If vehicle is not eligible for dropoff after last stop assignments, it does not need to be regarded.
+                    if (!isVehEligibleForDropoffAfterLastStop(vehId))
+                        continue;
+
+                    // If full distance to dropoff leads to violation of service time constraint, an assignment with this
+                    // vehicle and dropoff does not need to be regarded.
+                    if (fleet[vehId].endOfServiceTime < arrTimeAtDropoff + inputConfig.stopTime)
+                        continue;
+
+
+                    const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[routeState.numStopsOf(vehId) - 1];
+                    const int fullDistToDropoff = arrTimeAtDropoff - depTimeAtLastStop;
+                    const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
+                    insertLabelAtVehicleAndClean(vehId, labelAtVeh);
+                }
             }
 
             numEntriesScanned += numEntriesScannedHere;

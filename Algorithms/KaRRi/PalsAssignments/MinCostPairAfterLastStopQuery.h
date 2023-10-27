@@ -116,15 +116,15 @@ namespace karri::PickupAfterLastStopStrategies {
             runTime = timer.elapsed<std::chrono::nanoseconds>() + initializationTime;
         }
 
-        const int& getBestCostWithoutConstraints() const {
+        const int &getBestCostWithoutConstraints() const {
             return bestCostWithoutConstraints;
         }
 
-        const Assignment& getBestAssignment() const {
+        const Assignment &getBestAssignment() const {
             return bestAsgn;
         }
 
-        const int& getUpperBoundCostWithHardConstraints() const {
+        const int &getUpperBoundCostWithHardConstraints() const {
             return upperBoundCostWithConstraints;
         }
 
@@ -297,10 +297,10 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
             const auto maxTripVioDiff = F::TRIP_VIO_WEIGHT * std::max(maxTripDiff, 0);
 
-            const auto maxCostDiff =    F::VEH_WEIGHT * maxDetourDiff +
-                                        F::PSG_WEIGHT * maxTripDiff +
-                                        F::WALK_WEIGHT * walkDiff +
-                                        maxTripVioDiff;
+            const auto maxCostDiff = F::VEH_WEIGHT * maxDetourDiff +
+                                     F::PSG_WEIGHT * maxTripDiff +
+                                     F::WALK_WEIGHT * walkDiff +
+                                     maxTripVioDiff;
             return maxCostDiff < 0;
         }
 
@@ -328,10 +328,10 @@ namespace karri::PickupAfterLastStopStrategies {
             maxTripDiff.multiplyWithScalar(F::PSG_WEIGHT);
             walkDiff.multiplyWithScalar(F::WALK_WEIGHT);
 
-            const auto maxCostDiff =    maxDetourDiff +
-                                        maxTripDiff +
-                                        walkDiff +
-                                        maxTripVioDiff;
+            const auto maxCostDiff = maxDetourDiff +
+                                     maxTripDiff +
+                                     walkDiff +
+                                     maxTripVioDiff;
 
             // Construct mask that is set wherever distancesToDropoff1 is INVALID_DIST
             const PDLabelMask invalidMask = distancesToDropoff1 == INVALID_DIST_LABEL;
@@ -371,7 +371,7 @@ namespace karri::PickupAfterLastStopStrategies {
                     const auto w = queryGraph.edgeHead(e);
                     if (w == v) continue;
                     PDPairAfterLastStopLabel labelViaV = labelAtV;
-                    labelViaV.distToPickup += queryGraph. template get<CH::Weight>(e);
+                    labelViaV.distToPickup += queryGraph.template get<CH::Weight>(e);
 
                     // Check whether the lower bound of this label exceeds the current upper bound for the cost of any
                     // assignment
@@ -517,98 +517,139 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
             using F = CostCalculator::CostFunction;
-            const auto maxDepTimeDiff = std::max(label1.distToPickup + inputConfig.stopTime, pickup1.walkingDist) - (label2.distToPickup + inputConfig.stopTime);
+            const auto maxDepTimeDiff = std::max(label1.distToPickup + inputConfig.stopTime, pickup1.walkingDist) -
+                                        (label2.distToPickup + inputConfig.stopTime);
             const auto maxDetourDiff = maxDepTimeDiff + label1.directDistance - label2.directDistance;
             const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
-            const auto walkDiff = pickup1.walkingDist + dropoff1.walkingDist - pickup2.walkingDist - dropoff2.walkingDist;
+            const auto walkDiff =
+                    pickup1.walkingDist + dropoff1.walkingDist - pickup2.walkingDist - dropoff2.walkingDist;
 
             const auto maxWaitVioDiff = F::WAIT_VIO_WEIGHT * std::max(maxDepTimeDiff, 0);
             const auto maxTripVioDiff = F::TRIP_VIO_WEIGHT * std::max(maxTripDiff, 0);
 
-            const auto maxCostDiff =    F::VEH_WEIGHT * maxDetourDiff +
-                                        F::PSG_WEIGHT * maxTripDiff +
-                                        F::WALK_WEIGHT * walkDiff +
-                                        maxWaitVioDiff + maxTripVioDiff;
+            const auto maxCostDiff = F::VEH_WEIGHT * maxDetourDiff +
+                                     F::PSG_WEIGHT * maxTripDiff +
+                                     F::WALK_WEIGHT * walkDiff +
+                                     maxWaitVioDiff + maxTripVioDiff;
             return maxCostDiff < 0;
         }
 
         void scanVehicleBucket(const int rank, const PDPairAfterLastStopLabel &label) {
 
+            const auto& pickup = requestState.pickups[label.pickupId];
+            const auto& dropoff = requestState.dropoffs[label.dropoffId];
+            const auto &directDist = label.directDistance;
+
             Assignment asgn;
             asgn.distFromPickup = 0;
             asgn.distFromDropoff = 0;
-            asgn.pickup = &requestState.pickups[label.pickupId];
-            asgn.dropoff = &requestState.dropoffs[label.dropoffId];
-            const auto &directDist = label.directDistance;
+            asgn.pickup = &pickup;
+            asgn.dropoff = &dropoff;
+            asgn.distToDropoff = directDist;
 
             int numEntriesScannedInBucket = 0;
 
-            auto bucket = lastStopBuckets.getBucketOf(rank);
-            for (const auto &entry: bucket) {
+            if constexpr (!LastStopBucketsEnvT::SORTED) {
+                auto bucket = lastStopBuckets.getBucketOf(rank);
+                for (const auto &entry: bucket) {
+                    ++numEntriesScannedInBucket;
+                    const int fullDistToPickup = entry.distToTarget + label.distToPickup;
+                    tryTentativeAssignment(entry.targetId, fullDistToPickup, directDist);
+                }
+            } else {
 
-                // Scan bucket. Entries are ordered according to entry.distToTarget, i.e. the distance from the last stop of
-                // the vehicle with id entry.targetId to vertex v.
-                ++numEntriesScannedInBucket;
-                const int fullDistToPickup = entry.distToTarget + label.distToPickup;
+                auto [idleBucket, nonIdleBucket] = lastStopBuckets.getIdleAndNonIdleBucketOf(rank);
 
-                // todo: Sorting purely by dist does not work well when almost all vehicles are non-idle. Then, the
-                //  vehicle-independent lower bound cost is a bad one as a major part of the actual waiting time (and
-                //  trip time) may be the rest of the vehicle route up to its last stop.
-                //  Can we potentially sort by arrival time of vehicle at v via upwards edges?
-                //  We would most likely need separate buckets for idle (sorted by distance to v) and non-idle vehicles
-                //  (sorted by arrival time at v) and whenever vehicle becomes idle, move all of its entries from
-                //  non-idle bucket to idle bucket.
-                if constexpr (LastStopBucketsEnvT::SORTED_BY_DIST) {
-                        // Vehicles are ordered by distToTarget, i.e. once we scan a vehicle where the lower bound cost
-                        // based on the vehicle distance to the pickup (i.e. irrespective of possible vehicle waiting for
-                        // the passenger at the pickup) is larger than the best known assignment cost, the rest of the
-                        // vehicles in the bucket will also be worse since lowerBoundCostForEarlyBreak monotonously grows
-                        // with the vehicles (given constant pickup and dropoff).
-                        const auto minVehTimeTillDepAtPickup = fullDistToPickup + inputConfig.stopTime;
-                        const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
-                                minVehTimeTillDepAtPickup, std::max(asgn.pickup->walkingDist, minVehTimeTillDepAtPickup),
-                                directDist, asgn.pickup->walkingDist, asgn.dropoff->walkingDist, requestState);
-                        if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
-                            break;
+                // Scan idle bucket. Sorted by distance, stop early if distance does not permit a better insertion than
+                // one already seen.
+                for (const auto &entry: idleBucket) {
+                    ++numEntriesScannedInBucket;
+                    const int fullDistToPickup = entry.distOrArrTime + label.distToPickup;
+                    // Vehicles are ordered by distToTarget, i.e. once we scan a vehicle where the lower bound cost
+                    // based on the vehicle distance to the pickup (i.e. irrespective of possible vehicle waiting for
+                    // the passenger at the pickup) is larger than the best known assignment cost, the rest of the
+                    // vehicles in the bucket will also be worse since lowerBoundCostForEarlyBreak monotonously grows
+                    // with the vehicles (given constant pickup and dropoff).
+                    // todo: For idle vehicles this cost is the same as the cost without hard constraints calculated
+                    //  later, i.e. the tentative cost with fullDistToPickup is already vehicle-independent so it
+                    //  could be used for both checking for new best insertion and stopping bucket scan early.
+                    //  (This is not the case for non-idle vehicles as their detour may still differ and that has an
+                    //  effect beyond the arrival time, too, so the vehicle-independent lower bound is different.)
+                    const auto vehTimeTillDepAtPickup = fullDistToPickup + inputConfig.stopTime;
+                    const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
+                            vehTimeTillDepAtPickup, std::max(pickup.walkingDist, vehTimeTillDepAtPickup),
+                            directDist, pickup.walkingDist, dropoff.walkingDist, requestState);
+                    if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
+                        break;
+
+                    tryTentativeAssignment(entry.vehicleId, fullDistToPickup, directDist);
                 }
 
-                const int &vehId = entry.targetId;
-                const int &numStops = routeState.numStopsOf(vehId);
-                asgn.vehicle = &fleet[vehId];
-                asgn.pickupStopIdx = numStops - 1;
-                asgn.dropoffStopIdx = numStops - 1;
-                asgn.distToPickup = fullDistToPickup;
-                asgn.distToDropoff = directDist;
+                // Scan non-idle bucket. Sorted by arrival time at vertex, stop early if arrival time does not permit a
+                // better insertion than one already seen.
+                for (const auto &entry: nonIdleBucket) {
+                    ++numEntriesScannedInBucket;
+                    const int vehArrTimeAtPickup = entry.distOrArrTime + label.distToPickup;
 
-                // Have to ignore service time hard constraint since we only search for promising dropoffs.
-                // If all promising dropoffs violate the service time constraint but there is an unpromising dropoff
-                // that does not, then we have to still register the vehicle as seen in order to later be able to find
-                // out that a PALS assignment better than the upper bound cost may exist.
-                const auto costIgnoringHardConstraints = calculator.calcWithoutHardConstraints(asgn, requestState);
+                    // We compute a vehicle-independent lower bound on the cost of any insertion for which the vehicle
+                    // arrives at v at the earliest at entry.distOrArrTime. Since entries are ordered by the arrival
+                    // time at v, we can stop scanning entries if the lower bound exceeds the best known cost.
+                    const int minVehTimeTillDepAtPickup = label.distToPickup + inputConfig.stopTime;
+                    const int minPsgTimeTillDepAtPickup = std::max(
+                            vehArrTimeAtPickup + inputConfig.stopTime - requestState.originalRequest.requestTime,
+                            pickup.walkingDist);
+                    const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
+                            minVehTimeTillDepAtPickup, minPsgTimeTillDepAtPickup,
+                            directDist, pickup.walkingDist, dropoff.walkingDist, requestState);
+                    if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
+                        break;
 
-                assert(bestCostWithoutConstraints <= upperBoundCostWithConstraints);
-                if (costIgnoringHardConstraints > bestCostWithoutConstraints)
-                    continue;
+                    const int &vehId = entry.vehicleId;
+                    const int &numStops = routeState.numStopsOf(vehId);
+                    const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1];
+                    const int fullDistToPickup = vehArrTimeAtPickup -  depTimeAtLastStop;
 
-                if (costIgnoringHardConstraints == bestCostWithoutConstraints) {
-                    if (!breakCostTie(asgn, bestAsgn))
-                        continue;
+                    tryTentativeAssignment(vehId, fullDistToPickup, directDist);
                 }
-
-                // If the cost is better than the best known cost for the vehicle or if the costs are equal and the
-                // determinism argument decides so, update the best pair to this pair.
-                bestCostWithoutConstraints = costIgnoringHardConstraints;
-                bestAsgn = asgn;
-
-                // fullDistToPickup is an upper bound on the actual distance from the last stop of this vehicle to this
-                // pickup. Therefore, the cost with hard constraints and fullDistToPickup is an upper bound on the
-                // actual cost of an assignment with this vehicle, pickup and dropoff. This is also an upper bound on
-                // the cost of the best assignment. We can use this upper bound to prune the search.
-                const auto costWithHardConstraints = calculator.calc(asgn, requestState);
-                upperBoundCostWithConstraints = std::min(upperBoundCostWithConstraints, costWithHardConstraints);
             }
 
             numEntriesScanned += numEntriesScannedInBucket;
+        }
+
+        inline void tryTentativeAssignment(const int vehId, const int fullDistToPickup, Assignment& asgn) {
+
+            const int &numStops = routeState.numStopsOf(vehId);
+            asgn.vehicle = &fleet[vehId];
+            asgn.pickupStopIdx = numStops - 1;
+            asgn.dropoffStopIdx = numStops - 1;
+            asgn.distToPickup = fullDistToPickup;
+
+            // Have to ignore service time hard constraint since we only search for promising dropoffs.
+            // If all promising dropoffs violate the service time constraint but there is an unpromising dropoff
+            // that does not, then we have to still register the vehicle as seen in order to later be able to find
+            // out that a PALS assignment better than the upper bound cost may exist.
+            const auto costIgnoringHardConstraints = calculator.calcWithoutHardConstraints(asgn, requestState);
+
+            assert(bestCostWithoutConstraints <= upperBoundCostWithConstraints);
+            if (costIgnoringHardConstraints > bestCostWithoutConstraints)
+                return;
+
+            if (costIgnoringHardConstraints == bestCostWithoutConstraints) {
+                if (!breakCostTie(asgn, bestAsgn))
+                    return;
+            }
+
+            // If the cost is better than the best known cost for the vehicle or if the costs are equal and the
+            // determinism argument decides so, update the best pair to this pair.
+            bestCostWithoutConstraints = costIgnoringHardConstraints;
+            bestAsgn = asgn;
+
+            // fullDistToPickup is an upper bound on the actual distance from the last stop of this vehicle to this
+            // pickup. Therefore, the cost with hard constraints and fullDistToPickup is an upper bound on the
+            // actual cost of an assignment with this vehicle, pickup and dropoff. This is also an upper bound on
+            // the cost of the best assignment. We can use this upper bound to prune the search.
+            const auto costWithHardConstraints = calculator.calc(asgn, requestState);
+            upperBoundCostWithConstraints = std::min(upperBoundCostWithConstraints, costWithHardConstraints);
         }
 
         const InputGraphT &inputGraph;

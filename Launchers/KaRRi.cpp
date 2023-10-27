@@ -24,8 +24,6 @@
 
 
 #include <cassert>
-#include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -60,7 +58,8 @@
 #include "Algorithms/KaRRi/PbnsAssignments/PBNSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/PalsAssignments/PALSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/DalsAssignments/DALSAssignmentsFinder.h"
-#include "Algorithms/KaRRi/LastStopSearches/LastStopBucketsEnvironment.h"
+#include "Algorithms/KaRRi/LastStopSearches/SortedLastStopBucketsEnvironment.h"
+#include "Algorithms/KaRRi/LastStopSearches/UnsortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
 #include "Algorithms/KaRRi/AssignmentFinder.h"
@@ -477,11 +476,17 @@ int main(int argc, char *argv[]) {
 
         // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
         // Otherwise, we use no-op last stop buckets.
+
+
 #if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
     KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
-        static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
-        using LastStopBucketsEnv = LastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv, LAST_STOP_SORTED_BUCKETS>;
-        LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, *vehChEnv, routeState, reqState.stats().updateStats);
+
+    using LastStopBucketsEnv = std::conditional_t<KARRI_LAST_STOP_BCH_SORTED_BUCKETS,
+            SortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
+            UnsortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
+    >;
+    LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, *vehChEnv, routeState, reqState.stats().updateStats);
+
 #else
         using LastStopBucketsEnv = NoOpLastStopBucketsEnvironment;
         LastStopBucketsEnv lastStopBucketsEnv;
