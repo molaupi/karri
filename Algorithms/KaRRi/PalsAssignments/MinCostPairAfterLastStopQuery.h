@@ -550,11 +550,11 @@ namespace karri::PickupAfterLastStopStrategies {
             int numEntriesScannedInBucket = 0;
 
             if constexpr (!LastStopBucketsEnvT::SORTED) {
-                auto bucket = lastStopBuckets.getBucketOf(rank);
+                auto bucket = lastStopBuckets.getUnsortedBucketOf(rank);
                 for (const auto &entry: bucket) {
                     ++numEntriesScannedInBucket;
                     const int fullDistToPickup = entry.distToTarget + label.distToPickup;
-                    tryTentativeAssignment(entry.targetId, fullDistToPickup, directDist);
+                    tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn);
                 }
             } else {
 
@@ -564,7 +564,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 // one already seen.
                 for (const auto &entry: idleBucket) {
                     ++numEntriesScannedInBucket;
-                    const int fullDistToPickup = entry.distOrArrTime + label.distToPickup;
+                    const int fullDistToPickup = entry.distToTarget + label.distToPickup;
                     // Vehicles are ordered by distToTarget, i.e. once we scan a vehicle where the lower bound cost
                     // based on the vehicle distance to the pickup (i.e. irrespective of possible vehicle waiting for
                     // the passenger at the pickup) is larger than the best known assignment cost, the rest of the
@@ -582,14 +582,14 @@ namespace karri::PickupAfterLastStopStrategies {
                     if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
                         break;
 
-                    tryTentativeAssignment(entry.vehicleId, fullDistToPickup, directDist);
+                    tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn);
                 }
 
                 // Scan non-idle bucket. Sorted by arrival time at vertex, stop early if arrival time does not permit a
                 // better insertion than one already seen.
                 for (const auto &entry: nonIdleBucket) {
                     ++numEntriesScannedInBucket;
-                    const int vehArrTimeAtPickup = entry.distOrArrTime + label.distToPickup;
+                    const int vehArrTimeAtPickup = entry.distToTarget + label.distToPickup;
 
                     // We compute a vehicle-independent lower bound on the cost of any insertion for which the vehicle
                     // arrives at v at the earliest at entry.distOrArrTime. Since entries are ordered by the arrival
@@ -604,12 +604,12 @@ namespace karri::PickupAfterLastStopStrategies {
                     if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
                         break;
 
-                    const int &vehId = entry.vehicleId;
+                    const int &vehId = entry.targetId;
                     const int &numStops = routeState.numStopsOf(vehId);
                     const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1];
                     const int fullDistToPickup = vehArrTimeAtPickup -  depTimeAtLastStop;
 
-                    tryTentativeAssignment(vehId, fullDistToPickup, directDist);
+                    tryTentativeAssignment(vehId, fullDistToPickup, asgn);
                 }
             }
 

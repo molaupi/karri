@@ -39,24 +39,14 @@ namespace karri {
     template<typename InputGraphT, typename CHEnvT>
     class SortedLastStopBucketsEnvironment {
 
-        struct LastStopEntry {
 
-            LastStopEntry() noexcept = default;
-
-            LastStopEntry(const int vehicleId, const int distOrArrTime) noexcept
-                    : vehicleId(vehicleId), distOrArrTime(distOrArrTime) {}
-
-            constexpr bool operator==(const LastStopEntry& rhs) const noexcept {
-                return vehicleId == rhs.vehicleId;
-            }
-
-            int vehicleId = INVALID_ID;
-            int distOrArrTime = INFTY; // For idle vehicle: dist from last stop to vertex; For non-idle vehicle: arrival time at vertex
-        };
+        // .targetId is vehicle ID
+        // .distToTarget is dist from last stop to vertex for idle vehicles or arrival time at vertex for non-idle vehicles
+        using LastStopEntry = BucketEntry;
 
         struct CompareEntries {
             bool operator()(const LastStopEntry &e1, const LastStopEntry &e2) const {
-                return e1.distOrArrTime < e2.distOrArrTime;
+                return e1.distToTarget < e2.distToTarget;
             }
         };
 

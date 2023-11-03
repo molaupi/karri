@@ -346,7 +346,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             int numEntriesScannedHere = 0;
 
             if constexpr (!LastStopBucketsEnvT::SORTED) {
-                auto bucket = lastStopBuckets.getBucketOf(v);
+                auto bucket = lastStopBuckets.getUnsortedBucketOf(v);
                 for (const auto &entry: bucket) {
                     ++numEntriesScannedHere;
 
@@ -382,8 +382,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                 for (const auto &entry: nonIdleBucket) {
                     ++numEntriesScannedHere;
 
-                    const int &vehId = entry.vehicleId;
-                    const int arrTimeAtDropoff = entry.distOrArrTime + label.distToDropoff;
+                    const int &vehId = entry.targetId;
+                    const int arrTimeAtDropoff = entry.distToTarget + label.distToDropoff;
 
                     const auto costFromLastStop = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinArrTime(
                             dropoff.walkingDist, label.distToDropoff, arrTimeAtDropoff, requestState);

@@ -139,7 +139,7 @@ namespace karri {
         void scanVehicleBucketAtRank(const int v) {
             const auto idOfSpotClosestToV = idOfClosestSpotToRank[v];
             const auto distVToSpot = search.getDistance(v);
-            auto bucket = lastStopBuckets.getBucketOf(v);
+            auto bucket = lastStopBuckets.getUnsortedBucketOf(v);
             for (const auto &entry: bucket) {
                 ++numEntriesScanned;
                 const auto vehId = entry.targetId;

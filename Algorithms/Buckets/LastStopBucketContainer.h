@@ -45,7 +45,7 @@ private:
 
 public:
 
-    using SortedBucket = ConstantVectorRange<BucketEntryT>;
+    using Bucket = ConstantVectorRange<BucketEntryT>;
 
     explicit LastStopBucketContainer(const int numVertices)
             : numEntriesVisited(0), idleComp(), nonIdleComp(), bucketPositions(numVertices) {}
@@ -53,29 +53,36 @@ public:
 
     // Returns the bucket of idle vehicles at the specified vertex, sorted in ascending order according to
     // IdleEntryComparatorT.
-    SortedBucket getIdleBucketOf(const int v) const {
+    Bucket getIdleBucketOf(const int v) const {
         assert(v >= 0);
         assert(v < bucketPositions.size());
         const auto &pos = bucketPositions[v];
-        return SortedBucket(entries.begin() + pos.start, entries.begin() + pos.start + pos.numIdleEntries);
+        return Bucket(entries.begin() + pos.start, entries.begin() + pos.start + pos.numIdleEntries);
     }
 
     // Returns the bucket of non-idle vehicles at the specified vertex, sorted in ascending order according to
     // NonIdleEntryComparatorT.
-    SortedBucket getNonIdleBucketOf(const int v) const {
+    Bucket getNonIdleBucketOf(const int v) const {
         assert(v >= 0);
         assert(v < bucketPositions.size());
         const auto &pos = bucketPositions[v];
-        return SortedBucket(entries.begin() + pos.start + pos.numIdleEntries, entries.begin() + pos.end);
+        return Bucket(entries.begin() + pos.start + pos.numIdleEntries, entries.begin() + pos.end);
     }
 
-    std::pair<SortedBucket, SortedBucket> getIdleAndNonIdleBucketOf(const int v) {
+    std::pair<Bucket, Bucket> getIdleAndNonIdleBucketOf(const int v) const {
         assert(v >= 0);
         assert(v < bucketPositions.size());
         const auto &pos = bucketPositions[v];
-        return {SortedBucket(entries.begin() + pos.start, entries.begin() + pos.start + pos.numIdleEntries),
-                SortedBucket(entries.begin() + pos.start + pos.numIdleEntries, entries.begin() + pos.end)};
+        return {Bucket(entries.begin() + pos.start, entries.begin() + pos.start + pos.numIdleEntries),
+                Bucket(entries.begin() + pos.start + pos.numIdleEntries, entries.begin() + pos.end)};
 
+    }
+
+    Bucket getUnsortedBucketOf(const int v) const {
+        assert(v >= 0);
+        assert(v < bucketPositions.size());
+        const auto &pos = bucketPositions[v];
+        return Bucket(entries.begin() + pos.start, entries.begin() + pos.end);
     }
 
     // Inserts the given entry into the bucket of idle vehicles at the specified vertex.
@@ -248,7 +255,7 @@ private:
 
     bool linearSearchForExistingEntry(const int vehId, int &idx, const int start, const int end) {
         for (idx = start; idx < end; ++idx) {
-            if (entries[idx].vehicleId == vehId)
+            if (entries[idx].targetId == vehId)
                 return true;
         }
         return false;
