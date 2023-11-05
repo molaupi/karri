@@ -6,6 +6,10 @@
 /Inputs/
 /Publications/KaRRi/Inputs/
 
+# Generated output files
+/Outputs*/
+/Publications/KaRRi/Outputs_*/
+
 # Various config files.
 /.settings/
 /.cproject

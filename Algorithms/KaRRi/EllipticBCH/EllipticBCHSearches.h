@@ -38,6 +38,9 @@
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
 
+#include "oneapi/tbb.h"
+#include <tbb/parallel_for.h>
+
 namespace karri {
 
     template<typename InputGraphT,
@@ -289,13 +292,21 @@ namespace karri {
             distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
 
             // Process in batches of size K
-            for (int i = 0; i < pdLocs.size(); i += K) {
-                runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            }
+            // for (int i = 0; i < pdLocs.size(); i += K) {
+            //     runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
+            // }
 
-            for (int i = 0; i < pdLocs.size(); i += K) {
-                runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            }
+            // Parallel for with lambda function
+            tbb::parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
+            {runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
+            
+            // for (int i = 0; i < pdLocs.size(); i += K) {
+            //     runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
+            // }
+
+            // Parallel for with lambda function
+            tbb::parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
+            {runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
         }
 
         template<typename SpotContainerT>
