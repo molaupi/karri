@@ -58,7 +58,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
-                return !(bool) ~(maxDist < distToV);
+                return !anySet(~(maxDist < distToV));
             }
 
 

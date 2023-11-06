@@ -272,7 +272,8 @@ namespace karri {
         template<typename LabelSet, typename RequestContext>
         typename LabelSet::DistanceLabel
         calcLowerBoundCostForKPairedAssignmentsAfterLastStop(
-                const typename LabelSet::DistanceLabel &distToPickup,
+                const typename LabelSet::DistanceLabel &detourTillDepAtPickup,
+                const typename LabelSet::DistanceLabel &tripTimeTillDepAtPickup,
                 const typename LabelSet::DistanceLabel &directDist,
                 const typename LabelSet::DistanceLabel &pickupWalkingDists,
                 const RequestContext &context) const {
@@ -282,23 +283,20 @@ namespace karri {
             assert(pickupWalkingDists.horizontalMin() >= 0 && pickupWalkingDists.horizontalMax() < INFTY);
 
 
-            // Calculations with INFTY don't work like mathematical infinity, so use 0 as placeholder value and set cost
-            // to INFTY later.
-            const LabelMask distToPickupInftyMask = ~(distToPickup < INFTY);
-            const DistanceLabel adaptedDistToPickup = select(distToPickupInftyMask, 0, distToPickup);
+            // Calculations with INFTY don't work like mathematical infinity, so set cost to INFTY later.
+            const LabelMask inftyMask = ~((detourTillDepAtPickup < INFTY) & (tripTimeTillDepAtPickup < INFTY));
+//            const DistanceLabel adaptedVehTimeTillDepAtPickup = select(vehTimeInftyMask, 0, vehTimeTillDepAtPickup);
 
-            const DistanceLabel detourCost = F::calcKVehicleCosts(adaptedDistToPickup + directDist + 2 * stopTime);
-            DistanceLabel minPsgTimeTillDepAtPickup = adaptedDistToPickup + stopTime;
-            minPsgTimeTillDepAtPickup.max(pickupWalkingDists);
-            const DistanceLabel tripCost = F::calcKTripCosts(minPsgTimeTillDepAtPickup + directDist, context);
+            const DistanceLabel detourCost = F::calcKVehicleCosts(detourTillDepAtPickup + directDist + stopTime);
+            const DistanceLabel tripCost = F::calcKTripCosts(tripTimeTillDepAtPickup + directDist, context);
             const DistanceLabel walkingCost = F::calcKWalkingCosts(pickupWalkingDists, inputConfig.pickupRadius);
             const DistanceLabel waitViolationCost = F::calcKWaitViolationCosts(
-                    context.originalRequest.requestTime + minPsgTimeTillDepAtPickup, context);
+                    context.originalRequest.requestTime + tripTimeTillDepAtPickup, context);
             // Pickup after last stop so no added trip costs for existing passengers.
             DistanceLabel minCost = detourCost + tripCost + walkingCost + waitViolationCost;
 
-            // Set cost to INFTY where dist was INFTY
-            minCost.setIf(DistanceLabel(INFTY), distToPickupInftyMask);
+            // Set cost to INFTY where input times were invalid
+            minCost.setIf(DistanceLabel(INFTY), inftyMask);
 
             return minCost;
         }
@@ -422,12 +420,40 @@ namespace karri {
             return F::calcVehicleCost(minDetour) + walkingCost + minTripCost;
         }
 
+        template<typename LabelSet, typename RequestContext>
+        typename LabelSet::DistanceLabel
+        calcKVehicleIndependentCostLowerBoundsForDALSWithKnownMinDistToDropoff(
+                const typename LabelSet::DistanceLabel &dropoffWalkingDists,
+                const typename LabelSet::DistanceLabel &distToDropoff,
+                const typename LabelSet::DistanceLabel &minTripTimeToLastStop,
+                const RequestContext &context) const {
+            using DistanceLabel = typename LabelSet::DistanceLabel;
+            using LabelMask = typename LabelSet::LabelMask;
+
+            // For dropoffs with a distanceToDropoff of INFTY, set cost to INFTY later.
+            const LabelMask inftyMask = ~(distToDropoff < INFTY);
+
+            const DistanceLabel minDropoffDetours = distToDropoff + stopTime;
+            const DistanceLabel walkingCosts = F::calcKWalkingCosts(dropoffWalkingDists, inputConfig.dropoffRadius);
+            DistanceLabel minTripTimes =
+                    minTripTimeToLastStop + distToDropoff + dropoffWalkingDists;
+            const DistanceLabel minTripCosts = F::calcKTripCosts(minTripTimes, context);
+
+            // Independent of pickup so we cannot know here which existing passengers may be affected by pickup detour
+            // const DistanceLabel minAddedTripCostOfOthers = 0;
+
+            DistanceLabel costLowerBound = F::calcKVehicleCosts(minDropoffDetours) + walkingCosts + minTripCosts;
+            costLowerBound.setIf(DistanceLabel(INFTY), inftyMask);
+
+            return costLowerBound;
+        }
+
         template<typename RequestContext>
         int calcVehicleIndependentCostLowerBoundForDALSWithKnownMinArrTime(const int dropoffWalkingDist,
-                                                                        const int minDistToDropoff,
-                                                                        const int minArrTimeAtDropoff,
-                                                                        const RequestContext& context) const {
-            assert(arrTimeAtDropoff >= context.originalRequest.requestTime);
+                                                                           const int minDistToDropoff,
+                                                                           const int minArrTimeAtDropoff,
+                                                                           const RequestContext &context) const {
+            assert(minArrTimeAtDropoff >= context.originalRequest.requestTime);
             assert(minDistToDropoff < INFTY);
             if (minDistToDropoff >= INFTY)
                 return INFTY;
@@ -442,32 +468,59 @@ namespace karri {
 
         template<typename LabelSet, typename RequestContext>
         typename LabelSet::DistanceLabel
-        calcCostLowerBoundForKDropoffsAfterLastStop(const typename LabelSet::DistanceLabel &distancesToDropoffs,
-                                                    const typename LabelSet::DistanceLabel &dropoffWalkingDists,
-                                                    const RequestContext &context) const {
-
+        calcKVehicleIndependentCostLowerBoundsForDALSWithKnownMinArrTime(
+                const typename LabelSet::DistanceLabel &dropoffWalkingDists,
+                const typename LabelSet::DistanceLabel &minDistToDropoff,
+                const typename LabelSet::DistanceLabel &minArrTimeAtDropoff,
+                const RequestContext &context) const {
             using DistanceLabel = typename LabelSet::DistanceLabel;
             using LabelMask = typename LabelSet::LabelMask;
 
-            // For dropoffs with a distanceToDropoff of INFTY, turn the values into usable placeholder values (revert back later).
-            const LabelMask distToDropoffInftyMask = ~(distancesToDropoffs < INFTY);
-            const DistanceLabel adaptedDistToDropoff = select(distToDropoffInftyMask, 0, distancesToDropoffs);
+            // For dropoffs with a distanceToDropoff of INFTY, set cost to INFTY later.
+            const LabelMask inftyMask = ~((minDistToDropoff < INFTY) & (minArrTimeAtDropoff < INFTY));
 
-            const DistanceLabel minDropoffDetours = adaptedDistToDropoff + stopTime;
-
+            const DistanceLabel minDropoffDetours = minDistToDropoff + stopTime;
             const DistanceLabel walkingCosts = F::calcKWalkingCosts(dropoffWalkingDists, inputConfig.dropoffRadius);
-
-            DistanceLabel minTripTimes = adaptedDistToDropoff + dropoffWalkingDists;
-            minTripTimes.max(context.originalReqDirectDist);
+            DistanceLabel minTripTimes =
+                    minArrTimeAtDropoff + dropoffWalkingDists - DistanceLabel(context.originalRequest.requestTime);
             const DistanceLabel minTripCosts = F::calcKTripCosts(minTripTimes, context);
 
             // Independent of pickup so we cannot know here which existing passengers may be affected by pickup detour
             // const DistanceLabel minAddedTripCostOfOthers = 0;
 
             DistanceLabel costLowerBound = F::calcKVehicleCosts(minDropoffDetours) + walkingCosts + minTripCosts;
+            costLowerBound.setIf(DistanceLabel(INFTY), inftyMask);
 
-            // Revert placeholder values at indices i where distancesToDropoffs >= INFTY back to INFTY.
-            costLowerBound.setIf(DistanceLabel(INFTY), distToDropoffInftyMask);
+            return costLowerBound;
+        }
+
+        template<typename LabelSet, typename RequestContext>
+        typename LabelSet::DistanceLabel
+        calcKVehicleDependentCostLowerBoundsForDALSWithKnownDistToDropoff(
+                const int vehId,
+                const typename LabelSet::DistanceLabel &dropoffWalkingDists,
+                const typename LabelSet::DistanceLabel &distToDropoff,
+                const typename LabelSet::DistanceLabel &minTripTimeToLastStop,
+                const RequestContext &context) const {
+            using DistanceLabel = typename LabelSet::DistanceLabel;
+            using LabelMask = typename LabelSet::LabelMask;
+
+            // For dropoffs with a distanceToDropoff of INFTY, set cost to INFTY later.
+            const LabelMask inftyMask = ~(distToDropoff < INFTY);
+
+            const DistanceLabel minDropoffDetours = distToDropoff + stopTime;
+            const DistanceLabel walkingCosts = F::calcKWalkingCosts(dropoffWalkingDists, inputConfig.dropoffRadius);
+            const auto depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[routeState.numStopsOf(vehId) - 1];
+            DistanceLabel minTripTimes =
+                    minTripTimeToLastStop + DistanceLabel(depTimeAtLastStop - context.originalRequest.requestTime) +
+                    distToDropoff + dropoffWalkingDists;
+            const DistanceLabel minTripCosts = F::calcKTripCosts(minTripTimes, context);
+
+            // Independent of pickup so we cannot know here which existing passengers may be affected by pickup detour
+            // const DistanceLabel minAddedTripCostOfOthers = 0;
+
+            DistanceLabel costLowerBound = F::calcKVehicleCosts(minDropoffDetours) + walkingCosts + minTripCosts;
+            costLowerBound.setIf(DistanceLabel(INFTY), inftyMask);
 
             return costLowerBound;
         }

@@ -80,7 +80,7 @@ namespace karri {
         void
         setDistancesForCurBatchIf(const int &vehId, const DistanceLabel &distanceBatch,
                                   const LabelMask &batchInsertMask) {
-            if (!batchInsertMask)
+            if (!anySet(batchInsertMask))
                 return;
 
             if (startIdxForVeh[vehId] == INVALID_INDEX) {

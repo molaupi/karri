@@ -87,9 +87,10 @@ public:
 
     // Inserts the given entry into the bucket of idle vehicles at the specified vertex.
     bool insertIdle(const int v, const BucketEntryT &entry) {
-        const auto &pos = bucketPositions[v];
+        auto &pos = bucketPositions[v];
         const auto col = searchForInsertionIdx(entry, pos.start, pos.start + pos.numIdleEntries, idleComp) - pos.start;
         stableInsertion(v, col, entry, bucketPositions, entries);
+        ++pos.numIdleEntries;
         return true;
     }
 
@@ -108,7 +109,7 @@ public:
         assert(v < bucketPositions.size());
         numEntriesVisited = 0;
 
-        const auto &pos = bucketPositions[v];
+        auto &pos = bucketPositions[v];
         int col = -1;
         const bool found = binarySearchForExistingEntry(entry, col, pos.start, pos.start + pos.numIdleEntries,
                                                         idleComp);
@@ -117,6 +118,7 @@ public:
 
         col -= pos.start;
         stableRemoval(v, col, bucketPositions, entries);
+        --pos.numIdleEntries;
         return true;
     }
 

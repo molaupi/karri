@@ -106,7 +106,7 @@ namespace karri {
                                           const DistanceLabel &dist) {
             auto &label = labelFor(firstPickupId, dropoffId);
             const auto smaller = dist < label;
-            if (smaller) {
+            if (anySet(smaller)) {
                 label.setIf(dist, smaller);
                 minDirectDist = std::min(minDirectDist, dist.horizontalMin());
                 minDirectDistancesPerPickup[firstPickupId / K].min(dist);

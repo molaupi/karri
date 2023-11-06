@@ -122,7 +122,7 @@ namespace karri {
                 if (!removed)
                     return true; // Prune if no entry for the vehicle was found at this vertex
                 auto newEntry = BucketEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
-                bucketContainer.insertIdle(v, newEntry);
+                bucketContainer.insertNonIdle(v, newEntry);
                 return false;
             }
 
@@ -239,28 +239,12 @@ namespace karri {
             return bucketContainer;
         }
 
+        void generateIdleBucketEntries(const Vehicle &veh) {
+            generateBucketEntries<true>(veh);
+        }
 
-        void generateBucketEntries(const Vehicle &veh, const int stopIndex) {
-            assert(stopIndex == routeState.numStopsOf(veh.vehicleId) - 1);
-
-            Timer timer;
-            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
-            const auto stopVertex = inputGraph.edgeHead(stopLoc);
-
-            vehicleId = veh.vehicleId;
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
-            const bool isIdle = numStops == 1;
-            depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
-
-            maxDetourUntilEndOfServiceTime = veh.endOfServiceTime - depTimeOfVehAtLastStop;
-            verticesVisitedInSearch = 0;
-            if (isIdle) {
-                idleEntryGenSearch.run(ch.rank(stopVertex));
-            } else {
-                nonIdleEntryGenSearch.run(ch.rank(stopVertex));
-            }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.lastStopBucketsGenerateEntriesTime += time;
+        void generateNonIdleBucketEntries(const Vehicle& veh) {
+            generateBucketEntries<false>(veh);
         }
 
         // An update to the bucket entries may become necessary in two situations:
@@ -297,6 +281,39 @@ namespace karri {
             stats.lastStopBucketsUpdateEntriesTime += time;
         }
 
+        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
+            removeBucketEntries<true>(veh, prevLastStopIdx);
+        }
+
+        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
+            removeBucketEntries<false>(veh, prevLastStopIdx);
+        }
+
+    private:
+
+        template<bool isIdle>
+        void generateBucketEntries(const Vehicle &veh) {
+            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+
+            Timer timer;
+            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[numStops - 1];
+            const auto stopVertex = inputGraph.edgeHead(stopLoc);
+
+            vehicleId = veh.vehicleId;
+            depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
+
+            maxDetourUntilEndOfServiceTime = veh.endOfServiceTime - depTimeOfVehAtLastStop;
+            verticesVisitedInSearch = 0;
+            if constexpr (isIdle) {
+                idleEntryGenSearch.run(ch.rank(stopVertex));
+            } else {
+                nonIdleEntryGenSearch.run(ch.rank(stopVertex));
+            }
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            stats.lastStopBucketsGenerateEntriesTime += time;
+        }
+
+        template<bool wasIdle>
         void removeBucketEntries(const Vehicle &veh, const int stopIndex) {
             assert(stopIndex >= 0);
             assert(stopIndex < routeState.numStopsOf(veh.vehicleId));
@@ -307,13 +324,12 @@ namespace karri {
 
             vehicleId = veh.vehicleId;
             const auto &numStops = routeState.numStopsOf(veh.vehicleId);
-            const bool isIdle = numStops == 1;
             depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
 
             entriesVisitedInSearch = 0;
             maxDetourUntilEndOfServiceTime = INFTY;
             verticesVisitedInSearch = 0;
-            if (isIdle) {
+            if (wasIdle) {
                 idleEntryDelSearch.run(ch.rank(stopVertex));
             } else {
                 nonIdleEntryDelSearch.run(ch.rank(stopVertex));
@@ -321,8 +337,6 @@ namespace karri {
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.lastStopBucketsDeleteEntriesTime += time;
         }
-
-    private:
 
         using GenerateIdleEntriesSearch = typename CHEnvT::template UpwardSearch<GenerateIdleEntry, StopWhenDistanceExceeded>;
         using GenerateNonIdleEntriesSearch = typename CHEnvT::template UpwardSearch<GenerateNonIdleEntry, StopWhenDistanceExceeded>;

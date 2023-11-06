@@ -31,18 +31,22 @@ namespace karri {
 
 // Filters information about feasible distances found by elliptic BCH searches to pickups/dropoffs that are relevant
 // for certain stops by considering the leeway and the current best known assignment cost.
-    template<typename FeasibleDistancesT>
+    template<typename FeasibleDistancesT, typename InputGraphT, typename CHEnvT>
     class RelevantPDLocsFilter {
 
     public:
 
-        RelevantPDLocsFilter(const Fleet &fleet, const CostCalculator &calculator,
+        RelevantPDLocsFilter(const Fleet &fleet, const InputGraphT &inputGraph, const CHEnvT &chEnv,
+                             const CostCalculator &calculator,
                              RequestState &requestState, const RouteState &routeState,
                              const InputConfig &inputConfig, const FeasibleDistancesT &feasiblePickupDistances,
                              const FeasibleDistancesT &feasibleDropoffDistances,
                              RelevantPDLocs &relOrdinaryPickups, RelevantPDLocs &relOrdinaryDropoffs,
                              RelevantPDLocs &relPickupsBeforeNextStop, RelevantPDLocs &relDropoffsBeforeNextStop)
                 : fleet(fleet),
+                  inputGraph(inputGraph),
+                  ch(chEnv.getCH()),
+                  chQuery(chEnv.template getFullCHQuery<>()),
                   calculator(calculator),
                   requestState(requestState),
                   routeState(routeState),
@@ -302,8 +306,29 @@ namespace karri {
             return calculator.calcMinKnownDropoffSideCost(veh, stopIndex, minInitialDropoffDetour, 0, requestState);
         }
 
+        int recomputeDistToPDLocDirectly(const int vehId, const int stopIdxBefore, const int pdLocLocation) {
+            auto src = ch.rank(inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[stopIdxBefore]));
+            auto tar = ch.rank(inputGraph.edgeTail(pdLocLocation));
+            auto offset = inputGraph.travelTime(pdLocLocation);
+
+            chQuery.run(src, tar);
+            return chQuery.getDistance() + offset;
+        }
+
+        int recomputeDistFromPDLocDirectly(const int vehId, const int stopIdxAfter, const int pdLocLocation) {
+            auto src = ch.rank(inputGraph.edgeHead(pdLocLocation));
+            auto tar = ch.rank(inputGraph.edgeTail(routeState.stopLocationsFor(vehId)[stopIdxAfter]));
+            auto offset = inputGraph.travelTime(routeState.stopLocationsFor(vehId)[stopIdxAfter]);
+
+            chQuery.run(src, tar);
+            return chQuery.getDistance() + offset;
+        }
+
 
         const Fleet &fleet;
+        const InputGraphT &inputGraph;
+        const CH &ch;
+        typename CHEnvT::template FullCHQuery<> chQuery;
         const CostCalculator &calculator;
         RequestState &requestState;
         const RouteState &routeState;

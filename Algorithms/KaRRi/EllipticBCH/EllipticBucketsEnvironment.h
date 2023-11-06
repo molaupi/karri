@@ -56,7 +56,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int, const DistLabelT &distToV, const DistLabelContT &) const noexcept {
-                return currentLeeway < distToV;
+                return allSet(distToV > currentLeeway);
             }
 
             const int &currentLeeway;

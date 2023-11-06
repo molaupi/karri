@@ -56,73 +56,92 @@ namespace karri {
             bool operator()(const int v, DistLabelT &distFromV, const DistLabelContainerT & /*distLabels*/) {
 
                 // Check if we can prune at this vertex based only on the distance from v to the pickup(s)
-                if (allSet(search.pruner.isWorseThanUpperBoundCost(distFromV, true)))
+                if (allSet(search.pruner.doesDistanceNotAdmitBestAsgn(distFromV, true)))
                     return true;
 
                 int numEntriesScannedHere = 0;
 
-                // todo: implement unsorted and new sorted buckets
+                if constexpr (!LastStopBucketsEnvT::SORTED) {
+                    auto bucket = search.bucketContainer.getBucketOf(v);
+                    for (const auto &entry: bucket) {
+                        ++numEntriesScannedHere;
 
-                auto bucket = search.bucketContainer.getBucketOf(v);
-                for (const auto &entry: bucket) {
+                        const int &vehId = entry.targetId;
+                        if (!search.pruner.isVehicleEligible(vehId))
+                            continue;
 
-                    const int &vehId = entry.targetId;
+                        const DistanceLabel distViaV = distFromV + DistanceLabel(entry.distToTarget);
+                        tryUpdatingDistance(vehId, distViaV);
+                    }
+                } else {
 
+                    if constexpr (PrunerT::INCLUDE_IDLE_VEHICLES) {
+                        auto idleBucket = search.bucketContainer.getIdleBucketOf(v);
 
-                    ++numEntriesScannedHere;
+                        for (const auto &entry: idleBucket) {
+                            ++numEntriesScannedHere;
 
-                    const DistanceLabel distViaV = distFromV + DistanceLabel(entry.distToTarget);
-                    LabelMask atLeastAsGoodAsCurBest = ~search.pruner.isWorseThanUpperBoundCost(distViaV, true);
+                            const int &vehId = entry.targetId;
+                            assert(search.routeState.numStopsOf(vehId) == 1);
+                            const DistanceLabel distFromLastStopToV = entry.distToTarget;
+                            const DistanceLabel distViaV = distFromLastStopToV + distFromV;
+                            const auto atLeastAsGoodAsCurBest = ~search.pruner.doesDistanceNotAdmitBestAsgn(distViaV, true);
+                            if (!anySet(atLeastAsGoodAsCurBest))
+                                break;
 
-                    if constexpr (LastStopBucketsEnvT::SORTED_BY_DIST) {
-                        // Entries are ordered according to entry.distToTarget, i.e. the distance from the last
-                        // stop of the vehicle with id entry.targetId to vertex v. For a cost calculation that only depends on
-                        // this distance (and other factors that can be considered constant during the bucket scan), the cost
-                        // grows monotonously with the bucket entries. Therefore, we can stop scanning the bucket once we find
-                        // an entry with cost larger than the best known assignment cost.
-                        if (!anySet(atLeastAsGoodAsCurBest)) {
-                            // The cost for an assignment after the last stop of vehId via v is certainly greater than the
-                            // cost of the best currently known assignment. Therefore, all subsequent entries in the bucket
-                            // will also be worse, and we can stop the bucket scan.
-                            break;
+                            if (!search.pruner.isVehicleEligible(vehId))
+                                continue;
+
+                            tryUpdatingDistance(vehId, distViaV);
                         }
                     }
 
-                    // todo: This should differentiate between
-                    //  1. vehicle-independent lower bound for vehicles that have distance >= distToTarget
-                    //      (used for stopping bucket scan early)
-                    //  2. vehicle-dependent upper bound for cost of insertion with this vehicle and (at most) this
-                    //      last stop distance (used for finding out which distances need to be stored (in mask) and
-                    //      updating global upper bound cost (update already uses it))
+                    auto nonIdleBucket = search.bucketContainer.getNonIdleBucketOf(v);
+                    for (const auto& entry : nonIdleBucket) {
+                        ++numEntriesScannedHere;
+                        const int& vehId = entry.targetId;
+                        assert(search.routeState.numStopsOf(vehId) > 1);
+                        const DistanceLabel arrTimeAtV = entry.distToTarget;
+                        const DistanceLabel arrTimeAtPDLoc = arrTimeAtV + distFromV;
+                        const auto atLeastAsGoodAsCurBest = ~search.pruner.doesArrTimeNotAdmitBestAsgn(arrTimeAtPDLoc,distFromV);
+                        if (!anySet(atLeastAsGoodAsCurBest))
+                            break;
 
-                    // If this vehicle is not eligible, skip it.
-                    if (!search.pruner.isVehicleEligible(vehId))
-                        continue;
+                        if (!search.pruner.isVehicleEligible(vehId))
+                            continue;
 
 
-                    // Update tentative distances to v for any searches where distViaV admits a possible better assignment
-                    // than the current best and where distViaV is at least as good as the current tentative distance.
-                    LabelMask mask = ~(search.tentativeDistances.getDistancesForCurBatch(vehId) < distViaV);
-                    mask &= atLeastAsGoodAsCurBest;
-
-                    // Don't update anywhere where distViaV >= INFTY
-                    mask &= distViaV < INFTY;
-
-                    if (mask) { // if any search requires updates, update the right ones according to mask
-                        search.tentativeDistances.setDistancesForCurBatchIf(vehId, distViaV, mask);
-                        search.vehiclesSeen.insert(vehId);
-                        search.pruner.updateUpperBoundCost(vehId, distViaV);
+                        const auto depTimeAtLastStop = search.routeState.schedDepTimesFor(vehId)[search.routeState.numStopsOf(vehId) - 1];
+                        const auto distViaV = arrTimeAtPDLoc - depTimeAtLastStop;
+                        tryUpdatingDistance(vehId, distViaV);
                     }
                 }
 
                 search.numEntriesVisited += numEntriesScannedHere;
                 ++search.numVerticesSettled;
 
-
                 return false;
             }
 
         private:
+
+            void tryUpdatingDistance(const int vehId, const DistanceLabel& distToPDLoc) {
+                // Update tentative distances to v for any searches where distViaV admits a possible better assignment
+                // than the current best and where distViaV is at least as good as the current tentative distance.
+                LabelMask mask = ~(search.tentativeDistances.getDistancesForCurBatch(vehId) < distToPDLoc);
+                mask &= distToPDLoc < INFTY;
+                if (!anySet(mask))
+                    return;
+
+                mask &= ~search.pruner.isWorseThanBestKnownVehicleDependent(vehId, distToPDLoc);
+                if (anySet(mask)) { // if any search requires updates, update the right ones according to mask
+                    search.tentativeDistances.setDistancesForCurBatchIf(vehId, distToPDLoc, mask);
+                    search.vehiclesSeen.insert(vehId);
+                    search.pruner.updateUpperBoundCost(vehId, distToPDLoc);
+                }
+            }
+
+
             LastStopBCHQuery &search;
         };
 
@@ -132,7 +151,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) const {
-                return allSet(search.pruner.isWorseThanUpperBoundCost(distToV, false));
+                return allSet(search.pruner.doesDistanceNotAdmitBestAsgn(distToV, false));
             }
 
         private:
@@ -147,6 +166,7 @@ namespace karri {
                 const LastStopBucketsEnvT &lastStopBucketsEnv,
                 TentativeLastStopDistances <LabelSetT> &tentativeLastStopDistances,
                 const CHEnvT &chEnv,
+                const RouteState& routeState,
                 Subset &vehiclesSeen,
                 PrunerT pruner)
                 : upwardSearch(chEnv.template getReverseSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT>(
@@ -154,6 +174,7 @@ namespace karri {
                   pruner(pruner),
                   ch(chEnv.getCH()),
                   bucketContainer(lastStopBucketsEnv.getBuckets()),
+                  routeState(routeState),
                   tentativeDistances(tentativeLastStopDistances),
                   vehiclesSeen(vehiclesSeen),
                   numVerticesSettled(0),
@@ -188,6 +209,7 @@ namespace karri {
 
         const CH &ch;
         const typename LastStopBucketsEnvT::BucketContainer &bucketContainer;
+        const RouteState& routeState;
 
         TentativeLastStopDistances <LabelSetT> &tentativeDistances;
 

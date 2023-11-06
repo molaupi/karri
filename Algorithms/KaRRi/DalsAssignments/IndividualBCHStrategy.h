@@ -46,12 +46,18 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         struct DropoffAfterLastStopPruner {
 
+            static constexpr bool INCLUDE_IDLE_VEHICLES = false;
+
             DropoffAfterLastStopPruner(IndividualBCHStrategy &strat,
                                        const CostCalculator &calc)
                     : strat(strat), calc(calc) {}
 
-            LabelMask
-            isWorseThanUpperBoundCost(const DistanceLabel &distancesToDropoffs, const bool considerWalkingDists) const {
+            // Returns whether a given distance from a vehicle's last stop to the dropoff cannot lead to a better
+            // assignment than the best known. Uses vehicle-independent lower bounds s.t. if this returns true, then
+            // any vehicle with a last stop distance greater than the given one can also never lead to a better
+            // assignment than the best known.
+            LabelMask doesDistanceNotAdmitBestAsgn(const DistanceLabel &distancesToDropoffs,
+                                                   const bool considerWalkingDists) const {
 
                 if (strat.upperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with distancesToDropoffs[i] >= INFTY are worse than the
@@ -60,9 +66,42 @@ namespace karri::DropoffAfterLastStopStrategies {
                 }
 
                 const DistanceLabel walkingDists = considerWalkingDists ? strat.currentDropoffWalkingDists : 0;
-                const DistanceLabel costLowerBound = calc.template calcCostLowerBoundForKDropoffsAfterLastStop<LabelSet>(
-                        distancesToDropoffs, walkingDists, strat.requestState);
+                const DistanceLabel costLowerBound = calc.template calcKVehicleIndependentCostLowerBoundsForDALSWithKnownMinDistToDropoff<LabelSet>(
+                        walkingDists, distancesToDropoffs, 0, strat.requestState);
 
+                return strat.upperBoundCost < costLowerBound;
+            }
+
+            // Returns whether a given arrival time and minimum distance from a vehicle's last stop to the dropoff cannot
+            // lead to a better assignment than the best known. Uses vehicle-independent lower bounds s.t. if this
+            // returns true, then any vehicle with an arrival time later than the given one can also never lead to a
+            // better assignment than the best known.
+            // minDistancesToDropoffs needs to be a vehicle-independent lower bound on the last stop distance.
+            LabelMask doesArrTimeNotAdmitBestAsgn(const DistanceLabel &arrTimesAtDropoffs,
+                                                  const DistanceLabel &minDistancesToDropoffs) const {
+
+                if (strat.upperBoundCost >= INFTY) {
+                    // If current best is INFTY, only indices i with arrTimesAtDropoffs[i] >= INFTY or
+                    // minDistancesToDropoffs[i] >= INFTY are worse than the current best.
+                    return ~((arrTimesAtDropoffs < INFTY) & (minDistancesToDropoffs < INFTY));
+                }
+
+                const DistanceLabel costLowerBound = calc.template calcKVehicleIndependentCostLowerBoundsForDALSWithKnownMinArrTime<LabelSet>(
+                        strat.currentDropoffWalkingDists, minDistancesToDropoffs, arrTimesAtDropoffs, strat.requestState);
+
+                return strat.upperBoundCost < costLowerBound;
+            }
+
+            LabelMask isWorseThanBestKnownVehicleDependent(const int vehId,
+                                                            const DistanceLabel& distancesToDropoffs) {
+                if (strat.upperBoundCost >= INFTY) {
+                    // If current best is INFTY, only indices i with distancesToDropoffs[i] >= INFTY are worse than
+                    // the current best.
+                    return ~(distancesToDropoffs < INFTY);
+                }
+
+                const DistanceLabel costLowerBound = calc.template calcKVehicleDependentCostLowerBoundsForDALSWithKnownDistToDropoff<LabelSet>(
+                        vehId, strat.currentDropoffWalkingDists, distancesToDropoffs, 0, strat.requestState);
                 return strat.upperBoundCost < costLowerBound;
             }
 
@@ -108,8 +147,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                   relevantPickupsBeforeNextStop(relevantPickupsBeforeNextStop),
                   checkPBNSForVehicle(fleet.size()),
                   vehiclesSeenForDropoffs(fleet.size()),
-                  dropoffLastStopSearch(lastStopBucketsEnv, lastStopDistances, chEnv, vehiclesSeenForDropoffs,
-                                        DropoffAfterLastStopPruner(*this, calculator)),
+                  search(lastStopBucketsEnv, lastStopDistances, chEnv, routeState,
+                         vehiclesSeenForDropoffs,
+                         DropoffAfterLastStopPruner(*this, calculator)),
                   lastStopDistances(fleet.size()) {}
 
         void tryDropoffAfterLastStop() {
@@ -204,7 +244,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                             const auto minTripTimeToLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1] -
                                                                routeState.schedArrTimesFor(vehId)[entry.stopIndex + 1];
 
-                            const auto minCostFromHere = calculator.calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(
+                            const auto minCostFromHere = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
                                     asgn.dropoff->walkingDist, asgn.distToDropoff, minTripTimeToLastStop, requestState);
                             if (minCostFromHere > requestState.getBestCost())
                                 break;
@@ -357,11 +397,11 @@ namespace karri::DropoffAfterLastStopStrategies {
             }
 
             lastStopDistances.setCurBatchIdx(batchIdx);
-            dropoffLastStopSearch.run(dropoffTails, travelTimes);
+            search.run(dropoffTails, travelTimes);
 
-            totalNumEdgeRelaxations += dropoffLastStopSearch.getNumEdgeRelaxations();
-            totalNumVerticesSettled += dropoffLastStopSearch.getNumVerticesSettled();
-            totalNumEntriesScanned += dropoffLastStopSearch.getNumEntriesScanned();
+            totalNumEdgeRelaxations += search.getNumEdgeRelaxations();
+            totalNumVerticesSettled += search.getNumVerticesSettled();
+            totalNumEntriesScanned += search.getNumEntriesScanned();
         }
 
 
@@ -390,7 +430,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         // Vehicles seen by any last stop search
         Subset vehiclesSeenForDropoffs;
-        DropoffBCHQuery dropoffLastStopSearch;
+        DropoffBCHQuery search;
         DistanceLabel currentDropoffWalkingDists;
         TentativeLastStopDistances<LabelSet> lastStopDistances;
 

@@ -181,7 +181,7 @@ namespace karri {
             const auto loc = inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[0]);
 
             lastStopsAtVertices.removeLastStopAt(loc, vehId);
-            lastStopBucketsEnv.removeBucketEntries(veh, 0);
+            lastStopBucketsEnv.removeIdleBucketEntries(veh, 0);
 
             routeState.removeStartOfCurrentLeg(vehId);
         }
@@ -328,8 +328,12 @@ namespace karri {
             ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, formerLastStopIdx);
 
             // Remove last stop bucket entries for former last stop and generate them for dropoff
-            lastStopBucketsEnv.removeBucketEntries(*asgn.vehicle, formerLastStopIdx);
-            lastStopBucketsEnv.generateBucketEntries(*asgn.vehicle, dropoffIndex);
+            if (formerLastStopIdx == 0) {
+                lastStopBucketsEnv.removeIdleBucketEntries(*asgn.vehicle, formerLastStopIdx);
+            } else {
+                lastStopBucketsEnv.removeNonIdleBucketEntries(*asgn.vehicle, formerLastStopIdx);
+            }
+            lastStopBucketsEnv.generateNonIdleBucketEntries(*asgn.vehicle);
 
             // Update lastStopAtVertices structure
             Timer timer;
