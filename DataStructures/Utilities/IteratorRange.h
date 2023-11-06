@@ -67,3 +67,36 @@ template<typename T>
 class ConstantVectorRange : public IteratorRange<typename std::vector<T>::const_iterator> {
     using IteratorRange<typename std::vector<T>::const_iterator>::IteratorRange;
 };
+
+template<typename T>
+class VariableVectorRange : public IteratorRange<typename std::vector<T>::const_iterator> {
+public:
+    using Base = IteratorRange<typename std::vector<T>::const_iterator>;
+    using Iterator = typename Base::Iterator;
+    using ValueType = typename std::iterator_traits<Iterator>::value_type;
+
+    VariableVectorRange(Iterator startingPoint, Iterator endingPoint, std::vector<bool> chosen) : Base(startingPoint, endingPoint), chosen(chosen) {
+        numOfEntries = 0;
+        for(int i = 0; i < chosen.size(); i++) {
+            if (chosen[i]) {
+                numOfEntries++;
+                indexArr.push_back(i);
+            }
+        }
+    }
+
+    const ValueType &operator[](const int col) const {
+        assert(col >= 0);
+        assert(col < this->end() - this->begin());
+        return this->begin()[indexArr[col]];
+    }
+
+    size_t size() const noexcept {
+        return numOfEntries;
+    }
+
+private:
+    std::vector<int> indexArr;
+    std::vector<bool> chosen;
+    size_t numOfEntries;
+};

@@ -111,6 +111,11 @@ namespace karri {
             return {stopLocations.begin() + start, stopLocations.begin() + end};
         }
 
+        // Range containing the locations of the currently set stops of vehicle with given ID.
+        //ConstantVectorRange<int> setStopLocationsFor(const int veId) const {
+
+        //}
+
         // Range containing the scheduled arrival times of vehicle with given ID at its stops.
         ConstantVectorRange<int> schedArrTimesFor(const int vehId) const {
             assert(vehId >= 0);
