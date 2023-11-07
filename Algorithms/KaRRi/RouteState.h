@@ -385,6 +385,7 @@ namespace karri {
             stopIdToVehicleId[stopIds[start]] = INVALID_ID;
             stopIdToLeeway[stopIds[start]] = 0;
             stopIdToPosition[stopIds[start]] = INVALID_INDEX;
+            updateRequestStatuses(stopIds[start]);
             removalOfAllCols(stopIds[start], rangeOfRequestsPickedUpAtStop, requestsPickedUpAtStop);
             removalOfAllCols(stopIds[start], rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
             unusedStopIds.push(stopIds[start]);
@@ -408,6 +409,12 @@ namespace karri {
 
             if (haveToRecomputeMaxLeeway)
                 recomputeMaxLeeway();
+        }
+
+        void updateRequestStatuses(const int stopId) {
+            for (int i = rangeOfRequestsPickedUpAtStop[stopId].start; i < rangeOfRequestsPickedUpAtStop[stopId].end; i++) {
+                requests[requestsPickedUpAtStop[i]].enteredCar = true;
+            }
         }
 
         void updateStartOfCurrentLeg(const int vehId, const int location, const int depTime) {
@@ -443,6 +450,10 @@ namespace karri {
 
         ScheduledStop getCurrentOrPrevScheduledStop(const int vehId) const {
             return getScheduledStop(vehId, 0);
+        }
+
+        void addRequest(const Request &req) {
+            requests.insert(requests.begin() +  req.requestId, req);
         }
 
     private:
@@ -680,6 +691,8 @@ namespace karri {
         std::vector<int> requestsPickedUpAtStop;
         std::vector<ValueBlockPosition> rangeOfRequestsDroppedOffAtStop;
         std::vector<int> requestsDroppedOffAtStop;
+
+        std::vector<Request> requests;
 
 
         // Other data:

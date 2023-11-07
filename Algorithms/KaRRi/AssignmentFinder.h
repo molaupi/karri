@@ -49,15 +49,11 @@ namespace karri {
 
     public:
 
-        AssignmentFinder(RequestState &requestState,
-                         RequestStateInitializerT &requestStateInitializer,
-                         EllipticBCHSearchesT &ellipticBchSearches,
-                         PDDistanceSearchesT &pdDistanceSearches,
-                         OrdAssignmentsT &ordinaryAssigments,
-                         PbnsAssignmentsT &pbnsAssignments,
-                         PalsAssignmentsT &palsAssignments,
-                         DalsAssignmentsT &dalsAssignments,
-                         RelevantPDLocsFilterT &relevantPdLocsFilter)
+        AssignmentFinder(RequestState &requestState, RequestStateInitializerT &requestStateInitializer,
+                         EllipticBCHSearchesT &ellipticBchSearches, PDDistanceSearchesT &pdDistanceSearches,
+                         OrdAssignmentsT &ordinaryAssigments, PbnsAssignmentsT &pbnsAssignments,
+                         PalsAssignmentsT &palsAssignments, DalsAssignmentsT &dalsAssignments,
+                         RelevantPDLocsFilterT &relevantPdLocsFilter, RouteState routeState)
                 : reqState(requestState),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
@@ -66,7 +62,8 @@ namespace karri {
                   pbnsAssignments(pbnsAssignments),
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
-                  relevantPdLocsFilter(relevantPdLocsFilter) {}
+                  relevantPdLocsFilter(relevantPdLocsFilter),
+                  routeState(routeState) {}
 
         const RequestState &findBestAssignment(const Request &req) {
 
@@ -105,6 +102,8 @@ namespace karri {
         void initializeForRequest(const Request &req) {
             requestStateInitializer.initializeRequestState(req);
 
+            routeState.addRequest(req);
+
             // Initialize components according to new request state:
             ellipticBchSearches.init();
             pdDistanceSearches.init();
@@ -125,5 +124,6 @@ namespace karri {
         RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
 
 
+        RouteState routeState;
     };
 }

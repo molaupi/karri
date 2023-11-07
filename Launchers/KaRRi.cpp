@@ -558,7 +558,7 @@ int main(int argc, char *argv[]) {
                 RelevantPDLocsFilterImpl>;
         InsertionFinderImpl insertionFinder(reqState, requestStateInitializer, ellipticSearches, pdDistanceQuery,
                                             ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
-                                            dalsInsertionsFinder, relevantPdLocsFilter);
+                                            dalsInsertionsFinder, relevantPdLocsFilter, routeState);
 
 
 #if KARRI_OUTPUT_VEHICLE_PATHS

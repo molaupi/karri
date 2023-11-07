@@ -85,18 +85,23 @@ public:
         }
     }
 
+    VariableVectorRange(Iterator startingPoint, Iterator endingPoint) : Base(startingPoint, endingPoint) {
+        usesArr = false;
+    }
+
     const ValueType &operator[](const int col) const {
         assert(col >= 0);
         assert(col < this->end() - this->begin());
-        return this->begin()[indexArr[col]];
+        return (usesArr ? this->begin()[indexArr[col]] : this->begin()[col]);
     }
 
     size_t size() const noexcept {
-        return numOfEntries;
+        return (usesArr ? numOfEntries : (this->end() - this->begin()));
     }
 
 private:
     std::vector<int> indexArr;
     std::vector<bool> chosen;
     size_t numOfEntries;
+    bool usesArr = true;
 };
