@@ -38,10 +38,12 @@
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
 
-#include "oneapi/tbb.h"
+#include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 
 namespace karri {
+
+    using namespace oneapi::tbb;
 
     template<typename InputGraphT,
             typename CHEnvT,
@@ -215,14 +217,14 @@ namespace karri {
                   distUpperBound(INFTY),
                   updateDistancesToPdLocs(),
                   updateDistancesFromPdLocs(routeState),
-                  toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
+                  toQuery(enumerable_thread_specific<ToQueryType>(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
                           ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
-                  fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet)))),
+                  fromQuery(enumerable_thread_specific<FromQueryType>(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
                           ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet)))) {}
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
@@ -297,7 +299,7 @@ namespace karri {
             // }
 
             // Parallel for with lambda function
-            tbb::parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
+            parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
             
             // for (int i = 0; i < pdLocs.size(); i += K) {
@@ -305,7 +307,7 @@ namespace karri {
             // }
 
             // Parallel for with lambda function
-            tbb::parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
+            parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
         }
 
@@ -327,11 +329,12 @@ namespace karri {
             }
 
             updateDistancesFromPdLocs.setCurFirstIdOfBatch(startId);
-            fromQuery.runWithOffset(pdLocHeads, {});
+            FromQueryType& localFromQuery = fromQuery.local();
+            localFromQuery.runWithOffset(pdLocHeads, {});
 
             ++numSearchesRun;
-            totalNumEdgeRelaxations += fromQuery.getNumEdgeRelaxations();
-            totalNumVerticesSettled += fromQuery.getNumVerticesSettled();
+            totalNumEdgeRelaxations += localFromQuery.getNumEdgeRelaxations();
+            totalNumVerticesSettled += localFromQuery.getNumVerticesSettled();
         }
 
         template<typename SpotContainerT>
@@ -354,11 +357,12 @@ namespace karri {
             }
 
             updateDistancesToPdLocs.setCurFirstIdOfBatch(startId);
-            toQuery.runWithOffset(pdLocTails, travelTimes);
+            ToQueryType& localToQuery = toQuery.local();
+            localToQuery.runWithOffset(pdLocTails, travelTimes);
 
             ++numSearchesRun;
-            totalNumEdgeRelaxations += toQuery.getNumEdgeRelaxations();
-            totalNumVerticesSettled += toQuery.getNumVerticesSettled();
+            totalNumEdgeRelaxations += localToQuery.getNumEdgeRelaxations();
+            totalNumVerticesSettled += localToQuery.getNumVerticesSettled();
         }
 
         template<PDLocType type, typename PDLocsT>
@@ -412,8 +416,14 @@ namespace karri {
         int distUpperBound;
         UpdateDistancesToPDLocs updateDistancesToPdLocs;
         UpdateDistancesFromPDLocs updateDistancesFromPdLocs;
-        typename CHEnvT::template UpwardSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT> toQuery;
-        typename CHEnvT::template UpwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT> fromQuery;
+        typedef typename CHEnvT::template UpwardSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT> ToQueryType;
+        // ToQueryType toQuery;
+        enumerable_thread_specific<ToQueryType> toQuery;
+        
+        typedef typename CHEnvT::template UpwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT> FromQueryType;
+        // FromQueryType fromQuery;
+        enumerable_thread_specific<FromQueryType> fromQuery;
+        
 
         int numSearchesRun;
         int numTimesStoppingCriterionMet;

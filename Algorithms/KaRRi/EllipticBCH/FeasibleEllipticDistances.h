@@ -87,10 +87,10 @@ namespace karri {
             }
 
             for (int i = 0; i < numLabelsPerStop * (maxStopId + 1); i++) {
-                distToRelevantPDLocs[i] = DistanceLabel();
-                distFromRelevantPDLocsToNextStop[i] = DistanceLabel();
-                meetingVerticesToRelevantPDLocs[i] = DistanceLabel();
-                meetingVerticesFromRelevantPDLocsToNextStop[i] = DistanceLabel();
+                distToRelevantPDLocs[i] = DistanceLabel(INFTY);
+                distFromRelevantPDLocsToNextStop[i] = DistanceLabel(INFTY);
+                meetingVerticesToRelevantPDLocs[i] = DistanceLabel(INFTY);
+                meetingVerticesFromRelevantPDLocsToNextStop[i] = DistanceLabel(INFTY);
             }
 
             // if (maxStopId >= startOfRangeInValueArray.size()) {
@@ -176,7 +176,7 @@ namespace karri {
             // We assume the from-searches are run after the to-searches. If the stop does not have entries yet, it was
             // considered irrelevant for the to-searches (regardless of whether we allow dynamic allocation or not).
             // Therefore, this stop cannot be relevant on both sides which means we can skip it here.
-            if (allSet(distToRelevantPDLocs[stopId * numLabelsPerStop] == DistanceLabel()))
+            if (allSet(distToRelevantPDLocs[stopId * numLabelsPerStop] == DistanceLabel(INFTY)))
                 return LabelMask(false);
             const auto idx = stopId * numLabelsPerStop + firstPDLocId / K;
             const LabelMask improved = newDistFromPDLocToNextStop < distFromRelevantPDLocsToNextStop[idx];
@@ -193,7 +193,7 @@ namespace karri {
             assert(stopId <= maxStopId);
             const auto idx = stopId * numLabelsPerStop;
             // returns true if either of the distances is set at idx (first index for a stopId)
-            return !allSet(distToRelevantPDLocs[idx] == DistanceLabel()) || !allSet(distFromRelevantPDLocsToNextStop[idx] == DistanceLabel()) ;
+            return !allSet(distToRelevantPDLocs[idx] == DistanceLabel(INFTY)) || !allSet(distFromRelevantPDLocsToNextStop[idx] == DistanceLabel(INFTY)) ;
         }
 
         // Represents a block of DistanceLabels of size n that contains distances or meeting vertices for n * K PD locs.
