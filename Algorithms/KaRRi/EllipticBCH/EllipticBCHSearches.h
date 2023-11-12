@@ -194,6 +194,19 @@ namespace karri {
             int stopIndex = INVALID_INDEX;
         };
 
+        typedef typename CHEnvT::template UpwardSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT> ToQueryType;
+        typedef typename CHEnvT::template UpwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT> FromQueryType;
+
+        struct ToQueryCapsuled {
+            ToQueryCapsuled(ToQueryType query) : query(query) {}
+            ToQueryType query;
+        };
+
+        struct FromQueryCapsuled {
+            FromQueryCapsuled(FromQueryType query) : query(query) {}
+            FromQueryType query;
+        };
+
     public:
 
         EllipticBCHSearches(const InputGraphT &inputGraph,
@@ -217,11 +230,11 @@ namespace karri {
                   distUpperBound(INFTY),
                   updateDistancesToPdLocs(),
                   updateDistancesFromPdLocs(routeState),
-                  toQuery(enumerable_thread_specific<ToQueryType>(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
+                  toQuery(enumerable_thread_specific<ToQueryCapsuled>(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
                           ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
                           StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet)))),
-                  fromQuery(enumerable_thread_specific<FromQueryType>(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
+                  fromQuery(enumerable_thread_specific<FromQueryCapsuled>(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
                           ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
                           StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet)))) {}
@@ -329,7 +342,8 @@ namespace karri {
             }
 
             updateDistancesFromPdLocs.setCurFirstIdOfBatch(startId);
-            FromQueryType& localFromQuery = fromQuery.local();
+            FromQueryCapsuled& localFrom = fromQuery.local();
+            FromQueryType& localFromQuery = localFrom.query;
             localFromQuery.runWithOffset(pdLocHeads, {});
 
             ++numSearchesRun;
@@ -357,7 +371,8 @@ namespace karri {
             }
 
             updateDistancesToPdLocs.setCurFirstIdOfBatch(startId);
-            ToQueryType& localToQuery = toQuery.local();
+            ToQueryCapsuled& localTo = toQuery.local();
+            ToQueryType& localToQuery = localTo.query;
             localToQuery.runWithOffset(pdLocTails, travelTimes);
 
             ++numSearchesRun;
@@ -416,13 +431,13 @@ namespace karri {
         int distUpperBound;
         UpdateDistancesToPDLocs updateDistancesToPdLocs;
         UpdateDistancesFromPDLocs updateDistancesFromPdLocs;
-        typedef typename CHEnvT::template UpwardSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT> ToQueryType;
-        // ToQueryType toQuery;
-        enumerable_thread_specific<ToQueryType> toQuery;
         
-        typedef typename CHEnvT::template UpwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT> FromQueryType;
+        // ToQueryType toQuery;
+        enumerable_thread_specific<ToQueryCapsuled> toQuery;
+        
+        
         // FromQueryType fromQuery;
-        enumerable_thread_specific<FromQueryType> fromQuery;
+        enumerable_thread_specific<FromQueryCapsuled> fromQuery;
         
 
         int numSearchesRun;
