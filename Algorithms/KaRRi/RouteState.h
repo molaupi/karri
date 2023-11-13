@@ -90,53 +90,29 @@ namespace karri {
         int numStopsOf(const int vehId) const {
             assert(vehId >= 0);
             assert(vehId < pos.size());
-
-            if (!heuristicMode) {
-                return pos[vehId].end - pos[vehId].start;
-            }
-            int count = 0;
-            for (int i = pos[vehId].start; i < pos[vehId].end; i++) {
-                count++;
-            }
-            return count;
+            return pos[vehId].end - pos[vehId].start;
         }
 
         // Range containing the ids of the currently scheduled stops of vehicle with given ID.
-        VariableVectorRange<int> stopIdsFor(const int vehId) const {
+        ConstantVectorRange<int> stopIdsFor(const int vehId) const {
             assert(vehId >= 0);
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
-            if (!heuristicMode) {
-                return {stopIds.begin() + start, stopIds.begin() + end};
-            }
-
-            std::vector<bool> setLoc;
-            for (int i = start; i < end; i++) {
-                (isSetStop(stopIds[i])) ? setLoc.push_back(true) : setLoc.push_back(false);
-            }
-            return {stopIds.begin() + start, stopIds.begin() + end, setLoc};
+            return {stopIds.begin() + start, stopIds.begin() + end};
         }
 
         // Range containing the locations (= edges) of the currently scheduled stops of vehicle with given ID.
-        VariableVectorRange<int> stopLocationsFor(const int vehId) const {
+        ConstantVectorRange<int> stopLocationsFor(const int vehId) const {
             assert(vehId >= 0);
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
-            if (!heuristicMode) {
-                return {stopLocations.begin() + start, stopLocations.begin() + end};
-            }
-
-            std::vector<bool> setLoc;
-            for (int i = start; i < end; i++) {
-                (isSetStop(stopIds[i])) ? setLoc.push_back(true) : setLoc.push_back(false);
-            }
-            return {stopLocations.begin() + start, stopLocations.begin() + end, setLoc};
+            return {stopLocations.begin() + start, stopLocations.begin() + end};
         }
 
         // Range containing the scheduled arrival times of vehicle with given ID at its stops.
-        VariableVectorRange<int> schedArrTimesFor(const int vehId) const {
+        ConstantVectorRange<int> schedArrTimesFor(const int vehId) const {
             assert(vehId >= 0);
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
@@ -470,13 +446,6 @@ namespace karri {
             requests.insert(requests.begin() +  req.requestId, req);
         }
 
-        void useSetRoutes() {
-            heuristicMode = true;
-        }
-
-        void useCompleteRoutes() {
-            heuristicMode = false;
-        }
 
     private:
 
@@ -661,8 +630,6 @@ namespace karri {
             }
             return false;
         }
-
-        bool heuristicMode = false;
 
         // Index Array:
 
