@@ -76,7 +76,11 @@ namespace karri::PDDistanceQueryStrategies {
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
-                return !(bool) ~(maxDist < distToV);
+                const auto exceedsMaxDist = maxDist < distToV;
+                const auto doesNotExceedMaxDist = ~exceedsMaxDist;
+                const bool anyDoesNoExceedMaxDist = anySet(doesNotExceedMaxDist);
+                return !anyDoesNoExceedMaxDist;
+//                return !anySet(~(exceedsMaxDist));
             }
 
 

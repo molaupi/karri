@@ -67,7 +67,7 @@ class CHQuery {
       FORALL_INCIDENT_EDGES(oppositeGraph, v, e)
         continueSearch &=
             distToV < distLabels[oppositeGraph.edgeHead(e)] + oppositeGraph.traversalCost(e);
-      return !continueSearch;
+      return !anySet(continueSearch);
     }
 
     const CH::SearchGraph& oppositeGraph; // The down (up) graph if we prune the up (down) search.

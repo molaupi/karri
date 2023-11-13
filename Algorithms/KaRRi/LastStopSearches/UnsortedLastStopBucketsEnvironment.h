@@ -32,30 +32,20 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/CH/CH.h"
 #include "Tools/Timer.h"
+#include "Algorithms/Buckets/LastStopBucketContainer.h"
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
-    class LastStopBucketsEnvironment {
+    template<typename InputGraphT, typename CHEnvT>
+    class UnsortedLastStopBucketsEnvironment {
 
-
-        using Entry = BucketEntry;
-
-        struct IsDistSmaller {
-            bool operator()(const Entry &e1, const Entry &e2) const {
-                // In last stop bucket entries .targetId refers to the vehicle's id and .distToTarget is the distance from the
-                // vehicles last stop.
-                return e1.distToTarget < e2.distToTarget;
-            }
-        };
+        // .targetId is vehicle ID, .distToTarget is distance from last stop to vertex
+        using LastStopEntry = BucketEntry;
 
     public:
-        static constexpr bool SORTED_BY_DIST = SORTED_BUCKETS;
+        static constexpr bool SORTED = false;
 
-        using BucketContainer = std::conditional_t<SORTED_BUCKETS,
-                SortedBucketContainer<Entry, IsDistSmaller>,
-                DynamicBucketContainer<Entry>
-        >;
+        using BucketContainer = DynamicBucketContainer<LastStopEntry>;
 
     private:
 
@@ -90,14 +80,13 @@ namespace karri {
 
         struct DeleteEntry {
             explicit DeleteEntry(BucketContainer &bucketContainer, int &curVehId, int &verticesVisited,
-                                 int &entriesVisited)
+                                     int &entriesVisited)
                     : bucketContainer(bucketContainer), curVehId(curVehId), verticesVisited(verticesVisited),
                       entriesVisited(entriesVisited) {}
 
             template<typename DistLabelT, typename DistLabelContT>
-            bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
-                auto entry = BucketEntry(curVehId, distToV[0]);
-                bool removed = bucketContainer.remove(v, entry);
+            bool operator()(const int v, DistLabelT &, const DistLabelContT &) {
+                bool removed = bucketContainer.remove(v, curVehId);
                 ++verticesVisited;
                 entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
                 return !removed; // Prune if no entry for the vehicle was found at this vertex
@@ -111,8 +100,9 @@ namespace karri {
 
     public:
 
-        LastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState,
-                                   karri::stats::UpdatePerformanceStats &stats)
+        UnsortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
+                                         const RouteState &routeState,
+                                         karri::stats::UpdatePerformanceStats &stats)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   searchGraph(ch.upwardGraph()),
@@ -122,7 +112,8 @@ namespace karri {
                           chEnv.getForwardSearch(GenerateEntry(bucketContainer, vehicleId, verticesVisitedInSearch),
                                                  StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
                   entryDelSearch(chEnv.getForwardSearch(
-                          DeleteEntry(bucketContainer, vehicleId, verticesVisitedInSearch, entriesVisitedInSearch))),
+                          DeleteEntry(bucketContainer, vehicleId, verticesVisitedInSearch,
+                                          entriesVisitedInSearch))),
                   stats(stats) {}
 
 
@@ -139,14 +130,14 @@ namespace karri {
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 
             vehicleId = veh.vehicleId;
-            maxDetourUntilEndOfServiceTime =
-                    veh.endOfServiceTime - routeState.schedDepTimesFor(vehicleId)[routeState.numStopsOf(vehicleId) - 1];
+            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+            const int depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
+
+            maxDetourUntilEndOfServiceTime = veh.endOfServiceTime - depTimeOfVehAtLastStop;
             verticesVisitedInSearch = 0;
             entryGenSearch.run(ch.rank(stopVertex));
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.lastStopBucketsGenerateEntriesTime += time;
-
-//        bucketGenLogger << verticesVisitedInSearch << ',' << time << '\n';
         }
 
         void removeBucketEntries(const Vehicle &veh, const int stopIndex) {
@@ -158,14 +149,13 @@ namespace karri {
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 
             vehicleId = veh.vehicleId;
+
             entriesVisitedInSearch = 0;
             maxDetourUntilEndOfServiceTime = INFTY;
             verticesVisitedInSearch = 0;
             entryDelSearch.run(ch.rank(stopVertex));
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.lastStopBucketsDeleteEntriesTime += time;
-
-//        bucketDelLogger << verticesVisitedInSearch << ',' << entriesVisitedInSearch << ',' << time << '\n';
         }
 
     private:
@@ -191,12 +181,5 @@ namespace karri {
 
         karri::stats::UpdatePerformanceStats &stats;
 
-    };
-
-    struct NoOpLastStopBucketsEnvironment {
-
-        inline void generateBucketEntries(const Vehicle &, const int) {/* no op */}
-
-        inline void removeBucketEntries(const Vehicle &, const int) {/* no op */}
     };
 }

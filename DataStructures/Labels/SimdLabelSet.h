@@ -129,16 +129,19 @@ public:
             return isMarked[i / VECTOR_SIZE][i % VECTOR_SIZE];
         }
 
-        // Returns true if this mask marks at least one component.
-        operator bool() const {
-            BooleanVector tmp = isMarked[0];
-            for (int i = 1; i < NUM_VECTORS; ++i)
-                tmp |= isMarked[i];
-            return horizontal_or(tmp);
-        }
+//        // Returns true if this mask marks at least one component.
+//        operator bool() const {
+//            BooleanVector tmp = isMarked[0];
+//            for (int i = 1; i < NUM_VECTORS; ++i)
+//                tmp |= isMarked[i];
+//            return horizontal_or(tmp);
+//        }
 
         friend bool anySet(const LabelMask &mask) {
-            return (bool) mask;
+            BooleanVector tmp = mask.isMarked[0];
+            for (int i = 1; i < NUM_VECTORS; ++i)
+                tmp |= mask.isMarked[i];
+            return horizontal_or(tmp);
         }
 
         friend bool allSet(const LabelMask &mask) {

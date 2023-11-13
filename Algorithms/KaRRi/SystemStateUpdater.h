@@ -137,6 +137,7 @@ namespace karri {
 
             const auto vehId = asgn.vehicle->vehicleId;
             const auto numStopsBefore = routeState.numStopsOf(vehId);
+            const auto depTimeAtLastStopBefore = routeState.schedDepTimesFor(vehId)[numStopsBefore - 1];
 
             timer.restart();
             const auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, requestState);
@@ -148,7 +149,7 @@ namespace karri {
                 movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
             }
 
-            updateBucketState(asgn, pickupIndex, dropoffIndex);
+            updateBucketState(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore);
 
             pickupStopId = routeState.stopIdsFor(vehId)[pickupIndex];
             dropoffStopId = routeState.stopIdsFor(vehId)[dropoffIndex];
@@ -167,6 +168,11 @@ namespace karri {
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
             ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1);
             routeState.removeStartOfCurrentLeg(veh.vehicleId);
+
+            // If vehicle has become idle, update last stop bucket entries
+            if (routeState.numStopsOf(veh.vehicleId) == 1) {
+                lastStopBucketsEnv.updateBucketEntries(veh, 0);
+            }
         }
 
         void notifyVehicleReachedEndOfServiceTime(const Vehicle &veh) {
@@ -175,7 +181,7 @@ namespace karri {
             const auto loc = inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[0]);
 
             lastStopsAtVertices.removeLastStopAt(loc, vehId);
-            lastStopBucketsEnv.removeBucketEntries(veh, 0);
+            lastStopBucketsEnv.removeIdleBucketEntries(veh, 0);
 
             routeState.removeStartOfCurrentLeg(vehId);
         }
@@ -266,7 +272,8 @@ namespace karri {
         // assignment that has already been inserted into routeState as well as the stop index of the pickup and
         // dropoff after the insertion.
         void updateBucketState(const Assignment &asgn,
-                               const int pickupIndex, const int dropoffIndex) {
+                               const int pickupIndex, const int dropoffIndex,
+                               const int depTimeAtLastStopBefore) {
 
             generateBucketStateForNewStops(asgn, pickupIndex, dropoffIndex);
 
@@ -276,10 +283,24 @@ namespace karri {
                 ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(*asgn.vehicle);
                 ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(*asgn.vehicle);
             }
+
+            // If last stop does not change but departure time at last stop does change, update last stop bucket entries
+            // accordingly.
+            const int vehId = asgn.vehicle->vehicleId;
+            const auto numStopsAfter = routeState.numStopsOf(vehId);
+            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
+            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
+            const auto depTimeAtLastStopAfter = routeState.schedDepTimesFor(vehId)[numStopsAfter - 1];
+            const bool depTimeAtLastChanged = depTimeAtLastStopAfter != depTimeAtLastStopBefore;
+
+            if ((dropoffAtExistingStop || dropoffIndex < numStopsAfter - 1) && depTimeAtLastChanged) {
+                lastStopBucketsEnv.updateBucketEntries(*asgn.vehicle, numStopsAfter - 1);
+            }
         }
 
         void generateBucketStateForNewStops(const Assignment &asgn, const int pickupIndex, const int dropoffIndex) {
             const auto vehId = asgn.vehicle->vehicleId;
+            const auto& numStops = routeState.numStopsOf(vehId);
             const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
 
@@ -295,7 +316,7 @@ namespace karri {
             ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, dropoffIndex);
 
             // If dropoff is not the new last stop, we generate elliptic source buckets for it.
-            if (dropoffIndex < routeState.numStopsOf(vehId) - 1) {
+            if (dropoffIndex < numStops - 1) {
                 ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, dropoffIndex);
                 return;
             }
@@ -307,8 +328,12 @@ namespace karri {
             ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, formerLastStopIdx);
 
             // Remove last stop bucket entries for former last stop and generate them for dropoff
-            lastStopBucketsEnv.removeBucketEntries(*asgn.vehicle, formerLastStopIdx);
-            lastStopBucketsEnv.generateBucketEntries(*asgn.vehicle, dropoffIndex);
+            if (formerLastStopIdx == 0) {
+                lastStopBucketsEnv.removeIdleBucketEntries(*asgn.vehicle, formerLastStopIdx);
+            } else {
+                lastStopBucketsEnv.removeNonIdleBucketEntries(*asgn.vehicle, formerLastStopIdx);
+            }
+            lastStopBucketsEnv.generateNonIdleBucketEntries(*asgn.vehicle);
 
             // Update lastStopAtVertices structure
             Timer timer;

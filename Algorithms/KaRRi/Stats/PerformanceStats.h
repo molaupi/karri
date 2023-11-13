@@ -472,6 +472,7 @@ namespace karri::stats {
         int64_t elliptic_delete_time;
 
         int64_t lastStopBucketsGenerateEntriesTime;
+        int64_t lastStopBucketsUpdateEntriesTime;
         int64_t lastStopBucketsDeleteEntriesTime;
 
         int64_t lastStopsAtVerticesUpdateTime;

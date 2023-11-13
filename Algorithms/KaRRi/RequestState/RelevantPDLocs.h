@@ -35,7 +35,7 @@ namespace karri {
 
     struct RelevantPDLocs {
 
-        template<typename> friend
+        template<typename, typename, typename> friend
         class RelevantPDLocsFilter;
 
         struct RelevantPDLoc {

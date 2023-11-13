@@ -41,11 +41,17 @@ namespace karri::PickupAfterLastStopStrategies {
 
         struct PickupAfterLastStopPruner {
 
+            static constexpr bool INCLUDE_IDLE_VEHICLES = true;
+
             PickupAfterLastStopPruner(IndividualBCHStrategy &strat, const CostCalculator &calc)
                     : strat(strat), calc(calc) {}
 
-            LabelMask isWorseThanUpperBoundCost(const DistanceLabel &distancesToPickups,
-                                      const bool considerPickupWalkingDists = false) const {
+            // Returns whether a given distance from a vehicle's last stop to the pickup cannot lead to a better
+            // assignment than the best known. Uses vehicle-independent lower bounds s.t. if this returns true, then
+            // any vehicle with a last stop distance greater than the given one can also never lead to a better
+            // assignment than the best known.
+            LabelMask doesDistanceNotAdmitBestAsgn(const DistanceLabel &distancesToPickups,
+                                                   const bool considerPickupWalkingDists = false) const {
                 assert(strat.requestState.minDirectPDDist < INFTY);
 
                 if (strat.upperBoundCost >= INFTY) {
@@ -56,14 +62,74 @@ namespace karri::PickupAfterLastStopStrategies {
 
                 const auto &walkingDists = considerPickupWalkingDists ? strat.currentPickupWalkingDists : 0;
 
-                const DistanceLabel directDists = strat.requestState.minDirectPDDist;
+                const DistanceLabel directDist = strat.requestState.minDirectPDDist;
+                const auto detourTillDepAtPickup = distancesToPickups + DistanceLabel(strat.inputConfig.stopTime);
+                auto tripTimeTillDepAtPickup = detourTillDepAtPickup;
+                tripTimeTillDepAtPickup.max(walkingDists);
                 DistanceLabel costLowerBound = calc.template calcLowerBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
-                        distancesToPickups, directDists, walkingDists, strat.requestState);
+                        detourTillDepAtPickup, tripTimeTillDepAtPickup, directDist, walkingDists, strat.requestState);
+
+                costLowerBound.setIf(DistanceLabel(INFTY), ~(distancesToPickups < INFTY));
 
                 return strat.upperBoundCost < costLowerBound;
             }
 
+            // Returns whether a given arrival time and minimum distance from a vehicle's last stop to the pickup cannot
+            // lead to a better assignment than the best known. Uses vehicle-independent lower bounds s.t. if this
+            // returns true, then any vehicle with an arrival time later than the given one can also never lead to a
+            // better assignment than the best known.
+            // minDistancesToPickups needs to be a vehicle-independent lower bound on the last stop distance.
+            LabelMask doesArrTimeNotAdmitBestAsgn(const DistanceLabel &arrTimesAtPickups,
+                                                  const DistanceLabel &minDistancesToPickups) const {
+                assert(strat.requestState.minDirectPDDist < INFTY);
+
+                if (strat.upperBoundCost >= INFTY) {
+                    // If current best is INFTY, only indices i with arrTimesAtPickups[i] >= INFTY or
+                    // minDistancesToPickups[i] >= INFTY are worse than the current best.
+                    return ~((arrTimesAtPickups < INFTY) & (minDistancesToPickups < INFTY));
+                }
+
+                const DistanceLabel directDist = strat.requestState.minDirectPDDist;
+                const auto detourTillDepAtPickup = minDistancesToPickups + DistanceLabel(strat.inputConfig.stopTime);
+                auto depTimeAtPickup = arrTimesAtPickups + DistanceLabel(strat.inputConfig.stopTime);
+                const auto reqTime = DistanceLabel(strat.requestState.originalRequest.requestTime);
+                depTimeAtPickup.max(reqTime + strat.currentPickupWalkingDists);
+                const auto tripTimeTillDepAtPickup = depTimeAtPickup - reqTime;
+                DistanceLabel costLowerBound = calc.template calcLowerBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
+                        detourTillDepAtPickup, tripTimeTillDepAtPickup, directDist, strat.currentPickupWalkingDists, strat.requestState);
+
+                costLowerBound.setIf(DistanceLabel(INFTY),
+                                     ~((arrTimesAtPickups < INFTY) & (minDistancesToPickups < INFTY)));
+                return strat.upperBoundCost < costLowerBound;
+            }
+
+            LabelMask isWorseThanBestKnownVehicleDependent(const int vehId,
+                                                            const DistanceLabel &distancesToPickups) {
+                if (strat.upperBoundCost >= INFTY) {
+                    // If current best is INFTY, only indices i with distancesToDropoffs[i] >= INFTY are worse than
+                    // the current best.
+                    return ~(distancesToPickups < INFTY);
+                }
+
+                const DistanceLabel directDist = strat.requestState.minDirectPDDist;
+                const auto detourTillDepAtPickup = distancesToPickups + strat.inputConfig.stopTime;
+                const auto &stopIdx = strat.routeState.numStopsOf(vehId) - 1;
+                const int vehDepTimeAtLastStop = time_utils::getVehDepTimeAtStopForRequest(vehId, stopIdx,
+                                                                                           strat.requestState,
+                                                                                           strat.routeState);
+                auto depTimeAtPickups = vehDepTimeAtLastStop + distancesToPickups + strat.inputConfig.stopTime;
+                depTimeAtPickups.max(strat.curPassengerArrTimesAtPickups);
+                const auto tripTimeTillDepAtPickup = depTimeAtPickups - strat.requestState.originalRequest.requestTime;
+                DistanceLabel costLowerBound = calc.template calcLowerBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
+                        detourTillDepAtPickup, tripTimeTillDepAtPickup, directDist, strat.currentPickupWalkingDists,
+                        strat.requestState);
+
+                costLowerBound.setIf(INFTY, ~(distancesToPickups < INFTY));
+                return strat.upperBoundCost < costLowerBound;
+            }
+
             void updateUpperBoundCost(const int vehId, const DistanceLabel &distancesToPickups) {
+                assert(allSet(distancesToPickups >= 0));
                 const DistanceLabel cost = calc.template calcUpperBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
                         strat.fleet[vehId], distancesToPickups, strat.curPassengerArrTimesAtPickups,
                         strat.curDistancesToDest,
@@ -94,7 +160,7 @@ namespace karri::PickupAfterLastStopStrategies {
                               const PDDistancesT &pdDistances,
                               const RouteState &routeState,
                               RequestState &requestState,
-                              const int& bestCostBeforeQuery,
+                              const int &bestCostBeforeQuery,
                               const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
                   fleet(fleet),
@@ -105,7 +171,8 @@ namespace karri::PickupAfterLastStopStrategies {
                   bestCostBeforeQuery(bestCostBeforeQuery),
                   inputConfig(inputConfig),
                   distances(fleet.size()),
-                  search(lastStopBucketsEnv, distances, chEnv, vehiclesSeenForPickups, PickupAfterLastStopPruner(*this, calculator)),
+                  search(lastStopBucketsEnv, distances, chEnv, routeState, vehiclesSeenForPickups,
+                         PickupAfterLastStopPruner(*this, calculator)),
                   vehiclesSeenForPickups(fleet.size()) {}
 
         void tryPickupAfterLastStop() {
@@ -168,7 +235,8 @@ namespace karri::PickupAfterLastStopStrategies {
                     const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
                                                                                              psgTimeTillDepAtThisPickup,
                                                                                              minDirectDistForThisPickup,
-                                                                                             asgn.pickup->walkingDist, 0,
+                                                                                             asgn.pickup->walkingDist,
+                                                                                             0,
                                                                                              requestState);
                     if (minCost > requestState.getBestCost())
                         continue;
@@ -236,7 +304,7 @@ namespace karri::PickupAfterLastStopStrategies {
         const PDDistancesT &pdDistances;
         const RouteState &routeState;
         RequestState &requestState;
-        const int& bestCostBeforeQuery;
+        const int &bestCostBeforeQuery;
         const InputConfig &inputConfig;
 
         int upperBoundCost;
