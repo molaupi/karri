@@ -2,8 +2,8 @@
 
 This repository contains the C++17 source code used in
 
-* Moritz Laupichler, and Peter Sanders. Fast Many-to-Many Routing for Ridesharing with Multiple 
-  Pickup and Dropoff Locations. arXiv: https://doi.org/10.48550/arXiv.2305.05417
+* Moritz Laupichler, and Peter Sanders. Fast Many-to-Many Routing for Dynamic Taxi Sharing with 
+Meeting Points, 2023. arXiv: https://doi.org/10.48550/arXiv.2311.01581
 
 ## License
 
