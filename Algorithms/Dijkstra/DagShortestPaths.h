@@ -56,7 +56,7 @@ template <
     typename QueueT = AddressableQuadHeap>
 class DagShortestPaths {
 
-    template<typename, typename, bool>
+    template<typename, typename, bool, typename>
     friend class karri::EllipticBucketsEnvironment;
 
 

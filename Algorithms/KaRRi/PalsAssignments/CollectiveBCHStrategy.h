@@ -43,7 +43,9 @@ namespace karri::PickupAfterLastStopStrategies {
             typename LastStopBucketsEnvT,
             typename VehicleToPDLocQueryT,
             typename PDDistancesT,
-            typename FallbackLabelSetT>
+            typename FallbackLabelSetT,
+            typename RouteStateT,
+            typename CostCalculatorT>
     class CollectiveBCHStrategy {
 
         using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT>;
@@ -58,9 +60,9 @@ namespace karri::PickupAfterLastStopStrategies {
                               VehicleToPDLocQueryT &vehicleToPDLocQuery,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               PDDistancesT &pdDistances,
-                              const CostCalculator &calculator,
-                              const RouteState &routeState,
-                              RequestState &requestState,
+                              const CostCalculatorT &calculator,
+                              const RouteStateT &routeState,
+                              RequestState<CostCalculatorT> &requestState,
                               const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
                   fleet(fleet),
@@ -165,10 +167,10 @@ namespace karri::PickupAfterLastStopStrategies {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const CostCalculator &calculator;
+        const CostCalculatorT &calculator;
         const CH &ch;
-        const RouteState &routeState;
-        RequestState &requestState;
+        const RouteStateT &routeState;
+        RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
 
         MinCostPairAfterLastStopQueryInst minCostSearch;

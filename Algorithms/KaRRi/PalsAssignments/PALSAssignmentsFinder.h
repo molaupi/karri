@@ -33,14 +33,14 @@
 namespace karri {
 
 // Finds pickup-after-last-stop (PALS) insertions using the encapsulated strategy.
-    template<typename InputGraphT, typename PDDistancesT, typename StrategyT>
+    template<typename InputGraphT, typename PDDistancesT, typename StrategyT, typename RouteStateT, typename CostCalculatorT>
     class PALSAssignmentsFinder {
 
     public:
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
-                              const CostCalculator &calculator, const LastStopsAtVertices &lastStopsAtVertices,
-                              const RouteState &routeState, const PDDistancesT &pdDistances, RequestState &requestState)
+                              const CostCalculatorT &calculator, const LastStopsAtVertices &lastStopsAtVertices,
+                              const RouteStateT &routeState, const PDDistancesT &pdDistances, RequestState<CostCalculatorT> &requestState)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
@@ -113,11 +113,11 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const CostCalculator &calculator;
+        const CostCalculatorT &calculator;
         const LastStopsAtVertices &lastStopsAtVertices;
-        const RouteState &routeState;
+        const RouteStateT &routeState;
         const PDDistancesT &pdDistances;
-        RequestState &requestState;
+        RequestState<CostCalculatorT> &requestState;
 
     };
 }

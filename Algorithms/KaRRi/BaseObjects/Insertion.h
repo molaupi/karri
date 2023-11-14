@@ -12,12 +12,12 @@
 
 namespace karri {
     struct Insertion {
-        Request &req;
         Assignment &asgn;
+        int requestId;
         int requestTime;
         int passengerArrAtPickup;
         int maxDepTimeAtPickup;
         int maxArrTimeAtDropoff;
-
+        bool enteredCar = false;
     };
 }

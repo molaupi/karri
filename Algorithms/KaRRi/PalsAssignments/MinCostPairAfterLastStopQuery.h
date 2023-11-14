@@ -57,6 +57,8 @@ namespace karri::PickupAfterLastStopStrategies {
             typename CHEnvT,
             typename LastStopBucketsEnvT,
             typename DirectSearchesT,
+            typename RouteStateT,
+            typename CostCalculatorT,
             typename QueueT = AddressableQuadHeap,
             bool STALL_LABELS = false>
     class MinCostPairAfterLastStopQuery {
@@ -72,10 +74,10 @@ namespace karri::PickupAfterLastStopStrategies {
 
         MinCostPairAfterLastStopQuery(const InputGraphT &inputGraph, const Fleet &fleet,
                                       const CHEnvT &chEnv,
-                                      const RouteState &routeState, DirectSearchesT &directSearches,
-                                      const CostCalculator &calculator,
+                                      const RouteStateT &routeState, DirectSearchesT &directSearches,
+                                      const CostCalculatorT &calculator,
                                       const LastStopBucketsEnvT &lastStopBucketsEnv,
-                                      const RequestState &requestState, const InputConfig &inputConfig)
+                                      const RequestState<CostCalculatorT> &requestState, const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   queryGraph(ch.downwardGraph()),
@@ -291,7 +293,7 @@ namespace karri::PickupAfterLastStopStrategies {
             // pickup1 == pickup2 and label1.distToPickup == label2.distToPickup => domination only depends on the part
             // after the pickup, i.e. direct distance and walking distance from dropoff:
 
-            using F = CostCalculator::CostFunction;
+            using F = typename CostCalculatorT::CostFunction;
             const auto maxDetourDiff = label1.directDistance - label2.directDistance;
             const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
             const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
@@ -316,7 +318,7 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &dropoff2 = requestState.dropoffs[dropoffId2];
             auto walkDiff = PDDistanceLabel(dropoff1.walkingDist - dropoff2.walkingDist);
 
-            using F = CostCalculator::CostFunction;
+            using F = typename CostCalculatorT::CostFunction;
             PDDistanceLabel maxDetourDiff = distancesToDropoff1 - distancesToDropoff2;
             PDDistanceLabel maxTripDiff = maxDetourDiff + walkDiff;
 
@@ -516,7 +518,7 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &pickup2 = requestState.pickups[label2.pickupId];
             const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
-            using F = CostCalculator::CostFunction;
+            using F = typename CostCalculatorT::CostFunction;
             const auto maxDepTimeDiff = std::max(label1.distToPickup + inputConfig.stopTime, pickup1.walkingDist) - (label2.distToPickup + inputConfig.stopTime);
             const auto maxDetourDiff = maxDepTimeDiff + label1.directDistance - label2.directDistance;
             const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
@@ -609,11 +611,11 @@ namespace karri::PickupAfterLastStopStrategies {
         const CH::SearchGraph &queryGraph;
         const CH::SearchGraph &oppositeGraph;
         const Fleet &fleet;
-        const RouteState &routeState;
-        const CostCalculator &calculator;
+        const RouteStateT &routeState;
+        const CostCalculatorT &calculator;
         const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
         DirectSearchesT &directSearches;
-        const RequestState &requestState;
+        const RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
 
         BucketContainer reverseLabelBuckets;

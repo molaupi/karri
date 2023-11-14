@@ -40,7 +40,7 @@
 namespace karri {
 
 // A facility for computing the cost of an assignment of a request into a vehicle's route.
-    template<typename CostFunctionT>
+    template<typename CostFunctionT, typename RouteStateT>
     class CostCalculatorTemplate {
 
         using F = CostFunctionT;
@@ -49,7 +49,7 @@ namespace karri {
 
         using CostFunction = CostFunctionT;
 
-        explicit CostCalculatorTemplate(const RouteState &routeState,
+        explicit CostCalculatorTemplate(const RouteStateT &routeState,
                                         const InputConfig &inputConfig)
                 : routeState(routeState),
                   inputConfig(inputConfig),
@@ -563,7 +563,7 @@ namespace karri {
 
         }
 
-        const RouteState &routeState;
+        const RouteStateT &routeState;
         const InputConfig &inputConfig;
         const int stopTime;
     };
@@ -573,5 +573,6 @@ namespace karri {
     static constexpr int WALKING_COST_SCALE = KARRI_WALKING_COST_SCALE; // CMake compile time parameter
     static constexpr int WAIT_PENALTY_SCALE = KARRI_WAIT_PENALTY_SCALE; // CMake compile time parameter
     static constexpr int TRIP_PENALTY_SCALE = KARRI_TRIP_PENALTY_SCALE; // CMake compile time parameter
-    using CostCalculator = CostCalculatorTemplate<TimeIsMoneyCostFunction<PSG_COST_SCALE, WALKING_COST_SCALE, VEH_COST_SCALE, WAIT_PENALTY_SCALE, TRIP_PENALTY_SCALE>>;
+    template<typename RouteStateT>
+    using CostCalculator = CostCalculatorTemplate<TimeIsMoneyCostFunction<PSG_COST_SCALE, WALKING_COST_SCALE, VEH_COST_SCALE, WAIT_PENALTY_SCALE, TRIP_PENALTY_SCALE>, RouteStateT>;
 }

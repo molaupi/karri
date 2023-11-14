@@ -38,7 +38,8 @@ namespace karri::PDDistanceQueryStrategies {
     template<typename InputGraphT,
             typename CHEnvT,
             typename VehicleToPDLocQueryT,
-            typename LabelSetT>
+            typename LabelSetT,
+            typename CostCalculatorT>
     class BCHStrategy {
 
     public:
@@ -131,8 +132,8 @@ namespace karri::PDDistanceQueryStrategies {
     public:
 
         BCHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                    PDDistances<LabelSetT> &distances,
-                    RequestState &requestState,
+                    PDDistances<LabelSetT, CostCalculatorT> &distances,
+                    RequestState<CostCalculatorT> &requestState,
                     VehicleToPDLocQueryT &vehicleToPDLocQuery)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
@@ -267,10 +268,10 @@ namespace karri::PDDistanceQueryStrategies {
 
         const InputGraphT &inputGraph;
         const CH &ch;
-        RequestState &requestState;
+        RequestState<CostCalculatorT> &requestState;
         VehicleToPDLocQueryT &vehicleToPDLocQuery;
 
-        PDDistances<LabelSetT> &distances;
+        PDDistances<LabelSetT, CostCalculatorT> &distances;
 
         BucketContainer dropoffBuckets;
         FillBucketsSearch fillBucketsSearch;

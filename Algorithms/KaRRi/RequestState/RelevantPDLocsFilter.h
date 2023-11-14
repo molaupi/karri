@@ -31,13 +31,13 @@ namespace karri {
 
 // Filters information about feasible distances found by elliptic BCH searches to pickups/dropoffs that are relevant
 // for certain stops by considering the leeway and the current best known assignment cost.
-    template<typename FeasibleDistancesT>
+    template<typename FeasibleDistancesT, typename RouteStateT, typename CostCalculatorT>
     class RelevantPDLocsFilter {
 
     public:
 
-        RelevantPDLocsFilter(const Fleet &fleet, const CostCalculator &calculator,
-                             RequestState &requestState, const RouteState &routeState,
+        RelevantPDLocsFilter(const Fleet &fleet, const CostCalculatorT &calculator,
+                             RequestState<CostCalculatorT> &requestState, const RouteStateT &routeState,
                              const InputConfig &inputConfig, const FeasibleDistancesT &feasiblePickupDistances,
                              const FeasibleDistancesT &feasibleDropoffDistances,
                              RelevantPDLocs &relOrdinaryPickups, RelevantPDLocs &relOrdinaryDropoffs,
@@ -304,9 +304,9 @@ namespace karri {
 
 
         const Fleet &fleet;
-        const CostCalculator &calculator;
-        RequestState &requestState;
-        const RouteState &routeState;
+        const CostCalculatorT &calculator;
+        RequestState<CostCalculatorT> &requestState;
+        const RouteStateT &routeState;
         const InputConfig &inputConfig;
 
         const FeasibleDistancesT &feasiblePickupDistances;

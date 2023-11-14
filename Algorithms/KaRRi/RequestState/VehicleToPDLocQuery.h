@@ -26,6 +26,10 @@
 #pragma once
 
 #include "DataStructures/Containers/FastResetFlagArray.h"
+#include "DataStructures/Labels/ParentInfo.h"
+#include "DataStructures/Labels/BasicLabelSet.h"
+#include "Algorithms/Dijkstra/Dijkstra.h"
+#include "Tools/Timer.h"
 
 namespace karri {
 

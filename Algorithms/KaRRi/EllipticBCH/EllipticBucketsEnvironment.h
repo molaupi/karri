@@ -39,7 +39,7 @@
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
+    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS, typename RouteStateT>
     class EllipticBucketsEnvironment {
 
         using Entry = BucketEntryWithLeeway;
@@ -84,7 +84,7 @@ namespace karri {
                 DynamicBucketContainer<Entry>
         >;
 
-        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState,
+        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateT &routeState,
                                    const InputConfig &inputConfig, karri::stats::UpdatePerformanceStats &stats)
                 : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState), inputConfig(inputConfig),
                   sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
@@ -335,7 +335,7 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const CH &ch;
-        const RouteState &routeState;
+        const RouteStateT &routeState;
         const InputConfig &inputConfig;
 
         BucketContainer sourceBuckets;

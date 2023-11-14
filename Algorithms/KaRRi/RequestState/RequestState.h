@@ -39,9 +39,10 @@
 namespace karri {
 
 // Holds information relating to a specific request like its pickups and dropoffs and the best known assignment.
+template<typename CostCalculatorT>
     struct RequestState {
 
-        RequestState(const CostCalculator &calculator, const InputConfig &inputConfig)
+        RequestState(const CostCalculatorT &calculator, const InputConfig &inputConfig)
                 : originalRequest(),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
@@ -145,7 +146,7 @@ namespace karri {
         }
 
         void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
-            const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this,
+            const int cost = CostCalculatorT::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this,
                                                                         inputConfig);
             if (cost < bestCost) {
                 bestAssignment = Assignment();
@@ -192,7 +193,7 @@ namespace karri {
         stats::OsmRoadCategoryStats allPDLocsRoadCatStats;
         stats::OsmRoadCategoryStats chosenPDLocsRoadCatStats;
 
-        const CostCalculator &calculator;
+        const CostCalculatorT &calculator;
         const InputConfig &inputConfig;
 
         // Information about best known assignment for current request

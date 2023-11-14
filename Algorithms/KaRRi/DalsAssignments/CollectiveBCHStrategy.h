@@ -35,6 +35,8 @@ namespace karri::DropoffAfterLastStopStrategies {
             typename CHEnvT,
             typename LastStopBucketsEnvT,
             typename CurVehLocToPickupSearchesT,
+            typename RouteStateT,
+            typename CostCalculatorT,
             typename FallBackCHLabelSet = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
     class CollectiveBCHStrategy {
 
@@ -63,12 +65,12 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         CollectiveBCHStrategy(const InputGraphT &inputGraph,
                               const Fleet &fleet,
-                              const RouteState &routeState,
+                              const RouteStateT &routeState,
                               const CHEnvT &chEnv,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              const CostCalculator &calculator,
+                              const CostCalculatorT &calculator,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
-                              RequestState &requestState,
+                              RequestState<CostCalculatorT> &requestState,
                               const RelevantPDLocs &relevantOrdinaryPickups,
                               const RelevantPDLocs &relevantPickupsBeforeNextStop,
                               const InputConfig &inputConfig)
@@ -578,12 +580,12 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const RouteState &routeState;
-        const CostCalculator &calculator;
+        const RouteStateT &routeState;
+        const CostCalculatorT &calculator;
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         ClosestDropoffToLastStopQuery closestDropoffSearch;
         const CH &ch;
-        RequestState &requestState;
+        RequestState<CostCalculatorT> &requestState;
         const RelevantPDLocs &relevantOrdinaryPickups;
         const RelevantPDLocs &relevantPickupsBeforeNextStop;
 

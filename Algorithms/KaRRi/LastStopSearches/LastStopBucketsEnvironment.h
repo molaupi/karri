@@ -35,7 +35,7 @@
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
+    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS, typename RouteStateT>
     class LastStopBucketsEnvironment {
 
 
@@ -111,7 +111,7 @@ namespace karri {
 
     public:
 
-        LastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState,
+        LastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateT &routeState,
                                    karri::stats::UpdatePerformanceStats &stats)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
@@ -177,7 +177,7 @@ namespace karri {
         const InputGraphT &inputGraph;
         const CH &ch;
         const CH::SearchGraph &searchGraph;
-        const RouteState &routeState;
+        const RouteStateT &routeState;
 
         BucketContainer bucketContainer;
 

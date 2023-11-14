@@ -37,7 +37,7 @@ namespace karri {
 // (The case of pickup before next stop and dropoff after last stop is considered by the DALSAssignmentsFinder.)
 //
 // Works based on filtered relevant pickups and dropoffs before next stop as well as relevant ordinary dropoffs.
-    template<typename PDDistancesT, typename CurVehLocToPickupSearchesT>
+    template<typename PDDistancesT, typename CurVehLocToPickupSearchesT, typename RouteStateT, typename CostCalculatorT>
     class PBNSAssignmentsFinder {
 
         // Algorithm iterates through combinations of pickups and dropoffs and filters based on lower bound cost.
@@ -56,8 +56,8 @@ namespace karri {
         PBNSAssignmentsFinder(const RelevantPDLocs &relPickupsBns, const RelevantPDLocs &relOrdinaryDropoffs,
                               const RelevantPDLocs &relDropoffsBns, const PDDistancesT &pdDistances,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
-                              const Fleet &fleet, const CostCalculator &calculator,
-                              const RouteState &routeState, RequestState &requestState)
+                              const Fleet &fleet, const CostCalculatorT &calculator,
+                              const RouteStateT &routeState, RequestState<CostCalculatorT> &requestState)
                 : relPickupsBNS(relPickupsBns),
                   relOrdinaryDropoffs(relOrdinaryDropoffs),
                   relDropoffsBNS(relDropoffsBns),
@@ -334,9 +334,9 @@ namespace karri {
         const PDDistancesT &pdDistances;
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         const Fleet &fleet;
-        const CostCalculator &calculator;
-        const RouteState &routeState;
-        RequestState &requestState;
+        const CostCalculatorT &calculator;
+        const RouteStateT &routeState;
+        RequestState<CostCalculatorT> &requestState;
 
         int numAssignmentsTriedWithPickupBeforeNextStop;
         std::vector<Continuation> ordinaryContinuations;

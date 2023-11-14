@@ -43,7 +43,8 @@ namespace karri {
             typename PbnsAssignmentsT,
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
-            typename RelevantPDLocsFilterT
+            typename RelevantPDLocsFilterT,
+            typename RouteStateT
     >
     class AssignmentFinder {
 
@@ -53,7 +54,7 @@ namespace karri {
                          EllipticBCHSearchesT &ellipticBchSearches, PDDistanceSearchesT &pdDistanceSearches,
                          OrdAssignmentsT &ordinaryAssigments, PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments, DalsAssignmentsT &dalsAssignments,
-                         RelevantPDLocsFilterT &relevantPdLocsFilter, RouteState routeState)
+                         RelevantPDLocsFilterT &relevantPdLocsFilter, RouteStateT &routeState)
                 : reqState(requestState),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
@@ -102,8 +103,6 @@ namespace karri {
         void initializeForRequest(const Request &req) {
             requestStateInitializer.initializeRequestState(req);
 
-            routeState.addRequest(req);
-
             // Initialize components according to new request state:
             ellipticBchSearches.init();
             pdDistanceSearches.init();
@@ -124,6 +123,6 @@ namespace karri {
         RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
 
 
-        RouteState routeState;
+        RouteStateT &routeState;
     };
 }

@@ -38,7 +38,12 @@
 namespace karri {
 
 
-    template<typename InputGraphT, typename VehicleLocatorT, typename CHEnvT, typename LabelSetT>
+    template<typename InputGraphT,
+            typename VehicleLocatorT,
+            typename CHEnvT,
+            typename LabelSetT,
+            typename RouteStateT,
+            typename CostCalculatorT>
     class CurVehLocToPickupSearches {
 
     private:
@@ -112,8 +117,8 @@ namespace karri {
         CurVehLocToPickupSearches(const InputGraphT &graph,
                                   VehicleLocatorT &locator,
                                   const CHEnvT &chEnv,
-                                  const RouteState &routeState,
-                                  RequestState &requestState,
+                                  const RouteStateT &routeState,
+                                  RequestState<CostCalculatorT> &requestState,
                                   const int fleetSize)
                 : inputGraph(graph),
                   vehicleLocator(locator),
@@ -330,8 +335,8 @@ namespace karri {
         const InputGraphT &inputGraph;
         VehicleLocatorT &vehicleLocator;
         const CH &ch;
-        const RouteState &routeState;
-        RequestState &requestState;
+        const RouteStateT &routeState;
+        RequestState<CostCalculatorT> &requestState;
         const int fleetSize;
 
 

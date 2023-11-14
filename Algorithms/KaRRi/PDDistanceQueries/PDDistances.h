@@ -31,7 +31,7 @@
 namespace karri {
 
 // Representation of PD-distances, i.e. distances from pickups to dropoffs.
-    template<typename LabelSetT>
+    template<typename LabelSetT, typename CostCalculatorT>
     struct PDDistances {
         using DistanceLabel = typename LabelSetT::DistanceLabel;
         using LabelMask = typename LabelSetT::LabelMask;
@@ -39,7 +39,7 @@ namespace karri {
         static constexpr int K = LabelSetT::K;
 
 
-        PDDistances(const RequestState &requestState) : requestState(requestState) {}
+        PDDistances(const RequestState<CostCalculatorT> &requestState) : requestState(requestState) {}
 
         void clear() {
             minDirectDist = INFTY;
@@ -125,7 +125,7 @@ namespace karri {
             return distances[(pickupId / K) * requestState.numDropoffs() + dropoffId];
         }
 
-        const RequestState &requestState;
+        const RequestState<CostCalculatorT> &requestState;
 
         // Distances are stored as vectors of size K (DistanceLabel).
         // ceil(numPickups / K) labels per dropoff, sequentially arranged by increasing dropoffId.

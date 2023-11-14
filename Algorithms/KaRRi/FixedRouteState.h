@@ -17,7 +17,7 @@
 
 namespace karri {
 
-    template<typename VehGraphT, typename WeightT>
+    template<typename VehicleToPDLocQueryT>
     class FixedRouteState {
     private:
         // Index Array:
@@ -107,11 +107,11 @@ namespace karri {
 
         const int stopTime;
 
-        const VehicleToPDLocQuery<VehGraphT, WeightT> &distQuery;
+        const VehicleToPDLocQueryT &distQuery;
 
 
     public:
-        FixedRouteState(const Fleet &fleet, const int stopTime, const VehicleToPDLocQuery<VehGraphT, WeightT> &query)
+        FixedRouteState(const Fleet &fleet, const int stopTime, const VehicleToPDLocQueryT &query)
                 : pos(fleet.size()),
                   stopIds(fleet.size()),
                   stopLocations(fleet.size()),
@@ -427,12 +427,10 @@ namespace karri {
 
 
             // Remember that request is picked up and dropped of at respective stops:
-            insertion(stopIds[start + pickupIndex], ins.req.requestId,
+            insertion(stopIds[start + pickupIndex], ins.requestId,
                       rangeOfRequestsPickedUpAtStop, requestsPickedUpAtStop);
-            insertion(stopIds[start + dropoffIndex], ins.req.requestId,
+            insertion(stopIds[start + dropoffIndex], ins.requestId,
                       rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
-
-            removeStartOfCurrentLeg(vehId);
         }
 
         void removeStartOfCurrentLeg(const int vehId) {

@@ -38,7 +38,7 @@
 namespace karri {
 
 
-    template<typename LabelSetT>
+    template<typename LabelSetT, typename RouteStateT>
     class FeasibleEllipticDistances {
 
 
@@ -51,7 +51,7 @@ namespace karri {
 
     public:
 
-        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState)
+        explicit FeasibleEllipticDistances(const int fleetSize, const RouteStateT &routeState)
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
                   startOfRangeInValueArray(fleetSize),
@@ -264,7 +264,7 @@ namespace karri {
             minDistFromPDLocToNextStop[stopId] = INFTY;
         }
 
-        const RouteState &routeState;
+        const RouteStateT &routeState;
 
         int numLabelsPerStop{};
         const int &maxStopId;

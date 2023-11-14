@@ -33,14 +33,17 @@
 
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
+#include "Algorithms/KaRRi/BaseObjects/Insertion.h"
+#include "FixedRouteState.h"
 
 namespace karri {
 
 // Represents the state of all vehicle routes including the stop locations and schedules.
+    template<typename FixedRouteStateT>
     class RouteState {
 
     public:
-        RouteState(const Fleet &fleet, const int stopTime)
+        RouteState(const Fleet &fleet, const int stopTime, FixedRouteStateT &fixedState)
                 : pos(fleet.size()),
                   stopIds(fleet.size()),
                   stopLocations(fleet.size()),
@@ -66,7 +69,8 @@ namespace karri {
                   unusedStopIds(),
                   nextUnusedStopId(fleet.size()),
                   maxStopId(fleet.size() - 1),
-                  stopTime(stopTime) {
+                  stopTime(stopTime),
+                  fixedState(fixedState) {
             for (auto i = 0; i < fleet.size(); ++i) {
                 pos[i].start = i;
                 pos[i].end = i + 1;
@@ -225,6 +229,8 @@ namespace karri {
             auto pickupIndex = asgn.pickupStopIdx;
             auto dropoffIndex = asgn.dropoffStopIdx;
 
+            addInsertion(asgn, requestState);
+
             assert(pickupIndex >= 0);
             assert(pickupIndex < end - start);
             assert(dropoffIndex >= 0);
@@ -377,10 +383,13 @@ namespace karri {
             const auto &start = pos[vehId].start;
             assert(pos[vehId].end - start > 0);
             const bool haveToRecomputeMaxLeeway = stopIds[start] == stopIdOfMaxLeeway;
+
+            updateFixedRouteState();
+
             stopIdToVehicleId[stopIds[start]] = INVALID_ID;
             stopIdToLeeway[stopIds[start]] = 0;
             stopIdToPosition[stopIds[start]] = INVALID_INDEX;
-            updateRequestStatuses(stopIds[start]);
+            updateInsertionStatuses(stopIds[start]);
             removalOfAllCols(stopIds[start], rangeOfRequestsPickedUpAtStop, requestsPickedUpAtStop);
             removalOfAllCols(stopIds[start], rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
             unusedStopIds.push(stopIds[start]);
@@ -418,6 +427,7 @@ namespace karri {
             schedArrTimes[start] = depTime - stopTime;
             recalculateVehWaitTimesPrefixSum(start, end - 1, 0);
             recalculateVehWaitTimesAtDropoffsPrefixSum(start, end - 1, 0);
+            fixedState.updateStartOfCurrentLeg(vehId, location, depTime);
         }
 
         // Scheduled stop interface for event simulation
@@ -442,12 +452,40 @@ namespace karri {
             return getScheduledStop(vehId, 0);
         }
 
-        void addRequest(const Request &req) {
-            requests.insert(requests.begin() +  req.requestId, req);
-        }
-
 
     private:
+
+        void updateFixedRouteState(const int vehId) {
+            const int start = stopIds[pos[vehId].start];
+            for (int i = rangeOfRequestsPickedUpAtStop[start].start; i < rangeOfRequestsPickedUpAtStop[start].end; i++) {
+                recalculatePDindex(insertions[requestsPickedUpAtStop[i]].asgn);
+                fixedState.insertFixedStop(insertions[requestsPickedUpAtStop[i]]);
+            }
+            fixedState.removeStartOfCurrentLeg();
+        }
+
+        template<typename RequestStateT>
+        void addInsertion(Assignment &ass, RequestStateT &req) {
+            Insertion ins(ass, req.originalRequest.requestId, req.originalRequest.requestTime,
+                          req.getPassengerArrAtPickup(ass.pickup->id), req.getMaxDepTimeAtPickup(),
+                          req.getMaxArrTimeAtDropoff(ass.pickup->id, ass.dropoff->id));
+
+            insertions.insert(insertions.begin() + req.originalRequest.requestId, ins);
+        }
+
+        void recalculatePDindex(Assignment &ass) {
+            ass.pickupStopIdx = 0;
+            const int start = pos[ass.vehicle->vehicleId].start;
+            int dropoffIdx = 0;
+            int count = 0;
+            while (count < ass.dropoffStopIdx) {
+                if (isSetStop(stopIds[start + count])) {
+                    dropoffIdx++;
+                }
+                count++;
+            }
+            ass.dropoffStopIdx = dropoffIdx;
+        }
 
         ScheduledStop getScheduledStop(const int vehId, const int stopIndex) const {
             assert(numStopsOf(vehId) > stopIndex);
@@ -616,20 +654,22 @@ namespace karri {
             }
         }
 
-        void updateRequestStatuses(const int stopId) {
+        void updateInsertionStatuses(const int stopId) {
             for (int i = rangeOfRequestsPickedUpAtStop[stopId].start; i < rangeOfRequestsPickedUpAtStop[stopId].end; i++) {
-                requests[requestsPickedUpAtStop[i]].enteredCar = true;
+                insertions[requestsPickedUpAtStop[i]].enteredCar = true;
             }
         }
 
         bool isSetStop(const int stopId) const {
             for (int i = rangeOfRequestsDroppedOffAtStop[stopId].start; i < rangeOfRequestsDroppedOffAtStop[stopId].end; i++) {
-                if (requests[requestsDroppedOffAtStop[i]].enteredCar) {
+                if (insertions[requestsDroppedOffAtStop[i]].enteredCar) {
                     return true;
                 }
             }
             return false;
         }
+
+        FixedRouteStateT &fixedState;
 
         // Index Array:
 
@@ -698,7 +738,7 @@ namespace karri {
         std::vector<ValueBlockPosition> rangeOfRequestsDroppedOffAtStop;
         std::vector<int> requestsDroppedOffAtStop;
 
-        std::vector<Request> requests;
+        std::vector<Insertion> insertions;
 
 
         // Other data:

@@ -35,8 +35,6 @@ namespace karri {
         int origin = INVALID_EDGE;
         int destination = INVALID_EDGE;
         int requestTime = INFTY;
-        int currAssCost = INFTY;
-        bool enteredCar = false;
     };
 
     // Models a location used for a pickup or dropoff with an ID (should be counted separately for pickups and dropoffs), a

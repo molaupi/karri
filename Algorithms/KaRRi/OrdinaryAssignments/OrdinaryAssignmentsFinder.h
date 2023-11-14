@@ -37,7 +37,7 @@ namespace karri {
 // are inserted between the same pair of existing stops.
 //
 // Works based on filtered relevant PD locs.
-    template<typename PDDistancesT>
+    template<typename PDDistancesT, typename RouteStateT, typename CostCalculatorT>
     class OrdinaryAssignmentsFinder {
 
 
@@ -45,8 +45,8 @@ namespace karri {
 
         OrdinaryAssignmentsFinder(const RelevantPDLocs &relPickups, const RelevantPDLocs &relDropoffs,
                                   const PDDistancesT &pdDistances, const Fleet &fleet,
-                                  const CostCalculator &calculator, const RouteState &routeState,
-                                  RequestState &requestState)
+                                  const CostCalculatorT &calculator, const RouteStateT &routeState,
+                                  RequestState<CostCalculatorT> &requestState)
                 : relPickups(relPickups),
                   relDropoffs(relDropoffs),
                   pdDistances(pdDistances),
@@ -293,8 +293,8 @@ namespace karri {
         const RelevantPDLocs &relDropoffs;
         const PDDistancesT &pdDistances;
         const Fleet &fleet;
-        const CostCalculator &calculator;
-        const RouteState &routeState;
-        RequestState &requestState;
+        const CostCalculatorT &calculator;
+        const RouteStateT &routeState;
+        RequestState<CostCalculatorT> &requestState;
     };
 }
