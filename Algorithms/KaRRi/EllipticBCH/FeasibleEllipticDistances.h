@@ -89,8 +89,8 @@ namespace karri {
             for (int i = 0; i < numLabelsPerStop * (maxStopId + 1); i++) {
                 distToRelevantPDLocs[i] = DistanceLabel(INFTY);
                 distFromRelevantPDLocsToNextStop[i] = DistanceLabel(INFTY);
-                meetingVerticesToRelevantPDLocs[i] = DistanceLabel(INFTY);
-                meetingVerticesFromRelevantPDLocsToNextStop[i] = DistanceLabel(INFTY);
+                meetingVerticesToRelevantPDLocs[i] = DistanceLabel(INVALID_VERTEX);
+                meetingVerticesFromRelevantPDLocsToNextStop[i] = DistanceLabel(INVALID_VERTEX);
             }
 
             // if (maxStopId >= startOfRangeInValueArray.size()) {
@@ -133,7 +133,7 @@ namespace karri {
         void preallocateEntriesFor(const int stopId) {
             UNUSED(stopId);
             // if (!hasPotentiallyRelevantPDLocs(stopId))
-                // allocateEntriesFor(stopId);
+            //     allocateEntriesFor(stopId);
         }
 
         // Updates the distance from stop to the PD loc. Distance is written if there are
@@ -155,7 +155,7 @@ namespace karri {
             // }
 
             // Write values for new entry and set pointer from PD loc to the entries
-            const auto idx = stopId * numLabelsPerStop + firstPDLocId / K;
+            const auto idx = (stopId * numLabelsPerStop) + (firstPDLocId / K);
             const LabelMask improved = newDistToPDLoc < distToRelevantPDLocs[idx];
             distToRelevantPDLocs[idx].setIf(newDistToPDLoc, improved);
             meetingVerticesToRelevantPDLocs[idx].setIf(meetingVertex, improved);
@@ -178,7 +178,8 @@ namespace karri {
             // Therefore, this stop cannot be relevant on both sides which means we can skip it here.
             if (allSet(distToRelevantPDLocs[stopId * numLabelsPerStop] == DistanceLabel(INFTY)))
                 return LabelMask(false);
-            const auto idx = stopId * numLabelsPerStop + firstPDLocId / K;
+
+            const auto idx = (stopId * numLabelsPerStop) + (firstPDLocId / K);
             const LabelMask improved = newDistFromPDLocToNextStop < distFromRelevantPDLocsToNextStop[idx];
             distFromRelevantPDLocsToNextStop[idx].setIf(newDistFromPDLocToNextStop, improved);
             meetingVerticesFromRelevantPDLocsToNextStop[idx].setIf(meetingVertex, improved);
@@ -224,7 +225,7 @@ namespace karri {
 
         PerPDLocFacade distancesToRelevantPDLocsFor(const int stopId) const {
             assert(stopId <= maxStopId);
-            // assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
+
             const auto start = stopId * numLabelsPerStop;
             assert(distToRelevantPDLocs.begin() + start + numLabelsPerStop <= distToRelevantPDLocs.end());
             return {distToRelevantPDLocs.begin() + start, numLabelsPerStop};
@@ -247,7 +248,6 @@ namespace karri {
 
         PerPDLocFacade distancesFromRelevantPDLocsToNextStopOf(const int stopId) const {
             assert(stopId <= maxStopId);
-            // assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
             const auto start = stopId * numLabelsPerStop;
             assert(distFromRelevantPDLocsToNextStop.begin() + start + numLabelsPerStop <=
                    distFromRelevantPDLocsToNextStop.end());
