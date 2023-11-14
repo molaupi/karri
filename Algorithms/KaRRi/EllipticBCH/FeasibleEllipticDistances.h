@@ -35,6 +35,8 @@
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
+#include <atomic>
+
 #define UNUSED(x) (void)(x)
 
 namespace karri {
@@ -160,8 +162,12 @@ namespace karri {
             distToRelevantPDLocs[idx].setIf(newDistToPDLoc, improved);
             meetingVerticesToRelevantPDLocs[idx].setIf(meetingVertex, improved);
 
-            auto &globalMin = minDistToPDLoc[stopId];
-            globalMin.min(newDistToPDLoc);
+            // todo: Allow this for K != 1 as well
+            const int newDistToPdLocAsInt = newDistToPDLoc[0];
+
+            auto& minFromStopAtomic = minDistToPDLoc[stopId];
+            int expectedMinForStop = minFromStopAtomic.load(std::memory_order_relaxed);
+            while(expectedMinForStop > newDistToPdLocAsInt && !minFromStopAtomic.compare_exchange_strong(expectedMinForStop, newDistToPdLocAsInt, std::memory_order_relaxed));
 
             return improved;
         }
@@ -184,8 +190,12 @@ namespace karri {
             distFromRelevantPDLocsToNextStop[idx].setIf(newDistFromPDLocToNextStop, improved);
             meetingVerticesFromRelevantPDLocsToNextStop[idx].setIf(meetingVertex, improved);
 
-            auto &globalMin = minDistFromPDLocToNextStop[stopId];
-            globalMin.min(newDistFromPDLocToNextStop);
+            // todo: Allow this for K != 1 as well
+            const int newDistFromPdLocToNextStopAsInt = newDistFromPDLocToNextStop[0];
+
+            auto& minToStopAtomic = minDistFromPDLocToNextStop[stopId];
+            int expectedMinForStop = minToStopAtomic.load(std::memory_order_relaxed);
+            while(expectedMinForStop > newDistFromPdLocToNextStopAsInt && !minToStopAtomic.compare_exchange_strong(expectedMinForStop, newDistFromPdLocToNextStopAsInt, std::memory_order_relaxed));
 
             return improved;
         }
@@ -234,7 +244,7 @@ namespace karri {
         int minDistToRelevantPDLocsFor(const int stopId) const {
             assert(stopId <= maxStopId);
             // assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
-            return minDistToPDLoc[stopId].horizontalMin();
+            return minDistToPDLoc[stopId];
         }
 
         PerPDLocFacade meetingVerticesToRelevantPDLocsFor(const int stopId) const {
@@ -257,7 +267,7 @@ namespace karri {
         int minDistFromPDLocToNextStopOf(const int stopId) const {
             assert(stopId <= maxStopId);
             // assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
-            return minDistFromPDLocToNextStop[stopId].horizontalMin();
+            return minDistFromPDLocToNextStop[stopId];
         }
 
         PerPDLocFacade meetingVerticesFromRelevantPDLocsToNextStopOf(const int stopId) const {
@@ -310,8 +320,8 @@ namespace karri {
 
         Subset vehiclesWithRelevantPDLocs;
 
-        std::vector<DistanceLabel> minDistToPDLoc;
-        std::vector<DistanceLabel> minDistFromPDLocToNextStop;
+        std::vector<std::atomic_int> minDistToPDLoc;
+        std::vector<std::atomic_int> minDistFromPDLocToNextStop;
 
     };
 

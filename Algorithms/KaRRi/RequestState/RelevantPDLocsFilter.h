@@ -201,7 +201,7 @@ namespace karri {
 
         inline bool isPickupRelevant(const Vehicle &veh, const int stopIndex, const unsigned int pickupId,
                                      const int distFromStopToPickup,
-                                     const int distFromPickupToNextStop) const {
+                                     const int distFromPickupToNextStop) {
             using namespace time_utils;
 
             const int &vehId = veh.vehicleId;
@@ -210,6 +210,8 @@ namespace karri {
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
+            assert(distFromStopToPickup >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc));
+            assert(distFromPickupToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc));
             assert(distFromStopToPickup + distFromPickupToNextStop >=
                    calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
 
