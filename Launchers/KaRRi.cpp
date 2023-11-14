@@ -481,7 +481,8 @@ int main(int argc, char *argv[]) {
 #if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
     KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
 
-    using LastStopBucketsEnv = std::conditional_t<KARRI_LAST_STOP_BCH_SORTED_BUCKETS,
+    static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
+    using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
             SortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
             UnsortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
     >;

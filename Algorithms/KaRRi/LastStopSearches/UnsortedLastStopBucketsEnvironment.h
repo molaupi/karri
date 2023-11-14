@@ -122,15 +122,24 @@ namespace karri {
         }
 
 
-        void generateBucketEntries(const Vehicle &veh, const int stopIndex) {
-            assert(stopIndex == routeState.numStopsOf(veh.vehicleId) - 1);
+        void generateIdleBucketEntries(const Vehicle &veh) {
+            // No differentiation between idle and non-idle vehicles.
+            generateBucketEntries(veh);
+        }
+
+        void generateNonIdleBucketEntries(const Vehicle& veh) {
+            // No differentiation between idle and non-idle vehicles.
+            generateBucketEntries(veh);
+        }
+
+        void generateBucketEntries(const Vehicle &veh) {
 
             Timer timer;
-            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
-            const auto stopVertex = inputGraph.edgeHead(stopLoc);
-
             vehicleId = veh.vehicleId;
             const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[numStops - 1];
+            const auto stopVertex = inputGraph.edgeHead(stopLoc);
+
             const int depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
 
             maxDetourUntilEndOfServiceTime = veh.endOfServiceTime - depTimeOfVehAtLastStop;
@@ -138,6 +147,21 @@ namespace karri {
             entryGenSearch.run(ch.rank(stopVertex));
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.lastStopBucketsGenerateEntriesTime += time;
+        }
+
+        void updateBucketEntries(const Vehicle &, const int) {
+            // No op since bucket updates are only needed for buckets that are sorted by arrival time at last stop
+            // for non-idle vehicles.
+        }
+
+        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
+            // No differentiation between idle and non-idle vehicles.
+            removeBucketEntries(veh, prevLastStopIdx);
+        }
+
+        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
+            // No differentiation between idle and non-idle vehicles.
+            removeBucketEntries(veh, prevLastStopIdx);
         }
 
         void removeBucketEntries(const Vehicle &veh, const int stopIndex) {
