@@ -12,3 +12,5 @@
 /.project
 /.pydevproject
 /.idea/
+
+/Publications/output*
