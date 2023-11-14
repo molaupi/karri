@@ -33,6 +33,8 @@ namespace karri::DropoffAfterLastStopStrategies {
             typename CHEnvT,
             typename LastStopBucketsEnvT,
             typename IsVehEligibleForDropoffAfterLastStop,
+            typename RouteStateT,
+            typename CostCalculatorT,
             bool STALL_LABELS = true,
             typename QueueT = AddressableQuadHeap>
     class MinCostDropoffAfterLastStopQuery {
@@ -54,11 +56,11 @@ namespace karri::DropoffAfterLastStopStrategies {
         MinCostDropoffAfterLastStopQuery(const InputGraphT &inputGraph,
                                          const Fleet &fleet,
                                          const CHEnvT &chEnv,
-                                         const CostCalculator &calculator,
+                                         const CostCalculatorT &calculator,
                                          const LastStopBucketsEnvT &lastStopBucketsEnv,
                                          const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop,
-                                         const RouteState &routeState,
-                                         const RequestState &requestState,
+                                         const RouteStateT &routeState,
+                                         const RequestState<CostCalculatorT> &requestState,
                                          const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
                   fleet(fleet),
@@ -192,7 +194,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
             const auto maxTripDiff = maxDetourDiff + walkDiff;
 
-            using F = CostCalculator::CostFunction;
+            using F = typename CostCalculatorT::CostFunction;
             const auto costDiffNoTripVio = F::VEH_WEIGHT * maxDetourDiff + F::PSG_WEIGHT * maxTripDiff + F::WALK_WEIGHT * walkDiff;
             const auto costDiffTripVio = costDiffNoTripVio + F::TRIP_VIO_WEIGHT * maxTripDiff;
             return costDiffNoTripVio < 0 && costDiffTripVio < 0;
@@ -432,11 +434,11 @@ namespace karri::DropoffAfterLastStopStrategies {
         const CH &ch;
         const typename CH::SearchGraph &searchGraph;
         const typename CH::SearchGraph &oppositeGraph;
-        const CostCalculator &calculator;
+        const CostCalculatorT &calculator;
         const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
         const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop;
-        const RouteState &routeState;
-        const RequestState &requestState;
+        const RouteStateT &routeState;
+        const RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
 
         VertexBucketContainer vertexLabelBuckets;

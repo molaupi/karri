@@ -48,9 +48,9 @@ namespace karri::PickupAfterLastStopStrategies {
             typename CostCalculatorT>
     class CollectiveBCHStrategy {
 
-        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT>;
+        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, RouteStateT, CostCalculatorT>;
 
-        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, FallbackLabelSetT>;
+        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, FallbackLabelSetT, CostCalculatorT, RouteStateT>;
 
     public:
 

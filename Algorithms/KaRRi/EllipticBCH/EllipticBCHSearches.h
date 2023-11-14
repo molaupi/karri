@@ -45,7 +45,9 @@ namespace karri {
             typename CostFunctionT,
             typename EllipticBucketsEnvT,
             typename FeasibleEllipticDistancesT,
-            typename LabelSetT>
+            typename LabelSetT,
+            typename RouteStateT,
+            typename CostCalculatorT>
     class EllipticBCHSearches {
 
     private:
@@ -147,7 +149,7 @@ namespace karri {
 
         struct UpdateDistancesFromPDLocs {
 
-            UpdateDistancesFromPDLocs(const RouteState &routeState)
+            UpdateDistancesFromPDLocs(const RouteStateT &routeState)
                     : routeState(routeState), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
@@ -173,7 +175,7 @@ namespace karri {
             }
 
         private:
-            const RouteState &routeState;
+            const RouteStateT &routeState;
             FeasibleEllipticDistancesT *curFeasible;
             int curFirstIdOfBatch;
         };
@@ -196,10 +198,10 @@ namespace karri {
                             const EllipticBucketsEnvT &ellipticBucketsEnv,
                             const LastStopsAtVertices &lastStopsAtVertices,
                             const CHEnvT &chEnv,
-                            const RouteState &routeState,
+                            const RouteStateT &routeState,
                             FeasibleEllipticDistancesT &feasibleEllipticPickups,
                             FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
-                            RequestState &requestState)
+                            RequestState<CostCalculatorT> &requestState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   ch(chEnv.getCH()),
@@ -389,8 +391,8 @@ namespace karri {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CH &ch;
-        const RouteState &routeState;
-        RequestState &requestState;
+        const RouteStateT &routeState;
+        RequestState<CostCalculatorT> &requestState;
 
         const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
         const LastStopsAtVertices &lastStopsAtVertices;

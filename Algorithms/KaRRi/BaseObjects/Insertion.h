@@ -12,12 +12,12 @@
 
 namespace karri {
     struct Insertion {
-        Assignment &asgn;
-        int requestId;
-        int requestTime;
-        int passengerArrAtPickup;
-        int maxDepTimeAtPickup;
-        int maxArrTimeAtDropoff;
+        Assignment *asgn = nullptr;
+        int requestId = INVALID_ID;
+        int requestTime = -1;
+        int passengerArrAtPickup = -1;
+        int maxDepTimeAtPickup = -1;
+        int maxArrTimeAtDropoff = -1;
         bool enteredCar = false;
     };
 }

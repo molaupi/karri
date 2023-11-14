@@ -32,7 +32,7 @@
 
 namespace karri::PickupAfterLastStopStrategies {
 
-    template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsEnvT, typename PDDistancesT, typename LabelSetT>
+    template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsEnvT, typename PDDistancesT, typename LabelSetT, typename CostCalculatorT, typename RouteStateT>
     class IndividualBCHStrategy {
 
         static constexpr int K = LabelSetT::K;
@@ -41,7 +41,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         struct PickupAfterLastStopPruner {
 
-            PickupAfterLastStopPruner(IndividualBCHStrategy &strat, const CostCalculator &calc)
+            PickupAfterLastStopPruner(IndividualBCHStrategy &strat, const CostCalculatorT &calc)
                     : strat(strat), calc(calc) {}
 
             LabelMask isWorseThanUpperBoundCost(const DistanceLabel &distancesToPickups,
@@ -79,7 +79,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         private:
             IndividualBCHStrategy &strat;
-            const CostCalculator &calc;
+            const CostCalculatorT &calc;
         };
 
         using PickupBCHQuery = LastStopBCHQuery<CHEnvT, LastStopBucketsEnvT, PickupAfterLastStopPruner, LabelSetT>;
@@ -89,11 +89,11 @@ namespace karri::PickupAfterLastStopStrategies {
         IndividualBCHStrategy(const InputGraphT &inputGraph,
                               const Fleet &fleet,
                               const CHEnvT &chEnv,
-                              const CostCalculator &calculator,
+                              const CostCalculatorT &calculator,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const PDDistancesT &pdDistances,
-                              const RouteState &routeState,
-                              RequestState &requestState,
+                              const RouteStateT &routeState,
+                              RequestState<CostCalculatorT> &requestState,
                               const int& bestCostBeforeQuery,
                               const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
@@ -232,10 +232,10 @@ namespace karri::PickupAfterLastStopStrategies {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const CostCalculator &calculator;
+        const CostCalculatorT &calculator;
         const PDDistancesT &pdDistances;
-        const RouteState &routeState;
-        RequestState &requestState;
+        const RouteStateT &routeState;
+        RequestState<CostCalculatorT> &requestState;
         const int& bestCostBeforeQuery;
         const InputConfig &inputConfig;
 

@@ -44,7 +44,8 @@ namespace karri {
 
     public:
         RouteState(const Fleet &fleet, const int stopTime, FixedRouteStateT &fixedState)
-                : pos(fleet.size()),
+                : fixedState(fixedState),
+                  pos(fleet.size()),
                   stopIds(fleet.size()),
                   stopLocations(fleet.size()),
                   schedArrTimes(fleet.size()),
@@ -69,8 +70,7 @@ namespace karri {
                   unusedStopIds(),
                   nextUnusedStopId(fleet.size()),
                   maxStopId(fleet.size() - 1),
-                  stopTime(stopTime),
-                  fixedState(fixedState) {
+                  stopTime(stopTime) {
             for (auto i = 0; i < fleet.size(); ++i) {
                 pos[i].start = i;
                 pos[i].end = i + 1;
@@ -217,6 +217,12 @@ namespace karri {
             return maxLegLength;
         }
 
+        void addInsertion(Assignment ass, int requestId, int requestTime, int passArrAtPickup, int maxDepAtPickup, int maxArrAtDropoff) {
+            Insertion ins = {&ass, requestId, requestTime, passArrAtPickup, maxDepAtPickup, maxArrAtDropoff};
+            std::vector<Insertion>::iterator iter = insertions.begin() + requestId;
+            insertions.insert(iter, ins);
+        }
+
         template<typename RequestStateT>
         std::pair<int, int>
         insert(const Assignment &asgn, const RequestStateT &requestState) {
@@ -229,7 +235,9 @@ namespace karri {
             auto pickupIndex = asgn.pickupStopIdx;
             auto dropoffIndex = asgn.dropoffStopIdx;
 
-            addInsertion(asgn, requestState);
+            addInsertion(asgn, requestState.originalRequest.requestId, requestState.originalRequest.requestTime,
+                         requestState.getPassengerArrAtPickup(asgn.pickup->id), requestState.getMaxDepTimeAtPickup(),
+                         requestState.getMaxArrTimeAtDropoff(asgn.pickup->id, asgn.dropoff->id));
 
             assert(pickupIndex >= 0);
             assert(pickupIndex < end - start);
@@ -384,7 +392,7 @@ namespace karri {
             assert(pos[vehId].end - start > 0);
             const bool haveToRecomputeMaxLeeway = stopIds[start] == stopIdOfMaxLeeway;
 
-            updateFixedRouteState();
+            updateFixedRouteState(vehId);
 
             stopIdToVehicleId[stopIds[start]] = INVALID_ID;
             stopIdToLeeway[stopIds[start]] = 0;
@@ -458,19 +466,10 @@ namespace karri {
         void updateFixedRouteState(const int vehId) {
             const int start = stopIds[pos[vehId].start];
             for (int i = rangeOfRequestsPickedUpAtStop[start].start; i < rangeOfRequestsPickedUpAtStop[start].end; i++) {
-                recalculatePDindex(insertions[requestsPickedUpAtStop[i]].asgn);
+                recalculatePDindex(*insertions[requestsPickedUpAtStop[i]].asgn);
                 fixedState.insertFixedStop(insertions[requestsPickedUpAtStop[i]]);
             }
-            fixedState.removeStartOfCurrentLeg();
-        }
-
-        template<typename RequestStateT>
-        void addInsertion(Assignment &ass, RequestStateT &req) {
-            Insertion ins(ass, req.originalRequest.requestId, req.originalRequest.requestTime,
-                          req.getPassengerArrAtPickup(ass.pickup->id), req.getMaxDepTimeAtPickup(),
-                          req.getMaxArrTimeAtDropoff(ass.pickup->id, ass.dropoff->id));
-
-            insertions.insert(insertions.begin() + req.originalRequest.requestId, ins);
+            fixedState.removeStartOfCurrentLeg(vehId);
         }
 
         void recalculatePDindex(Assignment &ass) {

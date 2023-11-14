@@ -107,11 +107,11 @@ namespace karri {
 
         const int stopTime;
 
-        const VehicleToPDLocQueryT &distQuery;
+        VehicleToPDLocQueryT &distQuery;
 
 
     public:
-        FixedRouteState(const Fleet &fleet, const int stopTime, const VehicleToPDLocQueryT &query)
+        FixedRouteState(const Fleet &fleet, const int stopTime, VehicleToPDLocQueryT &query)
                 : pos(fleet.size()),
                   stopIds(fleet.size()),
                   stopLocations(fleet.size()),
@@ -294,16 +294,16 @@ namespace karri {
         }
 
         void insertFixedStop(Insertion &ins) {
-            const auto vehId = ins.asgn.vehicle->vehicleId;
-            const auto &pickup = *ins.asgn.pickup;
-            const auto &dropoff = *ins.asgn.dropoff;
+            const auto vehId = ins.asgn->vehicle->vehicleId;
+            const auto &pickup = *ins.asgn->pickup;
+            const auto &dropoff = *ins.asgn->dropoff;
             const int now = ins.requestTime;
             const auto &start = pos[vehId].start;
             const auto &end = pos[vehId].end;
-            auto pickupIndex = ins.asgn.pickupStopIdx;
-            auto dropoffIndex = ins.asgn.dropoffStopIdx;
+            auto pickupIndex = ins.asgn->pickupStopIdx;
+            auto dropoffIndex = ins.asgn->dropoffStopIdx;
 
-            recalculateDistances(ins.asgn);
+            recalculateDistances(*ins.asgn);
 
             bool pickupInsertedAsNewStop = false;
             bool dropoffInsertedAsNewStop = false;
@@ -330,7 +330,7 @@ namespace karri {
                                 schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
                                 numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
                 stopLocations[start + pickupIndex] = pickup.loc;
-                schedArrTimes[start + pickupIndex] = schedDepTimes[start + pickupIndex - 1] + ins.asgn.distToPickup; //TODO: eig. distToPickup aber ist eig. 0?
+                schedArrTimes[start + pickupIndex] = schedDepTimes[start + pickupIndex - 1] + ins.asgn->distToPickup; //TODO: eig. distToPickup aber ist eig. 0?
                 schedDepTimes[start + pickupIndex] = std::max(schedArrTimes[start + pickupIndex] + stopTime, ins.passengerArrAtPickup);
                 maxArrTimes[start + pickupIndex] = ins.maxDepTimeAtPickup - stopTime;
                 occupancies[start + pickupIndex] = occupancies[start + pickupIndex - 1];
@@ -340,7 +340,7 @@ namespace karri {
 
             if (pickupIndex != dropoffIndex) {
                 // Propagate changes to minArrTime/minDepTime forward from inserted pickup stop until dropoff stop
-                propagateSchedArrAndDepForward(start + pickupIndex + 1, start + dropoffIndex, ins.asgn.distFromPickup);
+                propagateSchedArrAndDepForward(start + pickupIndex + 1, start + dropoffIndex, ins.asgn->distFromPickup);
             }
 
             if (pickup.loc != dropoff.loc && dropoff.loc == stopLocations[start + dropoffIndex]) {
@@ -352,7 +352,7 @@ namespace karri {
                                 maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
                 stopLocations[start + dropoffIndex] = dropoff.loc;
                 schedArrTimes[start + dropoffIndex] =
-                        schedDepTimes[start + dropoffIndex - 1] + ins.asgn.distToDropoff;
+                        schedDepTimes[start + dropoffIndex - 1] + ins.asgn->distToDropoff;
                 schedDepTimes[start + dropoffIndex] = schedArrTimes[start + dropoffIndex] + stopTime;
                 // compare maxVehArrTime to next stop later
                 maxArrTimes[start + dropoffIndex] = ins.maxArrTimeAtDropoff;
@@ -365,7 +365,7 @@ namespace karri {
             if (start + dropoffIndex < end - 1) {
                 // At this point minDepTimes[start + dropoffIndex] is correct. If dropoff has been inserted not as the last
                 // stop, propagate the changes to minDep and minArr times forward until the last stop.
-                propagateSchedArrAndDepForward(start + dropoffIndex + 1, end - 1, ins.asgn.distFromDropoff);
+                propagateSchedArrAndDepForward(start + dropoffIndex + 1, end - 1, ins.asgn->distFromDropoff);
 
                 // If there are stops after the dropoff, consider them for propagating changes to the maxArrTimes
                 propagateMaxArrTimeBackward(start + dropoffIndex, start + pickupIndex);
@@ -509,27 +509,34 @@ namespace karri {
             int start = pos[ass.vehicle->vehicleId].start;
             int end = pos[ass.vehicle->vehicleId].end;
             PDLoc point;
+            PDLoc pickup = *ass.pickup;
+            PDLoc dropoff = *ass.dropoff;
             point.loc = stopLocations[start + ass.pickupStopIdx];
-            distQuery.runForward({point, *ass.pickup});
-            ass.distToPickup = ass.pickup->vehDistFromCenter;
+            std::vector<PDLoc> locs = {point, pickup};
+            distQuery.runForward(locs);
+            ass.distToPickup = pickup.vehDistFromCenter;
 
             if (ass.pickupStopIdx == ass.dropoffStopIdx) {
-                distQuery.runForward({*ass.pickup, *ass.dropoff});
-                ass.distToDropoff = ass.dropoff->vehDistFromCenter;
+                locs = {pickup, dropoff};
+                distQuery.runForward(locs);
+                ass.distToDropoff = dropoff.vehDistFromCenter;
                 ass.distFromPickup = 0;
             } else {
                 point.loc = stopLocations[start + ass.pickupStopIdx + 1];
-                distQuery.runForward({*ass.pickup, point});
+                locs = {pickup, point};
+                distQuery.runForward(locs);
                 ass.distFromPickup = point.vehDistFromCenter;
-                distQuery.runForward({point, *ass.dropoff});
-                ass.distToDropoff = ass.dropoff->vehDistFromCenter;
+                locs = {point, dropoff};
+                distQuery.runForward(locs);
+                ass.distToDropoff = dropoff.vehDistFromCenter;
             }
 
             if (start + ass.dropoffStopIdx == end - 1) {
                 ass.distFromDropoff = 0;
             } else {
                 point.loc = stopLocations[start + ass.dropoffStopIdx + 1];
-                distQuery.runForward({*ass.dropoff, point});
+                locs = {dropoff, point};
+                distQuery.runForward(locs);
                 ass.distFromDropoff = point.vehDistFromCenter;
             }
         }

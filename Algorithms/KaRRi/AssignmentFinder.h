@@ -44,13 +44,14 @@ namespace karri {
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
             typename RelevantPDLocsFilterT,
-            typename RouteStateT
+            typename RouteStateT,
+            typename CostCalculatorT
     >
     class AssignmentFinder {
 
     public:
 
-        AssignmentFinder(RequestState &requestState, RequestStateInitializerT &requestStateInitializer,
+        AssignmentFinder(RequestState<CostCalculatorT> &requestState, RequestStateInitializerT &requestStateInitializer,
                          EllipticBCHSearchesT &ellipticBchSearches, PDDistanceSearchesT &pdDistanceSearches,
                          OrdAssignmentsT &ordinaryAssigments, PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments, DalsAssignmentsT &dalsAssignments,
@@ -66,7 +67,7 @@ namespace karri {
                   relevantPdLocsFilter(relevantPdLocsFilter),
                   routeState(routeState) {}
 
-        const RequestState &findBestAssignment(const Request &req) {
+        const RequestState<CostCalculatorT> &findBestAssignment(const Request &req) {
 
             // Initialize finder for this request:
             initializeForRequest(req);
@@ -112,7 +113,7 @@ namespace karri {
             dalsAssignments.init();
         }
 
-        RequestState &reqState;
+        RequestState<CostCalculatorT> &reqState;
         RequestStateInitializerT &requestStateInitializer;
         EllipticBCHSearchesT &ellipticBchSearches; // Elliptic BCH searches that find distances between existing stops and PD-locations (except after last stop).
         PDDistanceSearchesT &pdDistanceSearches; // PD-distance searches that compute distances from pickups to dropoffs.

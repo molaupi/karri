@@ -426,7 +426,8 @@ int main(int argc, char *argv[]) {
         LastStopsAtVertices lastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
 
         using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculatorImpl::CostFunction,
-                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
+                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet, RouteStateImpl, CostCalculatorImpl>;
+
         EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, ellipticBucketsEnv, lastStopsAtVertices,
                                                  *vehChEnv, routeState,
                                                  feasibleEllipticPickups, feasibleEllipticDropoffs, reqState);
@@ -551,7 +552,7 @@ int main(int argc, char *argv[]) {
         using DALSInsertionsFinderImpl = DALSAssignmentsFinder<DALSStrategy>;
         DALSInsertionsFinderImpl dalsInsertionsFinder(dalsStrategy);
 
-        using RequestStateInitializerImpl = RequestStateInitializer<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, VehicleToPDLocQueryImpl>;
+        using RequestStateInitializerImpl = RequestStateInitializer<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, VehicleToPDLocQueryImpl, CostCalculatorImpl>;
         RequestStateInitializerImpl requestStateInitializer(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
                                                             reqState, inputConfig, vehicleToPdLocQuery);
 
@@ -563,7 +564,9 @@ int main(int argc, char *argv[]) {
                 PBNSInsertionsFinderImpl,
                 PALSInsertionsFinderImpl,
                 DALSInsertionsFinderImpl,
-                RelevantPDLocsFilterImpl>;
+                RelevantPDLocsFilterImpl,
+                RouteStateImpl,
+                CostCalculatorImpl>;
         InsertionFinderImpl insertionFinder(reqState, requestStateInitializer, ellipticSearches, pdDistanceQuery,
                                             ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
                                             dalsInsertionsFinder, relevantPdLocsFilter, routeState);
@@ -578,7 +581,8 @@ int main(int argc, char *argv[]) {
 #endif
 
 
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl, VehPathTracker, std::ofstream>;
+        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv
+        , CurVehLocToPickupSearchesImpl, VehPathTracker, RouteStateImpl, CostCalculatorImpl, std::ofstream>;
         SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, inputConfig, curVehLocToPickupSearches,
                                                   pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv,
                                                   lastStopsAtVertices);
@@ -591,7 +595,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Run simulation:
-        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
+        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteStateImpl>;
         EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, insertionFinder, systemStateUpdater,
                                             routeState,
                                             true);

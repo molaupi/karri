@@ -37,13 +37,13 @@
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, typename LoggerT = NullLogger>
+    template<typename InputGraphT, typename CHEnvT, typename RouteStateT, typename CostCalculatorT, typename LoggerT = NullLogger>
     class PathTracker {
 
     public:
 
-        explicit PathTracker(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RequestState &requestState,
-                             const RouteState &routeState, const int fleetSize) :
+        explicit PathTracker(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RequestState<CostCalculatorT> &requestState,
+                             const RouteStateT &routeState, const int fleetSize) :
                 inputGraph(inputGraph),
                 requestState(requestState),
                 routeState(routeState),
@@ -314,8 +314,8 @@ namespace karri {
 
 
         const InputGraphT &inputGraph;
-        const RequestState &requestState;
-        const RouteState &routeState;
+        const RequestState<CostCalculatorT> &requestState;
+        const RouteStateT &routeState;
 
         const CH &ch;
         typename CHEnvT::template FullCHQuery<> chQuery;

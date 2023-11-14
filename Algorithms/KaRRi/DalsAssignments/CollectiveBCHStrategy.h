@@ -58,7 +58,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         };
 
 
-        using MinCostLabelSearch = MinCostDropoffAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, IsVehEligibleForDropoffAfterLastStop>;
+        using MinCostLabelSearch = MinCostDropoffAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, IsVehEligibleForDropoffAfterLastStop, RouteStateT, CostCalculatorT>;
         using ClosestDropoffToLastStopQuery = ClosestPDLocToLastStopBCHQueryWithStallOnDemand<InputGraphT, CHEnvT, typename LastStopBucketsEnvT::BucketContainer>;
 
     public:

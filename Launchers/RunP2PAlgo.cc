@@ -85,7 +85,7 @@ inline void printUsage() {
 using VertexAttributes = VertexAttrs<LatLngAttribute>;
 using EdgeAttributes = EdgeAttrs<LengthAttribute, TravelTimeAttribute>;
 using InputGraph = StaticGraph<VertexAttributes, EdgeAttributes>;
-using LabelSet = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>;
+using LabelSet = karri::BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>;
 
 // The query algorithms.
 using Dij = Dijkstra<InputGraph, TravelTimeAttribute, LabelSet>;

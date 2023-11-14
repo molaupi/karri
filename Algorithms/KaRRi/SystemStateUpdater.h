@@ -38,15 +38,17 @@ namespace karri {
             typename LastStopBucketsEnvT,
             typename CurVehLocsT,
             typename PathTrackerT,
+            typename RouteStateT,
+            typename CostCalculatorT,
             typename LoggerT = NullLogger>
     class SystemStateUpdater {
 
     public:
 
-        SystemStateUpdater(const InputGraphT &inputGraph, RequestState &requestState,
+        SystemStateUpdater(const InputGraphT &inputGraph, RequestState<CostCalculatorT> &requestState,
                            const InputConfig &inputConfig, const CurVehLocsT &curVehLocs,
                            PathTrackerT &pathTracker,
-                           RouteState &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
+                           RouteStateT &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
                            LastStopBucketsEnvT &lastStopBucketsEnv,
                            LastStopsAtVertices &lastStopsAtVertices)
                 : inputGraph(inputGraph),
@@ -321,13 +323,13 @@ namespace karri {
         }
 
         const InputGraphT &inputGraph;
-        RequestState &requestState;
+        RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
         const CurVehLocsT &curVehLocs;
         PathTrackerT &pathTracker;
 
         // Route state
-        RouteState &routeState;
+        RouteStateT &routeState;
 
         // Bucket state
         EllipticBucketsEnvT &ellipticBucketsEnv;
