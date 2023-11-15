@@ -134,9 +134,9 @@ namespace karri {
 
                 // Track relevant PD locs for each stop in the relevant PD locs data structure.
                 // Entries are ordered by vehicle and by stop.
-                const int beginStopId = beforeNextStop ? 0 : 1;
-                const int endStopId = beforeNextStop ? 1 : (isDropoff ? numStops : numStops - 1);
-                for (int i = beginStopId; i < endStopId; ++i) {
+                const int beginStopIdx = beforeNextStop ? 0 : 1;
+                const int endStopIdx = beforeNextStop ? 1 : (isDropoff ? numStops : numStops - 1);
+                for (int i = beginStopIdx; i < endStopIdx; ++i) {
 
                     if ((!isDropoff || beforeNextStop) && occupancies[i] == veh.capacity)
                         continue;

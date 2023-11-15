@@ -153,7 +153,10 @@ namespace karri {
         // any route leg to get a global lower bound on the detour.
         static inline int
         calcMinDistFromOrToPDLocSuchThatVehCostReachesMinCost(const int cost, const int maxLegLength) {
-            return cost / VEHICLE_COST_SCALE + (cost % VEHICLE_COST_SCALE != 0) + maxLegLength;
+            if constexpr (VEHICLE_COST_SCALE == 0)
+                return INFTY;
+            else
+                return cost / VEHICLE_COST_SCALE + (cost % VEHICLE_COST_SCALE != 0) + maxLegLength;
         }
 
         // Returns the smallest distance from a pickup or to a dropoff (distance that is part of the detour and the trip
@@ -163,6 +166,7 @@ namespace karri {
         calcMinDistFromOrToPDLocSuchThatVehAndTripCostsReachMinCost(const int cost, const int maxLegLength) {
             const auto c = cost + VEHICLE_COST_SCALE * maxLegLength;
             const auto d = VEHICLE_COST_SCALE + PASSENGER_COST_SCALE;
+            assert(d != 0);
             return c / d + (c % d != 0);
         }
 
