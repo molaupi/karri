@@ -202,7 +202,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                              pickupIt < relevantPickupsInRevOrder.end(); ++pickupIt) {
                             const auto &entry = *pickupIt;
 
-                            if (occupancies[entry.stopIndex] >= asgn.vehicle->capacity)
+                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders > asgn.vehicle->capacity)
                                 break;
 
                             asgn.pickup = &requestState.pickups[entry.pdId];

@@ -138,7 +138,7 @@ namespace karri {
                 const int endStopIdx = beforeNextStop ? 1 : (isDropoff ? numStops : numStops - 1);
                 for (int i = beginStopIdx; i < endStopIdx; ++i) {
 
-                    if ((!isDropoff || beforeNextStop) && occupancies[i] == veh.capacity)
+                    if ((!isDropoff || beforeNextStop) && occupancies[i] + requestState.originalRequest.numRiders > veh.capacity)
                         continue;
 
                     const auto &stopId = stopIds[i];
@@ -206,7 +206,7 @@ namespace karri {
 
             const int &vehId = veh.vehicleId;
 
-            assert(routeState.occupanciesFor(vehId)[stopIndex] < veh.capacity);
+            assert(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <= veh.capacity);
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
@@ -252,7 +252,7 @@ namespace karri {
             const auto &occupancy = routeState.occupanciesFor(vehId)[stopIndex];
             const auto &stopLocations = routeState.stopLocationsFor(vehId);
             assert(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
-            if (stopIndex == numStops - 1 || occupancy == veh.capacity)
+            if (stopIndex == numStops - 1 || occupancy + requestState.originalRequest.numRiders > veh.capacity)
                 return d.loc == stopLocations[stopIndex];
 
             if (stopLocations[stopIndex + 1] == d.loc)

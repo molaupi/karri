@@ -400,9 +400,9 @@ namespace karri::time_utils {
 
         // If somewhere between pickup and dropoff the vehicle is already full, we cannot insert another passenger.
         for (int i = pickupIndex; i < dropoffIndex; ++i)
-            if (occupancies[i] >= veh.capacity)
+            if (occupancies[i] + context.originalRequest.numRiders > veh.capacity)
                 return true;
-        if (!dropoffAtExistingStop && occupancies[dropoffIndex] >= veh.capacity)
+        if (!dropoffAtExistingStop && occupancies[dropoffIndex] + context.originalRequest.numRiders > veh.capacity)
             return true;
 
         // If the dropoff is inserted at/after the last stop, the service time constraint is kept and the pickup does

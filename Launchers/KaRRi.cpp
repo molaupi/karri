@@ -263,6 +263,7 @@ int main(int argc, char *argv[]) {
                                            "end_of_service_time", "capacity");
         }
 
+        int maxCapacity = 0;
         while ((csvFilesInLoudFormat &&
                 vehiclesFileReader.read_row(location, capacity, startOfServiceTime, endOfServiceTime)) ||
                (!csvFilesInLoudFormat &&
@@ -275,6 +276,7 @@ int main(int argc, char *argv[]) {
             const int vehicleId = static_cast<int>(fleet.size());
             fleet.push_back({vehicleId, vehGraphOrigIdToSeqId[location], startOfServiceTime * 10,
                              endOfServiceTime * 10, capacity});
+            maxCapacity = std::max(maxCapacity, capacity);
         }
         std::cout << "done.\n";
 
@@ -286,27 +288,33 @@ int main(int argc, char *argv[]) {
         // Read the request data from file.
         std::cout << "Reading request data from file... " << std::flush;
         std::vector<Request> requests;
-        int origin, destination, requestTime;
-        io::CSVReader<3, io::trim_chars<' '>> reqFileReader(requestFileName);
+        int origin, destination, requestTime, numRiders;
+        io::CSVReader<4, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_no_column, "pickup_spot", "dropoff_spot", "min_dep_time");
+            reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time", "num_riders");
         } else {
-            reqFileReader.read_header(io::ignore_no_column, "origin", "destination", "req_time");
+            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders");
         }
 
-        while (reqFileReader.read_row(origin, destination, requestTime)) {
+        numRiders = -1;
+        while (reqFileReader.read_row(origin, destination, requestTime, numRiders)) {
             if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
             if (destination < 0 || destination >= vehGraphOrigIdToSeqId.size() ||
                 vehGraphOrigIdToSeqId[destination] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
+            if (numRiders > maxCapacity)
+                throw std::invalid_argument("number of riders '" + std::to_string(numRiders) + "' is larger than max vehicle capacity (" + std::to_string(maxCapacity) + ")");
             const auto originSeqId = vehGraphOrigIdToSeqId[origin];
             assert(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const auto destSeqId = vehGraphOrigIdToSeqId[destination];
             assert(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const int requestId = static_cast<int>(requests.size());
-            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
+            if (numRiders == -1) // If number of riders was not specified, assume one rider
+                numRiders = 1;
+            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders});
+            numRiders = -1;
         }
         std::cout << "done.\n";
 

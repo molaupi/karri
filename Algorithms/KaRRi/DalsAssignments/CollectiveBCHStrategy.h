@@ -105,8 +105,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             minCostSearch.run();
 
-            auto& stats = requestState.stats().dalsAssignmentsStats;
-            stats.searchTime +=  minCostSearch.getRunTime();
+            auto &stats = requestState.stats().dalsAssignmentsStats;
+            stats.searchTime += minCostSearch.getRunTime();
             stats.numEdgeRelaxationsInSearchGraph += minCostSearch.getNumEdgeRelaxations();
             stats.numVerticesOrLabelsSettled += minCostSearch.getNumLabelsRelaxed();
             stats.numEntriesOrLastStopsScanned += minCostSearch.getNumEntriesScanned();
@@ -210,7 +210,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (entry.stopIndex < curPickupIndex) {
                             // New smaller pickup index reached: Check if seating capacity and cost lower bound admit
                             // any valid assignments at this or earlier indices.
-                            if (occupancies[entry.stopIndex] >= asgn.vehicle->capacity)
+                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders >
+                                asgn.vehicle->capacity)
                                 break;
 
                             assert(entry.stopIndex < numStops - 1);
@@ -237,7 +238,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                         const int initialPickupDetour = calcInitialPickupDetour(asgn, requestState, routeState,
                                                                                 inputConfig);
-                        const int residualDetourAtEnd = calcResidualPickupDetour(vehId, asgn.pickupStopIdx, numStops - 1,
+                        const int residualDetourAtEnd = calcResidualPickupDetour(vehId, asgn.pickupStopIdx,
+                                                                                 numStops - 1,
                                                                                  initialPickupDetour, routeState);
                         if (!isServiceTimeConstraintViolated(fleet[vehId], requestState, residualDetourAtEnd,
                                                              routeState)) {
@@ -298,7 +300,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                     continue;
 
                 if (!relevantPickupsBeforeNextStop.hasRelevantSpotsFor(vehId)
-                    || routeState.occupanciesFor(vehId)[0] >= fleet[vehId].capacity) {
+                    || routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders >
+                       fleet[vehId].capacity) {
                     continue;
                 }
 

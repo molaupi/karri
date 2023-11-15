@@ -83,7 +83,7 @@ namespace karri {
                 ordinaryContinuations.clear();
                 pairedContinuations.clear();
 
-                assert(routeState.occupanciesFor(vehId)[0] < fleet[vehId].capacity);
+                assert(routeState.occupanciesFor(vehId)[0]  + requestState.originalRequest.numRiders <= fleet[vehId].capacity);
 
                 determineNecessaryExactDistances(fleet[vehId]);
 

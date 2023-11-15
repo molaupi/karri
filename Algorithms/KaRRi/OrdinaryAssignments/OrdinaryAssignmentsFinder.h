@@ -209,7 +209,7 @@ namespace karri {
                     if (pickupIt->stopIndex == dropoffIt->stopIndex) {
                         const auto stopPos = pickupIt->stopIndex;
 
-                        if (routeState.occupanciesFor(vehId)[stopPos] >= veh.capacity) {
+                        if (routeState.occupanciesFor(vehId)[stopPos] + requestState.originalRequest.numRiders > veh.capacity) {
                             continue;
                         }
 

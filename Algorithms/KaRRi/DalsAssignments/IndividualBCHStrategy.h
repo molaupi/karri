@@ -237,7 +237,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (entry.stopIndex < curPickupIndex) {
                             // New smaller pickup index reached: Check if seating capacity and cost lower bound admit
                             // any valid assignments at this or earlier indices.
-                            if (occupancies[entry.stopIndex] >= asgn.vehicle->capacity)
+                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders > asgn.vehicle->capacity)
                                 break;
 
                             assert(entry.stopIndex < numStops - 1);
@@ -285,7 +285,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     continue;
 
                 if (routeState.numStopsOf(vehId) == 0 ||
-                    routeState.occupanciesFor(vehId)[0] >= fleet[vehId].capacity)
+                    routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders > fleet[vehId].capacity)
                     continue;
 
                 pbnsContinuations.clear();
@@ -293,8 +293,6 @@ namespace karri::DropoffAfterLastStopStrategies {
                 const auto numStops = routeState.numStopsOf(vehId);
                 asgn.vehicle = &fleet[vehId];
                 asgn.dropoffStopIdx = numStops - 1;
-
-                assert(routeState.occupanciesFor(vehId)[0] < fleet[vehId].capacity);
 
 
                 for (auto &entry: relevantPickupsBeforeNextStop.relevantSpotsFor(vehId)) {
