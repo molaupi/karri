@@ -64,12 +64,13 @@
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
 #include "Algorithms/KaRRi/AssignmentFinder.h"
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
-#include "Algorithms/KaRRi/EventSimulation.h"
+#include "Algorithms/KaRRi/EventSimulations/StandaloneEventSimulation.h"
+#include "Algorithms/KaRRi/EventSimulations/MobitoppEventSimulation.h"
 
 #ifdef KARRI_USE_CCHS
-#include "Algorithms/KaRRi/CCHEnvironment.h"
+#include "Algorithms/KaRRi/CHEnvironments/CCHEnvironment.h"
 #else
-#include "Algorithms/KaRRi/CHEnvironment.h"
+#include "Algorithms/KaRRi/CHEnvironments/CHEnvironment.h"
 #endif
 
 #if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
@@ -597,7 +598,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Run simulation:
-        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
+        using EventSimulationImpl = StandaloneEventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
         EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, insertionFinder, systemStateUpdater,
                                             routeState,
                                             true);

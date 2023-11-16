@@ -38,7 +38,7 @@ namespace karri {
     template<typename AssignmentFinderT,
             typename SystemStateUpdaterT,
             typename ScheduledStopsT>
-    class EventSimulation {
+    class StandaloneEventSimulation {
 
         enum VehicleState {
             OUT_OF_SERVICE,
@@ -66,7 +66,7 @@ namespace karri {
     public:
 
 
-        EventSimulation(
+        StandaloneEventSimulation(
                 const Fleet &fleet, const std::vector<Request> &requests, const int stopTime,
                 AssignmentFinderT &assignmentFinder, SystemStateUpdaterT &systemStateUpdater,
                 const ScheduledStopsT &scheduledStops,
