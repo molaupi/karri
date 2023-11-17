@@ -367,7 +367,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     // vehicle and dropoff does not need to be regarded.
                     const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId,
                                                                                    routeState.numStopsOf(vehId) - 1,
-                                                                                   requestState, routeState);
+                                                                                   requestState.now(), routeState);
                     if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff + inputConfig.stopTime)
                         continue;
 

@@ -151,7 +151,7 @@ namespace karri {
             const PDLoc &pickupWithMinDistToPrev = *asgn.pickup;
 
             const auto vehId = asgn.vehicle->vehicleId;
-            const bool pickupAtExistingStop = isPickupAtExistingStop(pickupWithMinDistToPrev, vehId, context.now(),
+            const bool pickupAtExistingStop = isPickupAtExistingStop(pickupWithMinDistToPrev.loc, vehId, context.now(),
                                                                      asgn.pickupStopIdx, routeState);
             const bool dropoffAtExistingStop = isDropoffAtExistingStop(asgn, routeState);
             const auto initialPickupDetour = calcOnlyDrivingTimeInInitialPickupDetour(asgn, pickupAtExistingStop,
@@ -197,7 +197,9 @@ namespace karri {
             asgn.distToPickup = distToPickup;
             asgn.distToDropoff = minDistToDropoff;
 
-            const int minActualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, 0, distToPickup, pickup, context,
+            const int minActualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, context.now(), 0, distToPickup,
+                                                                          pickup.loc,
+                                                                          context.getPassengerArrAtPickup(pickup.id),
                                                                           routeState, inputConfig);
 
             const auto initialPickupDetour = calcInitialPickupDetour(asgn, minActualDepTimeAtPickup, context,
@@ -324,7 +326,7 @@ namespace karri {
             const DistanceLabel adaptedDistToPickup = select(distToPickupInftyMask, 0, distancesToPickups);
 
             const auto &stopIdx = routeState.numStopsOf(vehId) - 1;
-            const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId, stopIdx, context, routeState);
+            const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId, stopIdx, context.now(), routeState);
 
 
             auto depTimesAtPickups = DistanceLabel(vehDepTimeAtLastStop) + adaptedDistToPickup + stopTime;
@@ -368,8 +370,10 @@ namespace karri {
             const auto vehId = veh.vehicleId;
 
             const int numStops = routeState.numStopsOf(vehId);
-            const int actualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, numStops - 1, distToPickup, pickup,
-                                                                       context, routeState, inputConfig);
+            const int actualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, context.now(), numStops - 1, distToPickup,
+                                                                       pickup.loc,
+                                                                       context.getPassengerArrAtPickup(pickup.id),
+                                                                       routeState, inputConfig);
             const int vehDepTimeAtPrevStop = std::max(routeState.schedDepTimesFor(vehId)[numStops - 1],
                                                       context.originalRequest.requestTime);
             const int detourUntilDepAtPickup = actualDepTimeAtPickup - vehDepTimeAtPrevStop;

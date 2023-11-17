@@ -28,6 +28,7 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
 #include "PathTracker.h"
+#include "Algorithms/KaRRi/BaseObjects/Offer.h"
 
 namespace karri {
 
@@ -131,32 +132,56 @@ namespace karri {
             }
 
             const auto &asgn = requestState.getBestAssignment();
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup->loc));
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff->loc));
-            assert(asgn.vehicle != nullptr);
+            assert(asgn.vehicle);
+            static constexpr int DUMMY_OFFER_ID = 0;
+            const Offer offer = {DUMMY_OFFER_ID,
+                                 requestState.originalRequest.requestId,
+                                 requestState.originalRequest.origin,
+                                 requestState.originalRequest.destination,
+                                 requestState.originalRequest.requestTime,
+                                 requestState.originalRequest.numRiders,
+                                 requestState.originalReqDirectDist,
+                                 asgn.vehicle->vehicleId,
+                                 asgn.pickup->loc,
+                                 asgn.pickup->walkingDist,
+                                 asgn.dropoff->loc,
+                                 asgn.dropoff->walkingDist,
+                                 asgn.pickupStopIdx,
+                                 asgn.dropoffStopIdx,
+                                 asgn.distToPickup,
+                                 asgn.distFromPickup,
+                                 asgn.distToDropoff,
+                                 asgn.distFromDropoff};
+            insertOffer(offer, pickupStopId, dropoffStopId);
+        }
 
-            const auto vehId = asgn.vehicle->vehicleId;
+        void insertOffer(const Offer &offer, int &pickupStopId, int &dropoffStopId) {
+            Timer timer;
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(offer.pickupLoc));
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(offer.dropoffLoc));
+
+            const auto vehId = offer.vehicleId;
             const auto numStopsBefore = routeState.numStopsOf(vehId);
             const auto depTimeAtLastStopBefore = routeState.schedDepTimesFor(vehId)[numStopsBefore - 1];
 
             timer.restart();
-            const auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, requestState);
+            const auto [pickupIndex, dropoffIndex] = routeState.insert(offer);
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
 
-            if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 &&
+            if (offer.pickupStopIdx == 0 && numStopsBefore > 1 &&
                 routeState.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) {
-                movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
+                movePreviousStopToCurrentLocationForReroute(vehId);
             }
 
-            updateBucketState(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore);
+            updateBucketState(offer, pickupIndex, dropoffIndex, depTimeAtLastStopBefore);
 
             pickupStopId = routeState.stopIdsFor(vehId)[pickupIndex];
             dropoffStopId = routeState.stopIdsFor(vehId)[dropoffIndex];
 
             // Register the inserted pickup and dropoff with the path data
-            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
-            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
+            const bool pickupAtExistingStop = pickupIndex == offer.pickupStopIdx;
+            const bool dropoffAtExistingStop = dropoffIndex == offer.dropoffStopIdx + !pickupAtExistingStop;
             pathTracker.updateForBestAssignment(pickupIndex, dropoffIndex, numStopsBefore, dropoffAtExistingStop);
 
         }
@@ -210,9 +235,9 @@ namespace karri {
             const auto &numStops = routeState.numStopsOf(vehId);
             using time_utils::getVehDepTimeAtStopForRequest;
             const auto &vehDepTimeBeforePickup = getVehDepTimeAtStopForRequest(vehId, bestAsgn.pickupStopIdx,
-                                                                               requestState, routeState);
+                                                                               requestState.now(), routeState);
             const auto &vehDepTimeBeforeDropoff = getVehDepTimeAtStopForRequest(vehId, bestAsgn.dropoffStopIdx,
-                                                                                requestState, routeState);
+                                                                                requestState.now(), routeState);
             bestAssignmentsLogger
                     << vehId << ", "
                     << bestAsgn.pickupStopIdx << ", "
@@ -259,7 +284,8 @@ namespace karri {
         // of the vehicle to its current position to maintain the invariant of the schedule for the first stop,
         // i.e. dist(s_0, s_1) = schedArrTime(s_1) - schedDepTime(s_0).
         // Update the stop location in the routeState and the bucket entries in the elliptic buckets.
-        void movePreviousStopToCurrentLocationForReroute(const Vehicle &veh) {
+        void movePreviousStopToCurrentLocationForReroute(const int vehId) {
+            const auto &veh = fleet[vehId];
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
             assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
             auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
@@ -271,74 +297,75 @@ namespace karri {
         // Updates the bucket state (elliptic buckets, last stop buckets, lastStopsAtVertices structure) given an
         // assignment that has already been inserted into routeState as well as the stop index of the pickup and
         // dropoff after the insertion.
-        void updateBucketState(const Assignment &asgn,
+        void updateBucketState(const Offer &offer,
                                const int pickupIndex, const int dropoffIndex,
                                const int depTimeAtLastStopBefore) {
+            const auto &veh = fleet[offer.vehicleId];
 
-            generateBucketStateForNewStops(asgn, pickupIndex, dropoffIndex);
+            generateBucketStateForNewStops(offer, pickupIndex, dropoffIndex);
 
             // If we use buckets sorted by remaining leeway, we have to update the leeway of all
             // entries for stops of this vehicle.
             if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
-                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(*asgn.vehicle);
-                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(*asgn.vehicle);
+                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(veh);
+                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(veh);
             }
 
             // If last stop does not change but departure time at last stop does change, update last stop bucket entries
             // accordingly.
-            const int vehId = asgn.vehicle->vehicleId;
-            const auto numStopsAfter = routeState.numStopsOf(vehId);
-            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
-            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
-            const auto depTimeAtLastStopAfter = routeState.schedDepTimesFor(vehId)[numStopsAfter - 1];
+            const auto numStopsAfter = routeState.numStopsOf(offer.vehicleId);
+            const bool pickupAtExistingStop = pickupIndex == offer.pickupStopIdx;
+            const bool dropoffAtExistingStop = dropoffIndex == offer.dropoffStopIdx + !pickupAtExistingStop;
+            const auto depTimeAtLastStopAfter = routeState.schedDepTimesFor(offer.vehicleId)[numStopsAfter - 1];
             const bool depTimeAtLastChanged = depTimeAtLastStopAfter != depTimeAtLastStopBefore;
 
             if ((dropoffAtExistingStop || dropoffIndex < numStopsAfter - 1) && depTimeAtLastChanged) {
-                lastStopBucketsEnv.updateBucketEntries(*asgn.vehicle, numStopsAfter - 1);
+                lastStopBucketsEnv.updateBucketEntries(veh, numStopsAfter - 1);
             }
         }
 
-        void generateBucketStateForNewStops(const Assignment &asgn, const int pickupIndex, const int dropoffIndex) {
-            const auto vehId = asgn.vehicle->vehicleId;
-            const auto& numStops = routeState.numStopsOf(vehId);
-            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
-            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
+        void generateBucketStateForNewStops(const Offer &offer, const int pickupIndex, const int dropoffIndex) {
+            const auto vehId = offer.vehicleId;
+            const auto &numStops = routeState.numStopsOf(vehId);
+            const bool pickupAtExistingStop = pickupIndex == offer.pickupStopIdx;
+            const bool dropoffAtExistingStop = dropoffIndex == offer.dropoffStopIdx + !pickupAtExistingStop;
 
+            const auto &veh = fleet[vehId];
             if (!pickupAtExistingStop) {
-                ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, pickupIndex);
-                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, pickupIndex);
+                ellipticBucketsEnv.generateTargetBucketEntries(veh, pickupIndex);
+                ellipticBucketsEnv.generateSourceBucketEntries(veh, pickupIndex);
             }
 
             // If no new stop was inserted for the pickup, we do not need to generate any new entries for it.
             if (dropoffAtExistingStop)
                 return;
 
-            ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, dropoffIndex);
+            ellipticBucketsEnv.generateTargetBucketEntries(veh, dropoffIndex);
 
             // If dropoff is not the new last stop, we generate elliptic source buckets for it.
             if (dropoffIndex < numStops - 1) {
-                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, dropoffIndex);
+                ellipticBucketsEnv.generateSourceBucketEntries(veh, dropoffIndex);
                 return;
             }
 
             // If dropoff is the new last stop, the former last stop becomes a regular stop:
             // Generate elliptic source bucket entries for former last stop
-            const auto pickupAtEnd = pickupIndex + 1 == dropoffIndex && pickupIndex > asgn.pickupStopIdx;
+            const auto pickupAtEnd = pickupIndex + 1 == dropoffIndex && pickupIndex > offer.pickupStopIdx;
             const int formerLastStopIdx = dropoffIndex - pickupAtEnd - 1;
-            ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, formerLastStopIdx);
+            ellipticBucketsEnv.generateSourceBucketEntries(veh, formerLastStopIdx);
 
             // Remove last stop bucket entries for former last stop and generate them for dropoff
             if (formerLastStopIdx == 0) {
-                lastStopBucketsEnv.removeIdleBucketEntries(*asgn.vehicle, formerLastStopIdx);
+                lastStopBucketsEnv.removeIdleBucketEntries(veh, formerLastStopIdx);
             } else {
-                lastStopBucketsEnv.removeNonIdleBucketEntries(*asgn.vehicle, formerLastStopIdx);
+                lastStopBucketsEnv.removeNonIdleBucketEntries(veh, formerLastStopIdx);
             }
-            lastStopBucketsEnv.generateNonIdleBucketEntries(*asgn.vehicle);
+            lastStopBucketsEnv.generateNonIdleBucketEntries(veh);
 
             // Update lastStopAtVertices structure
             Timer timer;
             const auto oldLocHead = inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[formerLastStopIdx]);
-            const auto newLocHead = inputGraph.edgeHead(asgn.dropoff->loc);
+            const auto newLocHead = inputGraph.edgeHead(offer.dropoffLoc);
             lastStopsAtVertices.removeLastStopAt(oldLocHead, vehId);
             lastStopsAtVertices.insertLastStopAt(newLocHead, vehId);
             const auto lastStopsAtVerticesUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -346,6 +373,7 @@ namespace karri {
         }
 
         const InputGraphT &inputGraph;
+        const Fleet &fleet;
         RequestState &requestState;
         const InputConfig &inputConfig;
         const CurVehLocsT &curVehLocs;

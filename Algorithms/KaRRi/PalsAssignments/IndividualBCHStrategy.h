@@ -115,7 +115,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 const auto detourTillDepAtPickup = distancesToPickups + strat.inputConfig.stopTime;
                 const auto &stopIdx = strat.routeState.numStopsOf(vehId) - 1;
                 const int vehDepTimeAtLastStop = time_utils::getVehDepTimeAtStopForRequest(vehId, stopIdx,
-                                                                                           strat.requestState,
+                                                                                           strat.requestState.now(),
                                                                                            strat.routeState);
                 auto depTimeAtPickups = vehDepTimeAtLastStop + distancesToPickups + strat.inputConfig.stopTime;
                 depTimeAtPickups.max(strat.curPassengerArrTimesAtPickups);
@@ -228,7 +228,7 @@ namespace karri::PickupAfterLastStopStrategies {
                                                                               routeState, inputConfig);
                     const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
                                                             getVehDepTimeAtStopForRequest(vehId, numStops - 1,
-                                                                                          requestState, routeState);
+                                                                                          requestState.now(), routeState);
                     const auto psgTimeTillDepAtThisPickup =
                             depTimeAtThisPickup - requestState.originalRequest.requestTime;
                     const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);

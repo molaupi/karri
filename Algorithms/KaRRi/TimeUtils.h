@@ -38,22 +38,21 @@
 
 namespace karri::time_utils {
 
-    template<typename RequestContext>
-    static INLINE int getVehDepTimeAtStopForRequest(const int vehId, const int stopIdx, const RequestContext &context,
+    static INLINE int getVehDepTimeAtStopForRequest(const int vehId, const int stopIdx, const int requestTime,
                                                     const RouteState &routeState) {
         const auto numStops = routeState.numStopsOf(vehId);
         const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
-        return (numStops == 1 ? std::max(minDepTimes[0], context.originalRequest.requestTime) : minDepTimes[stopIdx]);
+        return (numStops == 1 ? std::max(minDepTimes[0], requestTime) : minDepTimes[stopIdx]);
     }
 
     static INLINE bool isMakingStop(const int vehId, const int now, const RouteState &routeState) {
         return routeState.schedDepTimesFor(vehId)[0] > now;
     }
 
-    static INLINE bool isPickupAtExistingStop(const PDLoc &pickup, const int vehId, const int now, const int stopIndex,
+    static INLINE bool isPickupAtExistingStop(const int &pickupLoc, const int vehId, const int now, const int stopIndex,
                                               const RouteState &routeState) {
         return (stopIndex > 0 || isMakingStop(vehId, now, routeState)) &&
-               pickup.loc == routeState.stopLocationsFor(vehId)[stopIndex];
+               pickupLoc == routeState.stopLocationsFor(vehId)[stopIndex];
     }
 
     template<typename LabelSet>
@@ -76,28 +75,28 @@ namespace karri::time_utils {
         return isPickupAtExistingStop(pickupLocations, vehId, now, stopIndex, routeState);
     }
 
-    template<typename RequestContext>
-    static INLINE int getActualDepTimeAtPickup(const int vehId, const int stopIndexBeforePickup, const int distToPickup,
-                                               const PDLoc &pickup, const RequestContext &context,
-                                               const RouteState &routeState,
-                                               const InputConfig &inputConfig) {
-        const bool atStop = isPickupAtExistingStop(pickup, vehId, context.now(), stopIndexBeforePickup, routeState);
+    static INLINE int getActualDepTimeAtPickup(const int vehId, const int requestTime,
+                                               const int stopIndexBeforePickup, const int distToPickup,
+                                               const int pickupLoc, const int riderArrAtPickup,
+                                               const RouteState &routeState, const InputConfig &inputConfig) {
+        const bool atStop = isPickupAtExistingStop(pickupLoc, vehId, requestTime, stopIndexBeforePickup, routeState);
         const auto minVehicleDepTimeAtPickup =
-                getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, context, routeState) +
+                getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, requestTime, routeState) +
                 !atStop * (distToPickup + inputConfig.stopTime);
 
         // We assume a pickup at an existing stop takes no additional counting of stopTime, irrespective of when the
         // passenger arrives there. The vehicle can depart as soon as both the vehicle and the passenger are at the
         // location. This is how LOUD originally did it, so we adhere to it.
-        return std::max(minVehicleDepTimeAtPickup, context.getPassengerArrAtPickup(pickup.id));
+        return std::max(minVehicleDepTimeAtPickup, riderArrAtPickup);
     }
 
     template<typename RequestContext>
     static INLINE int
     getActualDepTimeAtPickup(const Assignment &asgn, const RequestContext &context, const RouteState &routeState,
                              const InputConfig &inputConfig) {
-        return getActualDepTimeAtPickup(asgn.vehicle->vehicleId, asgn.pickupStopIdx, asgn.distToPickup, *asgn.pickup,
-                                        context, routeState, inputConfig);
+        return getActualDepTimeAtPickup(asgn.vehicle->vehicleId, context.now(), asgn.pickupStopIdx, asgn.distToPickup,
+                                        asgn.pickup->loc, context.getPassengerArrAtPickup(asgn.pickup->id),
+                                        routeState, inputConfig);
     }
 
 
@@ -118,7 +117,7 @@ namespace karri::time_utils {
         // We assume a pickup at an existing stop takes no additional counting of stopTime, irrespective of when the
         // passenger arrives there. The vehicle can depart as soon as both the vehicle and the passenger are at the
         // location. This is how LOUD originally did it, so we adhere to it.
-        auto minDepTimeAtPickup = getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, context, routeState) +
+        auto minDepTimeAtPickup = getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, context.now(), routeState) +
                                   select(atStop, 0, distToPickup + inputConfig.stopTime);
         minDepTimeAtPickup.max(passengerArrTimesAtPickups);
         return minDepTimeAtPickup;
@@ -179,7 +178,7 @@ namespace karri::time_utils {
     calcInitialPickupDetour(const int vehId, const int pickupIndex, const int dropoffIndex, const int depTimeAtPickup,
                             const int distFromPickup, const RequestContext &context,
                             const RouteState &routeState) {
-        const auto vehDepTimeAtPrevStop = getVehDepTimeAtStopForRequest(vehId, pickupIndex, context, routeState);
+        const auto vehDepTimeAtPrevStop = getVehDepTimeAtStopForRequest(vehId, pickupIndex, context.now(), routeState);
         const auto timeUntilDep = depTimeAtPickup - vehDepTimeAtPrevStop;
 
         if (pickupIndex == dropoffIndex)

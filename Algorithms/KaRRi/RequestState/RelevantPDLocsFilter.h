@@ -215,8 +215,10 @@ namespace karri {
 
             const auto &p = requestState.pickups[pickupId];
 
-            const auto depTimeAtPickup = getActualDepTimeAtPickup(vehId, stopIndex, distFromStopToPickup, p,
-                                                                  requestState, routeState, inputConfig);
+            const auto depTimeAtPickup = getActualDepTimeAtPickup(vehId, requestState.now(), stopIndex,
+                                                                  distFromStopToPickup, p.loc,
+                                                                  requestState.getPassengerArrAtPickup(p.id),
+                                                                  routeState, inputConfig);
             const auto initialPickupDetour = calcInitialPickupDetour(vehId, stopIndex, INVALID_INDEX, depTimeAtPickup,
                                                                      distFromPickupToNextStop, requestState,
                                                                      routeState);
@@ -286,7 +288,7 @@ namespace karri {
                                        const int minDistFromPickup) const {
             using namespace time_utils;
             const int minVehDepTimeAtPickup =
-                    getVehDepTimeAtStopForRequest(veh.vehicleId, stopIndex, requestState, routeState)
+                    getVehDepTimeAtStopForRequest(veh.vehicleId, stopIndex, requestState.now(), routeState)
                     + minDistToPickup;
             const int minDepTimeAtPickup = std::max(requestState.originalRequest.requestTime, minVehDepTimeAtPickup);
             int minInitialPickupDetour = calcInitialPickupDetour(veh.vehicleId, stopIndex, INVALID_INDEX,

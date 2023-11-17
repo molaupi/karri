@@ -26,6 +26,8 @@
 #pragma once
 
 #include "Tools/Constants.h"
+#include "Assignment.h"
+#include "PDLoc.h"
 
 namespace karri {
 
@@ -38,25 +40,42 @@ namespace karri {
         int numRiders = INFTY;
     };
 
-    // Models a location used for a pickup or dropoff with an ID (should be counted separately for pickups and dropoffs), a
-    // location, a walking distance, and optional driving distances to and from the associated origin or destination
-    // location.
-    struct PDLoc {
 
-        int id = INVALID_ID; // Should be counted separately for pickups and dropoffs
-        int loc = INVALID_EDGE; // Location in road network
-        int psgLoc = INVALID_EDGE; // Location in passenger road network
-        int walkingDist = INFTY; // Walking time from origin to this pickup or from this dropoff to destination.
 
-        int vehDistToCenter = INFTY; // Vehicle driving time from this pickup/dropoff to the origin/destination.
-        int vehDistFromCenter = INFTY; // Vehicle driving time from origin/destination to this pickup/dropoff.
+
+    // Models a potential transfer to a different transportation method when taxi sharing is used for the first mile,
+    // i.e. the trip from a fixed origin to the transfer point.
+    struct TransferAfterFirstMile {
+        int loc = INVALID_EDGE;
+        int timeFromTransferToDest = INFTY; // Remaining travel time from transfer using other means of transport.
     };
 
-
-    enum PDLocType : std::int8_t {
-        PICKUP,
-        DROPOFF,
-        INVALID_PD_LOC_TYPE
+    // Models part of an intermodal request where taxi sharing is used for the first mile, i.e. the trip from a fixed
+    // origin to a point of transfer to a different transportation method. Contains multiple possible transfer points
+    // but a taxi sharing offer for only one of the points is expected in return.
+    struct FirstMileRequest {
+        int requestId = INVALID_ID;
+        int origin = INVALID_EDGE;
+        std::vector<TransferAfterFirstMile> transfers = {};
+        int requestTime = INFTY;
+        int numRiders = INFTY;
     };
 
-}
+    // Models a potential transfer to a different transportation method when taxi sharing is used for the last mile,
+    // i.e. the trip from a transfer point to a fixed destination.
+    struct TransferBeforeLastMile {
+        int loc = INVALID_EDGE;
+        int timeAtTransfer = INFTY; // Arrival time at transfer using other means of transport.
+    };
+
+    // Models part of an intermodal request where taxi sharing is used for the last mile, i.e. the trip from a point of
+    // transfer to a fixed destination. Contains multiple possible transfer points but a taxi sharing offer for only
+    // one of the points is expected in return.
+    struct LastMileRequest {
+        int requestId = INVALID_ID;
+        std::vector<TransferBeforeLastMile> transfers = {};
+        int destination = INVALID_EDGE;
+        int numRiders = INFTY;
+    };
+
+} // end namespace

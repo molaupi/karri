@@ -28,7 +28,7 @@
 #include <cassert>
 
 #include "Vehicle.h"
-#include "Request.h"
+#include "PDLoc.h"
 
 namespace karri {
 
@@ -119,4 +119,4 @@ namespace karri {
         return asgn1.distFromDropoff < asgn2.distFromDropoff;
 
     }
-}
+} // end namespace

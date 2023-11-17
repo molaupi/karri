@@ -66,6 +66,7 @@
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulations/StandaloneEventSimulation.h"
 #include "Algorithms/KaRRi/EventSimulations/MobitoppEventSimulation.h"
+#include "Algorithms/KaRRi/EventSimulations/MobitoppCommunicator.h"
 
 #ifdef KARRI_USE_CCHS
 #include "Algorithms/KaRRi/CHEnvironments/CCHEnvironment.h"
