@@ -284,11 +284,7 @@ int main(int argc, char *argv[]) {
         using VehicleToPDLocQueryImpl = VehicleToPDLocQuery<VehicleInputGraph>;
         VehicleToPDLocQueryImpl vehicleToPdLocQuery(vehicleInputGraph, revVehicleGraph);
 
-        // Create Route State for empty routes.
-        using FixedRouteStateImpl = FixedRouteState<VehicleToPDLocQueryImpl>;
-        FixedRouteStateImpl fixedRoutes(fleet, inputConfig.stopTime, vehicleToPdLocQuery);
-        using RouteStateImpl = RouteState<FixedRouteStateImpl>;
-        RouteStateImpl routeState(fleet, inputConfig.stopTime, fixedRoutes);
+
 
 
 
@@ -400,6 +396,12 @@ int main(int argc, char *argv[]) {
             psgChEnv = std::make_unique<PsgCHEnv>(std::move(psgCh));
         }
 #endif
+
+        // Create Route State for empty routes.
+        using FixedRouteStateImpl = FixedRouteState<VehCHEnv, VehicleInputGraph>;
+        FixedRouteStateImpl fixedRoutes(fleet, inputConfig.stopTime, *vehChEnv, vehicleInputGraph);
+        using RouteStateImpl = RouteState<FixedRouteStateImpl>;
+        RouteStateImpl routeState(fleet, inputConfig.stopTime, fixedRoutes);
 
 
         using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv, RouteStateImpl>;
