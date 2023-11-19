@@ -72,6 +72,10 @@ namespace karri {
             distFromRelevantPDLocsToNextStop.clear();
             meetingVerticesToRelevantPDLocs.clear();
             meetingVerticesFromRelevantPDLocsToNextStop.clear();
+            distToRelevantPDLocs.clear();
+            distFromRelevantPDLocsToNextStop.clear();
+            meetingVerticesToRelevantPDLocs.clear();
+            meetingVerticesFromRelevantPDLocsToNextStop.clear();
 
             // Static Allocation for all distance vectors
             distToRelevantPDLocs.resize(numLabelsPerStop * (maxStopId + 1), DistanceLabel(INFTY));
