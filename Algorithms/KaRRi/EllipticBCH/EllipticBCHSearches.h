@@ -41,6 +41,8 @@
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 
+#include <atomic>
+
 namespace karri {
 
     using namespace oneapi::tbb;
@@ -132,7 +134,7 @@ namespace karri {
                                  const DistanceLabel &distsToPDLocs) {
 
                 assert(curFeasible);
-                return curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, curFirstIdOfBatch,
+                return curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, curFirstIdOfBatch.local(),
                                                                   distsToPDLocs, meetingVertex);
             }
 
@@ -142,12 +144,12 @@ namespace karri {
             }
 
             void setCurFirstIdOfBatch(int const newCurFirstIdOfBatch) {
-                curFirstIdOfBatch = newCurFirstIdOfBatch;
+                curFirstIdOfBatch.local() = newCurFirstIdOfBatch;
             }
 
         private:
             FeasibleEllipticDistancesT *curFeasible;
-            int curFirstIdOfBatch;
+            enumerable_thread_specific<int> curFirstIdOfBatch;
         };
 
         struct UpdateDistancesFromPDLocs {
@@ -165,7 +167,7 @@ namespace karri {
                     return LabelMask(false);
 
                 assert(curFeasible);
-                return curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, curFirstIdOfBatch,
+                return curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, curFirstIdOfBatch.local(),
                                                                       distsFromPDLocs, meetingVertex);
             }
 
@@ -174,13 +176,13 @@ namespace karri {
             }
 
             void setCurFirstIdOfBatch(int const newCurFirstIdOfBatch) {
-                curFirstIdOfBatch = newCurFirstIdOfBatch;
+                curFirstIdOfBatch.local() = newCurFirstIdOfBatch;
             }
 
         private:
             const RouteState &routeState;
             FeasibleEllipticDistancesT *curFeasible;
-            int curFirstIdOfBatch;
+            enumerable_thread_specific<int> curFirstIdOfBatch;
         };
 
 
@@ -196,16 +198,6 @@ namespace karri {
 
         typedef typename CHEnvT::template UpwardSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT> ToQueryType;
         typedef typename CHEnvT::template UpwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT> FromQueryType;
-
-        struct ToQueryCapsuled {
-            ToQueryCapsuled(ToQueryType query) : query(query) {}
-            ToQueryType query;
-        };
-
-        struct FromQueryCapsuled {
-            FromQueryCapsuled(FromQueryType query) : query(query) {}
-            FromQueryType query;
-        };
 
     public:
 
@@ -230,14 +222,14 @@ namespace karri {
                   distUpperBound(INFTY),
                   updateDistancesToPdLocs(),
                   updateDistancesFromPdLocs(routeState),
-                  toQuery(enumerable_thread_specific<ToQueryCapsuled>(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
+                  toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
                           ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet)))),
-                  fromQuery(enumerable_thread_specific<FromQueryCapsuled>(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
+                  fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
                           ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet)))) {}
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
@@ -342,8 +334,7 @@ namespace karri {
             }
 
             updateDistancesFromPdLocs.setCurFirstIdOfBatch(startId);
-            FromQueryCapsuled& localFrom = fromQuery.local();
-            FromQueryType& localFromQuery = localFrom.query;
+            FromQueryType& localFromQuery = fromQuery.local();
             localFromQuery.runWithOffset(pdLocHeads, {});
 
             ++numSearchesRun;
@@ -371,8 +362,7 @@ namespace karri {
             }
 
             updateDistancesToPdLocs.setCurFirstIdOfBatch(startId);
-            ToQueryCapsuled& localTo = toQuery.local();
-            ToQueryType& localToQuery = localTo.query;
+            ToQueryType& localToQuery = toQuery.local();
             localToQuery.runWithOffset(pdLocTails, travelTimes);
 
             ++numSearchesRun;
@@ -433,12 +423,10 @@ namespace karri {
         UpdateDistancesFromPDLocs updateDistancesFromPdLocs;
         
         // ToQueryType toQuery;
-        enumerable_thread_specific<ToQueryCapsuled> toQuery;
-        
+        enumerable_thread_specific<ToQueryType> toQuery;
         
         // FromQueryType fromQuery;
-        enumerable_thread_specific<FromQueryCapsuled> fromQuery;
-        
+        enumerable_thread_specific<FromQueryType> fromQuery;
 
         int numSearchesRun;
         int numTimesStoppingCriterionMet;

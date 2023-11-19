@@ -68,32 +68,39 @@ namespace karri {
                   const InputGraphT &inputGraph) {
             numLabelsPerStop = newNumPDLocs / K + (newNumPDLocs % K != 0);
 
-            // distToRelevantPDLocs.clear();
-            // distFromRelevantPDLocsToNextStop.clear();
-            // meetingVerticesToRelevantPDLocs.clear();
-            // meetingVerticesFromRelevantPDLocsToNextStop.clear();
+            distToRelevantPDLocs.clear();
+            distFromRelevantPDLocsToNextStop.clear();
+            meetingVerticesToRelevantPDLocs.clear();
+            meetingVerticesFromRelevantPDLocsToNextStop.clear();
 
             // Static Allocation for all distance vectors
-            distToRelevantPDLocs.resize(numLabelsPerStop * (maxStopId + 1));
-            distFromRelevantPDLocsToNextStop.resize(numLabelsPerStop * (maxStopId + 1));
-            meetingVerticesToRelevantPDLocs.resize(numLabelsPerStop * (maxStopId + 1));
-            meetingVerticesFromRelevantPDLocsToNextStop.resize(numLabelsPerStop * (maxStopId + 1));
+            distToRelevantPDLocs.resize(numLabelsPerStop * (maxStopId + 1), DistanceLabel(INFTY));
+            distFromRelevantPDLocsToNextStop.resize(numLabelsPerStop * (maxStopId + 1), DistanceLabel(INFTY));
+            meetingVerticesToRelevantPDLocs.resize(numLabelsPerStop * (maxStopId + 1), DistanceLabel(INVALID_VERTEX));
+            meetingVerticesFromRelevantPDLocsToNextStop.resize(numLabelsPerStop * (maxStopId + 1), DistanceLabel(INVALID_VERTEX));
+        
 
-            minDistToPDLoc.resize(maxStopId + 1);
-            minDistFromPDLocToNextStop.resize(maxStopId + 1);
-
-            // Initializing vectors
-            for (int i = 0; i <= maxStopId; i++) {
-                minDistToPDLoc[i] = INFTY;
-                minDistFromPDLocToNextStop[i] = INFTY;
+            if (minDistToPDLoc.size() < maxStopId + 1) {
+                minDistToPDLoc.clear();
+                minDistToPDLoc = std::vector<std::atomic_int>(maxStopId + 1);
             }
 
-            for (int i = 0; i < numLabelsPerStop * (maxStopId + 1); i++) {
-                distToRelevantPDLocs[i] = DistanceLabel(INFTY);
-                distFromRelevantPDLocsToNextStop[i] = DistanceLabel(INFTY);
-                meetingVerticesToRelevantPDLocs[i] = DistanceLabel(INVALID_VERTEX);
-                meetingVerticesFromRelevantPDLocsToNextStop[i] = DistanceLabel(INVALID_VERTEX);
+            if (minDistFromPDLocToNextStop.size() < maxStopId + 1) {
+                minDistToPDLoc.clear();
+                minDistFromPDLocToNextStop = std::vector<std::atomic_int>(maxStopId + 1);
             }
+
+            for (int j = 0; j <= maxStopId; j++) {
+                minDistToPDLoc[j].store(INFTY);
+                minDistFromPDLocToNextStop[j].store(INFTY);
+            }
+
+            // for (int i = 0; i < numLabelsPerStop * (maxStopId + 1); i++) {
+            //     distToRelevantPDLocs[i] = DistanceLabel(INFTY);
+            //     distFromRelevantPDLocsToNextStop[i] = DistanceLabel(INFTY);
+            //     meetingVerticesToRelevantPDLocs[i] = DistanceLabel(INVALID_VERTEX);
+            //     meetingVerticesFromRelevantPDLocsToNextStop[i] = DistanceLabel(INVALID_VERTEX);
+            // }
 
             // if (maxStopId >= startOfRangeInValueArray.size()) {
             //     startOfRangeInValueArray.resize(maxStopId + 1);
@@ -235,7 +242,6 @@ namespace karri {
 
         PerPDLocFacade distancesToRelevantPDLocsFor(const int stopId) const {
             assert(stopId <= maxStopId);
-
             const auto start = stopId * numLabelsPerStop;
             assert(distToRelevantPDLocs.begin() + start + numLabelsPerStop <= distToRelevantPDLocs.end());
             return {distToRelevantPDLocs.begin() + start, numLabelsPerStop};
@@ -258,6 +264,7 @@ namespace karri {
 
         PerPDLocFacade distancesFromRelevantPDLocsToNextStopOf(const int stopId) const {
             assert(stopId <= maxStopId);
+            // assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
             const auto start = stopId * numLabelsPerStop;
             assert(distFromRelevantPDLocsToNextStop.begin() + start + numLabelsPerStop <=
                    distFromRelevantPDLocsToNextStop.end());
