@@ -143,10 +143,6 @@ namespace karri {
 
                     const auto &stopId = stopIds[i];
 
-                    if (requestState.originalRequest.requestId == 981 && vehId == 867 && isDropoff) {
-                        std::cout << "";
-                    }
-
                     // Insert entries at this stop
                     if (feasible.hasPotentiallyRelevantPDLocs(stopId)) {
                         // assert(vehiclesWithFeasibleDistances.contains(vehId));

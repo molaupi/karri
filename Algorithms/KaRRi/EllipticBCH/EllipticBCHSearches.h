@@ -268,10 +268,6 @@ namespace karri {
             const auto pickupsAtExistingStops = findPDLocsAtExistingStops<PICKUP>(requestState.pickups);
             feasibleEllipticPickups.init(requestState.numPickups(), pickupsAtExistingStops, inputGraph);
 
-            if (requestState.originalRequest.requestId == 981) {
-                std::cout << "";
-            }
-
             // Find dropoffs at existing stops for new request and initialize distances.
             const auto dropoffsAtExistingStops = findPDLocsAtExistingStops<DROPOFF>(requestState.dropoffs);
             feasibleEllipticDropoffs.init(requestState.numDropoffs(), dropoffsAtExistingStops, inputGraph);
