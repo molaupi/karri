@@ -174,12 +174,11 @@ namespace karri {
             distToRelevantPDLocs[idx].setIf(newDistToPDLoc, improved);
             meetingVerticesToRelevantPDLocs[idx].setIf(meetingVertex, improved);
 
-            // todo: Allow this for K != 1 as well
-            const int newDistToPDLocAsInt = newDistToPDLoc[0];
+            const int minNewDistToPDLoc = newDistToPDLoc.horizontalMin();
 
             auto& minToPDLocAtomic = minDistToPDLoc[stopId];
             int expectedMinForStop = minToPDLocAtomic.load(std::memory_order_relaxed);
-            while(expectedMinForStop > newDistToPDLocAsInt && !minToPDLocAtomic.compare_exchange_strong(expectedMinForStop, newDistToPDLocAsInt, std::memory_order_relaxed));
+            while(expectedMinForStop > minNewDistToPDLoc && !minToPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistToPDLoc, std::memory_order_relaxed));
 
             return improved;
         }
@@ -202,12 +201,11 @@ namespace karri {
             distFromRelevantPDLocsToNextStop[idx].setIf(newDistFromPDLocToNextStop, improved);
             meetingVerticesFromRelevantPDLocsToNextStop[idx].setIf(meetingVertex, improved);
 
-            // todo: Allow this for K != 1 as well
-            const int newDistFromPDLocToNextStopAsInt = newDistFromPDLocToNextStop[0];
+            const int minNewDistFromPDLocToNextStop = newDistFromPDLocToNextStop.horizontalMin();
 
             auto& minFromPDLocAtomic = minDistFromPDLocToNextStop[stopId];
             int expectedMinForStop = minFromPDLocAtomic.load(std::memory_order_relaxed);
-            while(expectedMinForStop > newDistFromPDLocToNextStopAsInt && !minFromPDLocAtomic.compare_exchange_strong(expectedMinForStop, newDistFromPDLocToNextStopAsInt, std::memory_order_relaxed));
+            while(expectedMinForStop > minNewDistFromPDLocToNextStop && !minFromPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistFromPDLocToNextStop, std::memory_order_relaxed));
 
             return improved;
         }
