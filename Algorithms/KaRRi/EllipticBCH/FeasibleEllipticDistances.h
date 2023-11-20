@@ -118,7 +118,6 @@ namespace karri {
             //     idx = INVALID_INDEX;
             vehiclesWithRelevantPDLocs.clear();
 
-
             // Pre-allocate entries for PD locs at existing stops. The distance 0 may otherwise not be found by the
             // BCH searches. Also, this way, the distance for such a PD loc never has to be updated, and we already
             // allocate the entry array for this stop, which is good since it will likely also be reachable by other PD locs.
@@ -195,10 +194,10 @@ namespace karri {
             // We assume the from-searches are run after the to-searches. If the stop does not have entries yet, it was
             // considered irrelevant for the to-searches (regardless of whether we allow dynamic allocation or not).
             // Therefore, this stop cannot be relevant on both sides which means we can skip it here.
-            if (allSet(distToRelevantPDLocs[stopId * numLabelsPerStop] == DistanceLabel(INFTY)))
+            const auto idx = (stopId * numLabelsPerStop) + (firstPDLocId / K);
+            if (allSet(distToRelevantPDLocs[idx] == DistanceLabel(INFTY)))
                 return LabelMask(false);
 
-            const auto idx = (stopId * numLabelsPerStop) + (firstPDLocId / K);
             const LabelMask improved = newDistFromPDLocToNextStop < distFromRelevantPDLocsToNextStop[idx];
             distFromRelevantPDLocsToNextStop[idx].setIf(newDistFromPDLocToNextStop, improved);
             meetingVerticesFromRelevantPDLocsToNextStop[idx].setIf(meetingVertex, improved);
@@ -215,9 +214,15 @@ namespace karri {
 
         bool hasPotentiallyRelevantPDLocs(const int stopId) const {
             assert(stopId <= maxStopId);
-            const auto idx = stopId * numLabelsPerStop;
-            // returns true if either of the distances is set at idx (first index for a stopId)
-            return !allSet(distToRelevantPDLocs[idx] == DistanceLabel(INFTY)) || !allSet(distFromRelevantPDLocsToNextStop[idx] == DistanceLabel(INFTY)) ;
+            const auto startIdxForStop = stopId * numLabelsPerStop;
+            const auto endIdxForStop = (stopId + 1) * numLabelsPerStop;
+            // returns true if any of the distances to or from this stop are set
+            for (int idx = startIdxForStop; idx < endIdxForStop; ++idx) {
+                if (!allSet(distToRelevantPDLocs[idx] == DistanceLabel(INFTY)) || !allSet(distFromRelevantPDLocsToNextStop[idx] == DistanceLabel(INFTY)))
+                    return true;
+            }
+
+            return false;
         }
 
         // Represents a block of DistanceLabels of size n that contains distances or meeting vertices for n * K PD locs.

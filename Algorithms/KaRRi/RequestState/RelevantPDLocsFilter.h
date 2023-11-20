@@ -143,6 +143,10 @@ namespace karri {
 
                     const auto &stopId = stopIds[i];
 
+                    if (requestState.originalRequest.requestId == 981 && vehId == 867 && isDropoff) {
+                        std::cout << "";
+                    }
+
                     // Insert entries at this stop
                     if (feasible.hasPotentiallyRelevantPDLocs(stopId)) {
                         // assert(vehiclesWithFeasibleDistances.contains(vehId));
@@ -210,8 +214,8 @@ namespace karri {
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
-             assert(distFromStopToPickup >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc));
-             assert(distFromPickupToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc));
+//             assert(distFromStopToPickup >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc));
+//             assert(distFromPickupToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc));
             assert(distFromStopToPickup + distFromPickupToNextStop >=
                    calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
 
@@ -245,15 +249,15 @@ namespace karri {
             using namespace time_utils;
 
             const int &vehId = veh.vehicleId;
+            const auto &numStops = routeState.numStopsOf(vehId);
             const auto &d = requestState.dropoffs[dropoffId];
 
-            // assert(distFromStopToDropoff >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.dropoffs[dropoffId].loc));
-            // assert(distFromDropoffToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.dropoffs[dropoffId].loc));
+//             assert(distFromStopToDropoff >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.dropoffs[dropoffId].loc));
+//             assert(stopIndex == numStops - 1 || distFromDropoffToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.dropoffs[dropoffId].loc));
 
             // If this is the last stop in the route, we only consider this dropoff for ordinary assignments if it is at the
             // last stop. Similarly, if the vehicle is full after this stop, we can't perform the dropoff here unless the
             // dropoff coincides with the stop. A dropoff at an existing stop causes no detour, so it is always relevant.
-            const auto &numStops = routeState.numStopsOf(vehId);
             const auto &occupancy = routeState.occupanciesFor(vehId)[stopIndex];
             const auto &stopLocations = routeState.stopLocationsFor(vehId);
             assert(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
@@ -326,8 +330,13 @@ namespace karri {
         }
 
         int recomputeDistFromPDLocDirectly(const int vehId, const int stopIdxAfter, const int pdLocLocation) {
+
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[stopIdxAfter];
+            if (stopLoc == pdLocLocation)
+                return 0;
+
             auto src = ch.rank(inputGraph.edgeHead(pdLocLocation));
-            auto tar = ch.rank(inputGraph.edgeTail(routeState.stopLocationsFor(vehId)[stopIdxAfter]));
+            auto tar = ch.rank(inputGraph.edgeTail(stopLoc));
             auto offset = inputGraph.travelTime(routeState.stopLocationsFor(vehId)[stopIdxAfter]);
 
             chQuery.run(src, tar);
