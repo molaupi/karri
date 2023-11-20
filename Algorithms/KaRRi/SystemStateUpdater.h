@@ -44,13 +44,14 @@ namespace karri {
 
     public:
 
-        SystemStateUpdater(const InputGraphT &inputGraph, RequestState &requestState,
+        SystemStateUpdater(const InputGraphT &inputGraph, const Fleet &fleet, RequestState &requestState,
                            const InputConfig &inputConfig, const CurVehLocsT &curVehLocs,
                            PathTrackerT &pathTracker,
                            RouteState &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
                            LastStopBucketsEnvT &lastStopBucketsEnv,
                            LastStopsAtVertices &lastStopsAtVertices)
                 : inputGraph(inputGraph),
+                  fleet(fleet),
                   requestState(requestState),
                   inputConfig(inputConfig),
                   curVehLocs(curVehLocs),
@@ -61,7 +62,8 @@ namespace karri {
                   lastStopsAtVertices(lastStopsAtVertices),
                   bestAssignmentsLogger(LogManager<LoggerT>::getLogger("bestassignments.csv",
                                                                        "request_id, "
-                                                                       "request_time, "
+                                                                       "issuing_time, "
+                                                                       "min_dep_time,"
                                                                        "direct_od_dist, "
                                                                        "vehicle_id, "
                                                                        "pickup_insertion_point, "
@@ -135,11 +137,13 @@ namespace karri {
             assert(asgn.vehicle);
             static constexpr int DUMMY_OFFER_ID = 0;
             const Offer offer = {DUMMY_OFFER_ID,
+                                 requestState.originalRequest.issuingTime,
                                  requestState.originalRequest.requestId,
                                  requestState.originalRequest.origin,
                                  requestState.originalRequest.destination,
-                                 requestState.originalRequest.requestTime,
                                  requestState.originalRequest.numRiders,
+                                 requestState.originalRequest.issuingTime,
+                                 requestState.originalRequest.minDepTime,
                                  requestState.originalReqDirectDist,
                                  asgn.vehicle->vehicleId,
                                  asgn.pickup->loc,
@@ -170,7 +174,7 @@ namespace karri {
             requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
 
             if (offer.pickupStopIdx == 0 && numStopsBefore > 1 &&
-                routeState.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) {
+                routeState.schedDepTimesFor(vehId)[0] < requestState.originalRequest.minDepTime) {
                 movePreviousStopToCurrentLocationForReroute(vehId);
             }
 
@@ -215,7 +219,8 @@ namespace karri {
         void writeBestAssignmentToLogger() {
             bestAssignmentsLogger
                     << requestState.originalRequest.requestId << ", "
-                    << requestState.originalRequest.requestTime << ", "
+                    << requestState.originalRequest.issuingTime << ", "
+                    << requestState.originalRequest.minDepTime << ", "
                     << requestState.originalReqDirectDist << ", ";
 
             if (requestState.getBestCost() == INFTY) {

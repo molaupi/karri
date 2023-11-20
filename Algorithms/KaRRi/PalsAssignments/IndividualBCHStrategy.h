@@ -92,11 +92,12 @@ namespace karri::PickupAfterLastStopStrategies {
                 const DistanceLabel directDist = strat.requestState.minDirectPDDist;
                 const auto detourTillDepAtPickup = minDistancesToPickups + DistanceLabel(strat.inputConfig.stopTime);
                 auto depTimeAtPickup = arrTimesAtPickups + DistanceLabel(strat.inputConfig.stopTime);
-                const auto reqTime = DistanceLabel(strat.requestState.originalRequest.requestTime);
-                depTimeAtPickup.max(reqTime + strat.currentPickupWalkingDists);
-                const auto tripTimeTillDepAtPickup = depTimeAtPickup - reqTime;
+                const auto minDepTime = DistanceLabel(strat.requestState.originalRequest.minDepTime);
+                depTimeAtPickup.max(minDepTime + strat.currentPickupWalkingDists);
+                const auto tripTimeTillDepAtPickup = depTimeAtPickup - minDepTime;
                 DistanceLabel costLowerBound = calc.template calcLowerBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
-                        detourTillDepAtPickup, tripTimeTillDepAtPickup, directDist, strat.currentPickupWalkingDists, strat.requestState);
+                        detourTillDepAtPickup, tripTimeTillDepAtPickup, directDist, strat.currentPickupWalkingDists,
+                        strat.requestState);
 
                 costLowerBound.setIf(DistanceLabel(INFTY),
                                      ~((arrTimesAtPickups < INFTY) & (minDistancesToPickups < INFTY)));
@@ -104,7 +105,8 @@ namespace karri::PickupAfterLastStopStrategies {
             }
 
             LabelMask isWorseThanBestKnownVehicleDependent(const int vehId,
-                                                            const DistanceLabel &distancesToPickups) {
+                                                           const DistanceLabel &distancesToPickups) {
+                using namespace time_utils;
                 if (strat.upperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with distancesToDropoffs[i] >= INFTY are worse than
                     // the current best.
@@ -114,12 +116,11 @@ namespace karri::PickupAfterLastStopStrategies {
                 const DistanceLabel directDist = strat.requestState.minDirectPDDist;
                 const auto detourTillDepAtPickup = distancesToPickups + strat.inputConfig.stopTime;
                 const auto &stopIdx = strat.routeState.numStopsOf(vehId) - 1;
-                const int vehDepTimeAtLastStop = time_utils::getVehDepTimeAtStopForRequest(vehId, stopIdx,
-                                                                                           strat.requestState.now(),
-                                                                                           strat.routeState);
+                const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId, stopIdx, strat.requestState.now(),
+                                                                               strat.routeState);
                 auto depTimeAtPickups = vehDepTimeAtLastStop + distancesToPickups + strat.inputConfig.stopTime;
                 depTimeAtPickups.max(strat.curPassengerArrTimesAtPickups);
-                const auto tripTimeTillDepAtPickup = depTimeAtPickups - strat.requestState.originalRequest.requestTime;
+                const auto tripTimeTillDepAtPickup = depTimeAtPickups - strat.requestState.originalRequest.minDepTime;
                 DistanceLabel costLowerBound = calc.template calcLowerBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
                         detourTillDepAtPickup, tripTimeTillDepAtPickup, directDist, strat.currentPickupWalkingDists,
                         strat.requestState);
@@ -228,9 +229,10 @@ namespace karri::PickupAfterLastStopStrategies {
                                                                               routeState, inputConfig);
                     const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
                                                             getVehDepTimeAtStopForRequest(vehId, numStops - 1,
-                                                                                          requestState.now(), routeState);
+                                                                                          requestState.now(),
+                                                                                          routeState);
                     const auto psgTimeTillDepAtThisPickup =
-                            depTimeAtThisPickup - requestState.originalRequest.requestTime;
+                            depTimeAtThisPickup - requestState.originalRequest.minDepTime;
                     const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);
                     const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
                                                                                              psgTimeTillDepAtThisPickup,
@@ -309,7 +311,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         int upperBoundCost;
 
-        TentativeLastStopDistances<LabelSetT> distances;
+        TentativeLastStopDistances <LabelSetT> distances;
         PickupBCHQuery search;
 
         // Vehicles seen by any last stop pickup search

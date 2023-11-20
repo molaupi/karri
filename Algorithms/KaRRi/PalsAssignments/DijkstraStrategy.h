@@ -159,7 +159,7 @@ namespace karri::PickupAfterLastStopStrategies {
                                                             getVehDepTimeAtStopForRequest(vehId, numStops - 1,
                                                                                           requestState.now(), routeState);
                     const auto psgTimeTillDepAtThisPickup =
-                            depTimeAtThisPickup - requestState.originalRequest.requestTime;
+                            depTimeAtThisPickup - requestState.originalRequest.minDepTime;
                     const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);
                     const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
                                                                                              psgTimeTillDepAtThisPickup,

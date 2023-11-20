@@ -257,6 +257,7 @@ namespace karri {
             const int time = msg["time"];
             const auto mobiToppArrivals = sim.handleFleetControlAndUpdate(time);
             sendArrivalEvents(time, mobiToppArrivals);
+            lastFleetControlTime = time;
             state = WAITING_FOR_NEW_EVENT;
             return true;
         }
@@ -269,13 +270,13 @@ namespace karri {
             const int agentId = msg["agent_id"];
             const int origin = msg["origin"];
             const int destination = msg["destination"];
-            const int time = msg["time"];
+            const int minDepTime = msg["time"];
             const int numRiders = msg["nr_pax"];
 
             const int requestId = agentIdForRequest.size();
             agentIdForRequest.push_back(agentId);
 
-            Request r = {requestId, origin, destination, time, numRiders};
+            Request r = {requestId, origin, destination,  numRiders, lastFleetControlTime, minDepTime};
             const auto& offer = sim.handleRequest(r);
             sendOffer(offer);
             state = WAITING_FOR_OFFER_RESPONSE;
@@ -292,7 +293,7 @@ namespace karri {
             const int agentId = msg["agent_id"];
             const int origin = msg["origin"];
             const nlohmann::json &destinations = msg["destinations"];
-            const int time = msg["time"];
+            const int minDepTime = msg["time"];
             const int numRiders = msg["nr_pax"];
 
             std::vector<TransferAfterFirstMile> transfers;
@@ -309,7 +310,7 @@ namespace karri {
             const int requestId = agentIdForRequest.size();
             agentIdForRequest.push_back(agentId);
 
-            FirstMileRequest r = {requestId, origin, transfers, time, numRiders};
+            FirstMileRequest r = {requestId, origin, transfers,  numRiders, lastFleetControlTime, minDepTime};
             const auto offers = sim.handleFirstMileRequest(r);
             sendBestFirstMileOffer(offers, transfers);
             state = WAITING_FOR_OFFER_RESPONSE;
@@ -340,7 +341,7 @@ namespace karri {
             const int requestId = agentIdForRequest.size();
             agentIdForRequest.push_back(agentId);
 
-            LastMileRequest r = {requestId, transfers, destination, numRiders};
+            LastMileRequest r = {requestId, transfers, destination, numRiders, lastFleetControlTime};
             const auto offers = sim.handleLastMileRequest(r);
             sendBestLastMileOffer(offers);
             state = WAITING_FOR_OFFER_RESPONSE;
@@ -380,7 +381,9 @@ namespace karri {
             std::string msgStr = msg.dump();
             msgStr += '\n';
             strcpy(readbuf.data(), msgStr.c_str());
-            write(fs_fd, (void *) readbuf.data(), msgStr.size() + 1);
+            ssize_t bytesSent = write(fs_fd, (void *) readbuf.data(), msgStr.size() + 1);
+            if (bytesSent != msgStr.size() + 1)
+                throw MobitoppCommError("Tried sending " + std::to_string(msgStr.size() + 1) + " bytes but could only send " + std::to_string(bytesSent) + " .");
         }
 
         void sendError() {
@@ -424,10 +427,10 @@ namespace karri {
             msg["agent_id"] = agentIdForRequest[offer.requestId];
             msg["offer_id"] = offer.offerId;
             msg["t_access"] = offer.walkingTimeToPickup;
-            msg["t_wait"] = sim.computeWaitTimeForOffer(offer);
-            msg["t_drive"] = sim.computeRideTimeForOffer(offer);
+            msg["t_wait"] = offer.waitTime;
+            msg["t_drive"] = offer.rideTime;
             msg["t_egress"] = offer.walkingTimeFromDropoff;
-            msg["fare"] = sim.computeFareForOffer(offer);
+            msg["fare"] = offer.fare;
             sendJsonMsg(msg);
         }
 
@@ -445,10 +448,10 @@ namespace karri {
                 oMsg["offer_id"] = o.offerId;
                 oMsg["destination"] = o.destination;
                 oMsg["t_access"] = o.walkingTimeToPickup;
-                oMsg["t_wait"] = sim.computeWaitTimeForOffer(o);
-                oMsg["t_drive"] = sim.computeRideTimeForOffer(o);
+                oMsg["t_wait"] = o.waitTime;
+                oMsg["t_drive"] = o.rideTime;
                 oMsg["t_egress"] = o.walkingTimeFromDropoff;
-                oMsg["fare"] = sim.computeFareForOffer(o);
+                oMsg["fare"] = o.fare;
                 oMsg["objective"] = 0.0f; // GW: objective has no useful meaning in mobiTopp
                 offerList.push_back(oMsg);
             }
@@ -485,10 +488,10 @@ namespace karri {
                 oMsg["offer_id"] = o.offerId;
                 oMsg["destination"] = o.destination;
                 oMsg["t_access"] = o.walkingTimeToPickup;
-                oMsg["t_wait"] = sim.computeWaitTimeForOffer(o);
-                oMsg["t_drive"] = sim.computeRideTimeForOffer(o);
+                oMsg["t_wait"] = o.waitTime;
+                oMsg["t_drive"] = o.rideTime;
                 oMsg["t_egress"] = o.walkingTimeFromDropoff;
-                oMsg["fare"] = sim.computeFareForOffer(o);
+                oMsg["fare"] = o.fare;
                 oMsg["objective"] = 0.0f; // GW: objective has no useful meaning in mobiTopp
                 offerList.push_back(oMsg);
             }
@@ -511,10 +514,10 @@ namespace karri {
                 oMsg["offer_id"] = o.offerId;
                 oMsg["origin"] = o.origin;
                 oMsg["t_access"] = o.walkingTimeToPickup;
-                oMsg["t_wait"] = sim.computeWaitTimeForOffer(o);
-                oMsg["t_drive"] = sim.computeRideTimeForOffer(o);
+                oMsg["t_wait"] = o.waitTime;
+                oMsg["t_drive"] = o.rideTime;
                 oMsg["t_egress"] = o.walkingTimeFromDropoff;
-                oMsg["fare"] = sim.computeFareForOffer(o);
+                oMsg["fare"] = o.fare;
                 oMsg["objective"] = 0.0f; // GW: objective has no useful meaning in mobiTopp
                 offerList.push_back(oMsg);
             }
@@ -553,10 +556,10 @@ namespace karri {
                 oMsg["offer_id"] = o.offerId;
                 oMsg["origin"] = o.origin;
                 oMsg["t_access"] = o.walkingTimeToPickup;
-                oMsg["t_wait"] = sim.computeWaitTimeForOffer(o);
-                oMsg["t_drive"] = sim.computeRideTimeForOffer(o);
+                oMsg["t_wait"] = o.waitTime;
+                oMsg["t_drive"] = o.rideTime;
                 oMsg["t_egress"] = o.walkingTimeFromDropoff;
-                oMsg["fare"] = sim.computeFareForOffer(o);
+                oMsg["fare"] = o.fare;
                 oMsg["objective"] = 0.0f; // GW: objective has no useful meaning in mobiTopp
                 offerList.push_back(oMsg);
             }
@@ -578,6 +581,7 @@ namespace karri {
         std::array<char, BUF_NUM_BYTES> readbuf;
 
         CommState state;
+        int lastFleetControlTime;
         std::vector<int> agentIdForRequest; // maps request IDs to agent IDs
 
         FleetSimulationT &sim;

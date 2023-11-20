@@ -144,7 +144,7 @@ int main(int argc, char *argv[]) {
         // Read the request data from file.
         std::cout << "Reading request data from file... " << std::flush;
         std::vector<karri::Request> requests;
-        int origin, destination, requestTime;
+        int origin, destination, issuingTime;
         io::CSVReader<3, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
@@ -153,7 +153,7 @@ int main(int argc, char *argv[]) {
             reqFileReader.read_header(io::ignore_no_column, "origin", "destination", "req_time");
         }
 
-        while (reqFileReader.read_row(origin, destination, requestTime)) {
+        while (reqFileReader.read_row(origin, destination, issuingTime)) {
             if (origin < 0 || origin >= origIdToSeqId.size() || origIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
             if (destination < 0 || destination >= origIdToSeqId.size() ||
@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
             const int requestId = static_cast<int>(requests.size());
             assert(inputGraph.edgeTail(originSeqId) != EdgeTailAttribute::defaultValue());
             assert(inputGraph.edgeTail(destSeqId) != EdgeTailAttribute::defaultValue());
-            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
+            requests.push_back({requestId, originSeqId, destSeqId, 1, issuingTime * 10, issuingTime * 10});
         }
         std::cout << "done.\n";
 

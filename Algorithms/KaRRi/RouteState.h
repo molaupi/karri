@@ -67,7 +67,6 @@ namespace karri {
                   unusedStopIds(),
                   nextUnusedStopId(fleet.size()),
                   maxStopId(fleet.size() - 1),
-                  fleet(fleet),
                   inputConfig(inputConfig) {
             for (auto i = 0; i < fleet.size(); ++i) {
                 pos[i].start = i;
@@ -220,7 +219,8 @@ namespace karri {
             const int& stopTime = inputConfig.stopTime;
 
             const auto vehId = offer.vehicleId;
-            const int now = offer.minDepTimeAtOrigin;
+            const int reqIssuingTime = offer.issuingTime;
+            const int minDepTime = offer.minDepTimeAtOrigin;
             const int numRiders = offer.numRiders;
             const auto &start = pos[vehId].start;
             const auto &end = pos[vehId].end;
@@ -233,15 +233,15 @@ namespace karri {
             assert(dropoffIndex < end - start);
 
 
-            const int riderArrAtPickup = now + offer.walkingTimeToPickup;
-            const int maxDepTimeAtPickup = now + inputConfig.maxWaitTime;
+            const int riderArrAtPickup = minDepTime + offer.walkingTimeToPickup;
+            const int maxDepTimeAtPickup = minDepTime + inputConfig.maxWaitTime;
             const int maxTripTime = static_cast<int>(inputConfig.alpha * static_cast<double>(offer.directODDistance)) + inputConfig.beta;
-            const int maxArrTimeAtDropoff = now + maxTripTime - offer.walkingTimeFromDropoff;
+            const int maxArrTimeAtDropoff = minDepTime + maxTripTime - offer.walkingTimeFromDropoff;
 
             bool pickupInsertedAsNewStop = false;
             bool dropoffInsertedAsNewStop = false;
 
-            if ((pickupIndex > 0 || schedDepTimes[start] > now) && offer.pickupLoc == stopLocations[start + pickupIndex]) {
+            if ((pickupIndex > 0 || schedDepTimes[start] > minDepTime) && offer.pickupLoc == stopLocations[start + pickupIndex]) {
                 assert(start + pickupIndex == end - 1 || pickupIndex == dropoffIndex ||
                        offer.distFromPickup ==
                        schedArrTimes[start + pickupIndex + 1] - schedDepTimes[start + pickupIndex]);
@@ -252,15 +252,14 @@ namespace karri {
                 schedDepTimes[start + pickupIndex] = std::max(schedDepTimes[start + pickupIndex], riderArrAtPickup);
 
                 // If we allow pickupRadius > waitTime, then the passenger may arrive at the pickup location after
-                // the regular max dep time of requestTime + waitTime. In this case, the new latest permissible arrival
+                // the regular max dep time of minDepTime + waitTime. In this case, the new latest permissible arrival
                 // time is defined by the passenger arrival time at the pickup, not the maximum wait time.
-                const int psgMaxDepTime =
-                        std::max(now + inputConfig.maxWaitTime, riderArrAtPickup);
+                const int psgMaxDepTime = std::max(maxDepTimeAtPickup, riderArrAtPickup);
                 maxArrTimes[start + pickupIndex] = std::min(maxArrTimes[start + pickupIndex], psgMaxDepTime - stopTime);
             } else {
                 // If vehicle is currently idle, the vehicle can leave its current stop at the earliest when the
                 // request is made. In that case, we update the arrival time to count the idling as one stopTime.
-                schedDepTimes[end - 1] = std::max(schedDepTimes[end - 1], now);
+                schedDepTimes[end - 1] = std::max(schedDepTimes[end - 1], reqIssuingTime);
                 schedArrTimes[end - 1] = schedDepTimes[end - 1] - stopTime;
                 ++pickupIndex;
                 ++dropoffIndex;
@@ -694,7 +693,6 @@ namespace karri {
         int nextUnusedStopId;
         int maxStopId;
 
-        const Fleet& fleet;
         const InputConfig& inputConfig;
     };
 }

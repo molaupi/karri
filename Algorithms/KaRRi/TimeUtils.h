@@ -38,50 +38,50 @@
 
 namespace karri::time_utils {
 
-    static INLINE int getVehDepTimeAtStopForRequest(const int vehId, const int stopIdx, const int requestTime,
+    static INLINE int getVehDepTimeAtStopForRequest(const int vehId, const int stopIdx, const int issuingTime,
                                                     const RouteState &routeState) {
         const auto numStops = routeState.numStopsOf(vehId);
         const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
-        return (numStops == 1 ? std::max(minDepTimes[0], requestTime) : minDepTimes[stopIdx]);
+        return (numStops == 1 ? std::max(minDepTimes[0], issuingTime) : minDepTimes[stopIdx]);
     }
 
     static INLINE bool isMakingStop(const int vehId, const int now, const RouteState &routeState) {
         return routeState.schedDepTimesFor(vehId)[0] > now;
     }
 
-    static INLINE bool isPickupAtExistingStop(const int &pickupLoc, const int vehId, const int now, const int stopIndex,
+    static INLINE bool isPickupAtExistingStop(const int &pickupLoc, const int vehId, const int reqIssuingTime, const int stopIndex,
                                               const RouteState &routeState) {
-        return (stopIndex > 0 || isMakingStop(vehId, now, routeState)) &&
+        return (stopIndex > 0 || isMakingStop(vehId, reqIssuingTime, routeState)) &&
                pickupLoc == routeState.stopLocationsFor(vehId)[stopIndex];
     }
 
     template<typename LabelSet>
     static INLINE typename LabelSet::LabelMask
-    isPickupAtExistingStop(const typename LabelSet::DistanceLabel &pickupLocs, const int vehId, const int now,
+    isPickupAtExistingStop(const typename LabelSet::DistanceLabel &pickupLocs, const int vehId, const int reqIssuingTime,
                            const int stopIndex, const RouteState &routeState) {
-        if (!(stopIndex > 0 || isMakingStop(vehId, now, routeState))) return false;
+        if (!(stopIndex > 0 || isMakingStop(vehId, reqIssuingTime, routeState))) return false;
 
         return pickupLocs == typename LabelSet::DistanceLabel(routeState.stopLocationsFor(vehId)[stopIndex]);
     }
 
     template<typename LabelSet>
     static INLINE typename LabelSet::LabelMask
-    isPickupAtExistingStop(const std::array<PDLoc, LabelSet::K> &pickups, const int vehId, const int now,
+    isPickupAtExistingStop(const std::array<PDLoc, LabelSet::K> &pickups, const int vehId, const int reqIssuingTime,
                            const int stopIndex, const RouteState &routeState) {
         typename LabelSet::DistanceLabel pickupLocations;
         for (int i = 0; i < LabelSet::K; ++i) {
             pickupLocations[i] = pickups[i].location;
         }
-        return isPickupAtExistingStop(pickupLocations, vehId, now, stopIndex, routeState);
+        return isPickupAtExistingStop(pickupLocations, vehId, reqIssuingTime, stopIndex, routeState);
     }
 
-    static INLINE int getActualDepTimeAtPickup(const int vehId, const int requestTime,
+    static INLINE int getActualDepTimeAtPickup(const int vehId, const int issuingTime,
                                                const int stopIndexBeforePickup, const int distToPickup,
                                                const int pickupLoc, const int riderArrAtPickup,
                                                const RouteState &routeState, const InputConfig &inputConfig) {
-        const bool atStop = isPickupAtExistingStop(pickupLoc, vehId, requestTime, stopIndexBeforePickup, routeState);
+        const bool atStop = isPickupAtExistingStop(pickupLoc, vehId, issuingTime, stopIndexBeforePickup, routeState);
         const auto minVehicleDepTimeAtPickup =
-                getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, requestTime, routeState) +
+                getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, issuingTime, routeState) +
                 !atStop * (distToPickup + inputConfig.stopTime);
 
         // We assume a pickup at an existing stop takes no additional counting of stopTime, irrespective of when the
@@ -382,7 +382,7 @@ namespace karri::time_utils {
         // If departure time at the last stop (which may be the time of issuing this request if the vehicle is currently
         // idling) is moved past the end of the service time by the total detour, the assignment violates the service
         // time constraint.
-        if (std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime) + residualDetourAtEnd >
+        if (std::max(minDepTimes[numStops - 1], context.originalRequest.minDepTime) + residualDetourAtEnd >
             endServiceTime)
             return true;
 
@@ -437,7 +437,7 @@ namespace karri::time_utils {
         const auto numStops = routeState.numStopsOf(vehId);
         const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
 
-        return std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime) + residualDetourAtEnd >
+        return std::max(minDepTimes[numStops - 1], context.originalRequest.minDepTime) + residualDetourAtEnd >
                endServiceTime;
     }
 
@@ -456,7 +456,7 @@ namespace karri::time_utils {
         // the end of the service time by the pickup detour, the assignment violates the service time constraint.
         const auto residualDetourAtEnd = calcResidualPickupDetour(vehId, pickupIndex, numStops - 1, initialPickupDetour,
                                                                   routeState);
-        if (std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime) + residualDetourAtEnd >
+        if (std::max(minDepTimes[numStops - 1], context.originalRequest.minDepTime) + residualDetourAtEnd >
             endServiceTime)
             return true;
 
@@ -489,7 +489,7 @@ namespace karri::time_utils {
         // the end of the service time by the dropoff detour, the assignment violates the service time constraint.
         const auto residualDetourAtEnd = calcResidualTotalDetourForStopAfterDropoff(vehId, dropoffIndex, numStops - 1,
                                                                                     initialDropoffDetour, routeState);
-        if (std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime) + residualDetourAtEnd >
+        if (std::max(minDepTimes[numStops - 1], context.originalRequest.minDepTime) + residualDetourAtEnd >
             endServiceTime)
             return true;
 

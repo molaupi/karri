@@ -36,17 +36,13 @@ namespace karri {
 
     public:
 
-        RelevantPDLocsFilter(const Fleet &fleet, const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                             const CostCalculator &calculator,
+        RelevantPDLocsFilter(const Fleet &fleet, const CostCalculator &calculator,
                              RequestState &requestState, const RouteState &routeState,
                              const InputConfig &inputConfig, const FeasibleDistancesT &feasiblePickupDistances,
                              const FeasibleDistancesT &feasibleDropoffDistances,
                              RelevantPDLocs &relOrdinaryPickups, RelevantPDLocs &relOrdinaryDropoffs,
                              RelevantPDLocs &relPickupsBeforeNextStop, RelevantPDLocs &relDropoffsBeforeNextStop)
                 : fleet(fleet),
-                  inputGraph(inputGraph),
-                  ch(chEnv.getCH()),
-                  chQuery(chEnv.template getFullCHQuery<>()),
                   calculator(calculator),
                   requestState(requestState),
                   routeState(routeState),
@@ -138,7 +134,8 @@ namespace karri {
                 const int endStopIdx = beforeNextStop ? 1 : (isDropoff ? numStops : numStops - 1);
                 for (int i = beginStopIdx; i < endStopIdx; ++i) {
 
-                    if ((!isDropoff || beforeNextStop) && occupancies[i] + requestState.originalRequest.numRiders > veh.capacity)
+                    if ((!isDropoff || beforeNextStop) &&
+                        occupancies[i] + requestState.originalRequest.numRiders > veh.capacity)
                         continue;
 
                     const auto &stopId = stopIds[i];
@@ -206,7 +203,8 @@ namespace karri {
 
             const int &vehId = veh.vehicleId;
 
-            assert(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <= veh.capacity);
+            assert(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <=
+                   veh.capacity);
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
@@ -288,9 +286,9 @@ namespace karri {
                                        const int minDistFromPickup) const {
             using namespace time_utils;
             const int minVehDepTimeAtPickup =
-                    getVehDepTimeAtStopForRequest(veh.vehicleId, stopIndex, requestState.now(), routeState)
-                    + minDistToPickup;
-            const int minDepTimeAtPickup = std::max(requestState.originalRequest.requestTime, minVehDepTimeAtPickup);
+                    getVehDepTimeAtStopForRequest(veh.vehicleId, stopIndex, requestState.now(), routeState) +
+                    minDistToPickup;
+            const int minDepTimeAtPickup = std::max(requestState.originalRequest.minDepTime, minVehDepTimeAtPickup);
             int minInitialPickupDetour = calcInitialPickupDetour(veh.vehicleId, stopIndex, INVALID_INDEX,
                                                                  minDepTimeAtPickup, minDistFromPickup, requestState,
                                                                  routeState);
@@ -308,29 +306,8 @@ namespace karri {
             return calculator.calcMinKnownDropoffSideCost(veh, stopIndex, minInitialDropoffDetour, 0, requestState);
         }
 
-        int recomputeDistToPDLocDirectly(const int vehId, const int stopIdxBefore, const int pdLocLocation) {
-            auto src = ch.rank(inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[stopIdxBefore]));
-            auto tar = ch.rank(inputGraph.edgeTail(pdLocLocation));
-            auto offset = inputGraph.travelTime(pdLocLocation);
-
-            chQuery.run(src, tar);
-            return chQuery.getDistance() + offset;
-        }
-
-        int recomputeDistFromPDLocDirectly(const int vehId, const int stopIdxAfter, const int pdLocLocation) {
-            auto src = ch.rank(inputGraph.edgeHead(pdLocLocation));
-            auto tar = ch.rank(inputGraph.edgeTail(routeState.stopLocationsFor(vehId)[stopIdxAfter]));
-            auto offset = inputGraph.travelTime(routeState.stopLocationsFor(vehId)[stopIdxAfter]);
-
-            chQuery.run(src, tar);
-            return chQuery.getDistance() + offset;
-        }
-
 
         const Fleet &fleet;
-        const InputGraphT &inputGraph;
-        const CH &ch;
-        typename CHEnvT::template FullCHQuery<> chQuery;
         const CostCalculator &calculator;
         RequestState &requestState;
         const RouteState &routeState;

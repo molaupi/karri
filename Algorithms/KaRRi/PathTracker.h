@@ -95,7 +95,7 @@ namespace karri {
                                                inputGraph.edgeTail(stopLocations[pickupIndexAfterInsertion]));
 
                 if (asgn.pickupStopIdx == 0 && numStopsBeforeInsertion > 1 &&
-                    routeState.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) {
+                    routeState.schedDepTimesFor(vehId)[0] < requestState.originalRequest.minDepTime) {
                     // In this case, the vehicle was rerouted on its way to the next stop and stopLocations[0] has been
                     // changed to the vehicles location at the point in time when it was rerouted (by a call to
                     // routeState.updateStartOfCurrentLeg()).

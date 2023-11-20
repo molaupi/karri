@@ -63,7 +63,8 @@ namespace karri {
         // Stores information about assignment and departure time of a request needed for logging on arrival of the
         // request.
         struct RequestData {
-            int reqTime = INFTY; // Set when request is assigned.
+            int minDepTime = INFTY; // Set when request is received.
+
             int vehicleId = INVALID_ID; // Set when request is assigned.
             int walkingTimeToPickup = INFTY; // Set when request is assigned.
             int walkingTimeFromDropoff = INFTY; // Set when request is assigned.
@@ -78,13 +79,14 @@ namespace karri {
     public:
 
         MobitoppEventSimulation(
-                const Fleet &fleet, const int numRequests, const int stopTime,
+                const Fleet &fleet, const RouteState &routeState, const InputConfig &inputConfig, const int numRequests,
                 AssignmentFinderT &assignmentFinder, SystemStateUpdaterT &systemStateUpdater,
                 const ScheduledStopsT &scheduledStops
 //                , const bool verbose = false
         )
                 : fleet(fleet),
-                  stopTime(stopTime),
+                  routeState(routeState),
+                  inputConfig(inputConfig),
                   assignmentFinder(assignmentFinder),
                   systemStateUpdater(systemStateUpdater),
                   scheduledStops(scheduledStops),
@@ -134,7 +136,7 @@ namespace karri {
 
         const Offer &handleRequest(const Request &request) {
 
-            advanceEventsUntil(request.requestTime);
+//            advanceEventsUntil(request.issuingTime);
 
             Timer timer;
 
@@ -144,24 +146,54 @@ namespace karri {
             }
 
             requestState[request.requestId] = RECEIVED;
-            requestData[request.requestId].reqTime = request.requestTime;
+            requestData[request.requestId].minDepTime = request.minDepTime;
 
             const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request);
             systemStateUpdater.writeBestAssignmentToLogger();
 
             const auto offerId = offers.size() + 1; // offer IDs start at 1
-            offers.push_back(createOffer(offerId, request.requestTime, request, asgnFinderResponse));
+            offers.push_back(createOffer(offerId, request.issuingTime, request, asgnFinderResponse));
 
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            eventSimulationStatsLogger << request.requestTime << ",RequestReceipt," << time << '\n';
+            eventSimulationStatsLogger << request.issuingTime << ",RequestReceipt," << time << '\n';
             return offers.back();
         }
 
-        ConstantVectorRange<Offer> handleFirstMileRequest(const FirstMileRequest& request) {
+        ConstantVectorRange<Offer> handleFirstMileRequest(const FirstMileRequest &request) {
+//            advanceEventsUntil(request.issuingTime);
 
+            Timer timer;
 
-            advanceEventsUntil(request.requestTime);
+            if (request.requestId >= requestState.size()) {
+                requestState.resize(request.requestId + 1, NOT_RECEIVED);
+                requestData.resize(request.requestId + 1, {});
+            }
+
+            requestState[request.requestId] = RECEIVED;
+
+            const auto prevOffersSize = offers.size();
+            for (const auto &transfer: request.transfers) {
+                // todo: We are not considering the additional trip time from the transfer to the destination while
+                //  finding an assignment.
+                Request simpleReq = {request.requestId, request.origin, transfer.loc, request.numRiders,
+                                     request.issuingTime, request.minDepTime};
+
+                const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(simpleReq);
+                // todo: when to write best found assignment? Do we only want to write a single one?
+                systemStateUpdater.writeBestAssignmentToLogger();
+
+                const auto offerId = offers.size() + 1; // offer IDs start at 1
+                offers.push_back(createOffer(offerId, request.issuingTime, simpleReq, asgnFinderResponse));
+            }
+
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            eventSimulationStatsLogger << request.issuingTime << ",FirstMileRequestReceipt," << time << '\n';
+            return {offers.begin() + prevOffersSize, offers.end()};
+        }
+
+        ConstantVectorRange<Offer> handleLastMileRequest(const LastMileRequest &request) {
+//            advanceEventsUntil(request.issuingTime);
 
             Timer timer;
 
@@ -174,58 +206,20 @@ namespace karri {
 
             const auto prevOffersSize = offers.size();
             for (const auto& transfer : request.transfers) {
-                // todo: We are not considering the additional trip time from the transfer to the destination while
+                // todo: We are not considering the additional trip time from the origin to the transfer while
                 //  finding an assignment.
-                Request simpleReq = {request.requestId, request.origin, transfer.loc, request.requestTime, request.numRiders};
+                Request simpleReq = {request.requestId, transfer.loc, request.destination, request.numRiders, request.issuingTime, transfer.minDepTimeAtTransfer};
 
                 const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(simpleReq);
                 // todo: when to write best found assignment? Do we only want to write a single one?
                 systemStateUpdater.writeBestAssignmentToLogger();
 
                 const auto offerId = offers.size() + 1; // offer IDs start at 1
-                offers.push_back(createOffer(offerId, request.requestTime, simpleReq, asgnFinderResponse));
+                offers.push_back(createOffer(offerId, request.issuingTime, simpleReq, asgnFinderResponse));
             }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            eventSimulationStatsLogger << request.requestTime << ",FirstMileRequestReceipt," << time << '\n';
-            return {offers.begin() + prevOffersSize, offers.end()};
-        }
-
-        ConstantVectorRange<Offer> handleLastMileRequest(const LastMileRequest& request) {
-
-            // todo: - unclear how to know time at which request is issued (important for advancing system state and
-            //          logging)
-            //       - need to make KaRRi able to handle requests with earliest departure time in the future
-            //  Currently returning no offers for this type of request.
-
-//            advanceEventsUntil(request.requestTime);
-
-            Timer timer;
-
-            if (request.requestId >= requestState.size()) {
-                requestState.resize(request.requestId + 1, NOT_RECEIVED);
-                requestData.resize(request.requestId + 1, {});
-            }
-
-//            requestState[request.requestId] = RECEIVED;
-            requestState[request.requestId] = FINISHED;
-
-            const auto prevOffersSize = offers.size();
-//            for (const auto& transfer : request.transfers) {
-//                // todo: We are not considering the additional trip time from the origin to the transfer while
-//                //  finding an assignment.
-//                Request simpleReq = {request.requestId, transfer.loc, request.destination, transfer.timeAtTransfer, request.numRiders};
-//
-//                const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(simpleReq);
-//                // todo: when to write best found assignment? Do we only want to write a single one?
-//                systemStateUpdater.writeBestAssignmentToLogger();
-//
-//                const auto offerId = offers.size() + 1; // offer IDs start at 1
-//                offers.push_back(createOffer(offerId, request.requestTime, simpleReq, asgnFinderResponse));
-//            }
-//
-//            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-//            eventSimulationStatsLogger << request.requestTime << ",FirstMileRequestReceipt," << time << '\n';
+            eventSimulationStatsLogger << request.issuingTime << ",FirstMileRequestReceipt," << time << '\n';
             return {offers.begin() + prevOffersSize, offers.end()};
         }
 
@@ -241,33 +235,26 @@ namespace karri {
             offers.clear();
         }
 
-        int computeWaitTimeForOffer(const Offer& o) const {
-            const int depTime = time_utils::getActualDepTimeAtPickup(
-                    o.vehicleId, o.minDepTimeAtOrigin, o.pickupStopIdx, o.distToPickup, o.pickupLoc,
-                    o.minDepTimeAtOrigin + o.walkingTimeToPickup, routeState, inputConfig);
-            // todo: Does wait time include walking or not?
-            return depTime - o.minDepTimeAtOrigin;
-        }
-
-        int computeRideTimeForOffer(const Offer& o) {
-
-        }
-
     private:
 
         template<typename AssignmentFinderResponseT>
         Offer
-        createOffer(const int offerId, const int offerTime, const Request &request, const AssignmentFinderResponseT &asgnFinderResponse) {
+        createOffer(const int offerId, const int offerTime, const Request &request,
+                    const AssignmentFinderResponseT &asgnFinderResponse) {
             const auto &asgn = asgnFinderResponse.getBestAssignment();
 
-            const int actualDepTime = time_utils::getActualDepTimeAtPickup(asgn, asgnFinderResponse, routeState, inputConfig);
-            const int waitTime = actualDepTime - request.requestTime;
-            const auto initialPickupDetour = calcInitialPickupDetour(asgn, actualDepTime, asgnFinderResponse, routeState);
+            const int actualDepTime = time_utils::getActualDepTimeAtPickup(asgn, asgnFinderResponse, routeState,
+                                                                           inputConfig);
+            const int waitTime = actualDepTime - request.minDepTime;
+            const auto initialPickupDetour = calcInitialPickupDetour(asgn, actualDepTime, asgnFinderResponse,
+                                                                     routeState);
             const bool isDropoffAtExistingStop = time_utils::isDropoffAtExistingStop(asgn, routeState);
-            const int rideTime = time_utils::getArrTimeAtDropoff(actualDepTime, asgn, initialPickupDetour, isDropoffAtExistingStop, routeState, inputConfig);
+            const int rideTime = time_utils::getArrTimeAtDropoff(actualDepTime, asgn, initialPickupDetour,
+                                                                 isDropoffAtExistingStop, routeState, inputConfig);
 
             // Fare model: 2 euro plus 30ct per minute of direct distance.
-            const int fare = static_cast<int>(std::floor(2.0 + 0.3 * ((double) asgnFinderResponse.originalReqDirectDist / 600.0)));
+            const int fare = static_cast<int>(std::floor(
+                    2.0 + 0.3 * ((double) asgnFinderResponse.originalReqDirectDist / 600.0)));
 
 
             return {offerId,
@@ -275,8 +262,9 @@ namespace karri {
                     request.requestId,
                     request.origin,
                     request.destination,
-                    request.requestTime,
                     request.numRiders,
+                    request.issuingTime,
+                    request.minDepTime,
                     asgnFinderResponse.originalReqDirectDist,
                     asgn.vehicle->vehicleId,
                     asgn.pickup->loc,
@@ -502,7 +490,9 @@ namespace karri {
 
 
         const Fleet &fleet;
-        const int stopTime;
+        const RouteState &routeState;
+        const InputConfig &inputConfig;
+
         AssignmentFinderT &assignmentFinder;
         SystemStateUpdaterT &systemStateUpdater;
         const ScheduledStopsT &scheduledStops;

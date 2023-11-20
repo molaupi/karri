@@ -94,12 +94,12 @@ int main(int argc, char *argv[]) {
 
         for (int i = 0; i < odPairs.size(); ++i) {
             reqTime = (binDist(binrand) * BIN_DURATION + withinBinDist(binrand)) / scaleFactor;
-            requests[i] = {i, odPairs[i].origin, odPairs[i].destination, reqTime};
+            requests[i] = {i, odPairs[i].origin, odPairs[i].destination, 1,reqTime, reqTime};
         }
 
 
         std::stable_sort(requests.begin(), requests.end(), [](const auto &lhs, const auto &rhs) {
-            return lhs.requestTime < rhs.requestTime;
+            return lhs.issuingTime < rhs.issuingTime;
         });
         std::cout << "done.\n";
 
@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
             throw std::invalid_argument("file cannot be opened -- '" + outputFileName + "'");
         out << "origin, destination, req_time\n";
         for (const auto &req: requests) {
-            out << req.origin << ", " << req.destination << ", " << req.requestTime << "\n";
+            out << req.origin << ", " << req.destination << ", " << req.issuingTime << "\n";
         }
         std::cout << "done.\n";
     } catch (std::exception &e) {

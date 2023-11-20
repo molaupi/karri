@@ -36,8 +36,10 @@ namespace karri {
         int requestId = INVALID_ID;
         int origin = INVALID_EDGE;
         int destination = INVALID_EDGE;
-        int requestTime = INFTY;
         int numRiders = INFTY;
+
+        int issuingTime = INFTY; // Time at which request is issued
+        int minDepTime = INFTY; // Earliest possible departure time (prebooking if > issuingTime)
     };
 
 
@@ -57,15 +59,17 @@ namespace karri {
         int requestId = INVALID_ID;
         int origin = INVALID_EDGE;
         std::vector<TransferAfterFirstMile> transfers = {};
-        int requestTime = INFTY;
         int numRiders = INFTY;
+
+        int issuingTime = INFTY; // Time at which request is issued
+        int minDepTime = INFTY; // Earliest possible departure time (prebooking if > issuingTime)
     };
 
     // Models a potential transfer to a different transportation method when taxi sharing is used for the last mile,
     // i.e. the trip from a transfer point to a fixed destination.
     struct TransferBeforeLastMile {
         int loc = INVALID_EDGE;
-        int timeAtTransfer = INFTY; // Arrival time at transfer using other means of transport.
+        int minDepTimeAtTransfer = INFTY; // Earliest possible departure time at transfer (defined by arrival using other means of transport)
     };
 
     // Models part of an intermodal request where taxi sharing is used for the last mile, i.e. the trip from a point of
@@ -76,6 +80,8 @@ namespace karri {
         std::vector<TransferBeforeLastMile> transfers = {};
         int destination = INVALID_EDGE;
         int numRiders = INFTY;
+
+        int issuingTime = INFTY; // Time at which request is issued
     };
 
 } // end namespace

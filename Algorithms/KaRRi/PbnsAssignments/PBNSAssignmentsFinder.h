@@ -106,7 +106,7 @@ namespace karri {
         // Initialize for new request.
         void init() {
             Timer timer;
-            curVehLocToPickupSearches.initialize(requestState.originalRequest.requestTime);
+            curVehLocToPickupSearches.initialize(requestState.originalRequest.issuingTime);
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pbnsAssignmentsStats.initializationTime += time;
         }

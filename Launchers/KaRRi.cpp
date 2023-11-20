@@ -283,14 +283,14 @@ int main(int argc, char *argv[]) {
         std::cout << "done.\n";
 
         // Create Route State for empty routes.
-        RouteState routeState(fleet, inputConfig.stopTime);
+        RouteState routeState(fleet, inputConfig);
 
 
 
         // Read the request data from file.
         std::cout << "Reading request data from file... " << std::flush;
         std::vector<Request> requests;
-        int origin, destination, requestTime, numRiders;
+        int origin, destination, issuingTime, numRiders;
         io::CSVReader<4, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
@@ -300,7 +300,7 @@ int main(int argc, char *argv[]) {
         }
 
         numRiders = -1;
-        while (reqFileReader.read_row(origin, destination, requestTime, numRiders)) {
+        while (reqFileReader.read_row(origin, destination, issuingTime, numRiders)) {
             if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
             if (destination < 0 || destination >= vehGraphOrigIdToSeqId.size() ||
@@ -315,7 +315,7 @@ int main(int argc, char *argv[]) {
             const int requestId = static_cast<int>(requests.size());
             if (numRiders == -1) // If number of riders was not specified, assume one rider
                 numRiders = 1;
-            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders});
+            requests.push_back({requestId, originSeqId, destSeqId, numRiders, issuingTime * 10, issuingTime * 10});
             numRiders = -1;
         }
         std::cout << "done.\n";
@@ -438,7 +438,7 @@ int main(int argc, char *argv[]) {
         RelevantPDLocs relPickupsBeforeNextStop(fleet.size());
         RelevantPDLocs relDropoffsBeforeNextStop(fleet.size());
         using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
-        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, vehicleInputGraph, *vehChEnv, calc, reqState, routeState, inputConfig,
+        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, calc, reqState, routeState, inputConfig,
                                                       feasibleEllipticPickups, feasibleEllipticDropoffs,
                                                       relOrdinaryPickups, relOrdinaryDropoffs, relPickupsBeforeNextStop,
                                                       relDropoffsBeforeNextStop);
@@ -587,7 +587,7 @@ int main(int argc, char *argv[]) {
 
 
         using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl, VehPathTracker, std::ofstream>;
-        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, inputConfig, curVehLocToPickupSearches,
+        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, reqState, inputConfig, curVehLocToPickupSearches,
                                                   pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv,
                                                   lastStopsAtVertices);
 

@@ -106,7 +106,7 @@ namespace karri {
             for (const auto &veh: fleet)
                 vehicleEvents.insert(veh.vehicleId, veh.startOfServiceTime);
             for (const auto &req: requests)
-                requestEvents.insert(req.requestId, req.requestTime);
+                requestEvents.insert(req.requestId, req.issuingTime);
         }
 
         void run() {
@@ -276,7 +276,7 @@ namespace karri {
         void handleRequestReceipt(const int reqId, const int occTime) {
             ++progressBar;
             assert(requestState[reqId] == NOT_RECEIVED);
-            assert(requests[reqId].requestTime == occTime);
+            assert(requests[reqId].issuingTime == occTime);
             Timer timer;
 
             const auto &request = requests[reqId];
@@ -351,10 +351,10 @@ namespace karri {
             requestEvents.deleteMin(id, key);
             assert(id == reqId && key == occTime);
 
-            const auto waitTime = reqData.depTime - requests[reqId].requestTime;
+            const auto waitTime = reqData.depTime - requests[reqId].minDepTime;
             const auto arrTime = occTime;
             const auto rideTime = occTime - reqData.walkingTimeFromDropoff - reqData.depTime;
-            const auto tripTime = arrTime - requests[reqId].requestTime;
+            const auto tripTime = arrTime - requests[reqId].minDepTime;
             assignmentQualityStats << reqId << ','
                                    << arrTime << ','
                                    << waitTime << ','

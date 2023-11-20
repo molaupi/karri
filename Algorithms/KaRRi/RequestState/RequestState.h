@@ -76,9 +76,9 @@ namespace karri {
             return dropoffs.size();
         }
 
-        // Shorthand for requestTime
+        // Shorthand for time of issuing request
         int now() const {
-            return originalRequest.requestTime;
+            return originalRequest.issuingTime;
         }
 
         int getOriginalReqMaxTripTime() const {
@@ -88,7 +88,7 @@ namespace karri {
 
         int getPassengerArrAtPickup(const int pickupId) const {
             assert(pickupId < numPickups());
-            return originalRequest.requestTime + pickups[pickupId].walkingDist;
+            return originalRequest.minDepTime + pickups[pickupId].walkingDist;
         }
 
         int getMaxPDTripTime(const int pickupId, const int dropoffId) const {
@@ -103,7 +103,7 @@ namespace karri {
         }
 
         int getMaxDepTimeAtPickup() const {
-            return originalRequest.requestTime + inputConfig.maxWaitTime;
+            return originalRequest.minDepTime + inputConfig.maxWaitTime;
         }
 
         // Information about best known assignment for current request

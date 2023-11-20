@@ -32,14 +32,15 @@
 namespace karri {
     struct Offer {
         int offerId = INVALID_ID;
-        int offerTime = INFTY;
+        int offerTime = INFTY; // time at which offer is made (generally equals time at which request is received)
 
         // Information on request
         int requestId = INVALID_ID;
         int origin = INVALID_EDGE; // chosen by KaRRi for last mile request, otherwise fixed by mobiTopp request
         int destination = INVALID_EDGE; // chosen by KaRRi for first mile request, otherwise fixed by mobiTopp request
-        int minDepTimeAtOrigin = INFTY; // equal to offerTime, except for last mile requests
         int numRiders = INFTY;
+        int issuingTime = INFTY; // time at which request is issued
+        int minDepTimeAtOrigin = INFTY; // earliest possible departure time (may be later than issuingTime)
 
         int directODDistance = INFTY; // computed by KaRRi
 
