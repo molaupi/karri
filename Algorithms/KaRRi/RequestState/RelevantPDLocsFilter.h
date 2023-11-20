@@ -210,8 +210,8 @@ namespace karri {
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
-            // assert(distFromStopToPickup >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc));
-            // assert(distFromPickupToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc));
+             assert(distFromStopToPickup >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc));
+             assert(distFromPickupToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc));
             assert(distFromStopToPickup + distFromPickupToNextStop >=
                    calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
 
@@ -312,7 +312,12 @@ namespace karri {
         }
 
         int recomputeDistToPDLocDirectly(const int vehId, const int stopIdxBefore, const int pdLocLocation) {
-            auto src = ch.rank(inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[stopIdxBefore]));
+
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[stopIdxBefore];
+            if (stopLoc == pdLocLocation)
+                return 0;
+
+            auto src = ch.rank(inputGraph.edgeHead(stopLoc));
             auto tar = ch.rank(inputGraph.edgeTail(pdLocLocation));
             auto offset = inputGraph.travelTime(pdLocLocation);
 
