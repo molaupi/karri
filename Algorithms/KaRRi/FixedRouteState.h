@@ -224,7 +224,7 @@ namespace karri {
 
         // Range containing the occupancies of each leg of the currently scheduled route of the vehicle with given ID.
         // occupanciesFor(vehId)[i] means the number of passengers that travel in the vehicle between stops i and i+1.
-        ConstantVectorRange<int> occupanciesFor(const int vehId) const { //TODO: Muss man hier mit der normalen occ Anzahl arbeiten?
+        ConstantVectorRange<int> occupanciesFor(const int vehId) const {
             assert(vehId >= 0);
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
@@ -285,32 +285,34 @@ namespace karri {
             return maxLegLength;
         }
 
+
         void newStopReached(const StopInfo &info) {
+            assert(info.insertIndex == 0 || info.insertIndex == 1);
             const auto &start = pos[info.vehicleId].start;
             const auto &end = pos[info.vehicleId].end;
-            const auto index = start + 1;
             bool insertedPickupAsNewStop = false;
 
-            if (hasNextScheduledStop(info.vehicleId) && info.location.loc == stopLocations[index]) {
-                //The pickup is the next fixed stop
-                schedArrTimes[index] = info.schedArrTime;
-                schedDepTimes[index] = info.schedDepTime;
-                maxArrTimes[index] = info.maxArrTime;
+            if (info.insertIndex == 0 || (hasNextScheduledStop(info.vehicleId) && info.location.loc == stopLocations[start + info.insertIndex])) {
+                //The pickup is the next fixed stop or the current stop (last minute insert)
+                schedArrTimes[start + info.insertIndex] = info.schedArrTime;
+                schedDepTimes[start + info.insertIndex] = info.schedDepTime;
+                maxArrTimes[start + info.insertIndex] = info.maxArrTime;
             } else {
                 //The pickup location currently does not exist as fixed stop
-                stableInsertion(info.vehicleId, 1, getUnusedStopId(), pos, stopIds, stopLocations,
+                assert(info.insertIndex == 1);
+                stableInsertion(info.vehicleId, info.insertIndex, getUnusedStopId(), pos, stopIds, stopLocations,
                                 schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
                                 numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
-                stopLocations[index] = info.location.loc;
-                schedArrTimes[index] = info.schedArrTime;
-                schedDepTimes[index] = info.schedDepTime;
-                maxArrTimes[index] = info.maxArrTime;
-                numDropoffsPrefixSum[index] = 0; // No dropoffs otherwise it would've been a fixed stop
+                stopLocations[start + info.insertIndex] = info.location.loc;
+                schedArrTimes[start + info.insertIndex] = info.schedArrTime;
+                schedDepTimes[start + info.insertIndex] = info.schedDepTime;
+                maxArrTimes[start + info.insertIndex] = info.maxArrTime;
+                numDropoffsPrefixSum[start + info.insertIndex] = 0; // No dropoffs otherwise it would've been a fixed stop
 
                 if (numStopsOf(info.vehicleId) > 2) {
                     //Newly inserted stop changed Arr and departure times for upcoming stops
-                    int distance = calcDistance(info.location.loc, stopLocations[start + 2]);
-                    propagateSchedArrAndDepForward(start + 2, end - 1, distance);
+                    int distance = calcDistance(info.location.loc, stopLocations[start + info.insertIndex + 1]);
+                    propagateSchedArrAndDepForward(start + info.insertIndex + 1, end - 1, distance);
                 }
                 insertedPickupAsNewStop = true;
             }
@@ -318,10 +320,10 @@ namespace karri {
             propgateNumOfOccupanciesForward(info.vehicleId, 1, info.numOfPeoplePickedUp);
 
             // Updating all the other vectors
-            recalculateVehWaitTimesPrefixSum(index, end - 1, 0);
-            recalculateVehWaitTimesAtDropoffsPrefixSum(index, end - 1, 0);
+            recalculateVehWaitTimesPrefixSum(start + info.insertIndex, end - 1, 0);
+            recalculateVehWaitTimesAtDropoffsPrefixSum(start + info.insertIndex, end - 1, 0);
 
-            const auto size = stopIds[index] + 1;
+            const auto size = stopIds[start + info.insertIndex] + 1;
             if (stopIdToIdOfPrevStop.size() < size) {
                 stopIdToIdOfPrevStop.resize(size, INVALID_ID);
                 stopIdToPosition.resize(size, INVALID_INDEX);
@@ -332,10 +334,13 @@ namespace karri {
             }
 
             if (insertedPickupAsNewStop) {
-                stopIdToVehicleId[stopIds[index]] = info.vehicleId;
-                stopIdToIdOfPrevStop[stopIds[index]] = stopIds[start];
-                stopIdToIdOfPrevStop[stopIds[start + 2]] = stopIds[index];
-                for (int i = index; i < end; ++i) {
+                assert(info.insertIndex == 1);
+                stopIdToVehicleId[stopIds[start + info.insertIndex]] = info.vehicleId;
+                stopIdToIdOfPrevStop[stopIds[start + info.insertIndex]] = stopIds[start];
+                if (numStopsOf(info.vehicleId) > 2) {
+                    stopIdToIdOfPrevStop[stopIds[start + info.insertIndex + 1]] = stopIds[start + info.insertIndex];
+                }
+                for (int i = start + info.insertIndex; i < end; ++i) {
                     stopIdToPosition[stopIds[i]] = i - start;
                 }
             }
@@ -344,52 +349,50 @@ namespace karri {
             //updateMaxLegLength(vehId, pickupIndex, dropoffIndex); //TODO: einfach in dropoffprocedure updaten?
 
             for (const auto& requestId : info.pickedupRequests) {
-                insertion(stopIds[index], requestId,rangeOfRequestsPickedUpAtStop, requestsPickedUpAtStop);
+                insertion(stopIds[start + info.insertIndex], requestId,rangeOfRequestsPickedUpAtStop, requestsPickedUpAtStop);
             }
         }
 
         void addNewDropoff(const StopInfo &info) {
-            assert(info.insertIndex != 0);
             const auto &start = pos[info.vehicleId].start;
             const auto &end = pos[info.vehicleId].end;
-            const auto index = start + info.insertIndex + 1;
             bool insertedDropoffAsNewStop = false;
 
-            if (numStopsOf(info.vehicleId) - 1 == info.insertIndex) {
+            if (numStopsOf(info.vehicleId) == info.insertIndex) {
                 // Dropoff is a new stop and inserted as the last stop
                 stableInsertion(info.vehicleId, info.insertIndex, getUnusedStopId(),
                                 pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
                                 maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
-                stopLocations[index] = info.location.loc;
-                schedArrTimes[index] = schedDepTimes[index - 1] + calcDistance(stopLocations[index - 1], info.location.loc);
-                schedDepTimes[index] = schedArrTimes[index] + stopTime;
-                maxArrTimes[index] = info.maxArrTimeAtDropoff;
+                stopLocations[start + info.insertIndex] = info.location.loc;
+                schedArrTimes[start + info.insertIndex] = schedDepTimes[start + info.insertIndex - 1] + calcDistance(stopLocations[start + info.insertIndex - 1], info.location.loc);
+                schedDepTimes[start + info.insertIndex] = schedArrTimes[start + info.insertIndex] + stopTime;
+                maxArrTimes[start + info.insertIndex] = info.maxArrTimeAtDropoff;
 
-                propagateMaxArrTimeBackward(index - 1, start + 1);
+                propagateMaxArrTimeBackward(start + info.insertIndex - 1, start);
                 insertedDropoffAsNewStop = true;
-            } else if(stopLocations[index] == info.location.loc) {
+            } else if(stopLocations[start + info.insertIndex] == info.location.loc) {
                 // Dropoff stop already fixed
-                maxArrTimes[index] = std::min(maxArrTimes[index], info.maxArrTimeAtDropoff);
-                propagateMaxArrTimeBackward(index, start + 1);
+                maxArrTimes[start + info.insertIndex] = std::min(maxArrTimes[start + info.insertIndex], info.maxArrTimeAtDropoff);
+                propagateMaxArrTimeBackward(start + info.insertIndex, start);
             } else {
                 // Dropoff is a new stop but not the last one
                 stableInsertion(info.vehicleId, info.insertIndex, getUnusedStopId(),
                                 pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
                                 maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
-                stopLocations[index] = info.location.loc;
-                schedArrTimes[index] = schedDepTimes[index - 1] + calcDistance(stopLocations[index - 1], info.location.loc);
-                schedDepTimes[index] = schedArrTimes[index] + stopTime;
-                maxArrTimes[index] = info.maxArrTimeAtDropoff;
+                stopLocations[start + info.insertIndex] = info.location.loc;
+                schedArrTimes[start + info.insertIndex] = schedDepTimes[start + info.insertIndex - 1] + calcDistance(stopLocations[start + info.insertIndex - 1], info.location.loc);
+                schedDepTimes[start + info.insertIndex] = schedArrTimes[start + info.insertIndex] + stopTime;
+                maxArrTimes[start + info.insertIndex] = info.maxArrTimeAtDropoff;
 
-                propagateSchedArrAndDepForward(index, end - 1, calcDistance(info.location.loc, stopLocations[index + 1]));
-                propagateMaxArrTimeBackward(index, start + 1);
+                propagateSchedArrAndDepForward(start + info.insertIndex + 1, end - 1, calcDistance(info.location.loc, stopLocations[start + info.insertIndex + 1]));
+                propagateMaxArrTimeBackward(start + info.insertIndex, start);
                 insertedDropoffAsNewStop = true;
             }
 
-            propgateNumOfOccupanciesForward(info.vehicleId, index, -1*info.numOfPeopleDroppedoff);
-            propagateNumOfDropoffsForward(info.vehicleId, index, info.numOfPeopleDroppedoff);
+            propgateNumOfOccupanciesForward(info.vehicleId, start + info.insertIndex, -1*info.numOfPeopleDroppedoff);
+            propagateNumOfDropoffsForward(info.vehicleId, start + info.insertIndex, info.numOfPeopleDroppedoff);
 
-            const auto size = stopIds[index] + 1;
+            const auto size = stopIds[start + info.insertIndex] + 1;
             if (stopIdToIdOfPrevStop.size() < size) {
                 stopIdToIdOfPrevStop.resize(size, INVALID_ID);
                 stopIdToPosition.resize(size, INVALID_INDEX);
@@ -400,10 +403,10 @@ namespace karri {
             }
 
             if (insertedDropoffAsNewStop) {
-                stopIdToVehicleId[stopIds[index]] = info.vehicleId;
-                stopIdToIdOfPrevStop[stopIds[index]] = stopIds[index - 1];
-                if (index != end - 1)
-                    stopIdToIdOfPrevStop[stopIds[index + 1]] = stopIds[index];
+                stopIdToVehicleId[stopIds[start + info.insertIndex]] = info.vehicleId;
+                stopIdToIdOfPrevStop[stopIds[start + info.insertIndex]] = stopIds[start + info.insertIndex - 1];
+                if (start + info.insertIndex != end - 1)
+                    stopIdToIdOfPrevStop[stopIds[start + info.insertIndex + 1]] = stopIds[start + info.insertIndex];
             }
 
             if (insertedDropoffAsNewStop) {
@@ -416,7 +419,7 @@ namespace karri {
             //updateMaxLegLength(info.vehicleId, pickupIndex, dropoffIndex);
 
             for (const auto& requestId : info.droppedoffRequests) {
-                insertion(stopIds[index], requestId,rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
+                insertion(stopIds[start + info.insertIndex], requestId,rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
             }
         }
 

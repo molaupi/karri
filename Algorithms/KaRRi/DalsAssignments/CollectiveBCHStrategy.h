@@ -145,7 +145,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             enumerateAssignmentsWithPBNS(numAssignmentsTried, numParetoBestLabels, numFallBackChSearches,
                                          ranClosestDropoffSearch);
 
-            // Time spent to locate vehicles and compute distances from current vehicle locations to pickups is counted
+            // Time spent to locate vehicles and compute distances from current vehicle locations to pickups is countedDropoff
             // into PBNS time so subtract it here.
             const int64_t pbnsTime = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
                                      curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest() -

@@ -356,7 +356,7 @@ int main(int argc, char *argv[]) {
             ProgressBar bar;
 #pragma omp parallel
             {
-                using LabelSet = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>;
+                using LabelSet = karri::BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>;
                 BiDijkstra<Dijkstra<Graph, TravelTimeAttribute, LabelSet>> biDijkstra(graph, reverseGraph);
                 ODPairGenerator<Graph, TravelTimeAttribute> g(graph, isVertexEligible, seed);
 

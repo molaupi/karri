@@ -70,7 +70,7 @@ private:
     const GraphT &graph;
     const IsEligibleT &isEligible;
 
-    using Search = Dijkstra<GraphT, WeightT, BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>,
+    using Search = Dijkstra<GraphT, WeightT, karri::BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>,
             StopWhenVertexWithEligibleIncEdgeFound>;
     int vertex;
     Search search;
