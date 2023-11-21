@@ -9,12 +9,9 @@ namespace karri {
         PDLoc location;
         int vehicleId = INVALID_ID;
 
-        int schedDepTime = -1;   //schedDepTime[start + 1] in RouteState
-        int maxArrTime = -1;     //maxArrTime[start + 1] in RouteState
-
+        int schedDepTime = -1;
+        int maxArrTime = -1;
         int schedArrTime = -1;
-        int numOfPeoplePickedUp = -1;
-        int numOfPeopleDroppedoff = -1;
 
         std::vector<int> pickedupRequests;
         std::vector<int> droppedoffRequests;
@@ -23,19 +20,18 @@ namespace karri {
 
         int insertIndex = -1;  //Index where the Stopp should be inserted
 
-        int maxArrTimeAtDropoff = -1; // The minimal maxArrTimeAtDropoff of all requests that are dropped off at this stop
+        int maxArrTimeAtDropoff = INFTY; // The minimal maxArrTimeAtDropoff of all requests that are dropped off at this stop
 
         bool isFixed = false;
 
 
 
-        StopInfo(PDLoc loc, const int vehId, const int schedDepTime, const int maxArrTime, const int schedArrTime, const int maxArrTimeAtDropoff):
+        StopInfo(PDLoc loc, const int vehId, const int schedDepTime, const int maxArrTime, const int schedArrTime):
                 location(loc),
                 vehicleId(vehId),
                 schedDepTime(schedDepTime),
                 maxArrTime(maxArrTime),
-                schedArrTime(schedArrTime),
-                maxArrTimeAtDropoff(maxArrTimeAtDropoff) {
+                schedArrTime(schedArrTime) {
         }
 
         StopInfo()= default;

@@ -373,24 +373,21 @@ namespace karri {
                       rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
 
 
+            //TODO
             //Update data for FixedRouteState
             const int newSize = requestState.originalRequest.requestId + 1;
             if (countedDropoff.size() < newSize) {
                 countedDropoff.resize(newSize, false);
-                countedPickup.resize(newSize, false);
+                maxArrTimeAtDropForRequest.resize(newSize, 0);
+                hoppedOn.resize(newSize, false);
             }
-            countedDropoff[requestState.originalRequest.requestId] =  false;
-            countedPickup[requestState.originalRequest.requestId] = false;
 
-            const auto pickStopId = stopIds[start + pickupIndex];
-            const auto droppStopId = stopIds[start + dropoffIndex];
-
-            updateStopInfo(pickStopId, pickupInsertedAsNewStop, asgn.pickup,
+            updateStopInfo(stopIds[start + pickupIndex], requestState.originalRequest.requestId, pickupInsertedAsNewStop, asgn.pickup,
                            asgn.vehicle->vehicleId, schedDepTimes[start + pickupIndex], maxArrTimes[start + pickupIndex],
                            schedArrTimes[start + pickupIndex], stopIds[start + dropoffIndex],
                            requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id), true);
 
-            updateStopInfo(droppStopId, dropoffInsertedAsNewStop, asgn.dropoff,
+            updateStopInfo(stopIds[start + dropoffIndex], requestState.originalRequest.requestId, dropoffInsertedAsNewStop, asgn.dropoff,
                            asgn.vehicle->vehicleId, schedDepTimes[start + dropoffIndex], maxArrTimes[start + dropoffIndex],
                            schedArrTimes[start + dropoffIndex], INVALID_ID,
                            requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id), false);
@@ -417,8 +414,9 @@ namespace karri {
                 fixedRouteState.addNewDropoff(dropoff);
                 dropoff.isFixed = true;
                 dropoff.droppedoffRequests.clear();
-                dropoff.numOfPeopleDroppedoff = 0;
             }
+            currStopInfo.pickedupRequests.clear();
+            currStopInfo.dropOffIds.clear();
         }
 
 
@@ -456,12 +454,9 @@ namespace karri {
                 recomputeMaxLeeway();
 
 
-            //TODO
-            // Impliziert die zweite Bed. nicht auch numStopd > 1?
+            //TODO removed numStops > 1
             const auto newStartStopId = stopIds[startAfterRemoval];
-            const auto stops = numStopsOf(vehId);
-            const auto numOfPickups = rangeOfRequestsPickedUpAtStop[newStartStopId].end - rangeOfRequestsPickedUpAtStop[newStartStopId].start;
-            if (stops > 1 && numOfPickups != 0) {
+            if (numStopsOf(vehId) > 0 && (rangeOfRequestsPickedUpAtStop[newStartStopId].end - rangeOfRequestsPickedUpAtStop[newStartStopId].start != 0)) {
                 updatePickupInfo(stopInfos[newStartStopId], newStartStopId);
                 auto &newPickup = stopInfos[newStartStopId];
                 newPickup.insertIndex = 1;
@@ -474,38 +469,15 @@ namespace karri {
                     updateDropoffInfo(dropoff, stopId);
                     fixedRouteState.addNewDropoff(dropoff);
                     dropoff.isFixed = true;
-                    dropoff.droppedoffRequests.clear();
-                    dropoff.numOfPeopleDroppedoff = 0;
-                }
 
+                    dropoff.droppedoffRequests.clear();
+                }
                 newPickup.pickedupRequests.clear();
                 newPickup.dropOffIds.clear();
-                newPickup.numOfPeoplePickedUp = 0;
             }
             fixedRouteState.removeStartOfCurrentLeg(vehId);
             testFunction(vehId);
         }
-
-        void testFunction(const int vehId) {
-            const auto numVarStops = numStopsOf(vehId);
-            const auto numFixedStops = fixedRouteState.numStopsOf(vehId);
-            assert(numVarStops >= numFixedStops);
-
-            const auto &start = pos[vehId].start;
-            int toFind = numFixedStops;
-            int count = 0;
-            for (const auto &fixedLoc: fixedRouteState.stopLocationsFor(vehId)) {
-                while (!stopInfos[stopIds[start + count]].isFixed) {
-                    auto currInfo = stopInfos[stopIds[start + count]];
-                    count++;
-                }
-                assert(fixedLoc == stopLocations[start + count]);
-                count++;
-                toFind--;
-            }
-            assert(toFind == 0);
-        }
-
 
 
 
@@ -549,53 +521,49 @@ namespace karri {
 
     private:
 
-        // TODO: Pickup und Dropoff Ids einfach hier hinzufügen dann sind später die updatePickup/Dropoff Merthoden nicht nötig
-        void updateStopInfo(const int stopId, const bool newStop, const PDLoc *loc, const int vehId,
+        void updateStopInfo(const int stopId, const int reqId, const bool newStop, const PDLoc *loc, const int vehId,
                             const int schedDepTime, const int maxArrTime, const int schedArrTime,
                             const int dropOffId, const int maxArrTimeAtDropoff, const bool pickup) {
             if (newStop) {
-                StopInfo info(*loc, vehId, schedDepTime, maxArrTime, schedArrTime, maxArrTimeAtDropoff);
-                if (pickup) {
-                    info.dropOffIds.insert(dropOffId);
-                }
-                if (stopInfos.size() < stopId + 1) {
+                if (stopInfos.size() < stopId + 1)
                     stopInfos.resize(stopId + 1);
-                }
+                StopInfo info;
+                info.location = *loc;
+                info.vehicleId = vehId;
                 stopInfos[stopId] = info;
-                return;
             }
 
             auto &info = stopInfos[stopId];
             info.schedDepTime = schedDepTime;
             info.maxArrTime = maxArrTime;
             info.schedArrTime = schedArrTime;
-            info.maxArrTimeAtDropoff = (info.maxArrTimeAtDropoff > maxArrTimeAtDropoff) ? maxArrTimeAtDropoff : info.maxArrTimeAtDropoff; //TODO: Hier dürfen nur die Times der festen stops betrachtet werden
-            if (pickup) {
+            maxArrTimeAtDropForRequest[reqId] = maxArrTimeAtDropoff;
+            if (pickup)
                 info.dropOffIds.insert(dropOffId);
-            }
+
         }
 
-        //TODO: Nur die dropoffs zählen wo die requests auch schon drinne sind
         void updateDropoffInfo(StopInfo &info, const int stopId) {
-            info.numOfPeopleDroppedoff = 0;
             for (int i = rangeOfRequestsDroppedOffAtStop[stopId].start ; i < rangeOfRequestsDroppedOffAtStop[stopId].end; i++) {
                 const auto requestId = requestsDroppedOffAtStop[i];
-                if (!countedDropoff[requestId]) {
+                if (!countedDropoff[requestId] && hoppedOn[requestId]) {
                     info.droppedoffRequests.push_back(requestId);
-                    info.numOfPeopleDroppedoff++;
                     countedDropoff[requestId] = true;
+                    if (info.maxArrTimeAtDropoff > maxArrTimeAtDropForRequest[requestId])
+                        info.maxArrTimeAtDropoff = maxArrTimeAtDropForRequest[requestId];
                 }
             }
         }
 
         void updatePickupInfo(StopInfo &info, const int stopid) {
-            info.numOfPeoplePickedUp = 0;
+            info.schedArrTime = schedArrTimes[pos[info.vehicleId].start];
+            info.schedDepTime = schedDepTimes[pos[info.vehicleId].start];
+            info.maxArrTime = maxArrTimes[pos[info.vehicleId].start];
             for (int i = rangeOfRequestsPickedUpAtStop[stopid].start; i < rangeOfRequestsPickedUpAtStop[stopid].end; i++) {
                 const auto requestId = requestsPickedUpAtStop[i];
-                if (!countedPickup[requestId]) {
+                if (!hoppedOn[requestId]) {
                     info.pickedupRequests.push_back(requestsPickedUpAtStop[i]);
-                    info.numOfPeoplePickedUp++;
-                    countedPickup[requestId] = true;
+                    hoppedOn[requestId] = true;
                 }
             }
         }
@@ -611,6 +579,31 @@ namespace karri {
                 count++;
             }
             info.insertIndex = insertIndex;
+        }
+
+
+
+
+
+        // Tests if FixedRouteState contains all fixed stops in the right order
+        void testFunction(const int vehId) {
+            const auto numVarStops = numStopsOf(vehId);
+            const auto numFixedStops = fixedRouteState.numStopsOf(vehId);
+            assert(numVarStops >= numFixedStops);
+
+            const auto &start = pos[vehId].start;
+            int toFind = numFixedStops;
+            int count = 0;
+            for (const auto &fixedLoc: fixedRouteState.stopLocationsFor(vehId)) {
+                while (!stopInfos[stopIds[start + count]].isFixed) {
+                    auto currInfo = stopInfos[stopIds[start + count]];
+                    count++;
+                }
+                assert(fixedLoc == stopLocations[start + count]);
+                count++;
+                toFind--;
+            }
+            assert(toFind == 0);
         }
 
 
@@ -638,6 +631,8 @@ namespace karri {
             if (!unusedStopIds.empty()) {
                 const auto id = unusedStopIds.top();
                 unusedStopIds.pop();
+                StopInfo newInfo;
+                stopInfos[id] = newInfo;
                 assert(stopIdToVehicleId[id] == INVALID_ID);
                 return id;
             }
@@ -870,8 +865,11 @@ namespace karri {
 
         //Information needed for the FixedRouteState
         FixedRouteStateT &fixedRouteState;
+
         std::vector<StopInfo> stopInfos;  //stopInfos[stopId] returns the StopInfo object of stop with id stopId
-        std::vector<bool> countedDropoff; //countedDropoff[requestId] = true if passengers dropoff info is already included in FixedRouteState
+        std::vector<int> maxArrTimeAtDropForRequest; //maxArrTimeAtDropoff[reqId] returns maxArrTimeAtDropoff of the request
+        std::vector<bool> hoppedOn; //hoppedOn[reqId] = true if passenger is already inside the vehicle
+        std::vector<bool> countedDropoff; //countedDropoff[reqId] = true if the
         std::vector<bool> countedPickup;
     };
 }

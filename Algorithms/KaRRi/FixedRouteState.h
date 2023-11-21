@@ -317,7 +317,7 @@ namespace karri {
                 insertedPickupAsNewStop = true;
             }
 
-            propgateNumOfOccupanciesForward(info.vehicleId, 1, info.numOfPeoplePickedUp);
+            propgateNumOfOccupanciesForward(info.vehicleId, 1, info.pickedupRequests.size());
 
             // Updating all the other vectors
             recalculateVehWaitTimesPrefixSum(start + info.insertIndex, end - 1, 0);
@@ -345,7 +345,7 @@ namespace karri {
                 }
             }
 
-            updateLeeways(info.vehicleId);
+            //updateLeeways(info.vehicleId);
             //updateMaxLegLength(vehId, pickupIndex, dropoffIndex); //TODO: einfach in dropoffprocedure updaten?
 
             for (const auto& requestId : info.pickedupRequests) {
@@ -389,8 +389,8 @@ namespace karri {
                 insertedDropoffAsNewStop = true;
             }
 
-            propgateNumOfOccupanciesForward(info.vehicleId, start + info.insertIndex, -1*info.numOfPeopleDroppedoff);
-            propagateNumOfDropoffsForward(info.vehicleId, start + info.insertIndex, info.numOfPeopleDroppedoff);
+            propgateNumOfOccupanciesForward(info.vehicleId, start + info.insertIndex, -1*info.droppedoffRequests.size());
+            propagateNumOfDropoffsForward(info.vehicleId, start + info.insertIndex, info.droppedoffRequests.size());
 
             const auto size = stopIds[start + info.insertIndex] + 1;
             if (stopIdToIdOfPrevStop.size() < size) {
