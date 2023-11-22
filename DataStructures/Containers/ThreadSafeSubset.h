@@ -36,7 +36,6 @@
 #include <oneapi/tbb/concurrent_vector.h>
 #include <mutex>
 
-#include "Parallel/atomic_wrapper.h"
 
 // based on http://upcoder.com/9/fast-resettable-flag-vector/
 
@@ -165,8 +164,7 @@ class ThreadSafeSubset {
  public:
   // Constructs an empty subset of a finite set of the specified size.
   explicit ThreadSafeSubset(const int size) 
-            : elementsToIndices(size, INVALID_INDEX),
-            flags(size)
+            : flags(size)
         {
             elements.reserve(size);
         }
@@ -188,51 +186,31 @@ class ThreadSafeSubset {
 
   // Inserts the specified element into the subset. Invalidates only the past-the-end iterator.
   bool insert(const int element) {
-    if (contains(element))
-      return false;
-    while(!flags.compare_and_set_to_true(element));  
-    elements.push_back(element);
-    elementsToIndices[element] = elements.size();
-    return true;
+
+      if (!flags.compare_and_set_to_true(element))
+          return false;
+
+      elements.push_back(element);
+      return true;
+
   }
 
-  // Removes the specified element from the subset. May invalidate all iterators.
-  bool remove(const int element) {
-    if (!contains(element))
-      return false;
-    elements[elementsToIndices[element]] = elements.back();
-    elementsToIndices[elements.back()] = elementsToIndices[element];
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      elements.resize(elements.size() - 1); // concurrently unsafe
-    }
-    elementsToIndices[element] = INVALID_INDEX;
-    flags.set(element, false);
-    return true;
-  }
 
-  // Removes all elements in the subset. May invalidate all iterators.
+  // Removes all elements in the subset. May invalidate all iterators. Not thread safe.
   void clear() {
-    for (const auto element : elements)
-      elementsToIndices[element] = INVALID_INDEX;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      elements.clear(); // concurrently unsafe
-    }
+    elements.clear();
     flags.reset();
   }
 
   // Returns true if the subset contains the specified element.
   bool contains(const int element) const {
-    assert(element >= 0); assert(element < elementsToIndices.size()); assert(element < flags.size());
-    return flags[element] && elementsToIndices[element] != INVALID_INDEX;
+    assert(element >= 0); assert(element < flags.size());
+    return flags[element];
   }
 
  private:
   concurrent_vector<int32_t> elements;           // The elements contained in the subset.
-  concurrent_vector<int32_t> elementsToIndices; // The index in the element array of each element.
   ThreadSafeFastResetFlagArray<> flags;         // The flags whether the element is set successfully in elements.
-  mutable std::mutex mutex_;
 };
 
 }  // namespace karri

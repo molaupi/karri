@@ -176,11 +176,18 @@ namespace karri {
             distToRelevantPDLocs[idx].setIf(newDistToPDLoc, improved);
             meetingVerticesToRelevantPDLocs[idx].setIf(meetingVertex, improved);
 
-            const int minNewDistToPDLoc = newDistToPDLoc.horizontalMin();
+            if (anySet(improved)) {
 
-            auto& minToPDLocAtomic = minDistToPDLoc[stopId];
-            int expectedMinForStop = minToPDLocAtomic.load(std::memory_order_relaxed);
-            while(expectedMinForStop > minNewDistToPDLoc && !minToPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistToPDLoc, std::memory_order_relaxed));
+                vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
+
+                const int minNewDistToPDLoc = newDistToPDLoc.horizontalMin();
+
+                auto& minToPDLocAtomic = minDistToPDLoc[stopId];
+                int expectedMinForStop = minToPDLocAtomic.load(std::memory_order_relaxed);
+                while(expectedMinForStop > minNewDistToPDLoc && !minToPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistToPDLoc, std::memory_order_relaxed));
+            }
+
+
 
             return improved;
         }
@@ -203,11 +210,17 @@ namespace karri {
             distFromRelevantPDLocsToNextStop[idx].setIf(newDistFromPDLocToNextStop, improved);
             meetingVerticesFromRelevantPDLocsToNextStop[idx].setIf(meetingVertex, improved);
 
-            const int minNewDistFromPDLocToNextStop = newDistFromPDLocToNextStop.horizontalMin();
 
-            auto& minFromPDLocAtomic = minDistFromPDLocToNextStop[stopId];
-            int expectedMinForStop = minFromPDLocAtomic.load(std::memory_order_relaxed);
-            while(expectedMinForStop > minNewDistFromPDLocToNextStop && !minFromPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistFromPDLocToNextStop, std::memory_order_relaxed));
+            if (anySet(improved)) {
+
+                vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
+
+                const int minNewDistFromPDLocToNextStop = newDistFromPDLocToNextStop.horizontalMin();
+
+                auto& minFromPDLocAtomic = minDistFromPDLocToNextStop[stopId];
+                int expectedMinForStop = minFromPDLocAtomic.load(std::memory_order_relaxed);
+                while(expectedMinForStop > minNewDistFromPDLocToNextStop && !minFromPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistFromPDLocToNextStop, std::memory_order_relaxed));
+            }
 
             return improved;
         }
