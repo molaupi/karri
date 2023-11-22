@@ -34,6 +34,7 @@
 #include <vector>
 
 #include <oneapi/tbb/concurrent_vector.h>
+#include <mutex>
 
 #include "Parallel/atomic_wrapper.h"
 
@@ -201,8 +202,10 @@ class ThreadSafeSubset {
       return false;
     elements[elementsToIndices[element]] = elements.back();
     elementsToIndices[elements.back()] = elementsToIndices[element];
-    // elements.pop_back();
-    elements.resize(elements.size() - 1);
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      elements.resize(elements.size() - 1); // concurrently unsafe
+    }
     elementsToIndices[element] = INVALID_INDEX;
     flags.set(element, false);
     return true;
@@ -212,21 +215,24 @@ class ThreadSafeSubset {
   void clear() {
     for (const auto element : elements)
       elementsToIndices[element] = INVALID_INDEX;
-    elements.clear();
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      elements.clear(); // concurrently unsafe
+    }
     flags.reset();
   }
 
   // Returns true if the subset contains the specified element.
   bool contains(const int element) const {
-    assert(element >= 0); assert(element < elementsToIndices.size());
+    assert(element >= 0); assert(element < elementsToIndices.size()); assert(element < flags.size());
     return flags[element] && elementsToIndices[element] != INVALID_INDEX;
   }
 
  private:
-  concurrent_vector<int32_t> elements;          // The elements contained in the subset.
+  concurrent_vector<int32_t> elements;           // The elements contained in the subset.
   concurrent_vector<int32_t> elementsToIndices; // The index in the element array of each element.
-  ThreadSafeFastResetFlagArray<> flags;
+  ThreadSafeFastResetFlagArray<> flags;         // The flags whether the element is set successfully in elements.
+  mutable std::mutex mutex_;
 };
-
 
 }  // namespace karri

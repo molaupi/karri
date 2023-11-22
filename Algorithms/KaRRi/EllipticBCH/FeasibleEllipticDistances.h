@@ -30,6 +30,7 @@
 #include "DataStructures/Labels/SimdLabelSet.h"
 #include "Tools/Simd/AlignedVector.h"
 #include "DataStructures/Containers/Subset.h"
+#include "DataStructures/Containers/ThreadSafeSubset.h"
 
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
@@ -128,6 +129,7 @@ namespace karri {
                 const auto &stopVertex = inputGraph.edgeHead(
                         routeState.stopLocationsFor(vehId)[pdLocAtExistingStop.stopIndex]);
                 // allocateEntriesFor(stopId);
+                vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
 
                 DistanceLabel zeroLabel = INFTY;
                 zeroLabel[pdLocAtExistingStop.pdId % K] = 0;
@@ -295,7 +297,7 @@ namespace karri {
             return {meetingVerticesFromRelevantPDLocsToNextStop.begin() + start, numLabelsPerStop};
         }
 
-        const Subset &getVehiclesWithRelevantPDLocs() const {
+        const ThreadSafeSubset &getVehiclesWithRelevantPDLocs() const {
             return vehiclesWithRelevantPDLocs;
         }
 
@@ -334,7 +336,7 @@ namespace karri {
         MeetingVerticesVector meetingVerticesToRelevantPDLocs;
         MeetingVerticesVector meetingVerticesFromRelevantPDLocsToNextStop;
 
-        Subset vehiclesWithRelevantPDLocs;
+        ThreadSafeSubset vehiclesWithRelevantPDLocs;
 
         std::vector<std::atomic_int> minDistToPDLoc;
         std::vector<std::atomic_int> minDistFromPDLocToNextStop;

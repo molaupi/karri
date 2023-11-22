@@ -115,15 +115,23 @@ namespace karri {
             rel.vehiclesWithRelevantSpots.clear();
 
 
-            // const auto &vehiclesWithFeasibleDistances = feasible.getVehiclesWithRelevantPDLocs();
+            const auto &vehiclesWithFeasibleDistances = feasible.getVehiclesWithRelevantPDLocs();
 
             for (int vehId = 0; vehId < fleet.size(); ++vehId) {
                 const auto &veh = fleet[vehId];
                 rel.startOfRelevantPDLocs[vehId] = rel.relevantSpots.size();
                 rel.startOfRelevantPDLocs[vehId] = rel.relevantSpots.size();
 
-                // if (!vehiclesWithFeasibleDistances.contains(vehId))
-                //     continue;
+                if (requestState.originalRequest.requestId == 116 && vehId == 694) {
+                    std::cout << "Expected vehicle: 694\n"; 
+                }
+
+                if (requestState.originalRequest.requestId == 116 && vehId == 468) {
+                    std::cout << "Calculated vehicle: 468\n"; 
+                }
+
+                if (!vehiclesWithFeasibleDistances.contains(vehId))
+                    continue;
 
                 const auto &numStops = routeState.numStopsOf(vehId);
                 const auto &stopIds = routeState.stopIdsFor(vehId);
@@ -145,7 +153,7 @@ namespace karri {
 
                     // Insert entries at this stop
                     if (feasible.hasPotentiallyRelevantPDLocs(stopId)) {
-                        // assert(vehiclesWithFeasibleDistances.contains(vehId));
+                        assert(vehiclesWithFeasibleDistances.contains(vehId));
 
                         // Check with lower bounds on dist to and from PD loc whether this stop needs to be regarded
                         const int minDistToPDLoc = feasible.minDistToRelevantPDLocsFor(stopId);
@@ -168,6 +176,14 @@ namespace karri {
                             for (unsigned int id = 0; id < numPDLocs; ++id) {
                                 const auto &distToPDLoc = distsToPDLocs[id];
                                 const auto &distFromPDLoc = distsFromPDLocs[id];
+
+                                if (!isDropoff && requestState.originalRequest.requestId == 116 && vehId == 694 && id == 48) {
+                                    std::cout << "Expected pickupId: 48\n"; 
+                                }
+
+                                if (!isDropoff && requestState.originalRequest.requestId == 116 && vehId == 468 && id == 39) {
+                                    std::cout << "Calculated pickupId: 39\n"; 
+                                }
 
                                 bool isRelevant;
                                 if constexpr (isDropoff) {
@@ -210,8 +226,8 @@ namespace karri {
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
-//             assert(distFromStopToPickup >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc));
-//             assert(distFromPickupToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc));
+            assert(distFromStopToPickup >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc));
+            assert(distFromPickupToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc));
             assert(distFromStopToPickup + distFromPickupToNextStop >=
                    calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
 
@@ -248,8 +264,8 @@ namespace karri {
             const auto &numStops = routeState.numStopsOf(vehId);
             const auto &d = requestState.dropoffs[dropoffId];
 
-//             assert(distFromStopToDropoff >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.dropoffs[dropoffId].loc));
-//             assert(stopIndex == numStops - 1 || distFromDropoffToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.dropoffs[dropoffId].loc));
+            assert(distFromStopToDropoff >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.dropoffs[dropoffId].loc));
+            assert(distFromDropoffToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.dropoffs[dropoffId].loc));
 
             // If this is the last stop in the route, we only consider this dropoff for ordinary assignments if it is at the
             // last stop. Similarly, if the vehicle is full after this stop, we can't perform the dropoff here unless the
@@ -326,11 +342,13 @@ namespace karri {
         }
 
         int recomputeDistFromPDLocDirectly(const int vehId, const int stopIdxAfter, const int pdLocLocation) {
+            if (stopIdxAfter >= routeState.numStopsOf(vehId))
+                return 0;
 
             const auto stopLoc = routeState.stopLocationsFor(vehId)[stopIdxAfter];
             if (stopLoc == pdLocLocation)
-                return 0;
-
+                return 0;    
+                
             auto src = ch.rank(inputGraph.edgeHead(pdLocLocation));
             auto tar = ch.rank(inputGraph.edgeTail(stopLoc));
             auto offset = inputGraph.travelTime(routeState.stopLocationsFor(vehId)[stopIdxAfter]);
