@@ -36,39 +36,28 @@
 #include "Tools/StringHelpers.h"
 #include "Tools/CommandLine/ProgressBar.h"
 #include "DataStructures/Queues/AddressableKHeap.h"
+#include "Algorithms/KaRRi/EventSimulations/MobitoppErrors.h"
+#include "Tools/SocketIO/SingleClientBlockingSocketServer.h"
+#include "Algorithms/KaRRi/EventSimulations/MobitoppMessageHelpers.h"
 
 class MockMobitoppRequests {
 
-    // todo: Read config file for potential other ports
-    static constexpr int BUF_NUM_BYTES = 4096;
-
-    // todo: Input argument for verbose
     static constexpr bool VERBOSE = true;
-
-    struct MobitoppMessageParseError : public std::runtime_error {
-
-        explicit MobitoppMessageParseError(const std::string &what, std::string receivedMessage = "<omitted>")
-                : std::runtime_error(what), receivedMessage(std::move(receivedMessage)) {}
-
-        std::string receivedMessage;
-    };
-
-    struct MobitoppCommError : public std::runtime_error {
-        explicit MobitoppCommError(const std::string &what) : std::runtime_error(what) {}
-    };
 
 public:
 
     MockMobitoppRequests(const std::vector<karri::Request> &requests, const int port)
             : requests(requests),
               requestEvents(requests.size()),
-              port(port),
-              progressBar(requests.size(), true) {}
+              progressBar(requests.size(), true),
+              io(port) {}
 
     void run() {
         try {
             init();
             mockSimulation();
+        } catch (socketio::SocketError& e) {
+            std::cerr << "Socket IO Error: " << e.what() << std::endl;
         } catch (MobitoppCommError &e) {
             std::cerr << e.what() << std::endl;
             sendError();
@@ -78,42 +67,14 @@ public:
                 std::cerr << "Message received: " << e.receivedMessage << std::endl;
             sendError();
         }
-        close(connected_fd);
-        close(listening_for_clients_fd);
+        shutDown();
     }
 
 private:
 
     // Establish socket connection
     void init() {
-
-        struct sockaddr_in address;
-        socklen_t addrlen = sizeof(address);
-
-        // Creating socket file descriptor
-        if ((listening_for_clients_fd = socket(AF_LOCAL, SOCK_STREAM, 0)) < 0) {
-            throw MobitoppCommError("socket failed.");
-        }
-
-        address.sin_family = AF_LOCAL;
-        address.sin_addr.s_addr = htonl(INADDR_ANY); // address is localhost
-        address.sin_port = htons(port); // todo: host to network byte order necessary?
-
-        // Forcefully attaching socket to the port
-        if (bind(listening_for_clients_fd, (struct sockaddr *) &address, addrlen)
-            < 0) {
-            throw MobitoppCommError("Binding to socket failed.");
-        }
-        if (listen(listening_for_clients_fd, 1) < 0) {
-            throw MobitoppCommError("Listen to socket connections failed.");
-        }
-
-        // Use first connection as client.
-        struct sockaddr_in tain;
-        int size = sizeof(tain);
-        if ((connected_fd = accept(listening_for_clients_fd, (struct sockaddr *) &tain, (socklen_t *) &size)) < 0) {
-            throw MobitoppCommError("Accepting connection from client failed.");
-        }
+        io.init();
 
         // Sort requests into event queue ordered by issuing time
         for (const auto &req: requests)
@@ -131,7 +92,7 @@ private:
 
         int id, key;
         while (!requestEvents.empty()) {
-            requestEvents.min(id, key);
+            requestEvents.deleteMin(id, key);
             const auto &req = requests[id];
             assert(req.issuingTime == key);
 
@@ -173,10 +134,13 @@ private:
         sendJsonMsg(endMsg);
     }
 
+    void shutDown() {
+        io.shutDown();
+    }
+
 
     nlohmann::json listenAndGetMsgJson() {
-        ssize_t numBytesRead = read(connected_fd, (void *) buf.data(), BUF_NUM_BYTES - 1);
-        return getMsgJsonFromBuf(numBytesRead);
+        return parseMobitoppJsonMsg(io.receive());
     }
 
     void verifyMessage(const nlohmann::json& msg, const std::string& expectedType) {
@@ -192,36 +156,10 @@ private:
         return msg["type"] == type;
     }
 
-    nlohmann::json getMsgJsonFromBuf(const ssize_t numBytesRead) {
-        std::string msg = buf.data();
-        unused(numBytesRead);
-//        if (msg.size() != numBytesRead) {
-//            throw MobitoppMessageParseError("Parsed message has size " + std::to_string(msg.size()) + " but " +
-//                                            std::to_string(numBytesRead) + " bytes were read.", msg);
-//        }
-        if (!endsWith(msg, "\n")) {
-            throw MobitoppMessageParseError("Message does not end in '\\n'", msg);
-        }
-
-        msg = msg.substr(0, msg.size() - 1);
-
-        try {
-            auto msgJson = nlohmann::json::parse(msg);
-            return msgJson;
-        } catch (const nlohmann::json::parse_error &e) {
-            throw MobitoppMessageParseError("Message could not be parsed to JSON.", msg);
-        }
-    }
-
     void sendJsonMsg(const nlohmann::json &msg) {
         std::string msgStr = msg.dump();
         msgStr += '\n';
-        strcpy(buf.data(), msgStr.c_str());
-        ssize_t bytesSent = write(connected_fd, (void *) buf.data(), msgStr.size() + 1);
-        if (bytesSent != msgStr.size() + 1)
-            throw MobitoppCommError(
-                    "Tried sending " + std::to_string(msgStr.size() + 1) + " bytes but could only send " +
-                    std::to_string(bytesSent) + " .");
+        io.send(msgStr);
     }
 
 
@@ -262,11 +200,8 @@ private:
 
     const std::vector<karri::Request> &requests;
     AddressableQuadHeap requestEvents;
-    const int port;
     ProgressBar progressBar;
-
-    int listening_for_clients_fd, connected_fd;
-    std::array<char, BUF_NUM_BYTES> buf;
+    socketio::SingleClientBlockingSocketServer io;
 
 
 };

@@ -29,6 +29,9 @@
 #include <utility>
 #include "Tools/EnumParser.h"
 #include "Algorithms/KaRRi/BaseObjects/Offer.h"
+#include "MobitoppErrors.h"
+#include "Tools/SocketIO/BlockingSocketClient.h"
+#include "MobitoppMessageHelpers.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -93,12 +96,6 @@ namespace karri {
     template<typename FleetSimulationT>
     class MobitoppCommunicator {
 
-        // todo: Read config file for potential other ports
-        static constexpr int BUF_NUM_BYTES = 4096;
-
-        // todo: Input argument for verbose
-        static constexpr bool VERBOSE = true;
-
         enum CommState {
             WAITING_FOR_INITIALIZATION, // Waiting for initialization message
             WAITING_FOR_NEW_EVENT, // Waiting for new request, fleet control, or end of simulation
@@ -108,26 +105,19 @@ namespace karri {
         };
 
 
-        struct MobitoppMessageParseError : public std::runtime_error {
 
-            explicit MobitoppMessageParseError(const std::string &what, std::string receivedMessage = "<omitted>")
-                    : std::runtime_error(what), receivedMessage(std::move(receivedMessage)) {}
-
-            std::string receivedMessage;
-        };
-
-        struct MobitoppCommError : public std::runtime_error {
-            explicit MobitoppCommError(const std::string &what) : std::runtime_error(what) {}
-        };
 
     public:
 
-        MobitoppCommunicator(FleetSimulationT &sim, const int port) : sim(sim), port(port) {}
+        MobitoppCommunicator(FleetSimulationT &sim, const int port) : sim(sim), io(port) {}
 
         void run() {
             try {
                 init();
                 while (listen()) {}
+            } catch (socketio::SocketError& e) {
+                state = COMM_ERROR;
+                std::cerr << "Socket IO Error: " << e.what() << std::endl;
             } catch (MobitoppMessageParseError &e) {
                 state = COMM_ERROR;
                 std::cerr << e.what() << std::endl;
@@ -145,59 +135,27 @@ namespace karri {
                 std::cerr << e.what() << std::endl;
                 sendError();
             }
-            close(fs_fd);
+            shutDown();
         }
 
     private:
 
         void init() {
-
-            struct sockaddr_in address;
-
-            if ((fs_fd = socket(AF_LOCAL, SOCK_STREAM, 0)) < 0) {
-                throw MobitoppCommError("Socket creation error.");
-            }
-
-            address.sin_family = AF_LOCAL;
-            address.sin_addr.s_addr = htonl(INADDR_ANY); // address is localhost
-            address.sin_port = htons(port);
-
-            if (connect(fs_fd, (struct sockaddr *) &address, sizeof(address)) < 0) {
-                throw MobitoppCommError("Socket connection to mobiTopp failed.");
-            }
-
+            io.init();
             state = WAITING_FOR_INITIALIZATION;
         }
 
 
         bool listen() {
-            ssize_t numBytesRead = read(fs_fd, (void *) buf.data(), BUF_NUM_BYTES - 1);
-            auto msgJson = getMsgJsonFromBuf(numBytesRead);
+            auto msg = io.receive();
+            if (VERBOSE)
+                std::cout << "Received raw message: " << msg << std::endl;
+            auto msgJson = parseMobitoppJsonMsg(std::move(msg));
             return handleMessage(msgJson);
         }
 
-
-        nlohmann::json getMsgJsonFromBuf(const ssize_t numBytesRead) {
-            unused(numBytesRead);
-            std::string msg = buf.data();
-//            if (msg.size() != numBytesRead) {
-//                throw MobitoppMessageParseError("Parsed message has size " + std::to_string(msg.size()) + " but " +
-//                                                std::to_string(numBytesRead) + " bytes were read.", msg);
-//            }
-            if (!endsWith(msg, "\n")) {
-                throw MobitoppMessageParseError("Message does not end in '\\n'", msg);
-            }
-
-            msg = msg.substr(0, msg.size() - 1);
-            if (VERBOSE)
-                std::cout << "Received raw message: " << msg << std::endl;
-
-            try {
-                auto msgJson = nlohmann::json::parse(msg);
-                return msgJson;
-            } catch (const nlohmann::json::parse_error &e) {
-                throw MobitoppMessageParseError("Message could not be parsed to JSON.", msg);
-            }
+        void shutDown() {
+            io.shutDown();
         }
 
 
@@ -402,12 +360,7 @@ namespace karri {
         void sendJsonMsg(const nlohmann::json &msg) {
             std::string msgStr = msg.dump();
             msgStr += '\n';
-            strcpy(buf.data(), msgStr.c_str());
-            ssize_t bytesSent = write(fs_fd, (void *) buf.data(), msgStr.size() + 1);
-            if (bytesSent != msgStr.size() + 1)
-                throw MobitoppCommError(
-                        "Tried sending " + std::to_string(msgStr.size() + 1) + " bytes but could only send " +
-                        std::to_string(bytesSent) + " .");
+            io.send(msgStr);
         }
 
         void sendError() {
@@ -566,7 +519,6 @@ namespace karri {
             Offer const *bestOffer = nullptr;
             assert(offers.size() == transfers.size());
             for (int i = 0; i < offers.size(); ++i) {
-                // todo: Is transfers[i].time actually the earliest possible departure time at the transfer?
                 const auto arrTime = transfers[i].minDepTimeAtTransfer + offers[i].waitTime + offers[i].rideTime +
                                      offers[i].walkingTimeFromDropoff;
                 if (arrTime < minArrTime) {
@@ -607,15 +559,16 @@ namespace karri {
         }
 
 
-        int fs_fd; // socket descriptor for socket communication
-        std::array<char, BUF_NUM_BYTES> buf;
+        FleetSimulationT &sim;
+        socketio::BlockingSocketClient io;
+
+        static constexpr bool VERBOSE = true;
+
 
         CommState state;
-        int lastFleetControlTime;
-        std::vector<int> agentIdForRequest; // maps request IDs to agent IDs
+        int lastFleetControlTime = 0;
 
-        FleetSimulationT &sim;
-        const int port;
+        std::vector<int> agentIdForRequest; // maps request IDs to agent IDs
     };
 
 } // end of namespace
