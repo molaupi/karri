@@ -39,77 +39,13 @@
 #include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
 #include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/OsmRoadCategoryAttribute.h"
 
-#include "Algorithms/KaRRi/InputConfig.h"
-#include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
-#include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
-#include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBucketsEnvironment.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
-#include "Algorithms/KaRRi/CostCalculator.h"
-#include "Algorithms/KaRRi/RequestState/RequestState.h"
-#include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
-#include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
-#include "Algorithms/KaRRi/RequestState/RelevantPDLocsFilter.h"
-#include "Algorithms/KaRRi/OrdinaryAssignments/OrdinaryAssignmentsFinder.h"
-#include "Algorithms/KaRRi/PbnsAssignments/PBNSAssignmentsFinder.h"
-#include "Algorithms/KaRRi/PalsAssignments/PALSAssignmentsFinder.h"
-#include "Algorithms/KaRRi/DalsAssignments/DALSAssignmentsFinder.h"
-#include "Algorithms/KaRRi/LastStopSearches/SortedLastStopBucketsEnvironment.h"
-#include "Algorithms/KaRRi/LastStopSearches/UnsortedLastStopBucketsEnvironment.h"
-#include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
-#include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
-#include "Algorithms/KaRRi/AssignmentFinder.h"
-#include "Algorithms/KaRRi/SystemStateUpdater.h"
-#include "Algorithms/KaRRi/EventSimulations/StandaloneEventSimulation.h"
-#include "Algorithms/KaRRi/EventSimulations/MobitoppEventSimulation.h"
-#include "Algorithms/KaRRi/EventSimulations/MobitoppCommunicator.h"
-
-#ifdef KARRI_USE_CCHS
-#include "Algorithms/KaRRi/CHEnvironments/CCHEnvironment.h"
-#else
-#include "Algorithms/KaRRi/CHEnvironments/CHEnvironment.h"
-#endif
-
-#if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
-
-#include "Algorithms/KaRRi/PDDistanceQueries/BCHStrategy.h"
-
-#else // KARRI_PD_STRATEGY == KARRI_CH_PD_STRAT
-#include "Algorithms/KaRRi/PDDistanceQueries/CHStrategy.h"
-#endif
+#include "MockMobitoppRequests.h"
 
 
-#if KARRI_PALS_STRATEGY == KARRI_COL
-
-#include "Algorithms/KaRRi/PalsAssignments/CollectiveBCHStrategy.h"
-
-#elif KARRI_PALS_STRATEGY == KARRI_IND
-
-#include "Algorithms/KaRRi/PalsAssignments/IndividualBCHStrategy.h"
-
-#else // KARRI_PALS_STRATEGY == KARRI_DIJ
-
-#include "Algorithms/KaRRi/PalsAssignments/DijkstraStrategy.h"
-
-#endif
-
-#if KARRI_DALS_STRATEGY == KARRI_COL
-
-#include "Algorithms/KaRRi/DalsAssignments/CollectiveBCHStrategy.h"
-
-#elif KARRI_DALS_STRATEGY == KARRI_IND
-
-#include "Algorithms/KaRRi/DalsAssignments//IndividualBCHStrategy.h"
-
-#else // KARRI_DALS_STRATEGY == KARRI_DIJ
-
-#include "Algorithms/KaRRi/DalsAssignments/DijkstraStrategy.h"
-
-#endif
 
 
 inline void printUsage() {
@@ -120,6 +56,7 @@ inline void printUsage() {
               "socket interface.\n"
               "  -veh-g <file>          vehicle road network in binary format.\n"
               "  -r <file>              requests in CSV format.\n"
+              "  -port <int>            port for socket communication.\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
               "  -help                  show usage help text.\n";
@@ -136,6 +73,7 @@ int main(int argc, char *argv[]) {
 
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto requestFileName = clp.getValue<std::string>("r");
+        const int port = clp.getValue<int>("port");
         const bool csvFilesInLoudFormat = clp.isSet("csv-in-LOUD-format");
         auto outputFileName = clp.getValue<std::string>("o");
         if (endsWith(outputFileName, ".csv"))
@@ -215,6 +153,12 @@ int main(int argc, char *argv[]) {
 
 
         // todo: Iterate requests and send via socket
+
+        MockMobitoppRequests mockMobitopp(requests, port);
+        mockMobitopp.run();
+
+
+
 
     } catch (std::exception &e) {
         std::cerr << argv[0] << ": " << e.what() << '\n';

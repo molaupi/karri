@@ -136,6 +136,8 @@ inline void printUsage() {
               "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
+              "  -mobitopp [file]       run KaRRi as fleet simulation engine for mobiTopp transport simulation. Optional config file for socket interface.\n"
+              "  -mobitopp-port         port for mobitopp communication\n" // todo: config file instead
               "  -help                  show usage help text.\n";
 }
 
@@ -174,6 +176,8 @@ int main(int argc, char *argv[]) {
         auto outputFileName = clp.getValue<std::string>("o");
         if (endsWith(outputFileName, ".csv"))
             outputFileName = outputFileName.substr(0, outputFileName.size() - 4);
+
+        const bool runAsMobitoppFS = clp.isSet("mobitopp");
 
 
         LogManager<std::ofstream>::setBaseFileName(outputFileName + ".");
@@ -287,38 +291,43 @@ int main(int argc, char *argv[]) {
 
 
 
-        // Read the request data from file.
-        std::cout << "Reading request data from file... " << std::flush;
+        // Read the request data from file if run as standalone simulation.
         std::vector<Request> requests;
-        int origin, destination, issuingTime, numRiders;
-        io::CSVReader<4, io::trim_chars<' '>> reqFileReader(requestFileName);
+        if (!runAsMobitoppFS) {
+            std::cout << "Reading request data from file... " << std::flush;
+            int origin, destination, issuingTime, numRiders;
+            io::CSVReader<4, io::trim_chars<' '>> reqFileReader(requestFileName);
 
-        if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time", "num_riders");
-        } else {
-            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders");
-        }
+            if (csvFilesInLoudFormat) {
+                reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time",
+                                          "num_riders");
+            } else {
+                reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders");
+            }
 
-        numRiders = -1;
-        while (reqFileReader.read_row(origin, destination, issuingTime, numRiders)) {
-            if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
-                throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
-            if (destination < 0 || destination >= vehGraphOrigIdToSeqId.size() ||
-                vehGraphOrigIdToSeqId[destination] == INVALID_ID)
-                throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
-            if (numRiders > maxCapacity)
-                throw std::invalid_argument("number of riders '" + std::to_string(numRiders) + "' is larger than max vehicle capacity (" + std::to_string(maxCapacity) + ")");
-            const auto originSeqId = vehGraphOrigIdToSeqId[origin];
-            assert(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
-            const auto destSeqId = vehGraphOrigIdToSeqId[destination];
-            assert(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
-            const int requestId = static_cast<int>(requests.size());
-            if (numRiders == -1) // If number of riders was not specified, assume one rider
-                numRiders = 1;
-            requests.push_back({requestId, originSeqId, destSeqId, numRiders, issuingTime * 10, issuingTime * 10});
             numRiders = -1;
+            while (reqFileReader.read_row(origin, destination, issuingTime, numRiders)) {
+                if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
+                    throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
+                if (destination < 0 || destination >= vehGraphOrigIdToSeqId.size() ||
+                    vehGraphOrigIdToSeqId[destination] == INVALID_ID)
+                    throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
+                if (numRiders > maxCapacity)
+                    throw std::invalid_argument("number of riders '" + std::to_string(numRiders) +
+                                                "' is larger than max vehicle capacity (" +
+                                                std::to_string(maxCapacity) + ")");
+                const auto originSeqId = vehGraphOrigIdToSeqId[origin];
+                assert(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
+                const auto destSeqId = vehGraphOrigIdToSeqId[destination];
+                assert(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
+                const int requestId = static_cast<int>(requests.size());
+                if (numRiders == -1) // If number of riders was not specified, assume one rider
+                    numRiders = 1;
+                requests.push_back({requestId, originSeqId, destSeqId, numRiders, issuingTime * 10, issuingTime * 10});
+                numRiders = -1;
+            }
+            std::cout << "done.\n";
         }
-        std::cout << "done.\n";
 
 #ifdef KARRI_USE_CCHS
 
@@ -599,11 +608,26 @@ int main(int argc, char *argv[]) {
         }
 
         // Run simulation:
-        using EventSimulationImpl = StandaloneEventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
-        EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, insertionFinder, systemStateUpdater,
-                                            routeState,
-                                            true);
-        eventSimulation.run();
+
+        if (!runAsMobitoppFS) {
+            using EventSimulationImpl = StandaloneEventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
+            EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, insertionFinder,
+                                                systemStateUpdater,
+                                                routeState,
+                                                true);
+            eventSimulation.run();
+        } else {
+
+            const int port = clp.getValue<int>("mobitopp-port");
+            using EventSimulationImpl = MobitoppEventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
+            EventSimulationImpl eventSimulation(fleet, routeState, inputConfig, insertionFinder,
+                                                systemStateUpdater,
+                                                routeState);
+
+            MobitoppCommunicator<EventSimulationImpl> communicator(eventSimulation, port);
+            communicator.run();
+
+        }
 
     } catch (std::exception &e) {
         std::cerr << argv[0] << ": " << e.what() << '\n';

@@ -63,6 +63,7 @@ namespace karri {
         // Stores information about assignment and departure time of a request needed for logging on arrival of the
         // request.
         struct RequestData {
+            int requestId = INFTY; // Set when request is received
             int minDepTime = INFTY; // Set when request is received.
 
             int vehicleId = INVALID_ID; // Set when request is assigned.
@@ -79,9 +80,9 @@ namespace karri {
     public:
 
         MobitoppEventSimulation(
-                const Fleet &fleet, const RouteState &routeState, const InputConfig &inputConfig, const int numRequests,
+                const Fleet &fleet, const RouteState &routeState, const InputConfig &inputConfig,
                 AssignmentFinderT &assignmentFinder, SystemStateUpdaterT &systemStateUpdater,
-                const ScheduledStopsT &scheduledStops
+                const ScheduledStopsT &scheduledStops, const int expectedMinNumRequests = 1000
 //                , const bool verbose = false
         )
                 : fleet(fleet),
@@ -91,10 +92,10 @@ namespace karri {
                   systemStateUpdater(systemStateUpdater),
                   scheduledStops(scheduledStops),
                   vehicleEvents(fleet.size()),
-                  walkingArrivalEvents(numRequests),
+                  walkingArrivalEvents(expectedMinNumRequests),
                   vehicleState(fleet.size(), OUT_OF_SERVICE),
-                  requestState(numRequests, NOT_RECEIVED),
-                  requestData(numRequests, RequestData()),
+                  requestState(),
+                  requestData(),
                   eventSimulationStatsLogger(LogManager<std::ofstream>::getLogger("eventsimulationstats.csv",
                                                                                   "occurrence_time,"
                                                                                   "type,"
@@ -146,6 +147,7 @@ namespace karri {
             }
 
             requestState[request.requestId] = RECEIVED;
+            requestData[request.requestId].requestId = request.requestId;
             requestData[request.requestId].minDepTime = request.minDepTime;
 
             const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request);
@@ -205,10 +207,11 @@ namespace karri {
             requestState[request.requestId] = RECEIVED;
 
             const auto prevOffersSize = offers.size();
-            for (const auto& transfer : request.transfers) {
+            for (const auto &transfer: request.transfers) {
                 // todo: We are not considering the additional trip time from the origin to the transfer while
                 //  finding an assignment.
-                Request simpleReq = {request.requestId, transfer.loc, request.destination, request.numRiders, request.issuingTime, transfer.minDepTimeAtTransfer};
+                Request simpleReq = {request.requestId, transfer.loc, request.destination, request.numRiders,
+                                     request.issuingTime, transfer.minDepTimeAtTransfer};
 
                 const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(simpleReq);
                 // todo: when to write best found assignment? Do we only want to write a single one?
@@ -241,16 +244,16 @@ namespace karri {
         Offer
         createOffer(const int offerId, const int offerTime, const Request &request,
                     const AssignmentFinderResponseT &asgnFinderResponse) {
+            using namespace time_utils;
             const auto &asgn = asgnFinderResponse.getBestAssignment();
 
-            const int actualDepTime = time_utils::getActualDepTimeAtPickup(asgn, asgnFinderResponse, routeState,
-                                                                           inputConfig);
+            const int actualDepTime = getActualDepTimeAtPickup(asgn, asgnFinderResponse, routeState, inputConfig);
             const int waitTime = actualDepTime - request.minDepTime;
             const auto initialPickupDetour = calcInitialPickupDetour(asgn, actualDepTime, asgnFinderResponse,
                                                                      routeState);
-            const bool isDropoffAtExistingStop = time_utils::isDropoffAtExistingStop(asgn, routeState);
-            const int rideTime = time_utils::getArrTimeAtDropoff(actualDepTime, asgn, initialPickupDetour,
-                                                                 isDropoffAtExistingStop, routeState, inputConfig);
+            const bool dropoffAtExistingStop = isDropoffAtExistingStop(asgn, routeState);
+            const int rideTime = getArrTimeAtDropoff(actualDepTime, asgn, initialPickupDetour, dropoffAtExistingStop,
+                                                     routeState, inputConfig);
 
             // Fare model: 2 euro plus 30ct per minute of direct distance.
             const int fare = static_cast<int>(std::floor(
@@ -391,6 +394,7 @@ namespace karri {
             for (const auto &reqId: reachedStop.requestsDroppedOffHere) {
                 const auto &reqData = requestData[reqId];
                 requestState[reqId] = WALKING_TO_DEST;
+                walkingArrivalEvents.growToAllowID(reqId);
                 walkingArrivalEvents.insert(reqId, occTime + reqData.walkingTimeFromDropoff);
             }
 
@@ -429,7 +433,7 @@ namespace karri {
         void applyBookedOffer(const Offer &offer) {
             const auto &reqId = offer.requestId;
             requestState[reqId] = ASSIGNED_TO_VEH;
-            requestData[reqId].reqTime = offer.minDepTimeAtOrigin;
+            requestData[reqId].minDepTime = offer.minDepTimeAtOrigin;
             requestData[reqId].walkingTimeToPickup = offer.walkingTimeToPickup;
             requestData[reqId].walkingTimeFromDropoff = offer.walkingTimeFromDropoff;
             requestData[reqId].assignmentCost = offer.cost;
@@ -461,7 +465,7 @@ namespace karri {
             assert(requestState[reqId] == WALKING_TO_DEST);
             Timer timer;
 
-            const auto &reqData = requestData[reqId];
+            auto &reqData = requestData[reqId];
             reqData.arrTime = occTime;
             requestState[reqId] = FINISHED;
             int id, key;
@@ -470,10 +474,10 @@ namespace karri {
 
             recentlyArrivedRequests.push_back(&reqData);
 
-            const auto waitTime = reqData.depTime - reqData.reqTime;
+            const auto waitTime = reqData.depTime - reqData.minDepTime;
             const auto arrTime = reqData.arrTime;
             const auto rideTime = arrTime - reqData.walkingTimeFromDropoff - reqData.depTime;
-            const auto tripTime = arrTime - reqData.reqTime;
+            const auto tripTime = arrTime - reqData.minDepTime;
             assignmentQualityStats << reqId << ','
                                    << arrTime << ','
                                    << waitTime << ','

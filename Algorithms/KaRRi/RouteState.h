@@ -317,7 +317,6 @@ namespace karri {
             // Update occupancies and prefix sums
             for (int idx = start + pickupIndex; idx < start + dropoffIndex; ++idx) {
                 occupancies[idx] += numRiders;
-                assert(occupancies[idx] <= fleet[vehId].capacity);
             }
 
             for (int idx = start + dropoffIndex; idx < end; ++idx) {

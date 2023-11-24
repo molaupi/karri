@@ -30,57 +30,71 @@
 #include "Tools/EnumParser.h"
 #include "Algorithms/KaRRi/BaseObjects/Offer.h"
 
+#include <cstdlib>
+#include <cstdio>
+#include <unistd.h>
+#include <cassert>
+#include <cerrno>
+#include <cstring>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <dirent.h>
+
 
 enum MobitoppMsgType {
-        MT_ERROR,
-        INIT_COMMUNICATION,
-        FLEET_CONTROL_AND_UPDATE,
-        REQUEST_OFFER,
-        FIRST_MILE_REQUEST_OFFER,
-        LAST_MILE_REQUEST_OFFER,
-        BOOK_OFFER,
-        END_OF_SIMULATION,
-        INTERMODAL_REQUEST
-    };
-    static const unsigned long NUM_MOBITOPP_MSG_TYPES =
-            static_cast<unsigned long>(MobitoppMsgType::INTERMODAL_REQUEST) + 1;
+    MT_ERROR,
+    INIT_COMMUNICATION,
+    FLEET_CONTROL_AND_UPDATE,
+    REQUEST_OFFER,
+    FIRST_MILE_REQUEST_OFFER,
+    LAST_MILE_REQUEST_OFFER,
+    BOOK_OFFER,
+    END_OF_SIMULATION,
+    INTERMODAL_REQUEST
+};
+static const unsigned long NUM_MOBITOPP_MSG_TYPES =
+        static_cast<unsigned long>(MobitoppMsgType::INTERMODAL_REQUEST) + 1;
 
-    static std::array<std::string, NUM_MOBITOPP_MSG_TYPES> mobitoppMsgTypeNames = {
-            "mt_error",
-            "init_communication",
-            "fleet_control_and_update",
-            "request_offer",
-            "first_mile_request_offer",
-            "last_mile_request_offer",
-            "book_offer",
-            "end_of_simulation",
-            "intermodal_request"
-    };
+static std::array<std::string, NUM_MOBITOPP_MSG_TYPES> mobitoppMsgTypeNames = {
+        "mt_error",
+        "init_communication",
+        "fleet_control_and_update",
+        "request_offer",
+        "first_mile_request_offer",
+        "last_mile_request_offer",
+        "book_offer",
+        "end_of_simulation",
+        "intermodal_request"
+};
 
 
 // Make EnumParser usable with MobitoppMsgType.
-    template<>
-    void EnumParser<MobitoppMsgType>::initNameToEnumMap() {
-        nameToEnum = {
-                {"mt_error",                 MobitoppMsgType::MT_ERROR},
-                {"init_communication",       MobitoppMsgType::INIT_COMMUNICATION},
-                {"fleet_control_and_update", MobitoppMsgType::FLEET_CONTROL_AND_UPDATE},
-                {"request_offer",            MobitoppMsgType::REQUEST_OFFER},
-                {"first_mile_request_offer", MobitoppMsgType::FIRST_MILE_REQUEST_OFFER},
-                {"last_mile_request_offer",  MobitoppMsgType::LAST_MILE_REQUEST_OFFER},
-                {"book_offer",               MobitoppMsgType::BOOK_OFFER},
-                {"end_of_simulation",        MobitoppMsgType::END_OF_SIMULATION},
-                {"intermodal_request",       MobitoppMsgType::INTERMODAL_REQUEST}
-        };
-    }
+template<>
+void EnumParser<MobitoppMsgType>::initNameToEnumMap() {
+    nameToEnum = {
+            {"mt_error",                 MobitoppMsgType::MT_ERROR},
+            {"init_communication",       MobitoppMsgType::INIT_COMMUNICATION},
+            {"fleet_control_and_update", MobitoppMsgType::FLEET_CONTROL_AND_UPDATE},
+            {"request_offer",            MobitoppMsgType::REQUEST_OFFER},
+            {"first_mile_request_offer", MobitoppMsgType::FIRST_MILE_REQUEST_OFFER},
+            {"last_mile_request_offer",  MobitoppMsgType::LAST_MILE_REQUEST_OFFER},
+            {"book_offer",               MobitoppMsgType::BOOK_OFFER},
+            {"end_of_simulation",        MobitoppMsgType::END_OF_SIMULATION},
+            {"intermodal_request",       MobitoppMsgType::INTERMODAL_REQUEST}
+    };
+}
 
 namespace karri {
     template<typename FleetSimulationT>
     class MobitoppCommunicator {
 
         // todo: Read config file for potential other ports
-        static constexpr int PORT = 6666;
-        static constexpr int BUF_NUM_BYTES = 1024;
+        static constexpr int BUF_NUM_BYTES = 4096;
 
         // todo: Input argument for verbose
         static constexpr bool VERBOSE = true;
@@ -108,25 +122,48 @@ namespace karri {
 
     public:
 
-        void run() {
-            init();
+        MobitoppCommunicator(FleetSimulationT &sim, const int port) : sim(sim), port(port) {}
 
-            while (listen()) {}
+        void run() {
+            try {
+                init();
+                while (listen()) {}
+            } catch (MobitoppMessageParseError &e) {
+                state = COMM_ERROR;
+                std::cerr << e.what() << std::endl;
+                if (VERBOSE)
+                    std::cerr << "Message received: " << e.receivedMessage << std::endl;
+                sendError();
+                // todo: Do we try to recover errors?
+            } catch (MobitoppCommError &e) {
+                state = COMM_ERROR;
+                std::cerr << e.what() << std::endl;
+                sendError();
+                // todo: Do we try to recover errors?
+            } catch (std::invalid_argument& e) {
+                state = COMM_ERROR;
+                std::cerr << e.what() << std::endl;
+                sendError();
+            }
+            close(fs_fd);
         }
 
+    private:
+
         void init() {
-            int status;
+
             struct sockaddr_in address;
 
             if ((fs_fd = socket(AF_LOCAL, SOCK_STREAM, 0)) < 0) {
-                throw std::runtime_error("Socket creation error.");
+                throw MobitoppCommError("Socket creation error.");
             }
 
             address.sin_family = AF_LOCAL;
-            address.sin_port = PORT;
+            address.sin_addr.s_addr = htonl(INADDR_ANY); // address is localhost
+            address.sin_port = htons(port);
 
-            if ((status = connect(fs_fd, &address, sizeof(address))) < 0) {
-                throw std::runtime_error("Socket connection to mobiTopp failed.");
+            if (connect(fs_fd, (struct sockaddr *) &address, sizeof(address)) < 0) {
+                throw MobitoppCommError("Socket connection to mobiTopp failed.");
             }
 
             state = WAITING_FOR_INITIALIZATION;
@@ -134,41 +171,26 @@ namespace karri {
 
 
         bool listen() {
-
-            ssize_t numBytesRead = read(fs_fd, (void *) readbuf.data(), BUF_NUM_BYTES - 1);
-
-            try {
-                auto msgJson = getMsgJsonFromBuf(numBytesRead);
-                return handleMessage(msgJson);
-            } catch (MobitoppMessageParseError &e) {
-                state = COMM_ERROR;
-                std::cerr << e.what() << std::endl;
-                if (VERBOSE)
-                    std::cerr << "Message received: " << e.receivedMessage << std::endl;
-                sendError();
-                return false; // todo: Do we try to recover errors?
-            } catch (MobitoppCommError &e) {
-                state = COMM_ERROR;
-                std::cerr << e.what() << std::endl;
-                sendError();
-                return false; // todo: Do we try to recover errors?
-            }
+            ssize_t numBytesRead = read(fs_fd, (void *) buf.data(), BUF_NUM_BYTES - 1);
+            auto msgJson = getMsgJsonFromBuf(numBytesRead);
+            return handleMessage(msgJson);
         }
 
 
-    private:
-
         nlohmann::json getMsgJsonFromBuf(const ssize_t numBytesRead) {
-            std::string msg = readbuf.data();
-            if (msg.size() != numBytesRead) {
-                throw MobitoppMessageParseError("Parsed message has size " + std::to_string(msg.size()) + " but " +
-                                                std::to_string(numBytesRead) + " bytes were read.", msg);
-            }
+            unused(numBytesRead);
+            std::string msg = buf.data();
+//            if (msg.size() != numBytesRead) {
+//                throw MobitoppMessageParseError("Parsed message has size " + std::to_string(msg.size()) + " but " +
+//                                                std::to_string(numBytesRead) + " bytes were read.", msg);
+//            }
             if (!endsWith(msg, "\n")) {
                 throw MobitoppMessageParseError("Message does not end in '\\n'", msg);
             }
 
             msg = msg.substr(0, msg.size() - 1);
+            if (VERBOSE)
+                std::cout << "Received raw message: " << msg << std::endl;
 
             try {
                 auto msgJson = nlohmann::json::parse(msg);
@@ -251,9 +273,9 @@ namespace karri {
 
         bool handleFleetControlAndUpdate(const nlohmann::json &msg) {
             if (state != WAITING_FOR_NEW_EVENT)
-                throw MobitoppCommError("Received 'fleet_control_and_update' but " +
-                                        (state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
-                                                                             : "waiting for response to offer."));
+                throw MobitoppCommError("Received 'fleet_control_and_update' but " + std::string(
+                        state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
+                                                            : "waiting for response to offer."));
             const int time = msg["time"];
             const auto mobiToppArrivals = sim.handleFleetControlAndUpdate(time);
             sendArrivalEvents(time, mobiToppArrivals);
@@ -264,9 +286,9 @@ namespace karri {
 
         bool handleRequestOffer(const nlohmann::json &msg) {
             if (state != WAITING_FOR_NEW_EVENT)
-                throw MobitoppCommError("Received 'request_offer' but " +
-                                        (state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
-                                                                             : "waiting for response to offer."));
+                throw MobitoppCommError("Received 'request_offer' but " + std::string(
+                        state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
+                                                            : "waiting for response to offer."));
             const int agentId = msg["agent_id"];
             const int origin = msg["origin"];
             const int destination = msg["destination"];
@@ -276,8 +298,8 @@ namespace karri {
             const int requestId = agentIdForRequest.size();
             agentIdForRequest.push_back(agentId);
 
-            Request r = {requestId, origin, destination,  numRiders, lastFleetControlTime, minDepTime};
-            const auto& offer = sim.handleRequest(r);
+            Request r = {requestId, origin, destination, numRiders, lastFleetControlTime, minDepTime};
+            const auto &offer = sim.handleRequest(r);
             sendOffer(offer);
             state = WAITING_FOR_OFFER_RESPONSE;
             return true;
@@ -286,9 +308,9 @@ namespace karri {
 
         bool handleFirstMileRequestOffer(const nlohmann::json &msg) {
             if (state != WAITING_FOR_NEW_EVENT)
-                throw MobitoppCommError("Received 'first_mile_request_offer' but " +
-                                        (state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
-                                                                             : "waiting for response to offer."));
+                throw MobitoppCommError("Received 'first_mile_request_offer' but " + std::string(
+                        state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
+                                                            : "waiting for response to offer."));
 
             const int agentId = msg["agent_id"];
             const int origin = msg["origin"];
@@ -310,7 +332,7 @@ namespace karri {
             const int requestId = agentIdForRequest.size();
             agentIdForRequest.push_back(agentId);
 
-            FirstMileRequest r = {requestId, origin, transfers,  numRiders, lastFleetControlTime, minDepTime};
+            FirstMileRequest r = {requestId, origin, transfers, numRiders, lastFleetControlTime, minDepTime};
             const auto offers = sim.handleFirstMileRequest(r);
             sendBestFirstMileOffer(offers, transfers);
             state = WAITING_FOR_OFFER_RESPONSE;
@@ -319,9 +341,9 @@ namespace karri {
 
         bool handleLastMileRequestOffer(const nlohmann::json &msg) {
             if (state != WAITING_FOR_NEW_EVENT)
-                throw MobitoppCommError("Received 'last_mile_request_offer' but " +
-                                        (state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
-                                                                             : "waiting for response to offer."));
+                throw MobitoppCommError("Received 'last_mile_request_offer' but " + std::string(
+                        state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
+                                                            : "waiting for response to offer."));
 
             const int agentId = msg["agent_id"];
             const nlohmann::json &origins = msg["origins"];
@@ -343,7 +365,7 @@ namespace karri {
 
             LastMileRequest r = {requestId, transfers, destination, numRiders, lastFleetControlTime};
             const auto offers = sim.handleLastMileRequest(r);
-            sendBestLastMileOffer(offers);
+            sendBestLastMileOffer(offers, transfers);
             state = WAITING_FOR_OFFER_RESPONSE;
             return true;
         }
@@ -351,9 +373,9 @@ namespace karri {
 
         bool handleBookOffer(const nlohmann::json &msg) {
             if (state != WAITING_FOR_OFFER_RESPONSE)
-                throw MobitoppCommError("Received 'book_offer' but " +
-                                        (state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
-                                                                             : "waiting for new event."));
+                throw MobitoppCommError("Received 'book_offer' but " + std::string(
+                        state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
+                                                            : "waiting for new event."));
 
             const int agentId = msg["agent_id"];
             const int offerId = msg["confirms_offer"];
@@ -369,8 +391,8 @@ namespace karri {
         bool handleEndOfSimulation(const nlohmann::json &) {
             if (state != WAITING_FOR_NEW_EVENT)
                 throw MobitoppCommError("Received 'end_of_simulation' but " +
-                                        (state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
-                                                                             : "waiting for response to offer."));
+                                        std::string(state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
+                                                                                        : "waiting for response to offer."));
             sim.shutDown();
             state = SIMULATION_ENDED;
             return false;
@@ -380,16 +402,22 @@ namespace karri {
         void sendJsonMsg(const nlohmann::json &msg) {
             std::string msgStr = msg.dump();
             msgStr += '\n';
-            strcpy(readbuf.data(), msgStr.c_str());
-            ssize_t bytesSent = write(fs_fd, (void *) readbuf.data(), msgStr.size() + 1);
+            strcpy(buf.data(), msgStr.c_str());
+            ssize_t bytesSent = write(fs_fd, (void *) buf.data(), msgStr.size() + 1);
             if (bytesSent != msgStr.size() + 1)
-                throw MobitoppCommError("Tried sending " + std::to_string(msgStr.size() + 1) + " bytes but could only send " + std::to_string(bytesSent) + " .");
+                throw MobitoppCommError(
+                        "Tried sending " + std::to_string(msgStr.size() + 1) + " bytes but could only send " +
+                        std::to_string(bytesSent) + " .");
         }
 
         void sendError() {
             nlohmann::json msg;
             msg["type"] = "fs_error";
-            sendJsonMsg(msg);
+            try {
+                sendJsonMsg(msg);
+            } catch (MobitoppCommError& e) {
+                std::cerr << "Could not send error." << std::endl;
+            }
         }
 
         void sendInitCommunication() {
@@ -406,7 +434,7 @@ namespace karri {
             msg["time"] = time;
             nlohmann::json arrList = nlohmann::json::array();
             for (const auto &reqDataPtr: arrivals) {
-                const auto& reqData = *reqDataPtr;
+                const auto &reqData = *reqDataPtr;
                 nlohmann::json arrMsg;
                 arrMsg["type"] = "arrival";
                 arrMsg["agent_id"] = agentIdForRequest[reqData.requestId];
@@ -438,7 +466,7 @@ namespace karri {
         void sendAllFirstMileOffers(const Offers &offers) {
             assert(offers.size() >= 0);
             const int reqId = offers.begin()->reqId;
-            assert(std::all_of(offers.begin(), offers.end(), [&](const auto &o) { o.reqId == reqId; }));
+            assert(std::all_of(offers.begin(), offers.end(), [&](const auto &o) { return o.reqId == reqId; }));
             nlohmann::json msg;
             msg["type"] = "first_mile_offer";
             msg["agent_id"] = agentIdForRequest[reqId];
@@ -460,17 +488,18 @@ namespace karri {
         }
 
         template<typename Offers, typename Transfers>
-        void sendBestFirstMileOffer(const Offers &offers, const Transfers& transfers) {
+        void sendBestFirstMileOffer(const Offers &offers, const Transfers &transfers) {
             assert(offers.size() >= 0);
-            const int reqId = offers.begin()->reqId;
-            assert(std::all_of(offers.begin(), offers.end(), [&](const auto &o) { o.reqId == reqId; }));
+            const int reqId = offers.begin()->requestId;
+            assert(std::all_of(offers.begin(), offers.end(), [&](const auto &o) { return o.requestId == reqId; }));
 
             // We choose the offer with the smallest total trip time
             auto minTotalTripTime = INFTY;
-            Offer* bestOffer = nullptr;
+            Offer const *bestOffer = nullptr;
             assert(offers.size() == transfers.size());
             for (int i = 0; i < offers.size(); ++i) {
-                const auto totalTripTime = sim.computeTripTimeForOffer(offers[i]) + transfers[i].timeFromTransferToDest;
+                const auto totalTripTime = offers[i].waitTime + offers[i].rideTime + offers[i].walkingTimeFromDropoff +
+                                           transfers[i].timeFromTransferToDest; // todo: does waitTime include walking time?
                 if (totalTripTime < minTotalTripTime) {
                     minTotalTripTime = totalTripTime;
                     bestOffer = &offers[i];
@@ -484,7 +513,7 @@ namespace karri {
             nlohmann::json offerList = nlohmann::json::array();
             nlohmann::json oMsg;
             if (bestOffer) {
-                const auto& o = *bestOffer;
+                const auto &o = *bestOffer;
                 oMsg["offer_id"] = o.offerId;
                 oMsg["destination"] = o.destination;
                 oMsg["t_access"] = o.walkingTimeToPickup;
@@ -504,7 +533,7 @@ namespace karri {
         void sendAllLastMileOffers(const Offers &offers) {
             assert(offers.size() >= 0);
             const int reqId = offers.begin()->reqId;
-            assert(std::all_of(offers.begin(), offers.end(), [&](const auto &o) { o.reqId == reqId; }));
+            assert(std::all_of(offers.begin(), offers.end(), [&](const auto &o) { return o.reqId == reqId; }));
             nlohmann::json msg;
             msg["type"] = "last_mile_offer";
             msg["agent_id"] = agentIdForRequest[reqId];
@@ -527,18 +556,19 @@ namespace karri {
 
 
         template<typename Offers, typename Transfers>
-        void sendBestLastMileOffer(const Offers &offers, const Transfers& transfers) {
+        void sendBestLastMileOffer(const Offers &offers, const Transfers &transfers) {
             assert(offers.size() >= 0);
-            const int reqId = offers.begin()->reqId;
-            assert(std::all_of(offers.begin(), offers.end(), [&](const auto &o) { o.reqId == reqId; }));
+            const int reqId = offers.begin()->requestId;
+            assert(std::all_of(offers.begin(), offers.end(), [&](const auto &o) { return o.requestId == reqId; }));
 
             // We choose the offer with the smallest total trip time (equivalent to earliest arrival time)
             auto minArrTime = INFTY;
-            Offer* bestOffer = nullptr;
+            Offer const *bestOffer = nullptr;
             assert(offers.size() == transfers.size());
             for (int i = 0; i < offers.size(); ++i) {
                 // todo: Is transfers[i].time actually the earliest possible departure time at the transfer?
-                const auto arrTime = transfers[i].timeAtTransfer + sim.computeTripTimeForOffer(offers[i]);
+                const auto arrTime = transfers[i].minDepTimeAtTransfer + offers[i].waitTime + offers[i].rideTime +
+                                     offers[i].walkingTimeFromDropoff;
                 if (arrTime < minArrTime) {
                     minArrTime = arrTime;
                     bestOffer = &offers[i];
@@ -552,7 +582,7 @@ namespace karri {
             nlohmann::json offerList = nlohmann::json::array();
             if (bestOffer) {
                 nlohmann::json oMsg;
-                const auto& o = *bestOffer;
+                const auto &o = *bestOffer;
                 oMsg["offer_id"] = o.offerId;
                 oMsg["origin"] = o.origin;
                 oMsg["t_access"] = o.walkingTimeToPickup;
@@ -578,13 +608,14 @@ namespace karri {
 
 
         int fs_fd; // socket descriptor for socket communication
-        std::array<char, BUF_NUM_BYTES> readbuf;
+        std::array<char, BUF_NUM_BYTES> buf;
 
         CommState state;
         int lastFleetControlTime;
         std::vector<int> agentIdForRequest; // maps request IDs to agent IDs
 
         FleetSimulationT &sim;
+        const int port;
     };
 
 } // end of namespace

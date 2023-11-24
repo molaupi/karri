@@ -32,8 +32,11 @@ if(OpenMP_FOUND)
 endif()
 
 
+add_executable(TransportSimulationMock TransportSimulationMock.cpp)
+
 # KaRRi Simulation
-add_executable(karri KaRRi.cpp)
+add_executable(karri KaRRi.cpp
+        MockMobitoppRequests.h)
 target_compile_definitions(karri PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(karri ${RoutingKit_LIBRARY})
 if(OpenMP_FOUND)

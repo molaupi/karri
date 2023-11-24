@@ -42,7 +42,7 @@ class AddressableKHeap {
  public:
   // Constructs an empty addressable k-heap that can maintain elements with IDs from 0 to n - 1.
   explicit AddressableKHeap(const int n) {
-    resize(n);
+      resizeWithClear(n);
   }
 
   // Returns true if this heap contains no elements.
@@ -53,6 +53,11 @@ class AddressableKHeap {
   // Returns the number of elements in this heap.
   int size() const noexcept {
     return heap.size();
+  }
+
+  // Returns n if the heap can hold elements with IDs from 0 to n-1.
+  int maxAllowedID() const noexcept {
+      return heap.capacity();
   }
 
   // Returns true if this heap contains an element with the specified ID.
@@ -81,10 +86,19 @@ class AddressableKHeap {
   }
 
   // Ensures that this heap can maintain elements with IDs from 0 to n - 1.
-  void resize(const int n) {
+  void resizeWithClear(const int n) {
     clear();
     heap.reserve(n);
     elementIdToHeapIndex.assign(n, INVALID_INDEX);
+  }
+
+  // Grow the capacity of this heap to be able to maintain elements with IDs from 0 to at least id
+  void growToAllowID(const int id) {
+      if (id < heap.capacity())
+          return;
+      const auto numAdditionalSpaces = id + 1 - heap.capacity();
+      heap.reserve(id + 1);
+      elementIdToHeapIndex.insert(elementIdToHeapIndex.end(), numAdditionalSpaces, INVALID_INDEX);
   }
 
   // Inserts an element with the specified ID and key into this heap.
