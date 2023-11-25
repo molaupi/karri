@@ -325,10 +325,6 @@ namespace karri {
 
             const auto vehId = bestAsgn.vehicle->vehicleId;
 
-            if (reqId == 116) {
-                std::cout << "Assignment to request Id 116\n";
-            }
-
             switch (vehicleState[vehId]) {
                 case STOPPING:
                     // Update event time to departure time at current stop since it may have changed

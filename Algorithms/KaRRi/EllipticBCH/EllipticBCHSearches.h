@@ -45,7 +45,7 @@
 
 namespace karri {
 
-    using namespace oneapi::tbb;
+    using namespace tbb;
 
     template<typename InputGraphT,
             typename CHEnvT,

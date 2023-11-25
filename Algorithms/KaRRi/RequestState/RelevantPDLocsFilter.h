@@ -121,15 +121,6 @@ namespace karri {
                 const auto &veh = fleet[vehId];
                 rel.startOfRelevantPDLocs[vehId] = rel.relevantSpots.size();
                 rel.startOfRelevantPDLocs[vehId] = rel.relevantSpots.size();
-
-                if (requestState.originalRequest.requestId == 116 && vehId == 694) {
-                    std::cout << "Expected vehicle: 694\n"; 
-                }
-
-                if (requestState.originalRequest.requestId == 116 && vehId == 468) {
-                    std::cout << "Calculated vehicle: 468\n"; 
-                }
-
                 if (!vehiclesWithFeasibleDistances.contains(vehId))
                     continue;
 
@@ -176,14 +167,6 @@ namespace karri {
                             for (unsigned int id = 0; id < numPDLocs; ++id) {
                                 const auto &distToPDLoc = distsToPDLocs[id];
                                 const auto &distFromPDLoc = distsFromPDLocs[id];
-
-                                if (!isDropoff && requestState.originalRequest.requestId == 116 && vehId == 694 && id == 48) {
-                                    std::cout << "Expected pickupId: 48\n"; 
-                                }
-
-                                if (!isDropoff && requestState.originalRequest.requestId == 116 && vehId == 468 && id == 39) {
-                                    std::cout << "Calculated pickupId: 39\n"; 
-                                }
 
                                 bool isRelevant;
                                 if constexpr (isDropoff) {
