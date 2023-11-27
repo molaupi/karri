@@ -373,24 +373,18 @@ namespace karri {
                       rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
 
 
-            //TODO
             //Update data for FixedRouteState
             const int newSize = requestState.originalRequest.requestId + 1;
-            if (countedDropoff.size() < newSize) {
-                countedDropoff.resize(newSize, false);
+            if (maxArrTimeAtDropForRequest.size() < newSize)
                 maxArrTimeAtDropForRequest.resize(newSize, 0);
-                hoppedOn.resize(newSize, false);
-            }
 
-            updateStopInfo(stopIds[start + pickupIndex], requestState.originalRequest.requestId, pickupInsertedAsNewStop, asgn.pickup,
-                           asgn.vehicle->vehicleId, schedDepTimes[start + pickupIndex], maxArrTimes[start + pickupIndex],
-                           schedArrTimes[start + pickupIndex], stopIds[start + dropoffIndex],
-                           requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id), true);
+            maxArrTimeAtDropForRequest[requestState.originalRequest.requestId] = requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id);
 
-            updateStopInfo(stopIds[start + dropoffIndex], requestState.originalRequest.requestId, dropoffInsertedAsNewStop, asgn.dropoff,
-                           asgn.vehicle->vehicleId, schedDepTimes[start + dropoffIndex], maxArrTimes[start + dropoffIndex],
-                           schedArrTimes[start + dropoffIndex], INVALID_ID,
-                           requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id), false);
+            updateStopInfo(stopIds[start + pickupIndex], requestState.originalRequest.requestId, asgn.pickup->loc,
+                           asgn.vehicle->vehicleId, stopIds[start + dropoffIndex]);
+
+            updateStopInfo(stopIds[start + dropoffIndex], INVALID_ID, asgn.dropoff->loc,
+                           asgn.vehicle->vehicleId, INVALID_ID, false);
 
             if (pickupIndex == 0)
                 lastMinutePickup(vehId);
@@ -404,19 +398,19 @@ namespace karri {
             const auto &start = pos[vehId].start;
 
             auto &currStopInfo = stopInfos[stopIds[start]];
-            updatePickupInfo(currStopInfo, stopIds[start]);
+            updatePickupInfo(currStopInfo);
             currStopInfo.insertIndex = 0;
-            fixedRouteState.newStopReached(currStopInfo);
-            for(const auto stopId: currStopInfo.dropOffIds) {
-                auto &dropoff = stopInfos[stopId];
-                calcInsertIndex(dropoff, stopId, true);
-                updateDropoffInfo(dropoff, stopId);
-                fixedRouteState.addNewDropoff(dropoff);
-                dropoff.isFixed = true;
-                dropoff.droppedoffRequests.clear();
+            fixedRouteState.addNewPickup(currStopInfo);
+
+            for (const auto &tuple: currStopInfo.pickedupReqAndDropoff) {
+                auto dropoffStopInfo = stopInfos[tuple.second];
+                calcInsertIndex(dropoffStopInfo, tuple.second, true);
+                dropoffStopInfo.maxArrTimeAtDropoff = maxArrTimeAtDropForRequest[tuple.first];
+                fixedRouteState.addNewDropoff(dropoffStopInfo, tuple.first);
+                isFixed[tuple.second] = true;
             }
-            currStopInfo.pickedupRequests.clear();
-            currStopInfo.dropOffIds.clear();
+
+            currStopInfo.pickedupReqAndDropoff.clear();
         }
 
 
@@ -454,29 +448,26 @@ namespace karri {
                 recomputeMaxLeeway();
 
 
-            //TODO removed numStops > 1
             const auto newStartStopId = stopIds[startAfterRemoval];
             if (numStopsOf(vehId) > 0 && (rangeOfRequestsPickedUpAtStop[newStartStopId].end - rangeOfRequestsPickedUpAtStop[newStartStopId].start != 0)) {
-                updatePickupInfo(stopInfos[newStartStopId], newStartStopId);
+                updatePickupInfo(stopInfos[newStartStopId]);
                 auto &newPickup = stopInfos[newStartStopId];
                 newPickup.insertIndex = 1;
-                fixedRouteState.newStopReached(newPickup);
-                newPickup.isFixed = true;
+                fixedRouteState.addNewPickup(newPickup);
+                isFixed[newStartStopId] = true;
 
-                for(const auto stopId: stopInfos[newStartStopId].dropOffIds) {
-                    auto &dropoff = stopInfos[stopId];
-                    calcInsertIndex(dropoff, stopId, false);
-                    updateDropoffInfo(dropoff, stopId);
-                    fixedRouteState.addNewDropoff(dropoff);
-                    dropoff.isFixed = true;
-
-                    dropoff.droppedoffRequests.clear();
+                for (const auto &tuple: newPickup.pickedupReqAndDropoff) {
+                    auto dropoffStopInfo = stopInfos[tuple.second];
+                    calcInsertIndex(dropoffStopInfo, tuple.second, false);
+                    dropoffStopInfo.maxArrTimeAtDropoff = maxArrTimeAtDropForRequest[tuple.first];
+                    fixedRouteState.addNewDropoff(dropoffStopInfo, tuple.first);
+                    isFixed[tuple.second] = true;
                 }
-                newPickup.pickedupRequests.clear();
-                newPickup.dropOffIds.clear();
+
+                newPickup.pickedupReqAndDropoff.clear();
             }
             fixedRouteState.removeStartOfCurrentLeg(vehId);
-            testFunction(vehId);
+            assert(testFixedStops(vehId));
         }
 
 
@@ -493,7 +484,6 @@ namespace karri {
             recalculateVehWaitTimesPrefixSum(start, end - 1, 0);
             recalculateVehWaitTimesAtDropoffsPrefixSum(start, end - 1, 0);
 
-            //TODO
             fixedRouteState.updateStartOfCurrentLeg(vehId, location, depTime);
         }
 
@@ -521,51 +511,18 @@ namespace karri {
 
     private:
 
-        void updateStopInfo(const int stopId, const int reqId, const bool newStop, const PDLoc *loc, const int vehId,
-                            const int schedDepTime, const int maxArrTime, const int schedArrTime,
-                            const int dropOffId, const int maxArrTimeAtDropoff, const bool pickup) {
-            if (newStop) {
-                if (stopInfos.size() < stopId + 1)
-                    stopInfos.resize(stopId + 1);
-                StopInfo info;
-                info.location = *loc;
-                info.vehicleId = vehId;
-                stopInfos[stopId] = info;
-            }
-
+        void updateStopInfo(const int stopId, const int reqId, const int loc, const int vehId, const int dropOffId, const bool pickup = true) {
             auto &info = stopInfos[stopId];
-            info.schedDepTime = schedDepTime;
-            info.maxArrTime = maxArrTime;
-            info.schedArrTime = schedArrTime;
-            maxArrTimeAtDropForRequest[reqId] = maxArrTimeAtDropoff;
+            info.location = loc;
+            info.vehicleId = vehId;
             if (pickup)
-                info.dropOffIds.insert(dropOffId);
-
+                info.pickedupReqAndDropoff.emplace_back(reqId, dropOffId);
         }
 
-        void updateDropoffInfo(StopInfo &info, const int stopId) {
-            for (int i = rangeOfRequestsDroppedOffAtStop[stopId].start ; i < rangeOfRequestsDroppedOffAtStop[stopId].end; i++) {
-                const auto requestId = requestsDroppedOffAtStop[i];
-                if (!countedDropoff[requestId] && hoppedOn[requestId]) {
-                    info.droppedoffRequests.push_back(requestId);
-                    countedDropoff[requestId] = true;
-                    if (info.maxArrTimeAtDropoff > maxArrTimeAtDropForRequest[requestId])
-                        info.maxArrTimeAtDropoff = maxArrTimeAtDropForRequest[requestId];
-                }
-            }
-        }
-
-        void updatePickupInfo(StopInfo &info, const int stopid) {
+        void updatePickupInfo(StopInfo &info) {
             info.schedArrTime = schedArrTimes[pos[info.vehicleId].start];
             info.schedDepTime = schedDepTimes[pos[info.vehicleId].start];
             info.maxArrTime = maxArrTimes[pos[info.vehicleId].start];
-            for (int i = rangeOfRequestsPickedUpAtStop[stopid].start; i < rangeOfRequestsPickedUpAtStop[stopid].end; i++) {
-                const auto requestId = requestsPickedUpAtStop[i];
-                if (!hoppedOn[requestId]) {
-                    info.pickedupRequests.push_back(requestsPickedUpAtStop[i]);
-                    hoppedOn[requestId] = true;
-                }
-            }
         }
 
         void calcInsertIndex(StopInfo &info, const int stopId, bool lastMinute) {
@@ -573,7 +530,7 @@ namespace karri {
             const int start = pos[info.vehicleId].start;
             int count = 0;
             while (stopId != stopIds[start + count]) {
-                if (stopInfos[stopIds[start + count]].isFixed) {
+                if (isFixed[stopIds[start + count]]) {
                     insertIndex++;
                 }
                 count++;
@@ -584,26 +541,26 @@ namespace karri {
 
 
 
-
         // Tests if FixedRouteState contains all fixed stops in the right order
-        void testFunction(const int vehId) {
+        bool testFixedStops(const int vehId) {
+            bool result = true;
             const auto numVarStops = numStopsOf(vehId);
             const auto numFixedStops = fixedRouteState.numStopsOf(vehId);
-            assert(numVarStops >= numFixedStops);
+            result = result && numVarStops >= numFixedStops;
 
             const auto &start = pos[vehId].start;
             int toFind = numFixedStops;
             int count = 0;
             for (const auto &fixedLoc: fixedRouteState.stopLocationsFor(vehId)) {
-                while (!stopInfos[stopIds[start + count]].isFixed) {
+                while (!isFixed[stopIds[start + count]]) {
                     auto currInfo = stopInfos[stopIds[start + count]];
                     count++;
                 }
-                assert(fixedLoc == stopLocations[start + count]);
+                result = result && fixedLoc == stopLocations[start + count];
                 count++;
                 toFind--;
             }
-            assert(toFind == 0);
+            return result && toFind == 0;
         }
 
 
@@ -631,12 +588,15 @@ namespace karri {
             if (!unusedStopIds.empty()) {
                 const auto id = unusedStopIds.top();
                 unusedStopIds.pop();
-                StopInfo newInfo;
-                stopInfos[id] = newInfo;
+                isFixed[id] = false;
                 assert(stopIdToVehicleId[id] == INVALID_ID);
                 return id;
             }
             ++maxStopId;
+            if (stopInfos.size() < maxStopId + 1) {
+                stopInfos.resize(maxStopId + 1);
+                isFixed.resize(maxStopId + 1, false);
+            }
             return nextUnusedStopId++;
         }
 
@@ -867,9 +827,8 @@ namespace karri {
         FixedRouteStateT &fixedRouteState;
 
         std::vector<StopInfo> stopInfos;  //stopInfos[stopId] returns the StopInfo object of stop with id stopId
-        std::vector<int> maxArrTimeAtDropForRequest; //maxArrTimeAtDropoff[reqId] returns maxArrTimeAtDropoff of the request
+        std::vector<bool> isFixed; //isFixed[stopId] = true if the stop with stopId is fixed
         std::vector<bool> hoppedOn; //hoppedOn[reqId] = true if passenger is already inside the vehicle
-        std::vector<bool> countedDropoff; //countedDropoff[reqId] = true if the
-        std::vector<bool> countedPickup;
+        std::vector<int> maxArrTimeAtDropForRequest; //maxArrTimeAtDropoff[reqId] returns maxArrTimeAtDropoff of the request
     };
 }
