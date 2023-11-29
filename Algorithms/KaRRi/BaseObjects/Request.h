@@ -42,7 +42,7 @@ namespace karri {
     // location.
     struct PDLoc {
 
-        int id = INVALID_ID; // Should be countedDropoff separately for pickups and dropoffs
+        int id = INVALID_ID; // Should be counted separately for pickups and dropoffs
         int loc = INVALID_EDGE; // Location in road network
         int psgLoc = INVALID_EDGE; // Location in passenger road network
         int walkingDist = INFTY; // Walking time from origin to this pickup or from this dropoff to destination.

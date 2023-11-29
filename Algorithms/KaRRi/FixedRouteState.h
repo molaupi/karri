@@ -293,8 +293,12 @@ namespace karri {
 
             if (info.insertIndex == 0 || (hasNextScheduledStop(info.vehicleId) && info.location == stopLocations[start + info.insertIndex])) {
                 //The pickup is the next fixed stop or the current stop (last minute insert)
+                if (schedDepTimes[start + info.insertIndex] != info.schedDepTime) {
+                    schedDepTimes[start + info.insertIndex] = info.schedDepTime;
+                    if (end - 1 >= start + info.insertIndex + 1)
+                        propagateSchedArrAndDepForward(start + info.insertIndex + 1, end - 1, calcDistance(info.location, stopLocations[start + info.insertIndex + 1]));
+                }
                 schedArrTimes[start + info.insertIndex] = info.schedArrTime;
-                schedDepTimes[start + info.insertIndex] = info.schedDepTime;
                 maxArrTimes[start + info.insertIndex] = info.maxArrTime;
             } else {
                 //The pickup location currently does not exist as fixed stop
@@ -306,7 +310,10 @@ namespace karri {
                 schedArrTimes[start + info.insertIndex] = info.schedArrTime;
                 schedDepTimes[start + info.insertIndex] = info.schedDepTime;
                 maxArrTimes[start + info.insertIndex] = info.maxArrTime;
+
+                vehWaitTimesPrefixSum[start + info.insertIndex] = 0;
                 numDropoffsPrefixSum[start + info.insertIndex] = 0; // No dropoffs otherwise it would've been a fixed stop
+                occupancies[start + info.insertIndex] = occupancies[start];
 
                 if (numStopsOf(info.vehicleId) > 2) {
                     //Newly inserted stop changed Arr and departure times for upcoming stops
@@ -316,11 +323,10 @@ namespace karri {
                 insertedPickupAsNewStop = true;
             }
 
-            propgateNumOfOccupanciesForward(info.vehicleId, 1, info.pickedupReqAndDropoff.size());
+            propgateNumOfOccupanciesForward(info.vehicleId, info.insertIndex, info.pickedupReqAndDropoff.size());
+
 
             // Updating all the other vectors
-            recalculateVehWaitTimesPrefixSum(start + info.insertIndex, end - 1, 0);
-            recalculateVehWaitTimesAtDropoffsPrefixSum(start + info.insertIndex, end - 1, 0);
 
             const auto size = stopIds[start + info.insertIndex] + 1;
             if (stopIdToIdOfPrevStop.size() < size) {
@@ -363,6 +369,7 @@ namespace karri {
                 schedArrTimes[start + info.insertIndex] = schedDepTimes[start + info.insertIndex - 1] + calcDistance(stopLocations[start + info.insertIndex - 1], info.location);
                 schedDepTimes[start + info.insertIndex] = schedArrTimes[start + info.insertIndex] + stopTime;
                 maxArrTimes[start + info.insertIndex] = info.maxArrTimeAtDropoff;
+                occupancies[start + info.insertIndex] = occupancies[start + info.insertIndex - 1];
 
                 propagateMaxArrTimeBackward(start + info.insertIndex - 1, start);
                 insertedDropoffAsNewStop = true;
@@ -379,14 +386,17 @@ namespace karri {
                 schedArrTimes[start + info.insertIndex] = schedDepTimes[start + info.insertIndex - 1] + calcDistance(stopLocations[start + info.insertIndex - 1], info.location);
                 schedDepTimes[start + info.insertIndex] = schedArrTimes[start + info.insertIndex] + stopTime;
                 maxArrTimes[start + info.insertIndex] = info.maxArrTimeAtDropoff;
+                occupancies[start + info.insertIndex] = occupancies[start + info.insertIndex - 1];
 
                 propagateSchedArrAndDepForward(start + info.insertIndex + 1, end - 1, calcDistance(info.location, stopLocations[start + info.insertIndex + 1]));
                 propagateMaxArrTimeBackward(start + info.insertIndex, start);
                 insertedDropoffAsNewStop = true;
             }
 
-            propgateNumOfOccupanciesForward(info.vehicleId, start + info.insertIndex, -1);
-            propagateNumOfDropoffsForward(info.vehicleId, start + info.insertIndex, 1);
+            propgateNumOfOccupanciesForward(info.vehicleId, info.insertIndex, -1);
+            propagateNumOfDropoffsForward(info.vehicleId, info.insertIndex, 1);
+            recalculateVehWaitTimesPrefixSum(start + 1, end - 1, 0);
+            recalculateVehWaitTimesAtDropoffsPrefixSum(start + 1, end - 1, 0);
 
             const auto size = stopIds[start + info.insertIndex] + 1;
             if (stopIdToIdOfPrevStop.size() < size) {
@@ -421,6 +431,7 @@ namespace karri {
         void removeStartOfCurrentLeg(const int vehId) {
             assert(vehId >= 0);
             assert(vehId < pos.size());
+            assert(testNumberOfOccupancies(vehId));
             const auto &start = pos[vehId].start;
             assert(pos[vehId].end - start > 0);
             const bool haveToRecomputeMaxLeeway = stopIds[start] == stopIdOfMaxLeeway;
@@ -450,6 +461,8 @@ namespace karri {
 
             if (haveToRecomputeMaxLeeway)
                 recomputeMaxLeeway();
+
+            assert(testArrAndDepTimes(vehId));
         }
 
 
@@ -488,7 +501,44 @@ namespace karri {
             return getScheduledStop(vehId, 0);
         }
 
+        //Calculates distance between two edges
+        int calcDistance(int from, int to) {
+            const auto source = vehCh.rank(vehInputGraph.edgeHead(from));
+            const auto target = vehCh.rank(vehInputGraph.edgeTail(to));
+            vehChQuery.run(source, target);
+            return vehChQuery.getDistance() + vehInputGraph.travelTime(to);
+        }
+
     private:
+
+        bool testNumberOfOccupancies(const int vehId) {
+            bool result = true;
+            const auto &start = pos[vehId].start;
+            const auto &end = pos[vehId].end;
+            int currNumOfPassengers = occupancies[start];
+            for (int i = start + 1; i < end; i++) {
+                const int currStopId = stopIds[i];
+                const int numPeoplePickedup = rangeOfRequestsPickedUpAtStop[currStopId].end - rangeOfRequestsPickedUpAtStop[currStopId].start;
+                const int numPeopleDroppedoff = rangeOfRequestsDroppedOffAtStop[currStopId].end - rangeOfRequestsDroppedOffAtStop[currStopId].start;
+                currNumOfPassengers += numPeoplePickedup - numPeopleDroppedoff;
+                result = result && occupancies[i] >= 0 && occupancies[i] == currNumOfPassengers;
+            }
+            return result && occupancies[end - 1] == 0;
+        }
+
+        bool testArrAndDepTimes(const int vehId) {
+            bool result = true;
+            const auto &start = pos[vehId].start;
+            const auto &end = pos[vehId].end;
+
+            for (int i = start; i < end - 1; i++) {
+                result = result && (schedDepTimes[i] - schedArrTimes[i] >= stopTime) &&
+                        (schedArrTimes[i + 1] - schedDepTimes[i] == calcDistance(stopLocations[i], stopLocations[i + 1]));
+            }
+            return result;
+        }
+
+
 
         void propgateNumOfOccupanciesForward(const int vehId, const int index, const int change) {
             for (int i = pos[vehId].start + index; i < pos[vehId].end; i++) {
@@ -502,13 +552,7 @@ namespace karri {
             }
         }
 
-        //Calculates distance between two edges
-        int calcDistance(int from, int to) {
-            const auto source = vehCh.rank(vehInputGraph.edgeHead(from));
-            const auto target = vehCh.rank(vehInputGraph.edgeTail(to));
-            vehChQuery.run(source, target);
-            return vehChQuery.getDistance() + vehInputGraph.travelTime(to);
-        }
+
 
 
         ScheduledStop getScheduledStop(const int vehId, const int stopIndex) const {

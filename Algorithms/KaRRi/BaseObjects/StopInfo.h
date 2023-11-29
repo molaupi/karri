@@ -19,6 +19,8 @@ namespace karri {
 
         int maxArrTimeAtDropoff = INFTY;
 
+        bool isFixed = false;
+
 
 
         StopInfo(int loc, const int vehId, const int schedDepTime, const int maxArrTime, const int schedArrTime):

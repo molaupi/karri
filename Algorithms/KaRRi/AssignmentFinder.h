@@ -44,7 +44,6 @@ namespace karri {
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
             typename RelevantPDLocsFilterT,
-            typename RouteStateT,
             typename CostCalculatorT
     >
     class AssignmentFinder {
@@ -55,7 +54,7 @@ namespace karri {
                          EllipticBCHSearchesT &ellipticBchSearches, PDDistanceSearchesT &pdDistanceSearches,
                          OrdAssignmentsT &ordinaryAssigments, PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments, DalsAssignmentsT &dalsAssignments,
-                         RelevantPDLocsFilterT &relevantPdLocsFilter, RouteStateT &routeState)
+                         RelevantPDLocsFilterT &relevantPdLocsFilter)
                 : reqState(requestState),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
@@ -64,8 +63,7 @@ namespace karri {
                   pbnsAssignments(pbnsAssignments),
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
-                  relevantPdLocsFilter(relevantPdLocsFilter),
-                  routeState(routeState) {}
+                  relevantPdLocsFilter(relevantPdLocsFilter) {}
 
         const RequestState<CostCalculatorT> &findBestAssignment(const Request &req) {
 
@@ -122,8 +120,5 @@ namespace karri {
         PalsAssignmentsT &palsAssignments; // Tries PALS assignments where pickup and dropoff are inserted after the last stop.
         DalsAssignmentsT &dalsAssignments; // Tries DALS assignments where only the dropoff is inserted after the last stop.
         RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
-
-
-        RouteStateT &routeState;
     };
 }
