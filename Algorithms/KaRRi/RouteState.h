@@ -469,7 +469,7 @@ namespace karri {
             fixedRouteState.removeStartOfCurrentLeg(vehId);
             assert(testFixedStops(vehId));
             //TODO
-            //assert(numDropoffsPrefixSum[0] == rangeOfRequestsDroppedOffAtStop[newStartStopId].end - rangeOfRequestsDroppedOffAtStop[newStartStopId].start);
+            //testFixedMaxArrTimes(vehId);
         }
 
 
@@ -540,9 +540,6 @@ namespace karri {
             info.insertIndex = insertIndex;
         }
 
-
-
-
         // Tests if FixedRouteState contains all fixed stops in the right order
         bool testFixedStops(const int vehId) {
             bool result = true;
@@ -554,15 +551,27 @@ namespace karri {
             int toFind = numFixedStops;
             int count = 0;
             for (const auto &fixedLoc: fixedRouteState.stopLocationsFor(vehId)) {
-                while (!stopInfos[stopIds[start + count]].isFixed) {
-                    auto currInfo = stopInfos[stopIds[start + count]];
+                while (!stopInfos[stopIds[start + count]].isFixed){
                     count++;
                 }
+
                 result = result && fixedLoc == stopLocations[start + count];
                 count++;
                 toFind--;
             }
             return result && toFind == 0;
+        }
+
+        void testFixedMaxArrTimes(const int vehId) {
+            const auto &start = pos[vehId].start;
+            int count = 0;
+            for (const auto &maxArr: fixedRouteState.maxArrTimesFor(vehId)) {
+                while (!stopInfos[stopIds[start + count]].isFixed) {
+                    count++;
+                }
+                assert(maxArrTimes[start + count] <= maxArr);
+                count++;
+            }
         }
 
 
