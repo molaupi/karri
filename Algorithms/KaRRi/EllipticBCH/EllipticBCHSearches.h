@@ -303,6 +303,9 @@ namespace karri {
             //     runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
             // }
 
+            // Interleaved to & from searches
+            // für jede PDLoc -> 2 Jobs erstellen
+
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
