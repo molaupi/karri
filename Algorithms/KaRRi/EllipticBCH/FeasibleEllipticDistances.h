@@ -164,9 +164,9 @@ namespace karri {
             // If no entries exist yet for this stop, perform the allocation. 
             // would not occur in case of static allocation.
 
-            if (startOfRangeInDistToPDLocs[stopId] == INVALID_INDEX || startOfRangeInMeetingVerticesToPDLocs[stopId] == INVALID_INDEX) {
-                allocateEntriesFor(stopId);
-            }
+//            if (startOfRangeInDistToPDLocs[stopId] == INVALID_INDEX || startOfRangeInMeetingVerticesToPDLocs[stopId] == INVALID_INDEX) {
+            allocateEntriesFor(stopId);
+//            }
 
             // Write values for new entry and set pointer from PD loc to the entries
             // const auto idx = (stopId * numLabelsPerStop) + (firstPDLocId / K);
@@ -330,7 +330,7 @@ namespace karri {
         void allocateEntriesFor(const int stopId) {
             // assert(startOfRangeInValueArray[stopId] == INVALID_INDEX);
             // const auto curNumLabels = distToRelevantPDLocs.size();
-            SpinLock currLock = stopLocks[stopId];
+            SpinLock& currLock = stopLocks[stopId];
             currLock.lock();
             
             if (startOfRangeInDistToPDLocs[stopId] != INVALID_INDEX &&
