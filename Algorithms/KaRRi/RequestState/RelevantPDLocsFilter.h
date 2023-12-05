@@ -159,10 +159,7 @@ namespace karri {
                         }
 
                         if (minCost <= requestState.getBestCost()) {
-                            if (requestState.originalRequest.requestId == 3 && vehId == 768) {
-                                    std::cout << "Vehicle ID 768";
-                                }
-
+                            
                             ++numStopsRelevant;
                             // Check each PD loc
                             const auto &distsToPDLocs = feasible.distancesToRelevantPDLocsFor(stopId);
