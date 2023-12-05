@@ -37,6 +37,7 @@
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
+#include "Algorithms/KaRRi/EllipticBCH/ClosestPDLocToStopBCHQuery.h"
 
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
@@ -237,6 +238,8 @@ namespace karri {
 
             // Run for pickups:
             Timer timer;
+
+
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticPickups);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticPickups);
             runBCHSearchesFromAndTo(requestState.pickups);
@@ -414,6 +417,9 @@ namespace karri {
 
         const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
         const LastStopsAtVertices &lastStopsAtVertices;
+
+//        using ClosestPDLocSearch = ClosestHaltingSpotToRegularStopBCHQueryWithStallOnDemand<InputGraphT, CHEnvT, typename EllipticBucketsEnvT::BucketContainer, typename EllipticBucketsEnvT::BucketContainer>;
+//        ClosestPDLocSearch closestPdLocSearch;
 
         FeasibleEllipticDistancesT &feasibleEllipticPickups;
         FeasibleEllipticDistancesT &feasibleEllipticDropoffs;
