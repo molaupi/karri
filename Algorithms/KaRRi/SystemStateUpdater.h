@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
 #include "PathTracker.h"
 

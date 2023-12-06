@@ -29,7 +29,7 @@
 #include "Algorithms/Buckets/DynamicBucketContainer.h"
 #include "Algorithms/Buckets/SortedBucketContainer.h"
 #include "Algorithms/Buckets/BucketEntry.h"
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/CH/CH.h"
 #include "Tools/Timer.h"
 

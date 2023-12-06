@@ -33,7 +33,8 @@
 
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
-#include "FixedRouteState.h"
+#include "Algorithms/KaRRi/RouteState/FixedRouteState.h"
+#include "ScheduledStop.h"
 
 namespace karri {
 
@@ -87,13 +88,13 @@ namespace karri {
         }
 
         const int &getMaxStopId() const {
-            return maxStopId;
+            return useFixedStops ? fixedRouteState.getMaxStopId() : maxStopId;
         }
 
         int numStopsOf(const int vehId) const {
             assert(vehId >= 0);
             assert(vehId < pos.size());
-            return pos[vehId].end - pos[vehId].start;
+            return useFixedStops ? fixedRouteState.numStopsOf(vehId) : pos[vehId].end - pos[vehId].start;
         }
 
         // Range containing the ids of the currently scheduled stops of vehicle with given ID.
@@ -102,6 +103,8 @@ namespace karri {
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
+            if (useFixedStops)
+                return fixedRouteState.stopIdsFor(vehId);
             return {stopIds.begin() + start, stopIds.begin() + end};
         }
 
@@ -111,6 +114,8 @@ namespace karri {
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
+            if (useFixedStops)
+                return fixedRouteState.stopLocationsFor(vehId);
             return {stopLocations.begin() + start, stopLocations.begin() + end};
         }
 
@@ -120,6 +125,8 @@ namespace karri {
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
+            if (useFixedStops)
+                return fixedRouteState.schedArrTimesFor(vehId);
             return {schedArrTimes.begin() + start, schedArrTimes.begin() + end};
         }
 
@@ -129,6 +136,8 @@ namespace karri {
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
+            if (useFixedStops)
+                return fixedRouteState.schedDepTimesFor(vehId);
             return {schedDepTimes.begin() + start, schedDepTimes.begin() + end};
         }
 
@@ -139,6 +148,8 @@ namespace karri {
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
+            if (useFixedStops)
+                return fixedRouteState.maxArrTimesFor(vehId);
             return {maxArrTimes.begin() + start, maxArrTimes.begin() + end};
         }
 
@@ -150,6 +161,8 @@ namespace karri {
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
+            if (useFixedStops)
+                return fixedRouteState.vehWaitTimesPrefixSumFor(vehId);
             return {vehWaitTimesPrefixSum.begin() + start, vehWaitTimesPrefixSum.begin() + end};
         }
 
@@ -160,6 +173,8 @@ namespace karri {
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
+            if (useFixedStops)
+                return fixedRouteState.occupanciesFor(vehId);
             return {occupancies.begin() + start, occupancies.begin() + end};
         }
 
@@ -170,6 +185,8 @@ namespace karri {
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
+            if (useFixedStops)
+                return fixedRouteState.numDropoffsPrefixSumFor(vehId);
             return {numDropoffsPrefixSum.begin() + start, numDropoffsPrefixSum.begin() + end};
         }
 
@@ -182,6 +199,8 @@ namespace karri {
             assert(vehId < pos.size());
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
+            if (useFixedStops)
+                return fixedRouteState.vehWaitTimesUntilDropoffsPrefixSumsFor(vehId);
             return {vehWaitTimesUntilDropoffsPrefixSum.begin() + start,
                     vehWaitTimesUntilDropoffsPrefixSum.begin() + end};
         }
@@ -189,31 +208,31 @@ namespace karri {
         // Returns the id of the vehicle whose route the stop with the given ID is currently part of.
         int vehicleIdOf(const int stopId) const {
             assert(stopId >= 0 && stopId < stopIdToPosition.size());
-            return stopIdToVehicleId[stopId];
+            return useFixedStops ? fixedRouteState.vehicleIdOf(stopId) : stopIdToVehicleId[stopId];
         }
 
         // Returns the id of the stop that comes before the stop with the given ID in the route of its vehicle.
         int idOfPreviousStopOf(const int stopId) const {
             assert(stopId >= 0 && stopId < stopIdToIdOfPrevStop.size());
-            return stopIdToIdOfPrevStop[stopId];
+            return useFixedStops ? fixedRouteState.idOfPreviousStopOf(stopId) : stopIdToIdOfPrevStop[stopId];
         }
 
         int stopPositionOf(const int stopId) const {
             assert(stopId >= 0 && stopId < stopIdToPosition.size());
-            return stopIdToPosition[stopId];
+            return useFixedStops ? fixedRouteState.stopPositionOf(stopId) : stopIdToPosition[stopId];
         }
 
         int leewayOfLegStartingAt(const int stopId) const {
             assert(stopId >= 0 && stopId < stopIdToLeeway.size());
-            return stopIdToLeeway[stopId];
+            return useFixedStops ? fixedRouteState.leewayOfLegStartingAt(stopId) : stopIdToLeeway[stopId];
         }
 
         const int &getMaxLeeway() const {
-            return maxLeeway;
+            return useFixedStops ? fixedRouteState.getMaxLeeway() : maxLeeway;
         }
 
         const int &getMaxLegLength() const {
-            return maxLegLength;
+            return useFixedStops ? fixedRouteState.getMaxLegLength() : maxLegLength;
         }
 
         template<typename RequestStateT>
@@ -394,25 +413,6 @@ namespace karri {
             return {pickupIndex, dropoffIndex};
         }
 
-        void lastMinutePickup(const int vehId) {
-            const auto &start = pos[vehId].start;
-
-            auto &currStopInfo = stopInfos[stopIds[start]];
-            updatePickupInfo(currStopInfo);
-            currStopInfo.insertIndex = 0;
-            fixedRouteState.addNewPickup(currStopInfo);
-
-            for (const auto &tuple: currStopInfo.pickedupReqAndDropoff) {
-                auto &dropoffStopInfo = stopInfos[tuple.second];
-                calcInsertIndex(dropoffStopInfo, tuple.second, true);
-                dropoffStopInfo.maxArrTimeAtDropoff = maxArrTimeAtDropForRequest[tuple.first];
-                fixedRouteState.addNewDropoff(dropoffStopInfo, tuple.first);
-                dropoffStopInfo.isFixed = true;
-            }
-
-            currStopInfo.pickedupReqAndDropoff.clear();
-        }
-
 
         void removeStartOfCurrentLeg(const int vehId) {
             assert(vehId >= 0);
@@ -489,29 +489,46 @@ namespace karri {
             fixedRouteState.updateStartOfCurrentLeg(vehId, location, depTime);
         }
 
-        // Scheduled stop interface for event simulation
-        struct ScheduledStop {
-            int stopId;
-            int arrTime;
-            int depTime;
-            int occupancyInFollowingLeg;
-            ConstantVectorRange<int> requestsPickedUpHere;
-            ConstantVectorRange<int> requestsDroppedOffHere;
-        };
-
         bool hasNextScheduledStop(const int vehId) const {
-            return numStopsOf(vehId) > 1;
+            return useFixedStops ? fixedRouteState.hasNextScheduledStop(vehId) : numStopsOf(vehId) > 1;
         }
 
         ScheduledStop getNextScheduledStop(const int vehId) const {
-            return getScheduledStop(vehId, 1);
+            return useFixedStops ? fixedRouteState.getNextScheduledStop(vehId) : getScheduledStop(vehId, 1);
         }
 
         ScheduledStop getCurrentOrPrevScheduledStop(const int vehId) const {
-            return getScheduledStop(vehId, 0);
+            return useFixedStops ? fixedRouteState.getCurrentOrPrevScheduledStop(vehId) : getScheduledStop(vehId, 0);
+        }
+
+        void fixedMode() {
+            useFixedStops = true;
+        }
+
+        void normalMode() {
+            useFixedStops = false;
         }
 
     private:
+
+        void lastMinutePickup(const int vehId) {
+            const auto &start = pos[vehId].start;
+
+            auto &currStopInfo = stopInfos[stopIds[start]];
+            updatePickupInfo(currStopInfo);
+            currStopInfo.insertIndex = 0;
+            fixedRouteState.addNewPickup(currStopInfo);
+
+            for (const auto &tuple: currStopInfo.pickedupReqAndDropoff) {
+                auto &dropoffStopInfo = stopInfos[tuple.second];
+                calcInsertIndex(dropoffStopInfo, tuple.second, true);
+                dropoffStopInfo.maxArrTimeAtDropoff = maxArrTimeAtDropForRequest[tuple.first];
+                fixedRouteState.addNewDropoff(dropoffStopInfo, tuple.first);
+                dropoffStopInfo.isFixed = true;
+            }
+
+            currStopInfo.pickedupReqAndDropoff.clear();
+        }
 
         void updateStopInfo(const int stopId, const int reqId, const int loc, const int vehId, const int dropOffId, const bool pickup = true) {
             auto &info = stopInfos[stopId];
@@ -600,6 +617,7 @@ namespace karri {
                 const auto id = unusedStopIds.top();
                 unusedStopIds.pop();
                 stopInfos[id].isFixed = false;
+                stopInfos[id].fixedStopId = INVALID_ID;
                 assert(stopIdToVehicleId[id] == INVALID_ID);
                 return id;
             }
@@ -834,6 +852,7 @@ namespace karri {
         const int stopTime;
 
         //Information needed for the FixedRouteState
+        bool useFixedStops = false;
         FixedRouteStateT &fixedRouteState;
 
         std::vector<StopInfo> stopInfos;  //stopInfos[stopId] returns the StopInfo object of stop with id stopId

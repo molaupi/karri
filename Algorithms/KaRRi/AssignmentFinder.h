@@ -44,7 +44,8 @@ namespace karri {
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
             typename RelevantPDLocsFilterT,
-            typename CostCalculatorT
+            typename CostCalculatorT,
+            typename RouteStateT
     >
     class AssignmentFinder {
 
@@ -54,7 +55,7 @@ namespace karri {
                          EllipticBCHSearchesT &ellipticBchSearches, PDDistanceSearchesT &pdDistanceSearches,
                          OrdAssignmentsT &ordinaryAssigments, PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments, DalsAssignmentsT &dalsAssignments,
-                         RelevantPDLocsFilterT &relevantPdLocsFilter)
+                         RelevantPDLocsFilterT &relevantPdLocsFilter, RouteStateT &routeState)
                 : reqState(requestState),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
@@ -63,12 +64,24 @@ namespace karri {
                   pbnsAssignments(pbnsAssignments),
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
-                  relevantPdLocsFilter(relevantPdLocsFilter) {}
+                  relevantPdLocsFilter(relevantPdLocsFilter),
+                  routeState(routeState) {}
 
         const RequestState<CostCalculatorT> &findBestAssignment(const Request &req) {
+            findBestAssignmentProcedure(req);
+            routeState.fixedMode();
+            findBestAssignmentProcedure(req, true);
+            reqState.fixedRunOff();
+            routeState.normalMode();
+            return reqState;
+        }
 
+
+    private:
+
+        void findBestAssignmentProcedure(const Request &req, const bool fixedRun = false) {
             // Initialize finder for this request:
-            initializeForRequest(req);
+            initializeForRequest(req, fixedRun);
 
             // Compute PD distances:
             pdDistanceSearches.run();
@@ -93,14 +106,10 @@ namespace karri {
 
             // Try PBNS assignments:
             pbnsAssignments.findAssignments();
-
-            return reqState;
         }
 
-    private:
-
-        void initializeForRequest(const Request &req) {
-            requestStateInitializer.initializeRequestState(req);
+        void initializeForRequest(const Request &req, const bool fixedRun) {
+            requestStateInitializer.initializeRequestState(req, fixedRun);
 
             // Initialize components according to new request state:
             ellipticBchSearches.init();
@@ -120,5 +129,7 @@ namespace karri {
         PalsAssignmentsT &palsAssignments; // Tries PALS assignments where pickup and dropoff are inserted after the last stop.
         DalsAssignmentsT &dalsAssignments; // Tries DALS assignments where only the dropoff is inserted after the last stop.
         RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
+
+        RouteStateT &routeState;
     };
 }

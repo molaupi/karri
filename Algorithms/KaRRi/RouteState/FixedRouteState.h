@@ -11,6 +11,7 @@
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/BaseObjects/StopInfo.h"
 #include "Algorithms/CH/CH.h"
+#include "ScheduledStop.h"
 
 namespace karri {
 
@@ -256,7 +257,7 @@ namespace karri {
 
         // Returns the id of the vehicle whose route the stop with the given ID is currently part of.
         int vehicleIdOf(const int stopId) const {
-            assert(stopId >= 0 && stopId < stopIdToPosition.size());
+            assert(stopId >= 0 && stopId < stopIdToVehicleId.size());
             return stopIdToVehicleId[stopId];
         }
 
@@ -285,7 +286,7 @@ namespace karri {
         }
 
 
-        void addNewPickup(const StopInfo &info) {
+        void addNewPickup(StopInfo &info) {
             assert(info.insertIndex == 0 || info.insertIndex == 1);
             const auto &start = pos[info.vehicleId].start;
             const auto &end = pos[info.vehicleId].end;
@@ -321,6 +322,7 @@ namespace karri {
                     propagateSchedArrAndDepForward(start + info.insertIndex + 1, end - 1, distance);
                 }
                 insertedPickupAsNewStop = true;
+                info.fixedStopId = stopIds[start + info.insertIndex];
             }
 
             propgateNumOfOccupanciesForward(info.vehicleId, info.insertIndex, info.pickedupReqAndDropoff.size());
@@ -355,7 +357,7 @@ namespace karri {
             }
         }
 
-        void addNewDropoff(const StopInfo &info, const int requestId) {
+        void addNewDropoff(StopInfo &info, const int requestId) {
             const auto &start = pos[info.vehicleId].start;
             const auto &end = pos[info.vehicleId].end;
             bool insertedDropoffAsNewStop = false;
@@ -374,6 +376,7 @@ namespace karri {
 
                 propagateMaxArrTimeBackward(start + info.insertIndex - 1, start);
                 insertedDropoffAsNewStop = true;
+                info.fixedStopId = stopIds[start + info.insertIndex];
             } else if(stopLocations[start + info.insertIndex] == info.location) {
                 // Dropoff stop already fixed
                 maxArrTimes[start + info.insertIndex] = std::min(maxArrTimes[start + info.insertIndex], info.maxArrTimeAtDropoff);
@@ -393,6 +396,7 @@ namespace karri {
                 propagateSchedArrAndDepForward(start + info.insertIndex + 1, end - 1, calcDistance(info.location, stopLocations[start + info.insertIndex + 1]));
                 propagateMaxArrTimeBackward(start + info.insertIndex, start);
                 insertedDropoffAsNewStop = true;
+                info.fixedStopId = stopIds[start + info.insertIndex];
             }
 
             propgateNumOfOccupanciesForward(info.vehicleId, info.insertIndex, -1);
@@ -483,16 +487,6 @@ namespace karri {
             recalculateVehWaitTimesPrefixSum(start, end - 1, 0);
             recalculateVehWaitTimesAtDropoffsPrefixSum(start, end - 1, 0);
         }
-
-        // Scheduled stop interface for event simulation
-        struct ScheduledStop {
-            int stopId;
-            int arrTime;
-            int depTime;
-            int occupancyInFollowingLeg;
-            ConstantVectorRange<int> requestsPickedUpHere;
-            ConstantVectorRange<int> requestsDroppedOffHere;
-        };
 
         bool hasNextScheduledStop(const int vehId) const {
             return numStopsOf(vehId) > 1;

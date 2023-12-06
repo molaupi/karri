@@ -27,7 +27,7 @@
 
 #include "Tools/Simd/AlignedVector.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
 namespace karri {

@@ -31,7 +31,7 @@
 #include "Tools/Simd/AlignedVector.h"
 #include "DataStructures/Containers/Subset.h"
 
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 

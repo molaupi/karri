@@ -61,6 +61,7 @@ namespace karri {
             int walkingTimeToPickup;
             int walkingTimeFromDropoff;
             int assignmentCost;
+            int fixedAssignmentCost;
         };
 
     public:
@@ -94,7 +95,8 @@ namespace karri {
                                                                               "trip_time,"
                                                                               "walk_to_pickup_time,"
                                                                               "walk_to_dropoff_time,"
-                                                                              "cost\n")),
+                                                                              "cost,"
+                                                                              "fixedCost\n")),
                   legStatsLogger(LogManager<std::ofstream>::getLogger("legstats.csv",
                                                                       "vehicle_id,"
                                                                       "stop_time,"
@@ -297,6 +299,7 @@ namespace karri {
                 requestData[reqId].depTime = occTime;
                 requestData[reqId].walkingTimeToPickup = 0;
                 requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.getNotUsingVehicleDist();
+                requestData[reqId].fixedAssignmentCost = asgnFinderResponse.getBestCostOnFixedRoutes();
                 requestEvents.increaseKey(reqId, occTime + asgnFinderResponse.getNotUsingVehicleDist());
                 systemStateUpdater.writePerformanceLogs();
                 return;
@@ -317,6 +320,7 @@ namespace karri {
             requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
             requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
+            requestData[reqId].fixedAssignmentCost = asgnFinderResponse.getBestCostOnFixedRoutes();
 
             int pickupStopId, dropoffStopId;
             systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId);
@@ -362,7 +366,8 @@ namespace karri {
                                    << tripTime << ','
                                    << reqData.walkingTimeToPickup << ','
                                    << reqData.walkingTimeFromDropoff << ','
-                                   << reqData.assignmentCost << '\n';
+                                   << reqData.assignmentCost << ','
+                                   << reqData.fixedAssignmentCost << '\n';
 
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();

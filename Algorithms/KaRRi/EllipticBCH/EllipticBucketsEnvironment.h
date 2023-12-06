@@ -32,7 +32,7 @@
 #include "Algorithms/Buckets/DynamicBucketContainer.h"
 #include "Algorithms/Buckets/SortedBucketContainer.h"
 #include "BucketEntryWithLeeway.h"
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/Stats/PerformanceStats.h"
