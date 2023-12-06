@@ -69,10 +69,10 @@ namespace karri {
 
         const RequestState<CostCalculatorT> &findBestAssignment(const Request &req) {
             findBestAssignmentProcedure(req);
-            routeState.fixedMode();
-            findBestAssignmentProcedure(req, true);
-            reqState.fixedRunOff();
-            routeState.normalMode();
+            //routeState.fixedMode();
+            //findBestAssignmentProcedure(req, true);
+            //reqState.fixedRunOff();
+            //routeState.normalMode();
             return reqState;
         }
 

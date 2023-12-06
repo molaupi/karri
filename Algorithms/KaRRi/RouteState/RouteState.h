@@ -453,14 +453,14 @@ namespace karri {
                 auto &newPickup = stopInfos[newStartStopId];
                 updatePickupInfo(stopInfos[newStartStopId]);
                 newPickup.insertIndex = 1;
-                fixedRouteState.addNewPickup(newPickup);
+                fixedRouteState.addNewPickup(newPickup, newStartStopId);
                 newPickup.isFixed= true;
 
                 for (const auto &tuple: newPickup.pickedupReqAndDropoff) {
                     auto &dropoffStopInfo = stopInfos[tuple.second];
                     calcInsertIndex(dropoffStopInfo, tuple.second, false);
                     dropoffStopInfo.maxArrTimeAtDropoff = maxArrTimeAtDropForRequest[tuple.first];
-                    fixedRouteState.addNewDropoff(dropoffStopInfo, tuple.first);
+                    fixedRouteState.addNewDropoff(dropoffStopInfo, tuple.first, tuple.second);
                     dropoffStopInfo.isFixed = true;
                 }
 
@@ -517,13 +517,13 @@ namespace karri {
             auto &currStopInfo = stopInfos[stopIds[start]];
             updatePickupInfo(currStopInfo);
             currStopInfo.insertIndex = 0;
-            fixedRouteState.addNewPickup(currStopInfo);
+            fixedRouteState.addNewPickup(currStopInfo, stopIds[start]);
 
             for (const auto &tuple: currStopInfo.pickedupReqAndDropoff) {
                 auto &dropoffStopInfo = stopInfos[tuple.second];
                 calcInsertIndex(dropoffStopInfo, tuple.second, true);
                 dropoffStopInfo.maxArrTimeAtDropoff = maxArrTimeAtDropForRequest[tuple.first];
-                fixedRouteState.addNewDropoff(dropoffStopInfo, tuple.first);
+                fixedRouteState.addNewDropoff(dropoffStopInfo, tuple.first, tuple.second);
                 dropoffStopInfo.isFixed = true;
             }
 
