@@ -213,6 +213,7 @@ namespace karri {
         }
 
         bool handleMobitoppError(const nlohmann::json &) {
+            state = COMM_ERROR;
             return false;
         }
 

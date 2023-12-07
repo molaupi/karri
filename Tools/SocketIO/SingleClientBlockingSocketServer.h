@@ -51,7 +51,7 @@ namespace socketio {
 
             address.sin_family = AF_LOCAL;
             address.sin_addr.s_addr = htonl(INADDR_ANY); // address is localhost
-            address.sin_port = htons(port); // todo: host to network byte order necessary?
+            address.sin_port = htons(port);
 
             // Forcefully attaching socket to the port
             if (bind(listening_for_clients_fd, (struct sockaddr *) &address, addrlen)
