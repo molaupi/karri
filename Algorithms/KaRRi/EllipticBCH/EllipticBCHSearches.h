@@ -37,6 +37,7 @@
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
+#include "Tools/BundledBCHSearchTracker.h"
 
 namespace karri {
 
@@ -45,7 +46,8 @@ namespace karri {
             typename CostFunctionT,
             typename EllipticBucketsEnvT,
             typename FeasibleEllipticDistancesT,
-            typename LabelSetT>
+            typename LabelSetT,
+            typename BundledEffectivenessTrackerT>
     class EllipticBCHSearches {
 
     private:
@@ -179,8 +181,24 @@ namespace karri {
         };
 
 
+        struct BundledEffectivenessRelaxationCallback {
+
+            explicit BundledEffectivenessRelaxationCallback(BundledEffectivenessTrackerT& tracker) : tracker(tracker) {}
+
+            template<typename DistanceLabelContainerT>
+            void operator()(const int e, const int tail, const int, DistanceLabelContainerT &distances) {
+                tracker.registerEdgeRelaxation(e, distances[tail]);
+            }
+
+        private:
+            BundledEffectivenessTrackerT& tracker;
+        };
+
         using ScanSourceBuckets = ScanOrdinaryBucket<UpdateDistancesToPDLocs>;
         using ScanTargetBuckets = ScanOrdinaryBucket<UpdateDistancesFromPDLocs>;
+
+        using ToQuery = typename CHEnvT::template UpwardSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT, BundledEffectivenessRelaxationCallback>;
+        using FromQuery = typename CHEnvT::template UpwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT, BundledEffectivenessRelaxationCallback>;
 
         // Info about a PD loc that coincides with an existing stop of a vehicle.
         struct PDLocAtExistingStop {
@@ -199,7 +217,8 @@ namespace karri {
                             const RouteState &routeState,
                             FeasibleEllipticDistancesT &feasibleEllipticPickups,
                             FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
-                            RequestState &requestState)
+                            RequestState &requestState,
+                            BundledEffectivenessTrackerT& bundledEffectivenessTracker)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   ch(chEnv.getCH()),
@@ -212,14 +231,15 @@ namespace karri {
                   distUpperBound(INFTY),
                   updateDistancesToPdLocs(),
                   updateDistancesFromPdLocs(routeState),
-                  toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
+                  bundledEffectivenessTracker(bundledEffectivenessTracker),
+                  toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT, BundledEffectivenessRelaxationCallback>(
                           ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
-                  fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet), BundledEffectivenessRelaxationCallback(bundledEffectivenessTracker))),
+                  fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT, BundledEffectivenessRelaxationCallback>(
                           ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet), BundledEffectivenessRelaxationCallback(bundledEffectivenessTracker))) {}
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
@@ -229,7 +249,7 @@ namespace karri {
             Timer timer;
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticPickups);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticPickups);
-            runBCHSearchesFromAndTo(requestState.pickups);
+            runBCHSearchesFromAndTo(requestState.pickups, std::to_string(requestState.originalRequest.requestId) + "_pickups");
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.pickupTime += pickupTime;
             requestState.stats().ellipticBchStats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
@@ -241,7 +261,7 @@ namespace karri {
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
 
-            runBCHSearchesFromAndTo(requestState.dropoffs);
+            runBCHSearchesFromAndTo(requestState.dropoffs, std::to_string(requestState.originalRequest.requestId) + "_dropoffs");
             const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
             requestState.stats().ellipticBchStats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
@@ -272,7 +292,7 @@ namespace karri {
         friend UpdateDistancesToPDLocs;
 
         template<typename SpotContainerT>
-        void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs) {
+        void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs, const std::string& searchIdBase) {
 
             numSearchesRun = 0;
             numTimesStoppingCriterionMet = 0;
@@ -290,17 +310,20 @@ namespace karri {
 
             // Process in batches of size K
             for (int i = 0; i < pdLocs.size(); i += K) {
-                runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
+                const auto searchId = searchIdBase + "_from_" + std::to_string(i);
+                runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs, searchId);
             }
 
             for (int i = 0; i < pdLocs.size(); i += K) {
-                runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
+                const auto searchId = searchIdBase + "_to_" + std::to_string(i);
+                runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs, searchId);
             }
         }
 
         template<typename SpotContainerT>
         void runRegularBCHSearchesFrom(const int startId, const int endId,
-                                       const SpotContainerT &pdLocs) {
+                                       const SpotContainerT &pdLocs,
+                                       const std::string& searchId) {
             assert(endId > startId && endId - startId <= K);
 
             std::array<int, K> pdLocHeads;
@@ -316,16 +339,19 @@ namespace karri {
             }
 
             updateDistancesFromPdLocs.setCurFirstIdOfBatch(startId);
+            bundledEffectivenessTracker.clear();
             fromQuery.runWithOffset(pdLocHeads, {});
 
             ++numSearchesRun;
+            bundledEffectivenessTracker.writeOutputForSearch(searchId);
             totalNumEdgeRelaxations += fromQuery.getNumEdgeRelaxations();
             totalNumVerticesSettled += fromQuery.getNumVerticesSettled();
         }
 
         template<typename SpotContainerT>
         void runRegularBCHSearchesTo(const int startId, const int endId,
-                                     const SpotContainerT &pdLocs) {
+                                     const SpotContainerT &pdLocs,
+                                     const std::string& searchId) {
             assert(endId > startId && endId - startId <= K);
 
             std::array<int, K> travelTimes;
@@ -343,9 +369,11 @@ namespace karri {
             }
 
             updateDistancesToPdLocs.setCurFirstIdOfBatch(startId);
+            bundledEffectivenessTracker.clear();
             toQuery.runWithOffset(pdLocTails, travelTimes);
 
             ++numSearchesRun;
+            bundledEffectivenessTracker.writeOutputForSearch(searchId);
             totalNumEdgeRelaxations += toQuery.getNumEdgeRelaxations();
             totalNumVerticesSettled += toQuery.getNumVerticesSettled();
         }
@@ -401,8 +429,9 @@ namespace karri {
         int distUpperBound;
         UpdateDistancesToPDLocs updateDistancesToPdLocs;
         UpdateDistancesFromPDLocs updateDistancesFromPdLocs;
-        typename CHEnvT::template UpwardSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT> toQuery;
-        typename CHEnvT::template UpwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT> fromQuery;
+        BundledEffectivenessTrackerT& bundledEffectivenessTracker;
+        ToQuery toQuery;
+        FromQuery fromQuery;
 
         int numSearchesRun;
         int numTimesStoppingCriterionMet;

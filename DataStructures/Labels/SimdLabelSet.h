@@ -148,6 +148,13 @@ public:
             return !anySet(~mask);
         }
 
+        friend int countSet(const LabelMask &mask) {
+            int tmp = 0;
+            for (int i = 0; i < NUM_VECTORS; ++i)
+                tmp += horizontal_count(mask.isMarked[i]);
+            return tmp;
+        }
+
         BooleanLabel isMarked; // Flags indicating for each component if it is marked.
     };
 

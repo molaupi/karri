@@ -67,7 +67,15 @@ namespace dij {
         std::tuple<Criterions...> criterions; // The criteria that constitute the compound criterion.
     };
 
+    struct NoEdgeRelaxationCallBack {
+
+        // No-op callback for edge relaxations.
+        template<typename... T>
+        void operator()(const T & ...) const noexcept {}
+    };
 }
+
+
 
 // Forward declarations for friend
 namespace karri {
@@ -90,7 +98,9 @@ namespace karri {
 // criterion.
 template<
         typename GraphT, typename WeightT, typename LabelSetT,
-        typename StoppingCriterionT = dij::NoCriterion, typename PruningCriterionT = dij::NoCriterion,
+        typename StoppingCriterionT = dij::NoCriterion,
+        typename PruningCriterionT = dij::NoCriterion,
+        typename EdgeRelaxationCallBackT = dij::NoEdgeRelaxationCallBack,
         template<typename> class DistanceLabelContainerT = StampedDistanceLabelContainer,
         typename QueueT = AddressableQuadHeap>
 class Dijkstra {
@@ -136,13 +146,14 @@ private:
 public:
     // Constructs a Dijkstra instance.
     explicit Dijkstra(
-            const Graph &graph, StoppingCriterionT stopSearch = {}, PruningCriterionT pruneSearch = {})
+            const Graph &graph, StoppingCriterionT stopSearch = {}, PruningCriterionT pruneSearch = {}, EdgeRelaxationCallBackT edgeRelaxationCallBack = {})
             : graph(graph),
               distanceLabels(graph.numVertices()),
               parent(graph),
               queue(graph.numVertices()),
               stopSearch(stopSearch),
               pruneSearch(pruneSearch),
+              edgeRelaxationCallBack(edgeRelaxationCallBack),
               numEdgeRelaxations(0),
               numVerticesSettled(0) {}
 
@@ -298,6 +309,7 @@ private:
         FORALL_INCIDENT_EDGES(graph, v, e) {
             ++numEdgeRelaxations;
             const auto w = graph.edgeHead(e);
+            edgeRelaxationCallBack(e, v, w, distanceLabels);
             auto &distToW = distanceLabels[w];
             const auto distViaV = distToV + graph.template get<WeightT>(e);
             const auto mask = distViaV < distToW;
@@ -333,6 +345,7 @@ private:
     Queue queue;                      // The priority queue of unsettled vertices.
     StoppingCriterionT stopSearch;    // The criterion used to stop the search.
     PruningCriterionT pruneSearch;    // The criterion used to prune the search.
+    EdgeRelaxationCallBackT edgeRelaxationCallBack; // Called whenever an edge is relaxed.
 
     int numEdgeRelaxations; // Number of edge relaxations in last run.
     int numVerticesSettled; // Number of vertices settled in last run.

@@ -89,6 +89,15 @@ class Subset {
     return elementsToIndices[element] != INVALID_INDEX;
   }
 
+  // Extracts elements and clears subset.
+  std::vector<int32_t> extractElementsAndClear() {
+      for (const auto element : elements)
+          elementsToIndices[element] = INVALID_INDEX;
+      std::vector<int32_t> res;
+      elements.swap(res);
+      return res;
+  }
+
  private:
   std::vector<int32_t> elements;          // The elements contained in the subset.
   std::vector<int32_t> elementsToIndices; // The index in the element array of each element.

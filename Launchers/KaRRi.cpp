@@ -69,7 +69,9 @@
 #ifdef KARRI_USE_CCHS
 #include "Algorithms/KaRRi/CCHEnvironment.h"
 #else
+
 #include "Algorithms/KaRRi/CHEnvironment.h"
+
 #endif
 
 #if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
@@ -292,7 +294,8 @@ int main(int argc, char *argv[]) {
         io::CSVReader<4, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time", "num_riders");
+            reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time",
+                                      "num_riders");
         } else {
             reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders");
         }
@@ -305,7 +308,9 @@ int main(int argc, char *argv[]) {
                 vehGraphOrigIdToSeqId[destination] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
             if (numRiders > maxCapacity)
-                throw std::invalid_argument("number of riders '" + std::to_string(numRiders) + "' is larger than max vehicle capacity (" + std::to_string(maxCapacity) + ")");
+                throw std::invalid_argument(
+                        "number of riders '" + std::to_string(numRiders) + "' is larger than max vehicle capacity (" +
+                        std::to_string(maxCapacity) + ")");
             const auto originSeqId = vehGraphOrigIdToSeqId[origin];
             assert(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const auto destSeqId = vehGraphOrigIdToSeqId[destination];
@@ -407,6 +412,14 @@ int main(int argc, char *argv[]) {
         CostCalculator calc(routeState, inputConfig);
         RequestState reqState(calc, inputConfig);
 
+
+        // todo: Compile time parameter
+        static constexpr bool KARRI_TRACK_BUNDLED_SEARCHES = true;
+        static constexpr int KARRI_TRACK_BUNDLED_SEARCHES_NUM_BUCKETS = 20;
+        using BundledEffectivenessTracker = std::conditional_t<KARRI_TRACK_BUNDLED_SEARCHES,
+                BundledBCHSearchTracker<std::ofstream>,
+                NoOpBundledBCHSearchTracker<std::ofstream>>;
+
         // Construct Elliptic BCH searches:
         static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
         using EllipticBucketsEnv = EllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
@@ -424,10 +437,21 @@ int main(int argc, char *argv[]) {
         LastStopsAtVertices lastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
 
         using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
-                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
+                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet, BundledEffectivenessTracker>;
+        std::string header = "# K = " + std::to_string(KARRI_ELLIPTIC_BCH_LOG_K) + "\nsearch_id";
+        for (int i = 0; i < KARRI_TRACK_BUNDLED_SEARCHES_NUM_BUCKETS; ++i) {
+            header += "," + std::to_string(i);
+        }
+        header += "\n";
+        BundledEffectivenessTracker ellipticBundledEffectivenessTracker(vehicleInputGraph.numEdges(),
+                                                                        KARRI_TRACK_BUNDLED_SEARCHES_NUM_BUCKETS,
+                                                                        LogManager<std::ofstream>::getLogger(
+                                                                                "elliptic_bch_bundled_effectiveness.csv",
+                                                                                header));
         EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, ellipticBucketsEnv, lastStopsAtVertices,
                                                  *vehChEnv, routeState,
-                                                 feasibleEllipticPickups, feasibleEllipticDropoffs, reqState);
+                                                 feasibleEllipticPickups, feasibleEllipticDropoffs, reqState,
+                                                 ellipticBundledEffectivenessTracker);
 
 
         // Construct remaining request state
@@ -436,7 +460,8 @@ int main(int argc, char *argv[]) {
         RelevantPDLocs relPickupsBeforeNextStop(fleet.size());
         RelevantPDLocs relDropoffsBeforeNextStop(fleet.size());
         using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
-        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, vehicleInputGraph, *vehChEnv, calc, reqState, routeState, inputConfig,
+        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, vehicleInputGraph, *vehChEnv, calc, reqState, routeState,
+                                                      inputConfig,
                                                       feasibleEllipticPickups, feasibleEllipticDropoffs,
                                                       relOrdinaryPickups, relOrdinaryDropoffs, relPickupsBeforeNextStop,
                                                       relDropoffsBeforeNextStop);
@@ -489,12 +514,12 @@ int main(int argc, char *argv[]) {
 #if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
     KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
 
-    static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
-    using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
-            SortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
-            UnsortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
-    >;
-    LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, *vehChEnv, routeState, reqState.stats().updateStats);
+        static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
+        using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
+                SortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
+                UnsortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
+        >;
+        LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, *vehChEnv, routeState, reqState.stats().updateStats);
 
 #else
         using LastStopBucketsEnv = NoOpLastStopBucketsEnvironment;

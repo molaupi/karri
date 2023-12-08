@@ -172,3 +172,20 @@ eventSimulationPerfStats <- function(file_base) {
   print(df)
   
 }
+
+
+bundled_eff_plot <- function(file, k=16) {
+  eff <- read.csv(file, skip=1)
+  eff <- eff[complete.cases(eff),]
+  eff <- subset(eff, select = -c(search_id))
+  eff_means <- data.frame(q=c(1:20) * 5 - 2.5, meaneff = apply(eff,2,mean))
+  library(ggplot2)
+  plot <- ggplot(eff_means, aes(x=q,y=meaneff)) + 
+    geom_bar(stat="identity") + 
+    scale_y_continuous(name="mean relaxation eff.", expand=expansion(mult=c(0,0.05)), limits=c(0,NA)) + 
+    scale_x_continuous(name="\\% of relaxations completed",expand=expansion(mult=c(0,0.025))) +
+    theme_classic() + 
+    theme(text = element_text(size = 8)) + 
+    geom_hline(yintercept = k, linetype = "dotted") 
+  return(plot)
+}
