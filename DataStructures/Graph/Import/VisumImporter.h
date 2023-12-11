@@ -60,9 +60,9 @@ class VisumImporter {
   // Constructs an importer to read the specified system's network.
   VisumImporter(const std::string& filename, const std::string& system,
                 const int epsgCode, const double coordinatePrecision, const double analysisPeriod)
-      : vertexReader(filename + "/KNOTEN.csv"),
-        edgeReader(filename + "/STRECKE.csv"),
-        interPointReader(filename + "/STRECKENPOLY.csv"),
+      : vertexReader(filename + "/NODE.csv"),
+        edgeReader(filename + "/LINK.csv"),
+        interPointReader(filename + "/LINKPOLY.csv"),
         transportSystem(system),
         coordinatePrecision(coordinatePrecision),
         analysisPeriod(analysisPeriod),
@@ -85,12 +85,12 @@ class VisumImporter {
 
   // Opens the input file(s) and reads the header line(s).
   void init(const std::string& filename) {
-    vertexReader.read_header(io::ignore_extra_column, "NR", "XKOORD", "YKOORD");
+    vertexReader.read_header(io::ignore_extra_column, "NO", "XCOORD", "YCOORD");
     edgeReader.read_header(
-        io::ignore_extra_column, "VONKNOTNR", "NACHKNOTNR", "TYPNR", "VSYSSET",
-        "LAENGE", "ANZFAHRSTREIFEN", "KAPIV", "V0IV");
+        io::ignore_extra_column, "FROMNODENO", "TONODENO", "TYPENO", "TSYSSET",
+        "LENGTH", "NUMLANES", "CAPPRT", "V0PRT");
     interPointReader.read_header(
-        io::ignore_extra_column, "VONKNOTNR", "NACHKNOTNR", "INDEX", "XKOORD", "YKOORD");
+        io::ignore_extra_column, "FROMNODENO", "TONODENO", "INDEX", "XCOORD", "YCOORD");
 
     // Read the first normal record line from the intermediate point file.
     currentInterPoint.tail = INVALID_ID;
@@ -101,10 +101,10 @@ class VisumImporter {
     assert(currentInterPoint.tail == INVALID_ID || idx == 1);
 
     // Read the maximum speed of the selected system for each of the 100 edge types.
-    VisumFileReader<2> edgeTypeReader(filename + "/STRECKENTYP.csv");
+    VisumFileReader<2> edgeTypeReader(filename + "/LINKTYPE.csv");
     std::string upperCaseTS = transportSystem;
     toUpperCase(upperCaseTS);
-    edgeTypeReader.read_header(io::ignore_extra_column, "NR", "VMAX-IVSYS(" + upperCaseTS + ")");
+    edgeTypeReader.read_header(io::ignore_extra_column, "NO", "VMAX-PRTSYS(" + upperCaseTS + ")");
     auto i = 0;
     int id;
     char* maxSpeedField;

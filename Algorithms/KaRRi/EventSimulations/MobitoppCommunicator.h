@@ -361,6 +361,8 @@ namespace karri {
         void sendJsonMsg(const nlohmann::json &msg) {
             std::string msgStr = msg.dump();
             msgStr += '\n';
+            if (VERBOSE)
+                std::cout << "Sending raw message: " << msgStr << std::endl;
             io.send(msgStr);
         }
 
