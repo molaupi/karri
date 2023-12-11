@@ -174,18 +174,27 @@ eventSimulationPerfStats <- function(file_base) {
 }
 
 
-bundled_eff_plot <- function(file, k=16) {
-  eff <- read.csv(file, skip=1)
-  eff <- eff[complete.cases(eff),]
-  eff <- subset(eff, select = -c(search_id))
-  eff_means <- data.frame(q=c(1:20) * 5 - 2.5, meaneff = apply(eff,2,mean))
+bundled_eff_plot <- function(file_base, ks=c(8,16,32)) {
+  eff_means <- NULL
+  for (k in ks) {
+    eff <- read.csv(paste0(file_base, k, ".elliptic_bch_bundled_effectiveness.csv"), skip=1)
+    eff <- eff[complete.cases(eff),]
+    eff <- subset(eff, select = -c(search_id))
+    eff <- eff / k
+    eff_means_k <- data.frame(q=c(1:20) * 5 - 2.5, meaneff = apply(eff,2,mean))
+    eff_means_k$k <- k
+    eff_means <- rbind(eff_means, eff_means_k)
+  }
+  
+  eff_means$k <- as.factor(eff_means$k)
+  
   library(ggplot2)
-  plot <- ggplot(eff_means, aes(x=q,y=meaneff)) + 
-    geom_bar(stat="identity") + 
+  plot <- ggplot(eff_means, aes(x=q,y=meaneff,color=k)) + 
+    geom_line() + 
     scale_y_continuous(name="mean relaxation eff.", expand=expansion(mult=c(0,0.05)), limits=c(0,NA)) + 
-    scale_x_continuous(name="\\% of relaxations completed",expand=expansion(mult=c(0,0.025))) +
+    scale_x_continuous(name="\\% of relaxations completed",expand=expansion(mult=c(0,0.05))) +
     theme_classic() + 
     theme(text = element_text(size = 8)) + 
-    geom_hline(yintercept = k, linetype = "dotted") 
+    geom_hline(yintercept = 1, linetype = "dotted") 
   return(plot)
 }
