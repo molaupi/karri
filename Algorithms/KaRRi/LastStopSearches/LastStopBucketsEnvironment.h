@@ -29,13 +29,12 @@
 #include "Algorithms/Buckets/DynamicBucketContainer.h"
 #include "Algorithms/Buckets/SortedBucketContainer.h"
 #include "Algorithms/Buckets/BucketEntry.h"
-#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/CH/CH.h"
 #include "Tools/Timer.h"
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS, typename RouteStateT>
+    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
     class LastStopBucketsEnvironment {
 
 
@@ -111,12 +110,12 @@ namespace karri {
 
     public:
 
-        LastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateT &routeState,
+        LastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateData &routeStateData,
                                    karri::stats::UpdatePerformanceStats &stats)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   searchGraph(ch.upwardGraph()),
-                  routeState(routeState),
+                  routeStateData(routeStateData),
                   bucketContainer(searchGraph.numVertices()),
                   entryGenSearch(
                           chEnv.getForwardSearch(GenerateEntry(bucketContainer, vehicleId, verticesVisitedInSearch),
@@ -132,15 +131,15 @@ namespace karri {
 
 
         void generateBucketEntries(const Vehicle &veh, const int stopIndex) {
-            assert(stopIndex == routeState.numStopsOf(veh.vehicleId) - 1);
+            assert(stopIndex == routeStateData.numStopsOf(veh.vehicleId) - 1);
 
             Timer timer;
-            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
+            const auto stopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex];
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 
             vehicleId = veh.vehicleId;
             maxDetourUntilEndOfServiceTime =
-                    veh.endOfServiceTime - routeState.schedDepTimesFor(vehicleId)[routeState.numStopsOf(vehicleId) - 1];
+                    veh.endOfServiceTime - routeStateData.schedDepTimesFor(vehicleId)[routeStateData.numStopsOf(vehicleId) - 1];
             verticesVisitedInSearch = 0;
             entryGenSearch.run(ch.rank(stopVertex));
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
@@ -151,10 +150,10 @@ namespace karri {
 
         void removeBucketEntries(const Vehicle &veh, const int stopIndex) {
             assert(stopIndex >= 0);
-            assert(stopIndex < routeState.numStopsOf(veh.vehicleId));
+            assert(stopIndex < routeStateData.numStopsOf(veh.vehicleId));
 
             Timer timer;
-            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
+            const auto stopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex];
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 
             vehicleId = veh.vehicleId;
@@ -177,7 +176,7 @@ namespace karri {
         const InputGraphT &inputGraph;
         const CH &ch;
         const CH::SearchGraph &searchGraph;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
 
         BucketContainer bucketContainer;
 

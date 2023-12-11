@@ -32,7 +32,6 @@
 #include "DataStructures/Containers/TimestampedVector.h"
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
-#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
 namespace karri {
@@ -42,7 +41,6 @@ namespace karri {
             typename VehicleLocatorT,
             typename CHEnvT,
             typename LabelSetT,
-            typename RouteStateT,
             typename CostCalculatorT>
     class CurVehLocToPickupSearches {
 
@@ -117,13 +115,13 @@ namespace karri {
         CurVehLocToPickupSearches(const InputGraphT &graph,
                                   VehicleLocatorT &locator,
                                   const CHEnvT &chEnv,
-                                  const RouteStateT &routeState,
+                                  const RouteStateData &routeStateData,
                                   RequestState<CostCalculatorT> &requestState,
                                   const int fleetSize)
                 : inputGraph(graph),
                   vehicleLocator(locator),
                   ch(chEnv.getCH()),
-                  routeState(routeState),
+                  routeStateData(routeStateData),
                   requestState(requestState),
                   fleetSize(fleetSize),
                   distances(),
@@ -192,8 +190,8 @@ namespace karri {
         // already known.
         void computeExactDistancesVia(const Vehicle &vehicle) {
 
-            assert(routeState.numStopsOf(vehicle.vehicleId) > 1);
-            curLeeway = routeState.leewayOfLegStartingAt(routeState.stopIdsFor(vehicle.vehicleId)[0]);
+            assert(routeStateData.numStopsOf(vehicle.vehicleId) > 1);
+            curLeeway = routeStateData.leewayOfLegStartingAt(routeStateData.stopIdsFor(vehicle.vehicleId)[0]);
             if (waitingQueue.empty()) return;
 
             if (!knowsCurrentLocationOf(vehicle.vehicleId)) {
@@ -203,14 +201,14 @@ namespace karri {
             const auto &vehLocation = currentVehicleLocations[vehicle.vehicleId];
             assert(vehLocation != INVALID_LOC);
 
-            if (vehLocation.location == routeState.stopLocationsFor(vehicle.vehicleId)[0]) {
+            if (vehLocation.location == routeStateData.stopLocationsFor(vehicle.vehicleId)[0]) {
                 fillDistancesForVehicleAtPrevStop(vehicle);
                 waitingQueue.clear();
                 prevNumPickups = requestState.numPickups();
                 return;
             }
 
-            const auto distToCurLoc = vehLocation.depTimeAtHead - routeState.schedDepTimesFor(vehicle.vehicleId)[0];
+            const auto distToCurLoc = vehLocation.depTimeAtHead - routeStateData.schedDepTimesFor(vehicle.vehicleId)[0];
 
             int numChSearchesRun = 0;
             Timer timer;
@@ -320,7 +318,7 @@ namespace karri {
         }
 
         void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle) {
-            const auto &stopLocations = routeState.stopLocationsFor(vehicle.vehicleId);
+            const auto &stopLocations = routeStateData.stopLocationsFor(vehicle.vehicleId);
             for (const auto &[pickupId, distFromPrevStopToPickup]: waitingQueue) {
                 if (stopLocations[0] != requestState.pickups[pickupId].loc) {
                     const int idx = vehicle.vehicleId * requestState.numPickups() + pickupId;
@@ -335,7 +333,7 @@ namespace karri {
         const InputGraphT &inputGraph;
         VehicleLocatorT &vehicleLocator;
         const CH &ch;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
         RequestState<CostCalculatorT> &requestState;
         const int fleetSize;
 

@@ -36,8 +36,7 @@ namespace karri {
 
 
     template<typename AssignmentFinderT,
-            typename SystemStateUpdaterT,
-            typename ScheduledStopsT>
+            typename SystemStateUpdaterT>
     class EventSimulation {
 
         enum VehicleState {
@@ -70,7 +69,7 @@ namespace karri {
         EventSimulation(
                 const Fleet &fleet, const std::vector<Request> &requests, const int stopTime,
                 AssignmentFinderT &assignmentFinder, SystemStateUpdaterT &systemStateUpdater,
-                const ScheduledStopsT &scheduledStops,
+                const RouteStateData &scheduledStops,
                 const bool verbose = false)
                 : fleet(fleet),
                   requests(requests),
@@ -380,7 +379,7 @@ namespace karri {
         const int stopTime;
         AssignmentFinderT &assignmentFinder;
         SystemStateUpdaterT &systemStateUpdater;
-        const ScheduledStopsT &scheduledStops;
+        const RouteStateData &scheduledStops;
 
         AddressableQuadHeap vehicleEvents;
         AddressableQuadHeap requestEvents;

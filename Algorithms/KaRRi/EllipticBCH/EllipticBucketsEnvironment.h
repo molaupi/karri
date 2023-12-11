@@ -32,14 +32,13 @@
 #include "Algorithms/Buckets/DynamicBucketContainer.h"
 #include "Algorithms/Buckets/SortedBucketContainer.h"
 #include "BucketEntryWithLeeway.h"
-#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/Stats/PerformanceStats.h"
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS, typename RouteStateT>
+    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
     class EllipticBucketsEnvironment {
 
         using Entry = BucketEntryWithLeeway;
@@ -84,9 +83,9 @@ namespace karri {
                 DynamicBucketContainer<Entry>
         >;
 
-        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateT &routeState,
+        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateData &routeStateData,
                                    const InputConfig &inputConfig, karri::stats::UpdatePerformanceStats &stats)
-                : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState), inputConfig(inputConfig),
+                : inputGraph(inputGraph), ch(chEnv.getCH()), routeStateData(routeStateData), inputConfig(inputConfig),
                   sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
                   forwardSearchFromNewStop(
                           chEnv.getForwardTopologicalSearch(StoreSearchSpace(searchSpace),
@@ -112,18 +111,18 @@ namespace karri {
         }
 
         void generateSourceBucketEntries(const Vehicle &veh, const int stopIndex) {
-            assert(routeState.numStopsOf(veh.vehicleId) > stopIndex + 1);
+            assert(routeStateData.numStopsOf(veh.vehicleId) > stopIndex + 1);
 
-            const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
-            const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex + 1],
-                                        routeState.schedDepTimesFor(veh.vehicleId)[stopIndex + 1]) -
-                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex] - inputConfig.stopTime;
+            const int stopId = routeStateData.stopIdsFor(veh.vehicleId)[stopIndex];
+            const int leeway = std::max(routeStateData.maxArrTimesFor(veh.vehicleId)[stopIndex + 1],
+                                        routeStateData.schedDepTimesFor(veh.vehicleId)[stopIndex + 1]) -
+                               routeStateData.schedDepTimesFor(veh.vehicleId)[stopIndex] - inputConfig.stopTime;
             currentLeeway = leeway;
 
-            const int newStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
+            const int newStopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int newStopRoot = ch.rank(inputGraph.edgeHead(newStopLoc));
 
-            const int nextStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex + 1];
+            const int nextStopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex + 1];
             const int nextStopRoot = ch.rank(inputGraph.edgeTail(nextStopLoc));
             const int nextStopOffset = inputGraph.travelTime(nextStopLoc);
 
@@ -136,17 +135,17 @@ namespace karri {
         void generateTargetBucketEntries(const Vehicle &veh, const int stopIndex) {
             assert(stopIndex > 0);
 
-            const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
-            const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex],
-                                        routeState.schedDepTimesFor(veh.vehicleId)[stopIndex]) -
-                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] - inputConfig.stopTime;
+            const int stopId = routeStateData.stopIdsFor(veh.vehicleId)[stopIndex];
+            const int leeway = std::max(routeStateData.maxArrTimesFor(veh.vehicleId)[stopIndex],
+                                        routeStateData.schedDepTimesFor(veh.vehicleId)[stopIndex]) -
+                               routeStateData.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] - inputConfig.stopTime;
             currentLeeway = leeway;
 
-            const int newStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
+            const int newStopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int newStopRoot = ch.rank(inputGraph.edgeTail(newStopLoc));
             const int newStopOffset = inputGraph.travelTime(newStopLoc);
 
-            const int prevStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex - 1];
+            const int prevStopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex - 1];
             const int prevStopRoot = ch.rank(inputGraph.edgeHead(prevStopLoc));
 
             generateBucketEntries(stopId, leeway,
@@ -156,20 +155,20 @@ namespace karri {
         }
 
         void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle& veh) {
-            const auto numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
             int64_t numVerticesVisited = 0, numEntriesScanned = 0;
             Timer timer;
             auto updateSourceLeeway = [&](BucketEntryWithLeeway& e) {
-                if (routeState.vehicleIdOf(e.targetId) != veh.vehicleId)
+                if (routeStateData.vehicleIdOf(e.targetId) != veh.vehicleId)
                     return false;
                 const auto oldLeeway = e.leeway;
-                e.leeway = routeState.leewayOfLegStartingAt(e.targetId);
+                e.leeway = routeStateData.leewayOfLegStartingAt(e.targetId);
                 return e.leeway != oldLeeway;
             };
             deleteSearchSpace.clear();
-            const auto stopLocations = routeState.stopLocationsFor(veh.vehicleId);
+            const auto stopLocations = routeStateData.stopLocationsFor(veh.vehicleId);
             for (int idx = 0; idx < numStops - 1; ++idx) {
                 const int root = ch.rank(inputGraph.edgeHead(stopLocations[idx]));
                 deleteSearchSpace.insert(root);
@@ -192,20 +191,20 @@ namespace karri {
         }
 
         void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle& veh) {
-            const auto numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
             int64_t numVerticesVisited = 0, numEntriesScanned = 0;
             Timer timer;
             auto updateTargetLeeway = [&](BucketEntryWithLeeway& e) {
-                if (routeState.vehicleIdOf(e.targetId) != veh.vehicleId)
+                if (routeStateData.vehicleIdOf(e.targetId) != veh.vehicleId)
                     return false;
                 const auto oldLeeway = e.leeway;
-                e.leeway = routeState.leewayOfLegStartingAt(routeState.idOfPreviousStopOf(e.targetId));
+                e.leeway = routeStateData.leewayOfLegStartingAt(routeStateData.idOfPreviousStopOf(e.targetId));
                 return e.leeway != oldLeeway;
             };
             deleteSearchSpace.clear();
-            const auto stopLocations = routeState.stopLocationsFor(veh.vehicleId);
+            const auto stopLocations = routeStateData.stopLocationsFor(veh.vehicleId);
             for (int idx = 1; idx < numStops; ++idx) {
                 const int root = ch.rank(inputGraph.edgeTail(stopLocations[idx]));
                 deleteSearchSpace.insert(root);
@@ -228,15 +227,15 @@ namespace karri {
         }
 
         void deleteSourceBucketEntries(const Vehicle &veh, const int stopIndex) {
-            const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
-            const int stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
+            const int stopId = routeStateData.stopIdsFor(veh.vehicleId)[stopIndex];
+            const int stopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeHead(stopLoc));
             deleteBucketEntries(stopId, root, ch.upwardGraph(), sourceBuckets);
         }
 
         void deleteTargetBucketEntries(const Vehicle &veh, const int stopIndex) {
-            const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
-            const int stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
+            const int stopId = routeStateData.stopIdsFor(veh.vehicleId)[stopIndex];
+            const int stopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeTail(stopLoc));
             deleteBucketEntries(stopId, root, ch.downwardGraph(), targetBuckets);
         }
@@ -335,7 +334,7 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const CH &ch;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
         const InputConfig &inputConfig;
 
         BucketContainer sourceBuckets;

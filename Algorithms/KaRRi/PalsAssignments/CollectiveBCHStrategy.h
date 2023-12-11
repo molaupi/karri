@@ -29,7 +29,6 @@
 #include "MinCostPairAfterLastStopQuery.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
-#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "IndividualBCHStrategy.h"
 
@@ -44,13 +43,12 @@ namespace karri::PickupAfterLastStopStrategies {
             typename VehicleToPDLocQueryT,
             typename PDDistancesT,
             typename FallbackLabelSetT,
-            typename RouteStateT,
             typename CostCalculatorT>
     class CollectiveBCHStrategy {
 
-        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, RouteStateT, CostCalculatorT>;
+        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, CostCalculatorT>;
 
-        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, FallbackLabelSetT, CostCalculatorT, RouteStateT>;
+        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, FallbackLabelSetT, CostCalculatorT>;
 
     public:
 
@@ -61,21 +59,21 @@ namespace karri::PickupAfterLastStopStrategies {
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               PDDistancesT &pdDistances,
                               const CostCalculatorT &calculator,
-                              const RouteStateT &routeState,
+                              const RouteStateData &routeStateData,
                               RequestState<CostCalculatorT> &requestState,
                               const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   ch(chEnv.getCH()),
-                  routeState(routeState),
+                  routeStateData(routeStateData),
                   requestState(requestState),
                   inputConfig(inputConfig),
-                  minCostSearch(inputGraph, fleet, chEnv, routeState, pdDistances, calculator, lastStopBucketsEnv,
+                  minCostSearch(inputGraph, fleet, chEnv, routeStateData, pdDistances, calculator, lastStopBucketsEnv,
                                 requestState, inputConfig),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
                   pdDistances(pdDistances),
-                  fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, pdDistances, routeState,
+                  fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, pdDistances, routeStateData,
                                    requestState, minCostSearch.getUpperBoundCostWithHardConstraints(), inputConfig) {}
 
         void tryPickupAfterLastStop() {
@@ -143,7 +141,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
             const auto totalDetour = asgn.distToPickup + inputConfig.stopTime + asgn.distToDropoff + inputConfig.stopTime;
             using time_utils::isServiceTimeConstraintViolated;
-            if (!isServiceTimeConstraintViolated(*asgn.vehicle, requestState, totalDetour, routeState)) {
+            if (!isServiceTimeConstraintViolated(*asgn.vehicle, requestState, totalDetour, routeStateData)) {
                 // If assignment found by collective search adheres to service time constraint, we have found the
                 // best PALS assignment.
                 assert(calculator.calc(asgn, requestState) == minCost);
@@ -169,7 +167,7 @@ namespace karri::PickupAfterLastStopStrategies {
         const Fleet &fleet;
         const CostCalculatorT &calculator;
         const CH &ch;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
         RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
 

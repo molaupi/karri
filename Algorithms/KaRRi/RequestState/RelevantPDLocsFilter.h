@@ -31,13 +31,13 @@ namespace karri {
 
 // Filters information about feasible distances found by elliptic BCH searches to pickups/dropoffs that are relevant
 // for certain stops by considering the leeway and the current best known assignment cost.
-    template<typename FeasibleDistancesT, typename RouteStateT, typename CostCalculatorT>
+    template<typename FeasibleDistancesT, typename CostCalculatorT>
     class RelevantPDLocsFilter {
 
     public:
 
         RelevantPDLocsFilter(const Fleet &fleet, const CostCalculatorT &calculator,
-                             RequestState<CostCalculatorT> &requestState, const RouteStateT &routeState,
+                             RequestState<CostCalculatorT> &requestState, const RouteStateData &routeStateData,
                              const InputConfig &inputConfig, const FeasibleDistancesT &feasiblePickupDistances,
                              const FeasibleDistancesT &feasibleDropoffDistances,
                              RelevantPDLocs &relOrdinaryPickups, RelevantPDLocs &relOrdinaryDropoffs,
@@ -45,7 +45,7 @@ namespace karri {
                 : fleet(fleet),
                   calculator(calculator),
                   requestState(requestState),
-                  routeState(routeState),
+                  routeStateData(routeStateData),
                   inputConfig(inputConfig),
                   feasiblePickupDistances(feasiblePickupDistances),
                   feasibleDropoffDistances(feasibleDropoffDistances),
@@ -121,9 +121,9 @@ namespace karri {
                 if (!vehiclesWithFeasibleDistances.contains(vehId))
                     continue;
 
-                const auto &numStops = routeState.numStopsOf(vehId);
-                const auto &stopIds = routeState.stopIdsFor(vehId);
-                const auto &occupancies = routeState.occupanciesFor(vehId);
+                const auto &numStops = routeStateData.numStopsOf(vehId);
+                const auto &stopIds = routeStateData.stopIdsFor(vehId);
+                const auto &occupancies = routeStateData.occupanciesFor(vehId);
 
                 if (numStops <= 1)
                     continue;
@@ -202,22 +202,22 @@ namespace karri {
 
             const int &vehId = veh.vehicleId;
 
-            assert(routeState.occupanciesFor(vehId)[stopIndex] < veh.capacity);
+            assert(routeStateData.occupanciesFor(vehId)[stopIndex] < veh.capacity);
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
             assert(distFromStopToPickup + distFromPickupToNextStop >=
-                   calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
+                   calcLengthOfLegStartingAt(stopIndex, vehId, routeStateData));
 
             const auto &p = requestState.pickups[pickupId];
 
             const auto depTimeAtPickup = getActualDepTimeAtPickup(vehId, stopIndex, distFromStopToPickup, p,
-                                                                  requestState, routeState, inputConfig);
+                                                                  requestState, routeStateData, inputConfig);
             const auto initialPickupDetour = calcInitialPickupDetour(vehId, stopIndex, INVALID_INDEX, depTimeAtPickup,
                                                                      distFromPickupToNextStop, requestState,
-                                                                     routeState);
+                                                                     routeStateData);
 
-            if (doesPickupDetourViolateHardConstraints(veh, requestState, stopIndex, initialPickupDetour, routeState))
+            if (doesPickupDetourViolateHardConstraints(veh, requestState, stopIndex, initialPickupDetour, routeStateData))
                 return false;
 
 
@@ -244,9 +244,9 @@ namespace karri {
             // If this is the last stop in the route, we only consider this dropoff for ordinary assignments if it is at the
             // last stop. Similarly, if the vehicle is full after this stop, we can't perform the dropoff here unless the
             // dropoff coincides with the stop. A dropoff at an existing stop causes no detour, so it is always relevant.
-            const auto &numStops = routeState.numStopsOf(vehId);
-            const auto &occupancy = routeState.occupanciesFor(vehId)[stopIndex];
-            const auto &stopLocations = routeState.stopLocationsFor(vehId);
+            const auto &numStops = routeStateData.numStopsOf(vehId);
+            const auto &occupancy = routeStateData.occupanciesFor(vehId)[stopIndex];
+            const auto &stopLocations = routeStateData.stopLocationsFor(vehId);
             assert(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
             if (stopIndex == numStops - 1 || occupancy == veh.capacity)
                 return d.loc == stopLocations[stopIndex];
@@ -261,10 +261,10 @@ namespace karri {
             const int initialDropoffDetour = calcInitialDropoffDetour(vehId, stopIndex, distFromStopToDropoff,
                                                                       distFromDropoffToNextStop,
                                                                       isDropoffAtExistingStop,
-                                                                      routeState, inputConfig);
+                                                                      routeStateData, inputConfig);
             assert(initialDropoffDetour >= 0);
             if (doesDropoffDetourViolateHardConstraints(veh, requestState, stopIndex, initialDropoffDetour,
-                                                        routeState))
+                                                        routeStateData))
                 return false;
 
             const int curMinCost = calculator.calcMinKnownDropoffSideCost(veh, stopIndex, initialDropoffDetour,
@@ -282,12 +282,12 @@ namespace karri {
                                        const int minDistFromPickup) const {
             using namespace time_utils;
             const int minVehDepTimeAtPickup =
-                    getVehDepTimeAtStopForRequest(veh.vehicleId, stopIndex, requestState, routeState)
+                    getVehDepTimeAtStopForRequest(veh.vehicleId, stopIndex, requestState, routeStateData)
                     + minDistToPickup;
             const int minDepTimeAtPickup = std::max(requestState.originalRequest.requestTime, minVehDepTimeAtPickup);
             int minInitialPickupDetour = calcInitialPickupDetour(veh.vehicleId, stopIndex, INVALID_INDEX,
                                                                  minDepTimeAtPickup, minDistFromPickup, requestState,
-                                                                 routeState);
+                                                                 routeStateData);
             minInitialPickupDetour = std::max(minInitialPickupDetour, 0);
             return calculator.calcMinKnownPickupSideCost(veh, stopIndex, minInitialPickupDetour, 0, minDepTimeAtPickup,
                                                          requestState);
@@ -297,7 +297,7 @@ namespace karri {
                                         const int minDistFromDropoff) const {
             using namespace time_utils;
             int minInitialDropoffDetour = calcInitialDropoffDetour(veh.vehicleId, stopIndex, minDistToDropoff,
-                                                                   minDistFromDropoff, false, routeState, inputConfig);
+                                                                   minDistFromDropoff, false, routeStateData, inputConfig);
             minInitialDropoffDetour = std::max(minInitialDropoffDetour, 0);
             return calculator.calcMinKnownDropoffSideCost(veh, stopIndex, minInitialDropoffDetour, 0, requestState);
         }
@@ -306,7 +306,7 @@ namespace karri {
         const Fleet &fleet;
         const CostCalculatorT &calculator;
         RequestState<CostCalculatorT> &requestState;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
         const InputConfig &inputConfig;
 
         const FeasibleDistancesT &feasiblePickupDistances;

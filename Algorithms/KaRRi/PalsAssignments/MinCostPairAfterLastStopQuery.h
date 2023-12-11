@@ -57,7 +57,6 @@ namespace karri::PickupAfterLastStopStrategies {
             typename CHEnvT,
             typename LastStopBucketsEnvT,
             typename DirectSearchesT,
-            typename RouteStateT,
             typename CostCalculatorT,
             typename QueueT = AddressableQuadHeap,
             bool STALL_LABELS = false>
@@ -74,7 +73,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         MinCostPairAfterLastStopQuery(const InputGraphT &inputGraph, const Fleet &fleet,
                                       const CHEnvT &chEnv,
-                                      const RouteStateT &routeState, DirectSearchesT &directSearches,
+                                      const RouteStateData &routeStateData, DirectSearchesT &directSearches,
                                       const CostCalculatorT &calculator,
                                       const LastStopBucketsEnvT &lastStopBucketsEnv,
                                       const RequestState<CostCalculatorT> &requestState, const InputConfig &inputConfig)
@@ -83,7 +82,7 @@ namespace karri::PickupAfterLastStopStrategies {
                   queryGraph(ch.downwardGraph()),
                   oppositeGraph(ch.upwardGraph()),
                   fleet(fleet),
-                  routeState(routeState),
+                  routeStateData(routeStateData),
                   calculator(calculator),
                   lastStopBuckets(lastStopBucketsEnv.getBuckets()),
                   directSearches(directSearches),
@@ -568,7 +567,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 }
 
                 const int &vehId = entry.targetId;
-                const int &numStops = routeState.numStopsOf(vehId);
+                const int &numStops = routeStateData.numStopsOf(vehId);
                 asgn.vehicle = &fleet[vehId];
                 asgn.pickupStopIdx = numStops - 1;
                 asgn.dropoffStopIdx = numStops - 1;
@@ -611,7 +610,7 @@ namespace karri::PickupAfterLastStopStrategies {
         const CH::SearchGraph &queryGraph;
         const CH::SearchGraph &oppositeGraph;
         const Fleet &fleet;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
         const CostCalculatorT &calculator;
         const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
         DirectSearchesT &directSearches;

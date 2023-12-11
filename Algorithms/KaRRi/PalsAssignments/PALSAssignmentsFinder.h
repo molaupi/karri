@@ -33,20 +33,20 @@
 namespace karri {
 
 // Finds pickup-after-last-stop (PALS) insertions using the encapsulated strategy.
-    template<typename InputGraphT, typename PDDistancesT, typename StrategyT, typename RouteStateT, typename CostCalculatorT>
+    template<typename InputGraphT, typename PDDistancesT, typename StrategyT, typename CostCalculatorT>
     class PALSAssignmentsFinder {
 
     public:
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
                               const CostCalculatorT &calculator, const LastStopsAtVertices &lastStopsAtVertices,
-                              const RouteStateT &routeState, const PDDistancesT &pdDistances, RequestState<CostCalculatorT> &requestState)
+                              const RouteStateData &routeStateData, const PDDistancesT &pdDistances, RequestState<CostCalculatorT> &requestState)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   lastStopsAtVertices(lastStopsAtVertices),
-                  routeState(routeState),
+                  routeStateData(routeStateData),
                   pdDistances(pdDistances),
                   requestState(requestState) {}
 
@@ -79,8 +79,8 @@ namespace karri {
 
                 for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(head)) {
                     ++numCandidateVehiclesForCoinciding;
-                    const auto numStops = routeState.numStopsOf(vehId);
-                    if (routeState.stopLocationsFor(vehId)[numStops - 1] != asgn.pickup->loc)
+                    const auto numStops = routeStateData.numStopsOf(vehId);
+                    if (routeStateData.stopLocationsFor(vehId)[numStops - 1] != asgn.pickup->loc)
                         continue;
 
                     // Calculate lower bound on insertion cost with this pickup and vehicle
@@ -115,7 +115,7 @@ namespace karri {
         const Fleet &fleet;
         const CostCalculatorT &calculator;
         const LastStopsAtVertices &lastStopsAtVertices;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
         const PDDistancesT &pdDistances;
         RequestState<CostCalculatorT> &requestState;
 

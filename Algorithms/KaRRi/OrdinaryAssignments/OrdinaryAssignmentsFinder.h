@@ -37,7 +37,7 @@ namespace karri {
 // are inserted between the same pair of existing stops.
 //
 // Works based on filtered relevant PD locs.
-    template<typename PDDistancesT, typename RouteStateT, typename CostCalculatorT>
+    template<typename PDDistancesT, typename CostCalculatorT>
     class OrdinaryAssignmentsFinder {
 
 
@@ -45,14 +45,14 @@ namespace karri {
 
         OrdinaryAssignmentsFinder(const RelevantPDLocs &relPickups, const RelevantPDLocs &relDropoffs,
                                   const PDDistancesT &pdDistances, const Fleet &fleet,
-                                  const CostCalculatorT &calculator, const RouteStateT &routeState,
+                                  const CostCalculatorT &calculator, const RouteStateData &routeStateData,
                                   RequestState<CostCalculatorT> &requestState)
                 : relPickups(relPickups),
                   relDropoffs(relDropoffs),
                   pdDistances(pdDistances),
                   fleet(fleet),
                   calculator(calculator),
-                  routeState(routeState),
+                  routeStateData(routeStateData),
                   requestState(requestState) {}
 
         void findAssignments() {
@@ -134,8 +134,8 @@ namespace karri {
 
             auto numAssignmentsTriedWithOrdinaryDropoff = 0;
 
-            const auto &numStops = routeState.numStopsOf(vehId);
-            const auto &stopLocations = routeState.stopLocationsFor(vehId);
+            const auto &numStops = routeStateData.numStopsOf(vehId);
+            const auto &stopLocations = routeStateData.stopLocationsFor(vehId);
 
             for (auto dropoffIt = startItInRegularDropoffs; dropoffIt < relevantDropoffs.end(); ++dropoffIt) {
                 const auto &dropoffEntry = *dropoffIt;
@@ -183,7 +183,7 @@ namespace karri {
                     continue;
 
                 const auto &veh = fleet[vehId];
-                const auto &stopLocations = routeState.stopLocationsFor(vehId);
+                const auto &stopLocations = routeStateData.stopLocationsFor(vehId);
 
                 asgn.vehicle = &veh;
 
@@ -209,7 +209,7 @@ namespace karri {
                     if (pickupIt->stopIndex == dropoffIt->stopIndex) {
                         const auto stopPos = pickupIt->stopIndex;
 
-                        if (routeState.occupanciesFor(vehId)[stopPos] >= veh.capacity) {
+                        if (routeStateData.occupanciesFor(vehId)[stopPos] >= veh.capacity) {
                             continue;
                         }
 
@@ -294,7 +294,7 @@ namespace karri {
         const PDDistancesT &pdDistances;
         const Fleet &fleet;
         const CostCalculatorT &calculator;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
         RequestState<CostCalculatorT> &requestState;
     };
 }

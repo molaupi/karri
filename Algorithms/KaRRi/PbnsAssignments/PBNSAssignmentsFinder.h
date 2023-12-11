@@ -37,7 +37,7 @@ namespace karri {
 // (The case of pickup before next stop and dropoff after last stop is considered by the DALSAssignmentsFinder.)
 //
 // Works based on filtered relevant pickups and dropoffs before next stop as well as relevant ordinary dropoffs.
-    template<typename PDDistancesT, typename CurVehLocToPickupSearchesT, typename RouteStateT, typename CostCalculatorT>
+    template<typename PDDistancesT, typename CurVehLocToPickupSearchesT, typename CostCalculatorT>
     class PBNSAssignmentsFinder {
 
         // Algorithm iterates through combinations of pickups and dropoffs and filters based on lower bound cost.
@@ -57,7 +57,7 @@ namespace karri {
                               const RelevantPDLocs &relDropoffsBns, const PDDistancesT &pdDistances,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
                               const Fleet &fleet, const CostCalculatorT &calculator,
-                              const RouteStateT &routeState, RequestState<CostCalculatorT> &requestState)
+                              const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState)
                 : relPickupsBNS(relPickupsBns),
                   relOrdinaryDropoffs(relOrdinaryDropoffs),
                   relDropoffsBNS(relDropoffsBns),
@@ -65,7 +65,7 @@ namespace karri {
                   curVehLocToPickupSearches(curVehLocToPickupSearches),
                   fleet(fleet),
                   calculator(calculator),
-                  routeState(routeState),
+                  routeStateData(routeStateData),
                   requestState(requestState) {}
 
         void findAssignments() {
@@ -83,7 +83,7 @@ namespace karri {
                 ordinaryContinuations.clear();
                 pairedContinuations.clear();
 
-                assert(routeState.occupanciesFor(vehId)[0] < fleet[vehId].capacity);
+                assert(routeStateData.occupanciesFor(vehId)[0] < fleet[vehId].capacity);
 
                 determineNecessaryExactDistances(fleet[vehId]);
 
@@ -184,7 +184,7 @@ namespace karri {
             if (!relDropoffsBNS.getVehiclesWithRelevantPDLocs().contains(vehId))
                 return relevantDropoffs.end();
 
-            const auto stopLocations = routeState.stopLocationsFor(vehId);
+            const auto stopLocations = routeStateData.stopLocationsFor(vehId);
 
             asgn.distFromPickup = 0;
             asgn.dropoffStopIdx = 0;
@@ -223,8 +223,8 @@ namespace karri {
             if (!relOrdinaryDropoffs.getVehiclesWithRelevantPDLocs().contains(vehId))
                 return relevantDropoffs.end();
 
-            const auto numStops = routeState.numStopsOf(vehId);
-            const auto stopLocations = routeState.stopLocationsFor(vehId);
+            const auto numStops = routeStateData.numStopsOf(vehId);
+            const auto stopLocations = routeStateData.stopLocationsFor(vehId);
 
             for (auto dropoffIt = relevantDropoffs.begin(); dropoffIt < relevantDropoffs.end(); ++dropoffIt) {
                 const auto &dropoffEntry = *dropoffIt;
@@ -255,8 +255,8 @@ namespace karri {
         }
 
         void finishContinuations(const Vehicle &veh) {
-            const auto stopLocations = routeState.stopLocationsFor(veh.vehicleId);
-            const auto numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto stopLocations = routeStateData.stopLocationsFor(veh.vehicleId);
+            const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             Assignment asgn(&veh);
 
             // Finish all postponed assignments where dropoff is at stop >= 1.
@@ -335,7 +335,7 @@ namespace karri {
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         const Fleet &fleet;
         const CostCalculatorT &calculator;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
         RequestState<CostCalculatorT> &requestState;
 
         int numAssignmentsTriedWithPickupBeforeNextStop;

@@ -21,8 +21,6 @@ namespace karri {
 
         bool isFixed = false;
 
-        int fixedStopId = INVALID_ID; // Stores the stopId of this stop in FixedRouteState
-
 
 
         StopInfo(int loc, const int vehId, const int schedDepTime, const int maxArrTime, const int schedArrTime):

@@ -33,7 +33,6 @@ namespace karri::DropoffAfterLastStopStrategies {
             typename CHEnvT,
             typename LastStopBucketsEnvT,
             typename IsVehEligibleForDropoffAfterLastStop,
-            typename RouteStateT,
             typename CostCalculatorT,
             bool STALL_LABELS = true,
             typename QueueT = AddressableQuadHeap>
@@ -59,7 +58,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                                          const CostCalculatorT &calculator,
                                          const LastStopBucketsEnvT &lastStopBucketsEnv,
                                          const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop,
-                                         const RouteStateT &routeState,
+                                         const RouteStateData &routeStateData,
                                          const RequestState<CostCalculatorT> &requestState,
                                          const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
@@ -70,7 +69,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                   calculator(calculator),
                   lastStopBuckets(lastStopBucketsEnv.getBuckets()),
                   isVehEligibleForDropoffAfterLastStop(isVehEligibleForDropoffAfterLastStop),
-                  routeState(routeState),
+                  routeStateData(routeStateData),
                   requestState(requestState),
                   inputConfig(inputConfig),
                   vertexLabelBuckets(searchGraph.numVertices()),
@@ -374,8 +373,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                 // If full distance to dropoff leads to violation of service time constraint, an assignment with this
                 // vehicle and dropoff does not need to be regarded.
-                const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId, routeState.numStopsOf(vehId) - 1,
-                                                                               requestState, routeState);
+                const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId, routeStateData.numStopsOf(vehId) - 1,
+                                                                               requestState, routeStateData);
                 if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff + inputConfig.stopTime)
                     continue;
 
@@ -437,7 +436,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         const CostCalculatorT &calculator;
         const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
         const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop;
-        const RouteStateT &routeState;
+        const RouteStateData &routeStateData;
         const RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
 

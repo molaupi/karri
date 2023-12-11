@@ -51,9 +51,11 @@ target_link_libraries(TransformLocations ${PROJ_LIBRARY} ${RoutingKit_LIBRARY})
 
 
 add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc
-        ../Algorithms/KaRRi/RouteState/FixedRouteState.h
         ../Algorithms/KaRRi/BaseObjects/StopInfo.h
         ../Algorithms/KaRRi/RouteState/ScheduledStop.h
+        ../Algorithms/KaRRi/RouteState/RouteStateData.h
+        ../Algorithms/KaRRi/RouteState/RouteStateUpdater.h
+        ../Algorithms/KaRRi/RouteState/FixedRouteStateUpdater.h
 )
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
 

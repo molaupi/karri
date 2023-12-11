@@ -44,8 +44,7 @@ namespace karri {
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
             typename RelevantPDLocsFilterT,
-            typename CostCalculatorT,
-            typename RouteStateT
+            typename CostCalculatorT
     >
     class AssignmentFinder {
 
@@ -55,7 +54,7 @@ namespace karri {
                          EllipticBCHSearchesT &ellipticBchSearches, PDDistanceSearchesT &pdDistanceSearches,
                          OrdAssignmentsT &ordinaryAssigments, PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments, DalsAssignmentsT &dalsAssignments,
-                         RelevantPDLocsFilterT &relevantPdLocsFilter, RouteStateT &routeState)
+                         RelevantPDLocsFilterT &relevantPdLocsFilter, RouteStateData &routeStateData)
                 : reqState(requestState),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
@@ -65,14 +64,14 @@ namespace karri {
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
                   relevantPdLocsFilter(relevantPdLocsFilter),
-                  routeState(routeState) {}
+                  routeStateData(routeStateData) {}
 
         const RequestState<CostCalculatorT> &findBestAssignment(const Request &req) {
             findBestAssignmentProcedure(req);
-            //routeState.fixedMode();
+            //routeStateData.fixedMode();
             //findBestAssignmentProcedure(req, true);
             //reqState.fixedRunOff();
-            //routeState.normalMode();
+            //routeStateData.normalMode();
             return reqState;
         }
 
@@ -130,6 +129,6 @@ namespace karri {
         DalsAssignmentsT &dalsAssignments; // Tries DALS assignments where only the dropoff is inserted after the last stop.
         RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
 
-        RouteStateT &routeState;
+        RouteStateData &routeStateData;
     };
 }

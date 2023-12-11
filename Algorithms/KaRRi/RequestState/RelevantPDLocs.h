@@ -27,7 +27,6 @@
 
 #include "Tools/Simd/AlignedVector.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
-#include "Algorithms/KaRRi/RouteState/RouteState.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
 namespace karri {
@@ -35,7 +34,7 @@ namespace karri {
 
     struct RelevantPDLocs {
 
-        template<typename, typename, typename> friend
+        template<typename, typename> friend
         class RelevantPDLocsFilter;
 
         struct RelevantPDLoc {
