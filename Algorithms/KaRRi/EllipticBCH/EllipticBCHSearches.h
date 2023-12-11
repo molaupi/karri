@@ -147,6 +147,10 @@ namespace karri {
                 curFirstIdOfBatch.local() = newCurFirstIdOfBatch;
             }
 
+            void curFeasibleSynchronizeDistances(int const startId, int const endId) {
+                curFeasible->updateToDistancesInGlobalVectors(startId, endId);
+            }
+
         private:
             FeasibleEllipticDistancesT *curFeasible;
             enumerable_thread_specific<int> curFirstIdOfBatch;
@@ -177,6 +181,10 @@ namespace karri {
 
             void setCurFirstIdOfBatch(int const newCurFirstIdOfBatch) {
                 curFirstIdOfBatch.local() = newCurFirstIdOfBatch;
+            }
+
+            void curFeasibleSynchronizeDistances(int const startId, int const endId) {
+                curFeasible->updateFromDistancesInGlobalVectors(startId, endId);
             }
 
         private:
@@ -340,6 +348,9 @@ namespace karri {
             FromQueryType& localFromQuery = fromQuery.local();
             localFromQuery.runWithOffset(pdLocHeads, {});
 
+            // After a search batch of K PDLocs, write the distances back to the global vectors
+            updateDistancesFromPdLocs.curFeasibleSynchronizeDistances(startId, endId);
+
             ++numSearchesRun;
             totalNumEdgeRelaxations += localFromQuery.getNumEdgeRelaxations();
             totalNumVerticesSettled += localFromQuery.getNumVerticesSettled();
@@ -367,6 +378,9 @@ namespace karri {
             updateDistancesToPdLocs.setCurFirstIdOfBatch(startId);
             ToQueryType& localToQuery = toQuery.local();
             localToQuery.runWithOffset(pdLocTails, travelTimes);
+
+            // After a search batch of K PDLocs, write the distances back to the global vectors
+            updateDistancesToPdLocs.curFeasibleSynchronizeDistances(startId, endId);
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += localToQuery.getNumEdgeRelaxations();
