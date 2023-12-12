@@ -180,7 +180,6 @@ bundled_eff_plot <- function(file_base, ks=c(8,16,32)) {
     eff <- read.csv(paste0(file_base, k, ".elliptic_bch_bundled_effectiveness.csv"), skip=1)
     eff <- eff[complete.cases(eff),]
     eff <- subset(eff, select = -c(search_id))
-    eff <- eff / k
     eff_means_k <- data.frame(q=c(1:20) * 5 - 2.5, meaneff = apply(eff,2,mean))
     eff_means_k$k <- k
     eff_means <- rbind(eff_means, eff_means_k)
@@ -191,10 +190,13 @@ bundled_eff_plot <- function(file_base, ks=c(8,16,32)) {
   library(ggplot2)
   plot <- ggplot(eff_means, aes(x=q,y=meaneff,color=k)) + 
     geom_line() + 
-    scale_y_continuous(name="mean relaxation eff.", expand=expansion(mult=c(0,0.05)), limits=c(0,NA)) + 
+    scale_y_continuous(name="mean relaxation eff.", expand=expansion(mult=c(0,0.05)), limits=c(0,NA), breaks=ks) + 
     scale_x_continuous(name="\\% of relaxations completed",expand=expansion(mult=c(0,0.05))) +
     theme_classic() + 
-    theme(text = element_text(size = 8)) + 
-    geom_hline(yintercept = 1, linetype = "dotted") 
+    theme(text = element_text(size = 8)) +
+    guides(color=guide_legend(title="$k$", order=1)) 
+  for (k in ks) {
+    plot <- plot + geom_hline(yintercept = k, linetype = "dotted") 
+  }
   return(plot)
 }
