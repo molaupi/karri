@@ -124,6 +124,10 @@ class Dijkstra {
     friend
     class karri::ClosestPDLocToLastStopBCHQuery;
 
+    template<typename, typename, typename, typename, typename, typename>
+    friend
+    class karri::ClosestHaltingSpotToRegularStopBCHQuery;
+
 private:
     using Graph = GraphT;                                    // The graph we work on.
     using DistanceLabel = typename LabelSetT::DistanceLabel; // The distance label of a vertex.

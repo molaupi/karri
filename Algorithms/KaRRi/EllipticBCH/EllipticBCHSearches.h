@@ -62,6 +62,7 @@ namespace karri {
         static constexpr int K = LabelSetT::K;
         using DistanceLabel = typename LabelSetT::DistanceLabel;
         using LabelMask = typename LabelSetT::LabelMask;
+        using ClosestPDLocSearch = ClosestHaltingSpotToRegularStopBCHQueryWithStallOnDemand<InputGraphT, CHEnvT, typename EllipticBucketsEnvT::BucketContainer, typename EllipticBucketsEnvT::BucketContainer>;
 
 
         using Buckets = typename EllipticBucketsEnvT::BucketContainer;
@@ -218,6 +219,18 @@ namespace karri {
                   requestState(requestState),
                   sourceBuckets(ellipticBucketsEnv.getSourceBuckets()),
                   lastStopsAtVertices(lastStopsAtVertices),
+                  closestPdLocSearch(
+                    inputGraph, 
+                    chEnv, 
+                    ellipticBucketsEnv.getSourceBuckets(), 
+                    ellipticBucketsEnv.getTargetBuckets(), 
+                    fleet.size(), 
+                    routeState.getMaxStopId(), 
+                    routeState.getMaxLeeway(), 
+                    routeState,
+                    CHQuery<BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>::PruningCriterion(ch.downwardGraph()),
+                    CHQuery<BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>::PruningCriterion(ch.upwardGraph())
+                    ),
                   feasibleEllipticPickups(feasibleEllipticPickups),
                   feasibleEllipticDropoffs(feasibleEllipticDropoffs),
                   distUpperBound(INFTY),
@@ -242,6 +255,7 @@ namespace karri {
 
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticPickups);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticPickups);
+            preliminarySearchForPickups();
             runBCHSearchesFromAndTo(requestState.pickups);
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.pickupTime += pickupTime;
@@ -253,7 +267,7 @@ namespace karri {
             timer.restart();
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
-
+            preliminarySearchForPickups();
             runBCHSearchesFromAndTo(requestState.dropoffs);
             const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
@@ -409,6 +423,54 @@ namespace karri {
             return res;
         }
 
+        void preliminarySearchForPickups() {
+            // Run searches that filter out stops that cannot have feasible pickups associated with them.
+            // Pre-allocate entries for feasible halting spots for all remaining stops.
+           auto &stopsInToSearchSpace = closestPdLocSearch.getStopsInToSearchSpace();
+           auto &stopsInFromSearchSpace = closestPdLocSearch.getStopsInFromSearchSpace();
+
+           // Find minimum distance from each stop to any pickup and from any pickup to each stop. Use these minimum
+           // distances to find out which stops will have any relevant pickups.
+           const auto pickupsAtExistingStops = findPDLocsAtExistingStops<PICKUP>(requestState.pickups);
+           closestPdLocSearch.run(requestState.pickups, pickupsAtExistingStops);
+           for (const auto &stopId: stopsInToSearchSpace) {
+               if (!stopsInFromSearchSpace.contains(stopId))
+                   continue;
+
+               const auto &minDistToPickup = closestPdLocSearch.getDistToClosestSpotFromStop(stopId);
+               const auto &minDistFromPickup = closestPdLocSearch.getDistFromClosestSpotToNextStop(
+                       stopId);
+               if (minDistToPickup < INFTY && minDistFromPickup < INFTY
+                   && minDistToPickup + minDistFromPickup <= routeState.leewayOfLegStartingAt(stopId)) {
+                   feasibleEllipticPickups.preallocateEntriesFor(stopId);
+               }
+           }
+        }
+
+        void preliminarySearchForDropOffs() {
+            // Run searches that filter out stops that cannot have feasible dropoffs associated with them.
+            // Pre-allocate entries for feasible halting spots for all remaining stops.
+           auto &stopsInToSearchSpace = closestPdLocSearch.getStopsInToSearchSpace();
+           auto &stopsInFromSearchSpace = closestPdLocSearch.getStopsInFromSearchSpace();
+
+           // Find minimum distance from each stop to any dropoff and from any dropoff to each stop. Use these minimum
+           // distances to find out which stops will have any relevant dropoffs.
+           const auto dropoffsAtExistingStops = findPDLocsAtExistingStops<DROPOFF>(requestState.dropoffs);
+           closestPdLocSearch.run(requestState.dropoffs, dropoffsAtExistingStops);
+           for (const auto &stopId: stopsInToSearchSpace) {
+               if (!stopsInFromSearchSpace.contains(stopId))
+                   continue;
+
+               const auto &minDistToDropoff = closestPdLocSearch.getDistToClosestSpotFromStop(stopId);
+               const auto &minDistFromDropoff = closestPdLocSearch.getDistFromClosestSpotToNextStop(
+                       stopId);
+               if (minDistToDropoff < INFTY && minDistFromDropoff < INFTY
+                   && minDistToDropoff + minDistFromDropoff <= routeState.leewayOfLegStartingAt(stopId)) {
+                   feasibleEllipticDropoffs.preallocateEntriesFor(stopId);
+               }
+           }
+        }
+
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CH &ch;
@@ -418,8 +480,7 @@ namespace karri {
         const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
         const LastStopsAtVertices &lastStopsAtVertices;
 
-//        using ClosestPDLocSearch = ClosestHaltingSpotToRegularStopBCHQueryWithStallOnDemand<InputGraphT, CHEnvT, typename EllipticBucketsEnvT::BucketContainer, typename EllipticBucketsEnvT::BucketContainer>;
-//        ClosestPDLocSearch closestPdLocSearch;
+        ClosestPDLocSearch closestPdLocSearch;
 
         FeasibleEllipticDistancesT &feasibleEllipticPickups;
         FeasibleEllipticDistancesT &feasibleEllipticDropoffs;
