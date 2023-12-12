@@ -147,8 +147,8 @@ namespace karri {
                 curFirstIdOfBatch.local() = newCurFirstIdOfBatch;
             }
 
-            void curFeasibleSynchronizeDistances(int const startId, int const endId) {
-                curFeasible->updateToDistancesInGlobalVectors(startId, endId);
+            void curFeasibleSynchronizeDistances() {
+                curFeasible->updateToDistancesInGlobalVectors();
             }
 
         private:
@@ -183,8 +183,8 @@ namespace karri {
                 curFirstIdOfBatch.local() = newCurFirstIdOfBatch;
             }
 
-            void curFeasibleSynchronizeDistances(int const startId, int const endId) {
-                curFeasible->updateFromDistancesInGlobalVectors(startId, endId);
+            void curFeasibleSynchronizeDistances() {
+                curFeasible->updateFromDistancesInGlobalVectors();
             }
 
         private:
@@ -349,7 +349,7 @@ namespace karri {
             localFromQuery.runWithOffset(pdLocHeads, {});
 
             // After a search batch of K PDLocs, write the distances back to the global vectors
-            updateDistancesFromPdLocs.curFeasibleSynchronizeDistances(startId, endId);
+            updateDistancesFromPdLocs.curFeasibleSynchronizeDistances();
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += localFromQuery.getNumEdgeRelaxations();
@@ -380,7 +380,7 @@ namespace karri {
             localToQuery.runWithOffset(pdLocTails, travelTimes);
 
             // After a search batch of K PDLocs, write the distances back to the global vectors
-            updateDistancesToPdLocs.curFeasibleSynchronizeDistances(startId, endId);
+            updateDistancesToPdLocs.curFeasibleSynchronizeDistances();
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += localToQuery.getNumEdgeRelaxations();
