@@ -51,10 +51,10 @@ namespace karri {
                   vehicleToPdLocQuery(vehicleToPdLocQuery) {}
 
 
-        void initializeRequestState(const Request &req, const bool fixedRun) {
+        void initializeRequestState(const Request &req, const RouteStateDataType type) {
             Timer timer;
 
-            if (fixedRun) {
+            if (type == RouteStateDataType::FIXED) {
                 requestState.resetForFixedRouteRun();
             } else {
                 requestState.reset();

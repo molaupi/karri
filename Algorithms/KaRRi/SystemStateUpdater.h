@@ -35,8 +35,8 @@ namespace karri {
     // Updates the system state consisting of the route state (schedules of vehicles and additional information about
     // stops) as well as the bucket state (precomputed information for fast shortest path queries to vehicle stops).
     template<typename InputGraphT,
-            typename EllipticBucketsEnvT,
-            typename LastStopBucketsEnvT,
+            typename EllipticBucketsUpdaterT,
+            typename LastStopBucketsUpdaterT,
             typename CurVehLocsT,
             typename PathTrackerT,
             typename RouteStateUpdaterT,
@@ -52,8 +52,8 @@ namespace karri {
                            PathTrackerT &pathTracker,
                            RouteStateUpdaterT &variableUpdater, RouteStateData &variableData,
                            FixedRouteStateUpdaterT &fixedUpdater, RouteStateData &fixedData,
-                           EllipticBucketsEnvT &ellipticBucketsEnv,
-                           LastStopBucketsEnvT &lastStopBucketsEnv,
+                           EllipticBucketsUpdaterT &ellipticBucketsEnv,
+                           LastStopBucketsUpdaterT &lastStopBucketsEnv,
                            LastStopsAtVertices &lastStopsAtVertices)
                 : inputGraph(inputGraph),
                   requestState(requestState),
@@ -180,9 +180,8 @@ namespace karri {
             pathTracker.logCompletedLeg(veh);
 
             // Update buckets and route state
-            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
-            ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1);
-            //TODO: Insert stuff into fixed routeState data
+            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, variableData);
+            ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1, variableData);
 
 
             auto stopIds = variableData.stopIdsFor(veh.vehicleId);
@@ -223,7 +222,7 @@ namespace karri {
             stopInfos[stopIds[0]].isFixed = false;
 
             lastStopsAtVertices.removeLastStopAt(loc, vehId);
-            lastStopBucketsEnv.removeBucketEntries(veh, 0);
+            lastStopBucketsEnv.removeBucketEntries(veh, 0, variableData);
             variableUpdater.removeStartOfCurrentLeg(vehId);
             fixedUpdater.removeStartOfCurrentLeg(vehId);
         }
@@ -343,13 +342,15 @@ namespace karri {
         // of the vehicle to its current position to maintain the invariant of the schedule for the first stop,
         // i.e. dist(s_0, s_1) = schedArrTime(s_1) - schedDepTime(s_0).
         // Update the stop location in the routeState and the bucket entries in the elliptic buckets.
-        void movePreviousStopToCurrentLocationForReroute(const Vehicle &veh) {
-            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
+        void movePreviousStopToCurrentLocationForReroute(const Vehicle &veh) { //TODO: Done
+            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, variableData);
+            //ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, fixedData);
             assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
             auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
             variableUpdater.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
             fixedUpdater.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
-            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
+            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, variableData);
+            //ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, fixedData);
         }
 
 
@@ -363,9 +364,9 @@ namespace karri {
 
             // If we use buckets sorted by remaining leeway, we have to update the leeway of all
             // entries for stops of this vehicle.
-            if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
-                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(*asgn.vehicle);
-                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(*asgn.vehicle);
+            if constexpr (EllipticBucketsUpdaterT::SORTED_BY_REM_LEEWAY) {
+                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(*asgn.vehicle, variableData);
+                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(*asgn.vehicle, variableData);
             }
         }
 
@@ -375,19 +376,19 @@ namespace karri {
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
 
             if (!pickupAtExistingStop) {
-                ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, pickupIndex);
-                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, pickupIndex);
+                ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, pickupIndex, variableData);
+                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, pickupIndex, variableData);
             }
 
             // If no new stop was inserted for the pickup, we do not need to generate any new entries for it.
             if (dropoffAtExistingStop)
                 return;
 
-            ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, dropoffIndex);
+            ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, dropoffIndex, variableData);
 
             // If dropoff is not the new last stop, we generate elliptic source buckets for it.
             if (dropoffIndex < variableData.numStopsOf(vehId) - 1) {
-                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, dropoffIndex);
+                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, dropoffIndex, variableData);
                 return;
             }
 
@@ -395,11 +396,11 @@ namespace karri {
             // Generate elliptic source bucket entries for former last stop
             const auto pickupAtEnd = pickupIndex + 1 == dropoffIndex && pickupIndex > asgn.pickupStopIdx;
             const int formerLastStopIdx = dropoffIndex - pickupAtEnd - 1;
-            ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, formerLastStopIdx);
+            ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, formerLastStopIdx, variableData);
 
             // Remove last stop bucket entries for former last stop and generate them for dropoff
-            lastStopBucketsEnv.removeBucketEntries(*asgn.vehicle, formerLastStopIdx);
-            lastStopBucketsEnv.generateBucketEntries(*asgn.vehicle, dropoffIndex);
+            lastStopBucketsEnv.removeBucketEntries(*asgn.vehicle, formerLastStopIdx, variableData);
+            lastStopBucketsEnv.generateBucketEntries(*asgn.vehicle, dropoffIndex, variableData);
 
             // Update lastStopAtVertices structure
             Timer timer;
@@ -455,8 +456,8 @@ namespace karri {
         std::vector<int> maxArrTimeAtDropForRequest; //maxArrTimeAtDropoff[reqId] returns maxArrTimeAtDropoff of the request
 
         // Bucket state
-        EllipticBucketsEnvT &ellipticBucketsEnv;
-        LastStopBucketsEnvT &lastStopBucketsEnv;
+        EllipticBucketsUpdaterT &ellipticBucketsEnv;
+        LastStopBucketsUpdaterT &lastStopBucketsEnv;
         LastStopsAtVertices &lastStopsAtVertices;
 
         // Performance Loggers

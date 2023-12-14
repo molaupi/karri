@@ -1,27 +1,6 @@
-/// ******************************************************************************
-/// MIT License
-///
-/// Copyright (c) 2023 Moritz Laupichler <moritz.laupichler@kit.edu>
-///
-/// Permission is hereby granted, free of charge, to any person obtaining a copy
-/// of this software and associated documentation files (the "Software"), to deal
-/// in the Software without restriction, including without limitation the rights
-/// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-/// copies of the Software, and to permit persons to whom the Software is
-/// furnished to do so, subject to the following conditions:
-///
-/// The above copyright notice and this permission notice shall be included in all
-/// copies or substantial portions of the Software.
-///
-/// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-/// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-/// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-/// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-/// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-/// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-/// SOFTWARE.
-/// ******************************************************************************
-
+//
+// Created by tim on 12.12.23.
+//
 
 #pragma once
 
@@ -35,11 +14,12 @@
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/Stats/PerformanceStats.h"
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
 
 namespace karri {
 
     template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
-    class EllipticBucketsEnvironment {
+    class EllipticBucketsUpdater {
 
         using Entry = BucketEntryWithLeeway;
 
@@ -83,10 +63,13 @@ namespace karri {
                 DynamicBucketContainer<Entry>
         >;
 
-        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateData &routeStateData,
-                                   const InputConfig &inputConfig, karri::stats::UpdatePerformanceStats &stats)
-                : inputGraph(inputGraph), ch(chEnv.getCH()), routeStateData(routeStateData), inputConfig(inputConfig),
-                  sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
+        using BucketType = RouteStateDataType;
+
+        EllipticBucketsUpdater(const InputGraphT &inputGraph, const CHEnvT &chEnv,
+                               const InputConfig &inputConfig, karri::stats::UpdatePerformanceStats &stats)
+                : inputGraph(inputGraph), ch(chEnv.getCH()), inputConfig(inputConfig),
+                  variableSourceBuckets(inputGraph.numVertices()), variableTargetBuckets(inputGraph.numVertices()),
+                  fixedSourceBuckets(inputGraph.numVertices()), fixedTargetBuckets(inputGraph.numVertices()),
                   forwardSearchFromNewStop(
                           chEnv.getForwardTopologicalSearch(StoreSearchSpace(searchSpace),
                                                             StopWhenLeewayExceeded(currentLeeway))),
@@ -102,15 +85,15 @@ namespace karri {
                   stats(stats) {}
 
 
-        const BucketContainer &getSourceBuckets() const {
-            return sourceBuckets;
+        const BucketContainer &getSourceBuckets(const BucketType type) const {
+            return (type == BucketType::VARIABLE) ? variableSourceBuckets : fixedSourceBuckets;
         }
 
-        const BucketContainer &getTargetBuckets() const {
-            return targetBuckets;
+        const BucketContainer &getTargetBuckets(BucketType type) const {
+            return (type == BucketType::VARIABLE) ? variableTargetBuckets : fixedTargetBuckets;
         }
 
-        void generateSourceBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void generateSourceBucketEntries(const Vehicle &veh, const int stopIndex, RouteStateData &routeStateData) {
             assert(routeStateData.numStopsOf(veh.vehicleId) > stopIndex + 1);
 
             const int stopId = routeStateData.stopIdsFor(veh.vehicleId)[stopIndex];
@@ -126,13 +109,21 @@ namespace karri {
             const int nextStopRoot = ch.rank(inputGraph.edgeTail(nextStopLoc));
             const int nextStopOffset = inputGraph.travelTime(nextStopLoc);
 
+            if (routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE) {
+                generateBucketEntries(stopId, leeway,
+                                      newStopRoot, 0, forwardSearchFromNewStop, ch.upwardGraph(),
+                                      nextStopRoot, nextStopOffset, reverseSearchFromNextStop, ch.downwardGraph(),
+                                      variableSourceBuckets);
+                return;
+            }
             generateBucketEntries(stopId, leeway,
                                   newStopRoot, 0, forwardSearchFromNewStop, ch.upwardGraph(),
                                   nextStopRoot, nextStopOffset, reverseSearchFromNextStop, ch.downwardGraph(),
-                                  sourceBuckets);
+                                  fixedSourceBuckets);
+
         }
 
-        void generateTargetBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void generateTargetBucketEntries(const Vehicle &veh, const int stopIndex, RouteStateData &routeStateData) {
             assert(stopIndex > 0);
 
             const int stopId = routeStateData.stopIdsFor(veh.vehicleId)[stopIndex];
@@ -148,13 +139,20 @@ namespace karri {
             const int prevStopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex - 1];
             const int prevStopRoot = ch.rank(inputGraph.edgeHead(prevStopLoc));
 
+            if (routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE) {
+                generateBucketEntries(stopId, leeway,
+                                      newStopRoot, newStopOffset, reverseSearchFromNewStop, ch.downwardGraph(),
+                                      prevStopRoot, 0, forwardSearchFromPrevStop, ch.upwardGraph(),
+                                      variableTargetBuckets);
+                return;
+            }
             generateBucketEntries(stopId, leeway,
                                   newStopRoot, newStopOffset, reverseSearchFromNewStop, ch.downwardGraph(),
                                   prevStopRoot, 0, forwardSearchFromPrevStop, ch.upwardGraph(),
-                                  targetBuckets);
+                                  fixedTargetBuckets);
         }
 
-        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle& veh) {
+        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle& veh, RouteStateData &routeStateData) {
             const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
@@ -173,6 +171,9 @@ namespace karri {
                 const int root = ch.rank(inputGraph.edgeHead(stopLocations[idx]));
                 deleteSearchSpace.insert(root);
             }
+
+            auto &sourceBuckets = (routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE) ? variableSourceBuckets : fixedSourceBuckets;
+
             for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
                 const auto v = *iter;
                 if (sourceBuckets.updateAllEntries(v, updateSourceLeeway)) {
@@ -190,7 +191,7 @@ namespace karri {
             stats.elliptic_update_numEntriesScanned += numEntriesScanned;
         }
 
-        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle& veh) {
+        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle& veh, RouteStateData &routeStateData) {
             const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
@@ -209,6 +210,9 @@ namespace karri {
                 const int root = ch.rank(inputGraph.edgeTail(stopLocations[idx]));
                 deleteSearchSpace.insert(root);
             }
+
+            auto &targetBuckets = (routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE) ? variableTargetBuckets : fixedTargetBuckets;
+
             for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
                 const auto v = *iter;
                 if (targetBuckets.updateAllEntries(v, updateTargetLeeway)) {
@@ -226,18 +230,27 @@ namespace karri {
             stats.elliptic_update_numEntriesScanned += numEntriesScanned;
         }
 
-        void deleteSourceBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void deleteSourceBucketEntries(const Vehicle &veh, const int stopIndex, RouteStateData &routeStateData) {
             const int stopId = routeStateData.stopIdsFor(veh.vehicleId)[stopIndex];
             const int stopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeHead(stopLoc));
-            deleteBucketEntries(stopId, root, ch.upwardGraph(), sourceBuckets);
+            if (routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE) {
+                deleteBucketEntries(stopId, root, ch.upwardGraph(), variableSourceBuckets);
+                return;
+            }
+            deleteBucketEntries(stopId, root, ch.upwardGraph(), fixedSourceBuckets);
         }
 
-        void deleteTargetBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void deleteTargetBucketEntries(const Vehicle &veh, const int stopIndex, RouteStateData &routeStateData) {
             const int stopId = routeStateData.stopIdsFor(veh.vehicleId)[stopIndex];
             const int stopLoc = routeStateData.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeTail(stopLoc));
-            deleteBucketEntries(stopId, root, ch.downwardGraph(), targetBuckets);
+
+            if (routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE) {
+                deleteBucketEntries(stopId, root, ch.downwardGraph(), variableTargetBuckets);
+                return;
+            }
+            deleteBucketEntries(stopId, root, ch.downwardGraph(), fixedTargetBuckets);
         }
 
     private:
@@ -334,11 +347,13 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const CH &ch;
-        const RouteStateData &routeStateData;
         const InputConfig &inputConfig;
 
-        BucketContainer sourceBuckets;
-        BucketContainer targetBuckets;
+        BucketContainer variableSourceBuckets;
+        BucketContainer variableTargetBuckets;
+
+        BucketContainer  fixedSourceBuckets;
+        BucketContainer fixedTargetBuckets;
 
         SearchFromNewStop forwardSearchFromNewStop;
         SearchFromNewStop reverseSearchFromNewStop;

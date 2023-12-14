@@ -54,7 +54,8 @@ namespace karri {
                          EllipticBCHSearchesT &ellipticBchSearches, PDDistanceSearchesT &pdDistanceSearches,
                          OrdAssignmentsT &ordinaryAssigments, PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments, DalsAssignmentsT &dalsAssignments,
-                         RelevantPDLocsFilterT &relevantPdLocsFilter, RouteStateData &routeStateData)
+                         RelevantPDLocsFilterT &relevantPdLocsFilter,
+                         RouteStateData &variableRouteStateData, RouteStateData &fixedRouteStateData, CostCalculatorT &calc)
                 : reqState(requestState),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
@@ -64,10 +65,12 @@ namespace karri {
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
                   relevantPdLocsFilter(relevantPdLocsFilter),
-                  routeStateData(routeStateData) {}
+                  calc(calc),
+                  variableRouteStateData(variableRouteStateData),
+                  fixedRouteStateData(fixedRouteStateData){}
 
         const RequestState<CostCalculatorT> &findBestAssignment(const Request &req) {
-            findBestAssignmentProcedure(req);
+            findBestAssignmentProcedure(req, variableRouteStateData);
             //routeStateData.fixedMode();
             //findBestAssignmentProcedure(req, true);
             //reqState.fixedRunOff();
@@ -78,40 +81,43 @@ namespace karri {
 
     private:
 
-        void findBestAssignmentProcedure(const Request &req, const bool fixedRun = false) {
+        // TODO: Die Fixed Buckets müssen im SystemStateUpdater noch gemacht werden (für elliptic und fpür last stop)
+
+        void findBestAssignmentProcedure(const Request &req, RouteStateData &data) {
             // Initialize finder for this request:
-            initializeForRequest(req, fixedRun);
+            initializeForRequest(req, data);
 
             // Compute PD distances:
-            pdDistanceSearches.run();
+            pdDistanceSearches.run();  // Nutzt keinen routestate
 
             // Try PALS assignments:
-            palsAssignments.findAssignments();
+            palsAssignments.findAssignments(data);
 
             // Run elliptic BCH searches:
-            ellipticBchSearches.run();
+            ellipticBchSearches.run(data);
 
             // Filter feasible PD-locations between ordinary stops:
-            relevantPdLocsFilter.filterOrdinary();
+            relevantPdLocsFilter.filterOrdinary(data);
 
             // Try ordinary assignments:
-            ordAssignments.findAssignments();
+            ordAssignments.findAssignments(data);
 
             // Filter feasible PD-locations before next stops:
-            relevantPdLocsFilter.filterBeforeNextStop();
+            relevantPdLocsFilter.filterBeforeNextStop(data);
 
             // Try DALS assignments:
-            dalsAssignments.findAssignments();
+            dalsAssignments.findAssignments(data);
 
             // Try PBNS assignments:
-            pbnsAssignments.findAssignments();
+            pbnsAssignments.findAssignments(data);
         }
 
-        void initializeForRequest(const Request &req, const bool fixedRun) {
-            requestStateInitializer.initializeRequestState(req, fixedRun);
+        void initializeForRequest(const Request &req, RouteStateData &data) {
+            calc.exchangeRouteStateData(data);
+            requestStateInitializer.initializeRequestState(req, data.getTypeOfData());
 
             // Initialize components according to new request state:
-            ellipticBchSearches.init();
+            ellipticBchSearches.init(data);
             pdDistanceSearches.init();
             ordAssignments.init();
             pbnsAssignments.init();
@@ -129,6 +135,9 @@ namespace karri {
         DalsAssignmentsT &dalsAssignments; // Tries DALS assignments where only the dropoff is inserted after the last stop.
         RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
 
-        RouteStateData &routeStateData;
+        CostCalculatorT &calc;
+
+        RouteStateData &variableRouteStateData;
+        RouteStateData &fixedRouteStateData;
     };
 }

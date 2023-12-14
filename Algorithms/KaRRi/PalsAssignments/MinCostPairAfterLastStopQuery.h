@@ -55,7 +55,7 @@ namespace karri::PickupAfterLastStopStrategies {
     // guarantee. In that case, other PD-pairs need to be evaluated for those vehicles outside the scope of this search.
     template<typename InputGraphT,
             typename CHEnvT,
-            typename LastStopBucketsEnvT,
+            typename LastStopBucketsUpdaterT,
             typename DirectSearchesT,
             typename CostCalculatorT,
             typename QueueT = AddressableQuadHeap,
@@ -72,19 +72,17 @@ namespace karri::PickupAfterLastStopStrategies {
     public:
 
         MinCostPairAfterLastStopQuery(const InputGraphT &inputGraph, const Fleet &fleet,
-                                      const CHEnvT &chEnv,
-                                      const RouteStateData &routeStateData, DirectSearchesT &directSearches,
+                                      const CHEnvT &chEnv, DirectSearchesT &directSearches,
                                       const CostCalculatorT &calculator,
-                                      const LastStopBucketsEnvT &lastStopBucketsEnv,
+                                      const LastStopBucketsUpdaterT &lastStopBucketsEnv,
                                       const RequestState<CostCalculatorT> &requestState, const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   queryGraph(ch.downwardGraph()),
                   oppositeGraph(ch.upwardGraph()),
                   fleet(fleet),
-                  routeStateData(routeStateData),
                   calculator(calculator),
-                  lastStopBuckets(lastStopBucketsEnv.getBuckets()),
+                  lastStopBuckets(lastStopBucketsEnv),
                   directSearches(directSearches),
                   requestState(requestState),
                   inputConfig(inputConfig),
@@ -95,7 +93,7 @@ namespace karri::PickupAfterLastStopStrategies {
                   bestCostWithoutConstraints(INFTY),
                   bestAsgn() {}
 
-        void run(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost) {
+        void run(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost, const RouteStateData &routeStateData) {
 
             Timer timer;
 
@@ -110,7 +108,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 const bool unpruned = settleNextLabel(v, label);
                 if (unpruned) {
                     ++numLabelsRelaxed;
-                    scanVehicleBucket(v, label);
+                    scanVehicleBucket(v, label, routeStateData);
                 }
             }
 
@@ -533,7 +531,7 @@ namespace karri::PickupAfterLastStopStrategies {
             return maxCostDiff < 0;
         }
 
-        void scanVehicleBucket(const int rank, const PDPairAfterLastStopLabel &label) {
+        void scanVehicleBucket(const int rank, const PDPairAfterLastStopLabel &label, const RouteStateData &routeStateData) {
 
             Assignment asgn;
             asgn.distFromPickup = 0;
@@ -544,7 +542,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
             int numEntriesScannedInBucket = 0;
 
-            auto bucket = lastStopBuckets.getBucketOf(rank);
+            auto bucket = lastStopBuckets.getBuckets(routeStateData.getTypeOfData()).getBucketOf(rank);
             for (const auto &entry: bucket) {
 
                 // Scan bucket. Entries are ordered according to entry.distToTarget, i.e. the distance from the last stop of
@@ -552,7 +550,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 ++numEntriesScannedInBucket;
                 const int fullDistToPickup = entry.distToTarget + label.distToPickup;
 
-                if constexpr (LastStopBucketsEnvT::SORTED_BY_DIST) {
+                if constexpr (LastStopBucketsUpdaterT::SORTED_BY_DIST) {
                         // Vehicles are ordered by distToTarget, i.e. once we scan a vehicle where the lower bound cost
                         // based on the vehicle distance to the pickup (i.e. irrespective of possible vehicle waiting for
                         // the passenger at the pickup) is larger than the best known assignment cost, the rest of the
@@ -610,9 +608,8 @@ namespace karri::PickupAfterLastStopStrategies {
         const CH::SearchGraph &queryGraph;
         const CH::SearchGraph &oppositeGraph;
         const Fleet &fleet;
-        const RouteStateData &routeStateData;
         const CostCalculatorT &calculator;
-        const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
+        const LastStopBucketsUpdaterT &lastStopBuckets;
         DirectSearchesT &directSearches;
         const RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;

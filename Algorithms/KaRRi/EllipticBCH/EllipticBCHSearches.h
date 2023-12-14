@@ -42,7 +42,7 @@ namespace karri {
     template<typename InputGraphT,
             typename CHEnvT,
             typename CostFunctionT,
-            typename EllipticBucketsEnvT,
+            typename EllipticBucketsUpdaterT,
             typename FeasibleEllipticDistancesT,
             typename LabelSetT,
             typename CostCalculatorT>
@@ -56,7 +56,7 @@ namespace karri {
         using LabelMask = typename LabelSetT::LabelMask;
 
 
-        using Buckets = typename EllipticBucketsEnvT::BucketContainer;
+        using Buckets = typename EllipticBucketsUpdaterT::BucketContainer;
 
         struct StopBCHQuery {
 
@@ -80,21 +80,20 @@ namespace karri {
 
         template<typename UpdateDistancesT>
         struct ScanOrdinaryBucket {
-            explicit ScanOrdinaryBucket(const Buckets &buckets, UpdateDistancesT &updateDistances,
+            explicit ScanOrdinaryBucket(UpdateDistancesT &updateDistances,
                                         int &numEntriesVisited, int &numEntriesVisitedWithDistSmallerLeeway)
-                    : buckets(buckets),
-                      updateDistances(updateDistances),
+                    : buckets(nullptr), updateDistances(updateDistances),
                       numEntriesVisited(numEntriesVisited),
                       numEntriesVisitedWithDistSmallerLeeway(numEntriesVisitedWithDistSmallerLeeway) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
-
-                for (const auto &entry: buckets.getBucketOf(v)) {
+                assert(buckets != nullptr);
+                for (const auto &entry: buckets->getBucketOf(v)) {
                     ++numEntriesVisited;
                     const auto distViaV = distToV + entry.distToTarget;
 
-                    if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
+                    if constexpr (EllipticBucketsUpdaterT::SORTED_BY_REM_LEEWAY) {
                         // Entries in a bucket are ordered by the remaining leeway, i.e. the leeway minus the distance from/to
                         // the stop to/from this vertex.
                         // If all distances break the remaining leeway for this entry, then they also break the remaining leeway
@@ -111,8 +110,12 @@ namespace karri {
                 return false;
             }
 
+            void exchangeBuckets(const Buckets &newBuckets) {
+                buckets = &newBuckets;
+            }
+
         private:
-            const Buckets &buckets;
+            const Buckets *buckets;
             UpdateDistancesT &updateDistances;
             int &numEntriesVisited;
             int &numEntriesVisitedWithDistSmallerLeeway;
@@ -147,13 +150,13 @@ namespace karri {
 
         struct UpdateDistancesFromPDLocs {
 
-            UpdateDistancesFromPDLocs(const RouteStateData &routeStateData)
-                    : routeStateData(routeStateData), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
+            UpdateDistancesFromPDLocs()
+                    : routeStateData(nullptr), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsFromPDLocs) {
-
-                const auto &prevStopId = routeStateData.idOfPreviousStopOf(entry.targetId);
+                assert(routeStateData != nullptr);
+                const auto &prevStopId = routeStateData->idOfPreviousStopOf(entry.targetId);
 
                 // If the given stop is the first stop in the vehicle's route, there is no previous stop.
                 if (prevStopId == INVALID_ID)
@@ -172,8 +175,12 @@ namespace karri {
                 curFirstIdOfBatch = newCurFirstIdOfBatch;
             }
 
+            void exchangeData(RouteStateData &data) {
+                routeStateData = &data;
+            }
+
         private:
-            const RouteStateData &routeStateData;
+            RouteStateData *routeStateData;
             FeasibleEllipticDistancesT *curFeasible;
             int curFirstIdOfBatch;
         };
@@ -193,43 +200,39 @@ namespace karri {
 
         EllipticBCHSearches(const InputGraphT &inputGraph,
                             const Fleet &fleet,
-                            const EllipticBucketsEnvT &ellipticBucketsEnv,
+                            const EllipticBucketsUpdaterT &ellipticBucketsUpdater,
                             const LastStopsAtVertices &lastStopsAtVertices,
                             const CHEnvT &chEnv,
-                            const RouteStateData &routeStateData,
                             FeasibleEllipticDistancesT &feasibleEllipticPickups,
                             FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
                             RequestState<CostCalculatorT> &requestState)
-                : inputGraph(inputGraph),
-                  fleet(fleet),
-                  ch(chEnv.getCH()),
-                  routeStateData(routeStateData),
-                  requestState(requestState),
-                  sourceBuckets(ellipticBucketsEnv.getSourceBuckets()),
-                  lastStopsAtVertices(lastStopsAtVertices),
-                  feasibleEllipticPickups(feasibleEllipticPickups),
-                  feasibleEllipticDropoffs(feasibleEllipticDropoffs),
-                  distUpperBound(INFTY),
-                  updateDistancesToPdLocs(),
-                  updateDistancesFromPdLocs(routeStateData),
-                  toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
-                          ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
-                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
-                  fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
-                          ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
-                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
+                : ellipticBucketsUpdater(ellipticBucketsUpdater),
+                inputGraph(inputGraph),
+                fleet(fleet),
+                ch(chEnv.getCH()),
+                requestState(requestState),
+                currentScanSourceBuckets(updateDistancesToPdLocs, totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
+                currentScanTargetBuckets(updateDistancesFromPdLocs, totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
+                lastStopsAtVertices(lastStopsAtVertices),
+                feasibleEllipticPickups(feasibleEllipticPickups),
+                feasibleEllipticDropoffs(feasibleEllipticDropoffs),
+                distUpperBound(INFTY),
+                updateDistancesToPdLocs(),
+                updateDistancesFromPdLocs(),
+                toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(currentScanSourceBuckets,
+                        StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
+                fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(currentScanTargetBuckets,
+                        StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
-        void run() {
+        void run(const RouteStateData &routeStateData) {
 
             // Run for pickups:
             Timer timer;
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticPickups);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticPickups);
-            runBCHSearchesFromAndTo(requestState.pickups);
+            runBCHSearchesFromAndTo(requestState.pickups, routeStateData);
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.pickupTime += pickupTime;
             requestState.stats().ellipticBchStats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
@@ -241,7 +244,7 @@ namespace karri {
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
 
-            runBCHSearchesFromAndTo(requestState.dropoffs);
+            runBCHSearchesFromAndTo(requestState.dropoffs, routeStateData);
             const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
             requestState.stats().ellipticBchStats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
@@ -250,16 +253,22 @@ namespace karri {
         }
 
         // Initialize searches for new request
-        void init() {
+        void init(RouteStateData &data) {
 
             Timer timer;
 
+            sourceBuckets = &ellipticBucketsUpdater.getSourceBuckets(data.getTypeOfData());
+            updateDistancesFromPdLocs.exchangeData(data);
+
+            currentScanSourceBuckets.exchangeBuckets(ellipticBucketsUpdater.getSourceBuckets(data.getTypeOfData()));
+            currentScanTargetBuckets.exchangeBuckets(ellipticBucketsUpdater.getTargetBuckets(data.getTypeOfData()));
+
             // Find pickups at existing stops for new request and initialize distances.
-            const auto pickupsAtExistingStops = findPDLocsAtExistingStops<PICKUP>(requestState.pickups);
+            const auto pickupsAtExistingStops = findPDLocsAtExistingStops<PICKUP>(requestState.pickups, data);
             feasibleEllipticPickups.init(requestState.numPickups(), pickupsAtExistingStops, inputGraph);
 
             // Find dropoffs at existing stops for new request and initialize distances.
-            const auto dropoffsAtExistingStops = findPDLocsAtExistingStops<DROPOFF>(requestState.dropoffs);
+            const auto dropoffsAtExistingStops = findPDLocsAtExistingStops<DROPOFF>(requestState.dropoffs, data);
             feasibleEllipticDropoffs.init(requestState.numDropoffs(), dropoffsAtExistingStops, inputGraph);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
@@ -272,7 +281,7 @@ namespace karri {
         friend UpdateDistancesToPDLocs;
 
         template<typename SpotContainerT>
-        void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs) {
+        void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs, const RouteStateData &routeStateData) {
 
             numSearchesRun = 0;
             numTimesStoppingCriterionMet = 0;
@@ -352,13 +361,14 @@ namespace karri {
 
         template<PDLocType type, typename PDLocsT>
         std::vector<PDLocAtExistingStop>
-        findPDLocsAtExistingStops(const PDLocsT &pdLocs) {
+        findPDLocsAtExistingStops(const PDLocsT &pdLocs, const RouteStateData &routeStateData) {
             std::vector<PDLocAtExistingStop> res;
 
             for (const auto &pdLoc: pdLocs) {
                 const auto head = inputGraph.edgeHead(pdLoc.loc);
                 const auto headRank = ch.rank(head);
-                for (const auto &e: sourceBuckets.getBucketOf(headRank)) {
+                assert(sourceBuckets != nullptr);
+                for (const auto &e: sourceBuckets->getBucketOf(headRank)) {
                     if (e.distToTarget == 0) {
                         const int vehId = routeStateData.vehicleIdOf(e.targetId);
                         const int stopIdx = routeStateData.stopPositionOf(e.targetId);
@@ -386,13 +396,17 @@ namespace karri {
             return res;
         }
 
+        const EllipticBucketsUpdaterT &ellipticBucketsUpdater;
+
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CH &ch;
-        const RouteStateData &routeStateData;
         RequestState<CostCalculatorT> &requestState;
 
-        const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
+        ScanSourceBuckets currentScanSourceBuckets;
+        ScanTargetBuckets currentScanTargetBuckets;
+
+        const typename EllipticBucketsUpdaterT::BucketContainer *sourceBuckets;
         const LastStopsAtVertices &lastStopsAtVertices;
 
         FeasibleEllipticDistancesT &feasibleEllipticPickups;

@@ -31,7 +31,7 @@ namespace karri::DropoffAfterLastStopStrategies {
     // stop of the vehicle. Ignores the service time constraint.
     template<typename InputGraphT,
             typename CHEnvT,
-            typename LastStopBucketsEnvT,
+            typename LastStopBucketsUpdaterT,
             typename IsVehEligibleForDropoffAfterLastStop,
             typename CostCalculatorT,
             bool STALL_LABELS = true,
@@ -56,9 +56,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                                          const Fleet &fleet,
                                          const CHEnvT &chEnv,
                                          const CostCalculatorT &calculator,
-                                         const LastStopBucketsEnvT &lastStopBucketsEnv,
+                                         const LastStopBucketsUpdaterT &lastStopBucketsEnv,
                                          const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop,
-                                         const RouteStateData &routeStateData,
                                          const RequestState<CostCalculatorT> &requestState,
                                          const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
@@ -67,9 +66,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                   searchGraph(ch.downwardGraph()),
                   oppositeGraph(ch.upwardGraph()),
                   calculator(calculator),
-                  lastStopBuckets(lastStopBucketsEnv.getBuckets()),
+                  lastStopBuckets(lastStopBucketsEnv),
                   isVehEligibleForDropoffAfterLastStop(isVehEligibleForDropoffAfterLastStop),
-                  routeStateData(routeStateData),
                   requestState(requestState),
                   inputConfig(inputConfig),
                   vertexLabelBuckets(searchGraph.numVertices()),
@@ -77,7 +75,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                   vehicleLabelBuckets(fleet.size()),
                   vehiclesSeen(fleet.size()) {}
 
-        void run() {
+        void run(const RouteStateData &routeStateData) {
             Timer timer;
 
             init();
@@ -90,7 +88,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             while (!stopSearch()) {
                 const bool unpruned = settleNextLabel(v, label);
                 if (unpruned)
-                    scanVehicleBucket(v, label);
+                    scanVehicleBucket(v, label, routeStateData);
             }
 
             runTime = timer.elapsed<std::chrono::nanoseconds>() + initializationTime;
@@ -338,14 +336,14 @@ namespace karri::DropoffAfterLastStopStrategies {
             return true;
         }
 
-        void scanVehicleBucket(const int v, const DropoffLabel &label) {
+        void scanVehicleBucket(const int v, const DropoffLabel &label, const RouteStateData &routeStateData) {
             using namespace time_utils;
 
             const auto &dropoff = requestState.dropoffs[label.dropoffId];
 
             int numEntriesScannedHere = 0;
 
-            auto bucket = lastStopBuckets.getBucketOf(v);
+            auto bucket = lastStopBuckets.getBuckets(routeStateData.getTypeOfData()).getBucketOf(v);
             for (const auto &entry: bucket) {
                 ++numEntriesScannedHere;
 
@@ -356,7 +354,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                         fullDistToDropoff, dropoff, requestState);
 
                 if (costFromLastStop > requestState.getBestCost()) {
-                    if constexpr (LastStopBucketsEnvT::SORTED_BY_DIST)
+                    if constexpr (LastStopBucketsUpdaterT::SORTED_BY_DIST)
                         // Entries are ordered according to entry.distToTarget, i.e. the distance from the last stop of
                         // the vehicle with id entry.targetId to vertex v. For a cost calculation that only depends on this
                         // distance (and other factors that can be considered constant during the bucket scan), the cost grows
@@ -434,9 +432,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         const typename CH::SearchGraph &searchGraph;
         const typename CH::SearchGraph &oppositeGraph;
         const CostCalculatorT &calculator;
-        const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
+        const LastStopBucketsUpdaterT &lastStopBuckets;
         const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop;
-        const RouteStateData &routeStateData;
         const RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
 

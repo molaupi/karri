@@ -37,7 +37,7 @@ namespace karri {
 
 // Given a set H of pdDistances locs, for each vehicle veh, this search finds the closest pdDistances loc
 // argmin_{h \in H} dist(lastStop(veh), h).
-    template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsT, typename PruningCriterionT = dij::NoCriterion, typename LabelSetT = BasicLabelSet<0, ParentInfo::PARENT_VERTICES_ONLY>>
+    template<typename InputGraphT, typename BucketsT, typename PruningCriterionT = dij::NoCriterion, typename LabelSetT = BasicLabelSet<0, ParentInfo::PARENT_VERTICES_ONLY>>
     class ClosestPDLocToLastStopBCHQuery {
 
         static_assert(LabelSetT::KEEP_PARENT_VERTICES,
@@ -49,12 +49,11 @@ namespace karri {
     public:
 
         ClosestPDLocToLastStopBCHQuery(const InputGraphT &inputGraph, const int fleetSize,
-                                       const CHEnvT &chEnv,
-                                       const LastStopBucketsT &lastStopBuckets,
+                                       const CH &ch,
                                        PruningCriterion pruningCriterion = {}) :
                 inputGraph(inputGraph),
-                lastStopBuckets(lastStopBuckets),
-                ch(chEnv.getCH()),
+                lastStopBuckets(nullptr),
+                ch(ch),
                 search(ch.downwardGraph(), {}, pruningCriterion),
                 idOfClosestSpotToRank(ch.downwardGraph().numVertices()),
                 idOfClosestSpotToVeh(fleetSize),
@@ -66,7 +65,7 @@ namespace karri {
             Timer timer;
 
             init(pdLocs);
-
+            assert(lastStopBuckets != nullptr);
             // todo stopping criterion and pruning for bucket scans based on max tentative distance across all vehicles
             while (!search.queue.empty()) {
                 const auto v = search.settleNextVertex();
@@ -106,6 +105,10 @@ namespace karri {
             return runTime;
         }
 
+        void exchangeBuckets(const BucketsT &buckets) {
+            lastStopBuckets = &buckets;
+        }
+
     private:
 
         template<typename PDLocsT>
@@ -139,7 +142,7 @@ namespace karri {
         void scanVehicleBucketAtRank(const int v) {
             const auto idOfSpotClosestToV = idOfClosestSpotToRank[v];
             const auto distVToSpot = search.getDistance(v);
-            auto bucket = lastStopBuckets.getBucketOf(v);
+            auto bucket = lastStopBuckets->getBucketOf(v);
             for (const auto &entry: bucket) {
                 ++numEntriesScanned;
                 const auto vehId = entry.targetId;
@@ -152,7 +155,7 @@ namespace karri {
         }
 
         const InputGraphT &inputGraph;
-        const LastStopBucketsT &lastStopBuckets;
+        const BucketsT *lastStopBuckets;
         const CH &ch;
 
         using Search = Dijkstra<typename CH::SearchGraph, typename CH::Weight, LabelSet, dij::NoCriterion, PruningCriterion>;
@@ -167,10 +170,9 @@ namespace karri {
 
     };
 
-    template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsT>
+    template<typename InputGraphT, typename LastStopBucketsT>
     using ClosestPDLocToLastStopBCHQueryWithStallOnDemand = ClosestPDLocToLastStopBCHQuery<
             InputGraphT,
-            CHEnvT,
             LastStopBucketsT,
             typename CHQuery<BasicLabelSet<0, ParentInfo::PARENT_VERTICES_ONLY>>::PruningCriterion
     >;

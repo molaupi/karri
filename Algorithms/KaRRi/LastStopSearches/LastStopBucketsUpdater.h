@@ -1,27 +1,6 @@
-/// ******************************************************************************
-/// MIT License
-///
-/// Copyright (c) 2023 Moritz Laupichler <moritz.laupichler@kit.edu>
-///
-/// Permission is hereby granted, free of charge, to any person obtaining a copy
-/// of this software and associated documentation files (the "Software"), to deal
-/// in the Software without restriction, including without limitation the rights
-/// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-/// copies of the Software, and to permit persons to whom the Software is
-/// furnished to do so, subject to the following conditions:
-///
-/// The above copyright notice and this permission notice shall be included in all
-/// copies or substantial portions of the Software.
-///
-/// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-/// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-/// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-/// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-/// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-/// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-/// SOFTWARE.
-/// ******************************************************************************
-
+//
+// Created by tim on 14.12.23.
+//
 
 #pragma once
 
@@ -31,11 +10,13 @@
 #include "Algorithms/Buckets/BucketEntry.h"
 #include "Algorithms/CH/CH.h"
 #include "Tools/Timer.h"
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
+#include "Algorithms/KaRRi/Stats/PerformanceStats.h"
 
 namespace karri {
 
     template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
-    class LastStopBucketsEnvironment {
+    class LastStopBucketsUpdater {
 
 
         using Entry = BucketEntry;
@@ -55,6 +36,8 @@ namespace karri {
                 SortedBucketContainer<Entry, IsDistSmaller>,
                 DynamicBucketContainer<Entry>
         >;
+
+        using BucketType = RouteStateDataType;
 
     private:
 
@@ -110,27 +93,27 @@ namespace karri {
 
     public:
 
-        LastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateData &routeStateData,
-                                   karri::stats::UpdatePerformanceStats &stats)
-                : inputGraph(inputGraph),
-                  ch(chEnv.getCH()),
-                  searchGraph(ch.upwardGraph()),
-                  routeStateData(routeStateData),
-                  bucketContainer(searchGraph.numVertices()),
-                  entryGenSearch(
-                          chEnv.getForwardSearch(GenerateEntry(bucketContainer, vehicleId, verticesVisitedInSearch),
-                                                 StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
-                  entryDelSearch(chEnv.getForwardSearch(
-                          DeleteEntry(bucketContainer, vehicleId, verticesVisitedInSearch, entriesVisitedInSearch))),
-                  stats(stats) {}
+        LastStopBucketsUpdater(const InputGraphT &inputGraph, const CHEnvT &chEnv, karri::stats::UpdatePerformanceStats &stats)
+        : inputGraph(inputGraph),
+        ch(chEnv.getCH()),
+        searchGraph(ch.upwardGraph()),
+        variableBucketContainer(searchGraph.numVertices()),
+        fixedBucketContainer(searchGraph.numVertices()),
+        variableEntryGenSearch(chEnv.getForwardSearch(GenerateEntry(variableBucketContainer, vehicleId, verticesVisitedInSearch),
+                                                      StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
+        variableEntryDelSearch(chEnv.getForwardSearch(DeleteEntry(variableBucketContainer, vehicleId, verticesVisitedInSearch, entriesVisitedInSearch))),
+        fixedEntryGenSearch(chEnv.getForwardSearch(GenerateEntry(fixedBucketContainer, vehicleId, verticesVisitedInSearch),
+                                                   StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
+        fixedEntryDelSearch(chEnv.getForwardSearch(DeleteEntry(fixedBucketContainer, vehicleId, verticesVisitedInSearch, entriesVisitedInSearch))),
+        stats(stats) {}
 
 
-        const BucketContainer &getBuckets() const {
-            return bucketContainer;
+        const BucketContainer &getBuckets(BucketType type) const {
+            return (type == BucketType::VARIABLE) ? variableBucketContainer : fixedBucketContainer;
         }
 
 
-        void generateBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void generateBucketEntries(const Vehicle &veh, const int stopIndex, const RouteStateData &routeStateData) {
             assert(stopIndex == routeStateData.numStopsOf(veh.vehicleId) - 1);
 
             Timer timer;
@@ -141,14 +124,20 @@ namespace karri {
             maxDetourUntilEndOfServiceTime =
                     veh.endOfServiceTime - routeStateData.schedDepTimesFor(vehicleId)[routeStateData.numStopsOf(vehicleId) - 1];
             verticesVisitedInSearch = 0;
-            entryGenSearch.run(ch.rank(stopVertex));
+
+            if (routeStateData.getTypeOfData() == BucketType::VARIABLE) {
+                variableEntryGenSearch.run(ch.rank(stopVertex));
+            } else {
+                fixedEntryGenSearch.run(ch.rank(stopVertex));
+            }
+
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.lastStopBucketsGenerateEntriesTime += time;
 
 //        bucketGenLogger << verticesVisitedInSearch << ',' << time << '\n';
         }
 
-        void removeBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void removeBucketEntries(const Vehicle &veh, const int stopIndex, const RouteStateData &routeStateData) {
             assert(stopIndex >= 0);
             assert(stopIndex < routeStateData.numStopsOf(veh.vehicleId));
 
@@ -160,7 +149,13 @@ namespace karri {
             entriesVisitedInSearch = 0;
             maxDetourUntilEndOfServiceTime = INFTY;
             verticesVisitedInSearch = 0;
-            entryDelSearch.run(ch.rank(stopVertex));
+
+            if (routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE) {
+                variableEntryDelSearch.run(ch.rank(stopVertex));
+            } else {
+                fixedEntryDelSearch.run(ch.rank(stopVertex));
+            }
+
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.lastStopBucketsDeleteEntriesTime += time;
 
@@ -176,17 +171,20 @@ namespace karri {
         const InputGraphT &inputGraph;
         const CH &ch;
         const CH::SearchGraph &searchGraph;
-        const RouteStateData &routeStateData;
 
-        BucketContainer bucketContainer;
+        BucketContainer variableBucketContainer;
+        BucketContainer fixedBucketContainer;
 
         int vehicleId;
         int maxDetourUntilEndOfServiceTime;
         int entriesVisitedInSearch;
         int verticesVisitedInSearch;
 
-        GenerateEntriesSearch entryGenSearch;
-        DeleteEntriesSearch entryDelSearch;
+        GenerateEntriesSearch variableEntryGenSearch;
+        DeleteEntriesSearch variableEntryDelSearch;
+
+        GenerateEntriesSearch fixedEntryGenSearch;
+        DeleteEntriesSearch fixedEntryDelSearch;
 
         karri::stats::UpdatePerformanceStats &stats;
 

@@ -45,23 +45,21 @@ namespace karri {
 
         OrdinaryAssignmentsFinder(const RelevantPDLocs &relPickups, const RelevantPDLocs &relDropoffs,
                                   const PDDistancesT &pdDistances, const Fleet &fleet,
-                                  const CostCalculatorT &calculator, const RouteStateData &routeStateData,
-                                  RequestState<CostCalculatorT> &requestState)
+                                  const CostCalculatorT &calculator, RequestState<CostCalculatorT> &requestState)
                 : relPickups(relPickups),
                   relDropoffs(relDropoffs),
                   pdDistances(pdDistances),
                   fleet(fleet),
                   calculator(calculator),
-                  routeStateData(routeStateData),
                   requestState(requestState) {}
 
-        void findAssignments() {
-            findOrdinaryAssignments();
-            findOrdinaryPairedAssignments();
+        void findAssignments(const RouteStateData &data) {
+            findOrdinaryAssignments(data);
+            findOrdinaryPairedAssignments(data);
         }
 
-        void init() {
-            // no op
+        void init(){
+
         }
 
     private:
@@ -69,7 +67,7 @@ namespace karri {
         // Try assignments where pickup is inserted at or just after stop i and dropoff is inserted at or just after stop j
         // with j > i. Does not deal with inserting the pickup at or after a last stop. Does not deal with inserting the
         // dropoff after a last stop.
-        void findOrdinaryAssignments() {
+        void findOrdinaryAssignments(const RouteStateData &routeStateData) {
 
             Timer timer;
             int numCandidateVehicles = 0;
@@ -105,7 +103,7 @@ namespace karri {
                     asgn.distToPickup = pickupEntry.distToPDLoc;
                     asgn.distFromPickup = pickupEntry.distFromPDLocToNextStop;
 
-                    numAssignmentsTried += tryDropoffLaterThanPickup(asgn, curFirstDropoffIt);
+                    numAssignmentsTried += tryDropoffLaterThanPickup(asgn, curFirstDropoffIt, routeStateData);
                 }
             }
 
@@ -121,7 +119,8 @@ namespace karri {
         // completes the assignment with those dropoffs, and tries the resulting assignments.
         // Note that startIdxInRegularStops has to be an absolute index in relevantRegularHaltingSpots.
         int tryDropoffLaterThanPickup(Assignment &asgn,
-                                      const RelevantPDLocs::It &startItInRegularDropoffs) {
+                                      const RelevantPDLocs::It &startItInRegularDropoffs,
+                                      const RouteStateData &routeStateData) {
             assert(asgn.vehicle && asgn.pickup);
             const auto &vehId = asgn.vehicle->vehicleId;
 
@@ -166,7 +165,7 @@ namespace karri {
         }
 
 
-        void findOrdinaryPairedAssignments() {
+        void findOrdinaryPairedAssignments(const RouteStateData &routeStateData) {
 
             Timer timer;
             int numAssignmentsTried = 0;
@@ -294,7 +293,6 @@ namespace karri {
         const PDDistancesT &pdDistances;
         const Fleet &fleet;
         const CostCalculatorT &calculator;
-        const RouteStateData &routeStateData;
         RequestState<CostCalculatorT> &requestState;
     };
 }

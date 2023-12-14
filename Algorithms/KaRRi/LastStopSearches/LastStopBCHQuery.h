@@ -35,7 +35,7 @@ namespace karri {
 
 
     template<typename CHEnvT,
-            typename LastStopBucketsEnvT,
+            typename LastStopBucketsUpdaterT,
             typename PrunerT,
             typename LabelSetT = BasicLabelSet<0, ParentInfo::FULL_PARENT_INFO>>
     class LastStopBCHQuery {
@@ -60,8 +60,8 @@ namespace karri {
                     return true;
 
                 int numEntriesScannedHere = 0;
-
-                auto bucket = search.bucketContainer.getBucketOf(v);
+                assert(search.bucketContainer != nullptr);
+                auto bucket = search.bucketContainer->getBucketOf(v);
                 for (const auto &entry: bucket) {
 
                     const int &vehId = entry.targetId;
@@ -72,7 +72,7 @@ namespace karri {
                     const DistanceLabel distViaV = distFromV + DistanceLabel(entry.distToTarget);
                     LabelMask atLeastAsGoodAsCurBest = ~search.pruner.isWorseThanUpperBoundCost(distViaV, true);
 
-                    if constexpr (LastStopBucketsEnvT::SORTED_BY_DIST) {
+                    if constexpr (LastStopBucketsUpdaterT::SORTED_BY_DIST) {
                         // Entries are ordered according to entry.distToTarget, i.e. the distance from the last
                         // stop of the vehicle with id entry.targetId to vertex v. For a cost calculation that only depends on
                         // this distance (and other factors that can be considered constant during the bucket scan), the cost
@@ -134,9 +134,7 @@ namespace karri {
 
     public:
 
-        LastStopBCHQuery(
-                const LastStopBucketsEnvT &lastStopBucketsEnv,
-                TentativeLastStopDistances <LabelSetT> &tentativeLastStopDistances,
+        LastStopBCHQuery(TentativeLastStopDistances <LabelSetT> &tentativeLastStopDistances,
                 const CHEnvT &chEnv,
                 Subset &vehiclesSeen,
                 PrunerT pruner)
@@ -144,7 +142,7 @@ namespace karri {
                 ScanSortedBucket(*this), StopLastStopBCH(*this))),
                   pruner(pruner),
                   ch(chEnv.getCH()),
-                  bucketContainer(lastStopBucketsEnv.getBuckets()),
+                  bucketContainer(nullptr),
                   tentativeDistances(tentativeLastStopDistances),
                   vehiclesSeen(vehiclesSeen),
                   numVerticesSettled(0),
@@ -172,13 +170,17 @@ namespace karri {
             return numEntriesVisited;
         }
 
+        void exchangeBuckets(const typename LastStopBucketsUpdaterT::BucketContainer &newBuckets) {
+            bucketContainer = &newBuckets;
+        }
+
     private:
 
         typename CHEnvT::template UpwardSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT> upwardSearch;
         PrunerT pruner;
 
         const CH &ch;
-        const typename LastStopBucketsEnvT::BucketContainer &bucketContainer;
+        const typename LastStopBucketsUpdaterT::BucketContainer *bucketContainer;
 
         TentativeLastStopDistances <LabelSetT> &tentativeDistances;
 

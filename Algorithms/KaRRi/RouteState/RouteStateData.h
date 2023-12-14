@@ -11,13 +11,14 @@
 #include "Tools/Constants.h"
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
 #include "ScheduledStop.h"
+#include "RouteStateDataType.h"
 
 namespace karri {
 
     class RouteStateData {
 
     public:
-        RouteStateData(const Fleet &fleet)
+        RouteStateData(const Fleet &fleet, const RouteStateDataType type)
                 : pos(fleet.size()),
                   stopIds(fleet.size()),
                   stopLocations(fleet.size()),
@@ -43,7 +44,8 @@ namespace karri {
                   unusedStopIds(),
                   nextUnusedStopId(fleet.size()),
                   maxStopId(fleet.size() - 1),
-                  fleetSize(fleet.size()) {
+                  fleetSize(fleet.size()),
+                  type(type) {
             for (auto i = 0; i < fleet.size(); ++i) {
                 pos[i].start = i;
                 pos[i].end = i + 1;
@@ -308,6 +310,10 @@ namespace karri {
             return rangeOfRequestsPickedUpAtStop[stopId].end - rangeOfRequestsPickedUpAtStop[stopId].start != 0;
         }
 
+        RouteStateDataType getTypeOfData() const {
+            return type;
+        }
+
     private:
 
         ScheduledStop getScheduledStop(const int vehId, const int stopIndex) const {
@@ -428,6 +434,7 @@ namespace karri {
         int maxStopId;
 
         unsigned long fleetSize;
+        RouteStateDataType type;
     };
 
 }

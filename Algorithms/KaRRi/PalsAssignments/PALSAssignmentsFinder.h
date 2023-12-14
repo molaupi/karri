@@ -39,20 +39,18 @@ namespace karri {
     public:
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
-                              const CostCalculatorT &calculator, const LastStopsAtVertices &lastStopsAtVertices,
-                              const RouteStateData &routeStateData, const PDDistancesT &pdDistances, RequestState<CostCalculatorT> &requestState)
+                              const CostCalculatorT &calculator, const LastStopsAtVertices &lastStopsAtVertices,const PDDistancesT &pdDistances, RequestState<CostCalculatorT> &requestState)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   lastStopsAtVertices(lastStopsAtVertices),
-                  routeStateData(routeStateData),
                   pdDistances(pdDistances),
                   requestState(requestState) {}
 
-        void findAssignments() {
-            findAssignmentsWherePickupCoincidesWithLastStop();
-            strategy.tryPickupAfterLastStop();
+        void findAssignments(const RouteStateData &data) {
+            findAssignmentsWherePickupCoincidesWithLastStop(data);
+            strategy.tryPickupAfterLastStop(data);
         }
 
         void init() {
@@ -63,7 +61,7 @@ namespace karri {
 
         // Simple case for pickups that coincide with last stops of vehicles is the same regardless of strategy, so it
         // is treated here.
-        void findAssignmentsWherePickupCoincidesWithLastStop() {
+        void findAssignmentsWherePickupCoincidesWithLastStop(const RouteStateData &routeStateData) {
             int numInsertionsForCoinciding = 0;
             int numCandidateVehiclesForCoinciding = 0;
             Timer timer;
@@ -115,7 +113,6 @@ namespace karri {
         const Fleet &fleet;
         const CostCalculatorT &calculator;
         const LastStopsAtVertices &lastStopsAtVertices;
-        const RouteStateData &routeStateData;
         const PDDistancesT &pdDistances;
         RequestState<CostCalculatorT> &requestState;
 

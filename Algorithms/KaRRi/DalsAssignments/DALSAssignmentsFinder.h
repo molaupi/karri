@@ -34,8 +34,8 @@ namespace karri {
 
         DALSAssignmentsFinder(StrategyT &strategy) : strategy(strategy) {}
 
-        void findAssignments() {
-            strategy.tryDropoffAfterLastStop();
+        void findAssignments(const RouteStateData &data) {
+            strategy.tryDropoffAfterLastStop(data);
         }
 
         void init() {

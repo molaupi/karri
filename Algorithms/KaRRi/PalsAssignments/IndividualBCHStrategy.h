@@ -92,7 +92,6 @@ namespace karri::PickupAfterLastStopStrategies {
                               const CostCalculatorT &calculator,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const PDDistancesT &pdDistances,
-                              const RouteStateData &routeStateData,
                               RequestState<CostCalculatorT> &requestState,
                               const int& bestCostBeforeQuery,
                               const InputConfig &inputConfig)
@@ -100,17 +99,18 @@ namespace karri::PickupAfterLastStopStrategies {
                   fleet(fleet),
                   calculator(calculator),
                   pdDistances(pdDistances),
-                  routeStateData(routeStateData),
                   requestState(requestState),
                   bestCostBeforeQuery(bestCostBeforeQuery),
                   inputConfig(inputConfig),
+                  lastStopBucketsEnv(lastStopBucketsEnv),
                   distances(fleet.size()),
-                  search(lastStopBucketsEnv, distances, chEnv, vehiclesSeenForPickups, PickupAfterLastStopPruner(*this, calculator)),
+                  search(distances, chEnv, vehiclesSeenForPickups, PickupAfterLastStopPruner(*this, calculator)),
                   vehiclesSeenForPickups(fleet.size()) {}
 
-        void tryPickupAfterLastStop() {
+        void tryPickupAfterLastStop(const RouteStateData &routeStateData) {
+            search.exchangeBuckets(lastStopBucketsEnv.getBuckets(routeStateData.getTypeOfData()));
             runBchSearches();
-            enumerateAssignments();
+            enumerateAssignments(routeStateData);
         }
 
     private:
@@ -132,7 +132,7 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Enumerate assignments with pickup after last stop
-        void enumerateAssignments() {
+        void enumerateAssignments(const RouteStateData &routeStateData) {
             using namespace time_utils;
 
 
@@ -234,10 +234,11 @@ namespace karri::PickupAfterLastStopStrategies {
         const Fleet &fleet;
         const CostCalculatorT &calculator;
         const PDDistancesT &pdDistances;
-        const RouteStateData &routeStateData;
         RequestState<CostCalculatorT> &requestState;
         const int& bestCostBeforeQuery;
         const InputConfig &inputConfig;
+
+        const LastStopBucketsEnvT &lastStopBucketsEnv;
 
         int upperBoundCost;
 

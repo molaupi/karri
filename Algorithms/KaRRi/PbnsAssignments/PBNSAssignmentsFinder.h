@@ -56,8 +56,7 @@ namespace karri {
         PBNSAssignmentsFinder(const RelevantPDLocs &relPickupsBns, const RelevantPDLocs &relOrdinaryDropoffs,
                               const RelevantPDLocs &relDropoffsBns, const PDDistancesT &pdDistances,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
-                              const Fleet &fleet, const CostCalculatorT &calculator,
-                              const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState)
+                              const Fleet &fleet, const CostCalculatorT &calculator,RequestState<CostCalculatorT> &requestState)
                 : relPickupsBNS(relPickupsBns),
                   relOrdinaryDropoffs(relOrdinaryDropoffs),
                   relDropoffsBNS(relDropoffsBns),
@@ -65,10 +64,9 @@ namespace karri {
                   curVehLocToPickupSearches(curVehLocToPickupSearches),
                   fleet(fleet),
                   calculator(calculator),
-                  routeStateData(routeStateData),
                   requestState(requestState) {}
 
-        void findAssignments() {
+        void findAssignments(const RouteStateData &data) {
             numAssignmentsTriedWithPickupBeforeNextStop = 0;
             Timer timer;
 
@@ -83,13 +81,13 @@ namespace karri {
                 ordinaryContinuations.clear();
                 pairedContinuations.clear();
 
-                assert(routeStateData.occupanciesFor(vehId)[0] < fleet[vehId].capacity);
+                assert(data.occupanciesFor(vehId)[0] < fleet[vehId].capacity);
 
-                determineNecessaryExactDistances(fleet[vehId]);
+                determineNecessaryExactDistances(fleet[vehId], data);
 
                 curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId]);
 
-                finishContinuations(fleet[vehId]);
+                finishContinuations(fleet[vehId], data);
             }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>() -
@@ -119,7 +117,7 @@ namespace karri {
         // location to the pickup.
         // These pickups are added to the queue of curVehLocToPickupSearches and continuations are stored to restart
         // the iteration of combinations for that pickup after the computation of exact distances.
-        void determineNecessaryExactDistances(const Vehicle &veh) {
+        void determineNecessaryExactDistances(const Vehicle &veh, const RouteStateData &routeStateData) {
 
             const auto &relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(veh.vehicleId);
             const auto &relDropoffsBeforeNextStopForVeh = relDropoffsBNS.relevantSpotsFor(veh.vehicleId);
@@ -139,7 +137,7 @@ namespace karri {
                         veh, *asgn.pickup, asgn.distToPickup, requestState.minDirectPDDist,
                         distFromPickup, requestState);
                 if (lowerBoundCostPairedAssignment < requestState.getBestCost()) {
-                    const auto scannedUntil = tryLowerBoundsForPaired(asgn);
+                    const auto scannedUntil = tryLowerBoundsForPaired(asgn, routeStateData);
                     if (scannedUntil < relDropoffsBeforeNextStopForVeh.end()) {
                         // In this case some paired assignment before the next stop needs the exact distance to pickup via
                         // the vehicle. Postpone computation of the yet unknown exact distance and the rest of the paired
@@ -156,7 +154,7 @@ namespace karri {
 
 
                 asgn.distFromPickup = distFromPickup;
-                const auto scannedUntil = tryLowerBoundsForOrdinary(asgn);
+                const auto scannedUntil = tryLowerBoundsForOrdinary(asgn, routeStateData);
 
                 if (scannedUntil < relOrdinaryDropoffsForVeh.end()) {
                     // In this case some assignment with the pickup before the next stop and an ordinary dropoff
@@ -174,7 +172,7 @@ namespace karri {
         // Examines combinations of a given pickup and all dropoffs before the next stop of a given vehicle until a
         // paired assignment needs the exact distance to the pickup via the vehicle. Returns an iterator to the dropoff at
         // which the exact distance is first needed or one-past-end iterator if all combinations could be filtered.
-        RelevantPDLocs::It tryLowerBoundsForPaired(Assignment &asgn) {
+        RelevantPDLocs::It tryLowerBoundsForPaired(Assignment &asgn, const RouteStateData &routeStateData) {
             assert(asgn.vehicle && asgn.pickup);
             const auto vehId = asgn.vehicle->vehicleId;
 
@@ -213,7 +211,7 @@ namespace karri {
         // Examines combinations of a given pickup before the next stop and all relevant dropoffs after later stops of a given
         // vehicle until an assignment requires the exact distance to the pickup via the vehicle. Returns an iterator to the
         // dropoff at which the exact distance is first needed or one-past-end iterator if all combinations could be filtered.
-        RelevantPDLocs::It tryLowerBoundsForOrdinary(Assignment &asgn) {
+        RelevantPDLocs::It tryLowerBoundsForOrdinary(Assignment &asgn, const RouteStateData &routeStateData) {
             using namespace time_utils;
             assert(asgn.vehicle && asgn.pickup);
             const auto vehId = asgn.vehicle->vehicleId;
@@ -254,7 +252,7 @@ namespace karri {
             return relevantDropoffs.end();
         }
 
-        void finishContinuations(const Vehicle &veh) {
+        void finishContinuations(const Vehicle &veh, const RouteStateData &routeStateData) {
             const auto stopLocations = routeStateData.stopLocationsFor(veh.vehicleId);
             const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             Assignment asgn(&veh);
@@ -335,7 +333,6 @@ namespace karri {
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         const Fleet &fleet;
         const CostCalculatorT &calculator;
-        const RouteStateData &routeStateData;
         RequestState<CostCalculatorT> &requestState;
 
         int numAssignmentsTriedWithPickupBeforeNextStop;
