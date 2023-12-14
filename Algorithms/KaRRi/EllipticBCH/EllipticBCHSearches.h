@@ -151,6 +151,10 @@ namespace karri {
                 curFeasible->updateToDistancesInGlobalVectors();
             }
 
+            void endToSearches() {
+                curFeasible->resetLocalPairs();
+            }
+
         private:
             FeasibleEllipticDistancesT *curFeasible;
             enumerable_thread_specific<int> curFirstIdOfBatch;
@@ -307,9 +311,6 @@ namespace karri {
             distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
 
             // Process in batches of size K
-            // for (int i = 0; i < pdLocs.size(); i += K) {
-            //     runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            // }
 
             // Interleaved to & from searches
             // für jede PDLoc -> 2 Jobs erstellen
@@ -317,10 +318,9 @@ namespace karri {
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
-            
-            // for (int i = 0; i < pdLocs.size(); i += K) {
-            //     runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            // }
+
+            // Done with to searches
+            updateDistancesToPdLocs.endToSearches();
 
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
