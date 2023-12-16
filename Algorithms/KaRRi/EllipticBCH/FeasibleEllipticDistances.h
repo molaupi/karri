@@ -82,21 +82,14 @@ namespace karri {
 
             if (maxStopId >= startOfRangeInDistToPDLocs.size()) {
                 stopLocks.resize(maxStopId + 1, SpinLock());
-                startOfRangeInDistToPDLocs.resize(maxStopId + 1);
-                startOfRangeInDistFromPDLocs.resize(maxStopId + 1);
-                startOfRangeInMeetingVerticesToPDLocs.resize(maxStopId + 1);
-                startOfRangeInMeetingVerticesFromPDLocs.resize(maxStopId + 1);
+                startOfRangeInDistToPDLocs.resize(maxStopId + 1, INVALID_INDEX);
+                startOfRangeInDistFromPDLocs.resize(maxStopId + 1, INVALID_INDEX);
+                startOfRangeInMeetingVerticesToPDLocs.resize(maxStopId + 1, INVALID_INDEX);
+                startOfRangeInMeetingVerticesFromPDLocs.resize(maxStopId + 1, INVALID_INDEX);
                 minDistToPDLoc.clear();
                 minDistToPDLoc = std::vector<std::atomic_int>(maxStopId + 1);
                 minDistFromPDLocToNextStop.clear();
                 minDistFromPDLocToNextStop = std::vector<std::atomic_int>(maxStopId + 1);
-            }
-
-            for (int i = 0; i <= maxStopId; i++) {
-                startOfRangeInDistToPDLocs[i] = INVALID_INDEX;
-                startOfRangeInDistFromPDLocs[i] = INVALID_INDEX;
-                startOfRangeInMeetingVerticesToPDLocs[i] = INVALID_INDEX;
-                startOfRangeInMeetingVerticesFromPDLocs[i] = INVALID_INDEX;
             }
 
             vehiclesWithRelevantPDLocs.clear();
@@ -133,8 +126,6 @@ namespace karri {
 
                 if (anySet(improvedTo)) {
 
-                    vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
-
                     const int minNewDistToPDLoc = zeroLabel.horizontalMin();
 
                     auto& minToPDLocAtomic = minDistToPDLoc[stopId];
@@ -157,8 +148,6 @@ namespace karri {
                 
                 if (anySet(improvedFrom)) {
 
-                    vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
-
                     const int minNewDistFromPDLocToNextStop = lengthOfLegLabel.horizontalMin();
 
                     auto& minFromPDLocAtomic = minDistFromPDLocToNextStop[stopId];
@@ -179,7 +168,7 @@ namespace karri {
             assert(firstPDLocId < numLabelsPerStop * K);
             assert(firstPDLocId % K == 0);
             assert(newDistToPDLoc.horizontalMin() >= 0 && newDistToPDLoc.horizontalMin() < INFTY);
-
+            UNUSED(firstPDLocId);
             // If no entries exist yet for this stop, perform the allocation.
             // would not occur in case of static allocation.
             
@@ -192,7 +181,7 @@ namespace karri {
             }
 
             if (indexInPairVector[localThreadId * (maxStopId + 1) + stopId] == INVALID_INDEX) {
-                allocateLocalEntriesFor(stopId);
+                allocateLocalEntriesFor(stopId, localThreadId);
             }
 
             const auto idx = indexInPairVector[localThreadId * (maxStopId + 1) + stopId];
@@ -215,9 +204,6 @@ namespace karri {
                                                     const DistanceLabel newDistFromPDLocToNextStop,
                                                     const int meetingVertex) {
             UNUSED(firstPDLocId);
-            // We assume the from-searches are run after the to-searches. If the stop does not have entries yet, it was
-            // considered irrelevant for the to-searches (regardless of whether we allow dynamic allocation or not).
-            // Therefore, this stop cannot be relevant on both sides which means we can skip it here.
             
             // Increment the number of threads used and set the local thread id if not yet set
             bool exist;
@@ -227,6 +213,9 @@ namespace karri {
                 localThreadId = id;
             }
 
+            // We assume the from-searches are run after the to-searches. If the stop does not have entries yet, it was
+            // considered irrelevant for the to-searches (regardless of whether we allow dynamic allocation or not).
+            // Therefore, this stop cannot be relevant on both sides which means we can skip it here.
             if (indexInPairVector[localThreadId * (maxStopId + 1) + stopId] == INVALID_INDEX)
                 return LabelMask(false);
 
@@ -248,16 +237,21 @@ namespace karri {
             return startOfRangeInDistToPDLocs[stopId] != INVALID_INDEX || startOfRangeInDistFromPDLocs[stopId] != INVALID_INDEX;
         }
 
-        void updateToDistancesInGlobalVectors() {
-            const auto &localThreadId = threadId.local();
+        void updateToDistancesInGlobalVectors(const int firstPDLocId) {
+            bool exist;
+            const auto &localThreadId = threadId.local(exist);
+
+            if (!exist) {
+                std::cout << "";
+            }
 
             for (int i = 0; i <= maxStopId; ++i) {
                 const auto &idx = indexInPairVector[localThreadId * (maxStopId + 1) + i];
                 if (idx != INVALID_INDEX) {
                     // Allocate the entries in global storage if not yet done
                     allocateEntriesFor(i);
-                    distToRelevantPDLocs[startOfRangeInDistToPDLocs[i]] = pairsOfDistancesAndMeetingVertices[idx].first;
-                    meetingVerticesToRelevantPDLocs[startOfRangeInMeetingVerticesToPDLocs[i]] = pairsOfDistancesAndMeetingVertices[idx].second;
+                    distToRelevantPDLocs[startOfRangeInDistToPDLocs[i] + firstPDLocId / K] = pairsOfDistancesAndMeetingVertices[idx].first;
+                    meetingVerticesToRelevantPDLocs[startOfRangeInMeetingVerticesToPDLocs[i] + firstPDLocId / K] = pairsOfDistancesAndMeetingVertices[idx].second;
 
                     // Write values for new entry and set pointer from PD loc to the entries
                     const int minNewDistToPDLoc = pairsOfDistancesAndMeetingVertices[idx].first.horizontalMin();
@@ -268,16 +262,19 @@ namespace karri {
             }
         }
 
-        void updateFromDistancesInGlobalVectors() {
-            const auto &localThreadId = threadId.local();
+        void updateFromDistancesInGlobalVectors(const int firstPDLocId) {
+            bool exist;
+            const auto &localThreadId = threadId.local(exist);
+            if (!exist) {
+                std::cout << "";
+            }
 
             for (int i = 0; i <= maxStopId; ++i) {
                 const auto &idx = indexInPairVector[localThreadId * (maxStopId + 1) + i];
                 if (idx != INVALID_INDEX) {
-                    // Don't need to allocate the entries since already allocated in to searches
-                    // allocateEntriesFor(i);
-                    distFromRelevantPDLocsToNextStop[startOfRangeInDistFromPDLocs[i]] = pairsOfDistancesAndMeetingVertices[idx].first;
-                    meetingVerticesFromRelevantPDLocsToNextStop[startOfRangeInMeetingVerticesFromPDLocs[i]] = pairsOfDistancesAndMeetingVertices[idx].second;
+                    allocateEntriesFor(i);
+                    distFromRelevantPDLocsToNextStop[startOfRangeInDistFromPDLocs[i] + firstPDLocId / K] = pairsOfDistancesAndMeetingVertices[idx].first;
+                    meetingVerticesFromRelevantPDLocsToNextStop[startOfRangeInMeetingVerticesFromPDLocs[i] + firstPDLocId / K] = pairsOfDistancesAndMeetingVertices[idx].second;
 
                     // Write values for new entry and set pointer from PD loc to the entries
                     const int minNewDistFromPDLocToNextStop = pairsOfDistancesAndMeetingVertices[idx].first.horizontalMin();
@@ -372,8 +369,7 @@ namespace karri {
 
     private:
         // Dynamic Allocation
-        void allocateLocalEntriesFor(const int stopId) {
-            const auto &localThreadId = threadId.local();
+        void allocateLocalEntriesFor(const int stopId, const int localThreadId) {
             assert(indexInPairVector[localThreadId * (maxStopId + 1) + stopId] == INVALID_INDEX);
             
             const std::pair<DistanceLabel, DistanceLabel> p = std::make_pair(DistanceLabel(INFTY), DistanceLabel(INVALID_VERTEX));

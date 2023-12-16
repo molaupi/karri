@@ -148,7 +148,7 @@ namespace karri {
             }
 
             void curFeasibleSynchronizeDistances() {
-                curFeasible->updateToDistancesInGlobalVectors();
+                curFeasible->updateToDistancesInGlobalVectors(curFirstIdOfBatch.local());
             }
 
             void endToSearches() {
@@ -188,7 +188,7 @@ namespace karri {
             }
 
             void curFeasibleSynchronizeDistances() {
-                curFeasible->updateFromDistancesInGlobalVectors();
+                curFeasible->updateFromDistancesInGlobalVectors(curFirstIdOfBatch.local());
             }
 
         private:
@@ -317,14 +317,22 @@ namespace karri {
 
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
-            {runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
+            {
+                runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
+                // After a search batch of K PDLocs, write the distances back to the global vectors
+                updateDistancesToPdLocs.curFeasibleSynchronizeDistances();
+            });
 
             // Done with to searches
             updateDistancesToPdLocs.endToSearches();
 
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
-            {runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
+            {
+                runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
+                // After a search batch of K PDLocs, write the distances back to the global vectors
+                updateDistancesFromPdLocs.curFeasibleSynchronizeDistances();
+            });
         }
 
         template<typename SpotContainerT>
@@ -347,9 +355,6 @@ namespace karri {
             updateDistancesFromPdLocs.setCurFirstIdOfBatch(startId);
             FromQueryType& localFromQuery = fromQuery.local();
             localFromQuery.runWithOffset(pdLocHeads, {});
-
-            // After a search batch of K PDLocs, write the distances back to the global vectors
-            updateDistancesFromPdLocs.curFeasibleSynchronizeDistances();
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += localFromQuery.getNumEdgeRelaxations();
@@ -378,9 +383,6 @@ namespace karri {
             updateDistancesToPdLocs.setCurFirstIdOfBatch(startId);
             ToQueryType& localToQuery = toQuery.local();
             localToQuery.runWithOffset(pdLocTails, travelTimes);
-
-            // After a search batch of K PDLocs, write the distances back to the global vectors
-            updateDistancesToPdLocs.curFeasibleSynchronizeDistances();
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += localToQuery.getNumEdgeRelaxations();
