@@ -92,6 +92,10 @@ namespace karri {
                 minDistFromPDLocToNextStop = std::vector<std::atomic_int>(maxStopId + 1);
             }
 
+            if (HW_THREADS_NUM * (maxStopId + 1) > indexInPairVector.size()) {
+                indexInPairVector.resize(HW_THREADS_NUM * (maxStopId + 1), INVALID_INDEX);
+            }
+
             vehiclesWithRelevantPDLocs.clear();
 
             distToRelevantPDLocs.clear();
@@ -163,21 +167,23 @@ namespace karri {
         // Returns mask indicating where the distance has been improved (all false if we don't know the stop and dynamic
         // allocation is not allowed).
         LabelMask updateDistanceFromStopToPDLoc(const int stopId, const unsigned int firstPDLocId,
-                                                const DistanceLabel newDistToPDLoc, const int meetingVertex) {
+                                                const DistanceLabel newDistToPDLoc, const int meetingVertex,
+                                                const bool isLast) {
             assert(stopId >= 0 && stopId <= maxStopId);
             assert(firstPDLocId < numLabelsPerStop * K);
             assert(firstPDLocId % K == 0);
             assert(newDistToPDLoc.horizontalMin() >= 0 && newDistToPDLoc.horizontalMin() < INFTY);
-            UNUSED(firstPDLocId);
+            // UNUSED(firstPDLocId);
             // If no entries exist yet for this stop, perform the allocation.
             // would not occur in case of static allocation.
             
             // Increment the number of threads used and set the local thread id if not yet set
             bool exist;
             int &localThreadId = threadId.local(exist);
-            if (!exist) {
+            if (threadNum < HW_THREADS_NUM) {
                 const int id = threadNum.fetch_add(1, std::memory_order_relaxed);
                 localThreadId = id;
+                threadId.local() = id;
             }
 
             if (indexInPairVector[localThreadId * (maxStopId + 1) + stopId] == INVALID_INDEX) {
@@ -194,6 +200,11 @@ namespace karri {
                 vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
             }
 
+            // After a search batch of K PDLocs, write the distances back to the global vectors
+            if (isLast) {
+                updateToDistancesInGlobalVectors(firstPDLocId);
+            }
+
             return improvedLocal;
         }
 
@@ -202,15 +213,17 @@ namespace karri {
         // Returns mask indicating where the distance has been improved (all false if we don't know the stop).
         LabelMask updateDistanceFromPDLocToNextStop(const int stopId, const int firstPDLocId,
                                                     const DistanceLabel newDistFromPDLocToNextStop,
-                                                    const int meetingVertex) {
-            UNUSED(firstPDLocId);
+                                                    const int meetingVertex,
+                                                    const bool isLast) {
+            // UNUSED(firstPDLocId);
             
             // Increment the number of threads used and set the local thread id if not yet set
             bool exist;
             int &localThreadId = threadId.local(exist);
-            if (!exist) {
+            if (threadNum < HW_THREADS_NUM) {
                 const int id = threadNum.fetch_add(1, std::memory_order_relaxed);
                 localThreadId = id;
+                threadId.local() = id;
             }
 
             // We assume the from-searches are run after the to-searches. If the stop does not have entries yet, it was
@@ -229,6 +242,11 @@ namespace karri {
                 vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
             }
 
+            // After a search batch of K PDLocs, write the distances back to the global vectors
+            if (isLast) {
+                updateFromDistancesInGlobalVectors(firstPDLocId);
+            }
+
             return improvedLocal;
         }
 
@@ -242,7 +260,7 @@ namespace karri {
             const auto &localThreadId = threadId.local(exist);
 
             if (!exist) {
-                std::cout << "";
+                return;
             }
 
             for (int i = 0; i <= maxStopId; ++i) {
@@ -265,8 +283,9 @@ namespace karri {
         void updateFromDistancesInGlobalVectors(const int firstPDLocId) {
             bool exist;
             const auto &localThreadId = threadId.local(exist);
+
             if (!exist) {
-                std::cout << "";
+                return;
             }
 
             for (int i = 0; i <= maxStopId; ++i) {
