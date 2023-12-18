@@ -369,7 +369,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                 }
 
                 // Bundled computation of required exact distances from vehicle to pickups.
-                curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId]);
+                curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId], routeStateData);
 
                 // Check pairs of pickups for which we now know exact distance and dropoffs. If a pair holds the service
                 // time constraint, try the assignment. Otherwise, mark the pair as a constraint breaker.

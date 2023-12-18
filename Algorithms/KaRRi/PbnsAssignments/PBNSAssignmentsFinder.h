@@ -85,7 +85,7 @@ namespace karri {
 
                 determineNecessaryExactDistances(fleet[vehId], data);
 
-                curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId]);
+                curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId], data);
 
                 finishContinuations(fleet[vehId], data);
             }

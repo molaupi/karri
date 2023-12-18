@@ -139,12 +139,12 @@ namespace karri {
                     const auto &stopId = stopIds[i];
 
                     // Insert entries at this stop
-                    if (feasible.hasPotentiallyRelevantPDLocs(stopId)) {
+                    if (feasible.hasPotentiallyRelevantPDLocs(stopId, routeStateData)) {
                         assert(vehiclesWithFeasibleDistances.contains(vehId));
 
                         // Check with lower bounds on dist to and from PD loc whether this stop needs to be regarded
-                        const int minDistToPDLoc = feasible.minDistToRelevantPDLocsFor(stopId);
-                        const int minDistFromPDLoc = feasible.minDistFromPDLocToNextStopOf(stopId);
+                        const int minDistToPDLoc = feasible.minDistToRelevantPDLocsFor(stopId, routeStateData);
+                        const int minDistFromPDLoc = feasible.minDistFromPDLocToNextStopOf(stopId, routeStateData);
 
                         // Compute lower bound cost based on whether we are dealing with pickups or dropoffs
                         int minCost;
@@ -158,8 +158,8 @@ namespace karri {
 
                             ++numStopsRelevant;
                             // Check each PD loc
-                            const auto &distsToPDLocs = feasible.distancesToRelevantPDLocsFor(stopId);
-                            const auto &distsFromPDLocs = feasible.distancesFromRelevantPDLocsToNextStopOf(stopId);
+                            const auto &distsToPDLocs = feasible.distancesToRelevantPDLocsFor(stopId, routeStateData);
+                            const auto &distsFromPDLocs = feasible.distancesFromRelevantPDLocsToNextStopOf(stopId, routeStateData);
                             for (unsigned int id = 0; id < numPDLocs; ++id) {
                                 const auto &distToPDLoc = distsToPDLocs[id];
                                 const auto &distFromPDLoc = distsFromPDLocs[id];

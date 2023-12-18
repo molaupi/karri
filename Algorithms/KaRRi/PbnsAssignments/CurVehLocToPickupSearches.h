@@ -115,13 +115,11 @@ namespace karri {
         CurVehLocToPickupSearches(const InputGraphT &graph,
                                   VehicleLocatorT &locator,
                                   const CHEnvT &chEnv,
-                                  const RouteStateData &routeStateData,
                                   RequestState<CostCalculatorT> &requestState,
                                   const int fleetSize)
                 : inputGraph(graph),
                   vehicleLocator(locator),
                   ch(chEnv.getCH()),
-                  routeStateData(routeStateData),
                   requestState(requestState),
                   fleetSize(fleetSize),
                   distances(),
@@ -188,7 +186,7 @@ namespace karri {
         // Computes the exact distances via a given vehicle to all pickups added using addPickupForProcessing() (since the
         // last call to this function or initialize()). Skips pickups for which the distance via the given vehicle is
         // already known.
-        void computeExactDistancesVia(const Vehicle &vehicle) {
+        void computeExactDistancesVia(const Vehicle &vehicle, const RouteStateData &routeStateData) {
 
             assert(routeStateData.numStopsOf(vehicle.vehicleId) > 1);
             curLeeway = routeStateData.leewayOfLegStartingAt(routeStateData.stopIdsFor(vehicle.vehicleId)[0]);
@@ -202,7 +200,7 @@ namespace karri {
             assert(vehLocation != INVALID_LOC);
 
             if (vehLocation.location == routeStateData.stopLocationsFor(vehicle.vehicleId)[0]) {
-                fillDistancesForVehicleAtPrevStop(vehicle);
+                fillDistancesForVehicleAtPrevStop(vehicle, routeStateData);
                 waitingQueue.clear();
                 prevNumPickups = requestState.numPickups();
                 return;
@@ -317,7 +315,7 @@ namespace karri {
             return curLoc;
         }
 
-        void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle) {
+        void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle, const RouteStateData &routeStateData) {
             const auto &stopLocations = routeStateData.stopLocationsFor(vehicle.vehicleId);
             for (const auto &[pickupId, distFromPrevStopToPickup]: waitingQueue) {
                 if (stopLocations[0] != requestState.pickups[pickupId].loc) {
@@ -333,7 +331,6 @@ namespace karri {
         const InputGraphT &inputGraph;
         VehicleLocatorT &vehicleLocator;
         const CH &ch;
-        const RouteStateData &routeStateData;
         RequestState<CostCalculatorT> &requestState;
         const int fleetSize;
 

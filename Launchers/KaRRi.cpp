@@ -421,8 +421,8 @@ int main(int argc, char *argv[]) {
                 SimdLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>,
                 BasicLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>>;
         using FeasibleEllipticDistancesImpl = FeasibleEllipticDistances<EllipticBCHLabelSet>;
-        FeasibleEllipticDistancesImpl feasibleEllipticPickups(fleet.size(), variableData);
-        FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(fleet.size(), variableData);
+        FeasibleEllipticDistancesImpl feasibleEllipticPickups(fleet.size());
+        FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(fleet.size());
 
 
         LastStopsAtVertices lastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
@@ -472,7 +472,7 @@ int main(int argc, char *argv[]) {
         using CurVehLocToPickupLabelSet = PDDistancesLabelSet;
         using CurVehLocToPickupSearchesImpl = CurVehLocToPickupSearches<VehicleInputGraph, VehicleLocatorImpl, VehCHEnv
         , CurVehLocToPickupLabelSet, CostCalculator>;
-        CurVehLocToPickupSearchesImpl curVehLocToPickupSearches(vehicleInputGraph, locator, *vehChEnv, variableData,
+        CurVehLocToPickupSearchesImpl curVehLocToPickupSearches(vehicleInputGraph, locator, *vehChEnv,
                                                                 reqState, fleet.size());
 
 
