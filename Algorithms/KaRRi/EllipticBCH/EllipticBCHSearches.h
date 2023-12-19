@@ -128,23 +128,14 @@ namespace karri {
 
         struct UpdateDistancesToPDLocs {
 
-            UpdateDistancesToPDLocs() : curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID), numPDLocsSearched() {}
+            UpdateDistancesToPDLocs() : curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsToPDLocs) {
 
                 assert(curFeasible);
-                int &curNumPDLocs = numPDLocsSearched.local();
-
-                if (curNumPDLocs == K) {
-                    curNumPDLocs = 0;
-                }
-
-                if (curNumPDLocs < K) {
-                    curNumPDLocs++;
-                }
                 return curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, curFirstIdOfBatch.local(),
-                                                                  distsToPDLocs, meetingVertex, curNumPDLocs == K);
+                                                                  distsToPDLocs, meetingVertex);
             }
 
 
@@ -167,13 +158,12 @@ namespace karri {
         private:
             FeasibleEllipticDistancesT *curFeasible;
             enumerable_thread_specific<int> curFirstIdOfBatch;
-            enumerable_thread_specific<int> numPDLocsSearched;
         };
 
         struct UpdateDistancesFromPDLocs {
 
             UpdateDistancesFromPDLocs(const RouteState &routeState)
-                    : routeState(routeState), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID), numPDLocsSearched() {}
+                    : routeState(routeState), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsFromPDLocs) {
@@ -185,17 +175,8 @@ namespace karri {
                     return LabelMask(false);
 
                 assert(curFeasible);
-                int &curNumPDLocs = numPDLocsSearched.local();
-
-                if (curNumPDLocs == K) {
-                    curNumPDLocs = 0;
-                }
-
-                if (curNumPDLocs < K) {
-                    curNumPDLocs++;
-                }
                 return curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, curFirstIdOfBatch.local(),
-                                                                      distsFromPDLocs, meetingVertex, curNumPDLocs == K);
+                                                                      distsFromPDLocs, meetingVertex);
             }
 
             void setCurFeasible(FeasibleEllipticDistancesT *const newCurFeasible) {
@@ -218,7 +199,6 @@ namespace karri {
             const RouteState &routeState;
             FeasibleEllipticDistancesT *curFeasible;
             enumerable_thread_specific<int> curFirstIdOfBatch;
-            enumerable_thread_specific<int> numPDLocsSearched;
         };
 
 
@@ -343,7 +323,7 @@ namespace karri {
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {
                 runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            });
+            }, static_partitioner());
 
             // Done with to searches
             updateDistancesToPdLocs.endToSearches();
@@ -352,7 +332,7 @@ namespace karri {
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {
                 runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            });
+            }, static_partitioner());
             
             // Done with from searches
             updateDistancesFromPdLocs.endFromSearches();
@@ -384,7 +364,7 @@ namespace karri {
             totalNumVerticesSettled += localFromQuery.getNumVerticesSettled();
 
             // After a search batch of K PDLocs, write the distances back to the global vectors
-            // updateDistancesFromPdLocs.curFeasibleSynchronizeDistances();
+             updateDistancesFromPdLocs.curFeasibleSynchronizeDistances();
         }
 
         template<typename SpotContainerT>
@@ -415,7 +395,7 @@ namespace karri {
             totalNumVerticesSettled += localToQuery.getNumVerticesSettled();
             
             // After a search batch of K PDLocs, write the distances back to the global vectors
-            // updateDistancesToPdLocs.curFeasibleSynchronizeDistances();
+             updateDistancesToPdLocs.curFeasibleSynchronizeDistances();
         }
 
         template<PDLocType type, typename PDLocsT>
