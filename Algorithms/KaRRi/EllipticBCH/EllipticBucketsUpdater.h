@@ -152,7 +152,7 @@ namespace karri {
                                   fixedTargetBuckets);
         }
 
-        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle& veh, RouteStateData &routeStateData) {
+        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle &veh, RouteStateData &routeStateData) {
             const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
@@ -191,7 +191,7 @@ namespace karri {
             stats.elliptic_update_numEntriesScanned += numEntriesScanned;
         }
 
-        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle& veh, RouteStateData &routeStateData) {
+        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle &veh, RouteStateData &routeStateData) {
             const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;

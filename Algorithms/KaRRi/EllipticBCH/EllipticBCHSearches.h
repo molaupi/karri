@@ -223,7 +223,8 @@ namespace karri {
         EllipticBCHSearches(const InputGraphT &inputGraph,
                             const Fleet &fleet,
                             const EllipticBucketsUpdaterT &ellipticBucketsUpdater,
-                            const LastStopsAtVertices &lastStopsAtVertices,
+                            const LastStopsAtVertices &variableLastStopsAtVertices,
+                            const LastStopsAtVertices &fixedLastStopsAtVertices,
                             const CHEnvT &chEnv,
                             FeasibleEllipticDistancesT &feasibleEllipticPickups,
                             FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
@@ -233,7 +234,8 @@ namespace karri {
                 fleet(fleet),
                 ch(chEnv.getCH()),
                 requestState(requestState),
-                lastStopsAtVertices(lastStopsAtVertices),
+                variableLastStopsAtVertices(variableLastStopsAtVertices),
+                fixedLastStopsAtVertices(fixedLastStopsAtVertices),
                 feasibleEllipticPickups(feasibleEllipticPickups),
                 feasibleEllipticDropoffs(feasibleEllipticDropoffs),
                 distUpperBound(INFTY),
@@ -403,12 +405,15 @@ namespace karri {
                     }
                 }
 
+                const LastStopsAtVertices &curLastStopAtVertex = routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE ?
+                        variableLastStopsAtVertices : fixedLastStopsAtVertices;  //TODO: LastStopVertex
+
                 if constexpr (type == DROPOFF) {
                     // Additionally find dropoffs that coincide with the last stop:
-                    if (!lastStopsAtVertices.isAnyLastStopAtVertex(head))
+                    if (!curLastStopAtVertex.isAnyLastStopAtVertex(head))
                         continue;
 
-                    for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(head)) {
+                    for (const auto &vehId: curLastStopAtVertex.vehiclesWithLastStopAt(head)) {
                         const auto numStops = routeStateData.numStopsOf(vehId);
                         if (routeStateData.stopLocationsFor(vehId)[numStops - 1] == pdLoc.loc) {
                             res.push_back({pdLoc.id, vehId, numStops - 1});
@@ -428,7 +433,8 @@ namespace karri {
         RequestState<CostCalculatorT> &requestState;
 
         const typename EllipticBucketsUpdaterT::BucketContainer *sourceBuckets;
-        const LastStopsAtVertices &lastStopsAtVertices;
+        const LastStopsAtVertices &variableLastStopsAtVertices;
+        const LastStopsAtVertices &fixedLastStopsAtVertices;
 
         FeasibleEllipticDistancesT &feasibleEllipticPickups;
         FeasibleEllipticDistancesT &feasibleEllipticDropoffs;

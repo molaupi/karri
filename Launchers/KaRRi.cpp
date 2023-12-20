@@ -425,12 +425,13 @@ int main(int argc, char *argv[]) {
         FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(fleet.size());
 
 
-        LastStopsAtVertices lastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
+        LastStopsAtVertices variableLastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
+        LastStopsAtVertices fixedLastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
 
         using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
                 EllipticBuckets, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet, CostCalculator>;
 
-        EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, ellipticBuckets, lastStopsAtVertices,
+        EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, ellipticBuckets, variableLastStopsAtVertices, fixedLastStopsAtVertices,
                                                  *vehChEnv, feasibleEllipticPickups, feasibleEllipticDropoffs, reqState);
 
 
@@ -519,7 +520,7 @@ int main(int argc, char *argv[]) {
 
         using PALSInsertionsFinderImpl = PALSAssignmentsFinder<VehicleInputGraph, PDDistancesImpl, PALSStrategy, CostCalculator>;
         PALSInsertionsFinderImpl palsInsertionsFinder(palsStrategy, vehicleInputGraph, fleet, calc,
-                                                      lastStopsAtVertices, pdDistances, reqState);
+                                                      variableLastStopsAtVertices, fixedLastStopsAtVertices, pdDistances, reqState);
 
         // Construct DALS strategy and assignment finder:
 
@@ -583,12 +584,13 @@ int main(int argc, char *argv[]) {
         , CurVehLocToPickupSearchesImpl, VehPathTracker, RouteStateUpdater, FixedRouteStateUpdaterImpl, CostCalculator, std::ofstream>;
         SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, inputConfig, curVehLocToPickupSearches,
                                                   pathTracker, variableUpdater, variableData, fixedUpdater, fixedData, ellipticBuckets, lastStopBucketsUpdater,
-                                                  lastStopsAtVertices);
+                                                  variableLastStopsAtVertices, fixedLastStopsAtVertices, fleet);
 
         // Initialize last stop state for initial locations of vehicles
         for (const auto &veh: fleet) {
             const auto head = vehicleInputGraph.edgeHead(veh.initialLocation);
-            lastStopsAtVertices.insertLastStopAt(head, veh.vehicleId);
+            variableLastStopsAtVertices.insertLastStopAt(head, veh.vehicleId);
+            fixedLastStopsAtVertices.insertLastStopAt(head, veh.vehicleId);
             lastStopBucketsUpdater.generateBucketEntries(veh, 0, variableData);
             lastStopBucketsUpdater.generateBucketEntries(veh, 0, fixedData);
 

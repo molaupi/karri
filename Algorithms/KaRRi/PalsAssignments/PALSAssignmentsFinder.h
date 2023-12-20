@@ -39,12 +39,14 @@ namespace karri {
     public:
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
-                              const CostCalculatorT &calculator, const LastStopsAtVertices &lastStopsAtVertices,const PDDistancesT &pdDistances, RequestState<CostCalculatorT> &requestState)
+                              const CostCalculatorT &calculator, const LastStopsAtVertices &variableLastStopsAtVertices, const LastStopsAtVertices &fixedLastStopsAtVertices,
+                              const PDDistancesT &pdDistances, RequestState<CostCalculatorT> &requestState)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
-                  lastStopsAtVertices(lastStopsAtVertices),
+                  variableLastStopsAtVertices(variableLastStopsAtVertices),
+                  fixedLastStopsAtVertices(fixedLastStopsAtVertices),
                   pdDistances(pdDistances),
                   requestState(requestState) {}
 
@@ -68,14 +70,18 @@ namespace karri {
 
             Assignment asgn;
             asgn.distToPickup = 0;
+
+            const LastStopsAtVertices &curLastStopVertices = routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE ?
+                                                             variableLastStopsAtVertices : fixedLastStopsAtVertices; //TODO: LastStopVertex
+
             for (const auto &p: requestState.pickups) {
                 asgn.pickup = &p;
 
                 const int head = inputGraph.edgeHead(asgn.pickup->loc);
-                if (!lastStopsAtVertices.isAnyLastStopAtVertex(head))
+                if (!curLastStopVertices.isAnyLastStopAtVertex(head))
                     continue;
 
-                for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(head)) {
+                for (const auto &vehId: curLastStopVertices.vehiclesWithLastStopAt(head)) {
                     ++numCandidateVehiclesForCoinciding;
                     const auto numStops = routeStateData.numStopsOf(vehId);
                     if (routeStateData.stopLocationsFor(vehId)[numStops - 1] != asgn.pickup->loc)
@@ -112,7 +118,8 @@ namespace karri {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CostCalculatorT &calculator;
-        const LastStopsAtVertices &lastStopsAtVertices;
+        const LastStopsAtVertices &variableLastStopsAtVertices;
+        const LastStopsAtVertices &fixedLastStopsAtVertices;
         const PDDistancesT &pdDistances;
         RequestState<CostCalculatorT> &requestState;
 
