@@ -151,6 +151,10 @@ namespace karri {
                 curFeasible->updateToDistancesInGlobalVectors(curFirstIdOfBatch.local());
             }
 
+            void startToSearch() {
+                curFeasible->initLocal();
+            }
+
             void endToSearches() {
                 curFeasible->resetLocalPairs();
             }
@@ -189,6 +193,10 @@ namespace karri {
 
             void curFeasibleSynchronizeDistances() {
                 curFeasible->updateFromDistancesInGlobalVectors(curFirstIdOfBatch.local());
+            }
+
+            void startFromSearch() {
+                curFeasible->initLocal();
             }
 
             void endFromSearches() {
@@ -343,6 +351,8 @@ namespace karri {
                                        const SpotContainerT &pdLocs) {
             assert(endId > startId && endId - startId <= K);
 
+            updateDistancesFromPdLocs.startFromSearch();
+
             std::array<int, K> pdLocHeads;
 
             for (unsigned int i = 0; i < K; ++i) {
@@ -371,6 +381,8 @@ namespace karri {
         void runRegularBCHSearchesTo(const int startId, const int endId,
                                      const SpotContainerT &pdLocs) {
             assert(endId > startId && endId - startId <= K);
+
+            updateDistancesToPdLocs.startToSearch();
 
             std::array<int, K> travelTimes;
             std::array<int, K> pdLocTails;
