@@ -331,7 +331,7 @@ namespace karri {
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {
                 runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            }, static_partitioner());
+            });
 
             // Done with to searches
             updateDistancesToPdLocs.endToSearches();
@@ -340,7 +340,7 @@ namespace karri {
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {
                 runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            }, static_partitioner());
+            });
             
             // Done with from searches
             updateDistancesFromPdLocs.endFromSearches();
