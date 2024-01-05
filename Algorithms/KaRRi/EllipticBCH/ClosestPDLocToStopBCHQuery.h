@@ -95,8 +95,8 @@ namespace karri {
             for (const auto &haltingSpot: haltingSpots) {
 
                 // Introduce rank of tail of halting spot as source for toSearch:
-                const auto tailRank = ch.rank(inputGraph.edgeTail(haltingSpot.location));
-                const auto offset = inputGraph.travelTime(haltingSpot.location);
+                const auto tailRank = ch.rank(inputGraph.edgeTail(haltingSpot.loc));
+                const auto offset = inputGraph.travelTime(haltingSpot.loc);
                 if (offset < toSearch.distanceLabels[tailRank][0]) {
                     toSearch.distanceLabels[tailRank][0] = offset;
 
@@ -121,7 +121,7 @@ namespace karri {
 
             for (const auto &haltingSpot: haltingSpots) {
                 // Introduce rank of head of halting spot as source for fromSearch:
-                const auto headRank = ch.rank(inputGraph.edgeHead(haltingSpot.location));
+                const auto headRank = ch.rank(inputGraph.edgeHead(haltingSpot.loc));
                 if (!fromSearch.queue.contains(headRank)) {
                     fromSearch.distanceLabels[headRank][0] = 0;
                     fromSearch.queue.insert(headRank, 0);

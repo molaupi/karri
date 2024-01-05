@@ -79,6 +79,9 @@ namespace karri {
 
     template<typename, typename, typename, typename, typename>
     class ClosestPDLocToLastStopBCHQuery;
+
+    template<typename, typename, typename, typename, typename, typename>
+    class ClosestHaltingSpotToRegularStopBCHQuery;
 }
 
 
