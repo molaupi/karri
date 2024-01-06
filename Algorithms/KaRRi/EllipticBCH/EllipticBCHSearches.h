@@ -267,7 +267,7 @@ namespace karri {
             timer.restart();
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
-            preliminarySearchForPickups();
+            preliminarySearchForDropOffs();
             runBCHSearchesFromAndTo(requestState.dropoffs);
             const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
@@ -315,18 +315,9 @@ namespace karri {
                     requestState.getBestCost(), routeState.getMaxLegLength());
             distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
 
-            // Process in batches of size K
-            // for (int i = 0; i < pdLocs.size(); i += K) {
-            //     runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            // }
-
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
-            
-            // for (int i = 0; i < pdLocs.size(); i += K) {
-            //     runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
-            // }
 
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
@@ -489,10 +480,7 @@ namespace karri {
         UpdateDistancesToPDLocs updateDistancesToPdLocs;
         UpdateDistancesFromPDLocs updateDistancesFromPdLocs;
         
-        // ToQueryType toQuery;
         enumerable_thread_specific<ToQueryType> toQuery;
-        
-        // FromQueryType fromQuery;
         enumerable_thread_specific<FromQueryType> fromQuery;
 
         int numSearchesRun;
