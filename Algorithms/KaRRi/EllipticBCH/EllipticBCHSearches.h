@@ -64,7 +64,6 @@ namespace karri {
         using LabelMask = typename LabelSetT::LabelMask;
         using ClosestPDLocSearch = ClosestHaltingSpotToRegularStopBCHQueryWithStallOnDemand<InputGraphT, CHEnvT, typename EllipticBucketsEnvT::BucketContainer, typename EllipticBucketsEnvT::BucketContainer>;
 
-
         using Buckets = typename EllipticBucketsEnvT::BucketContainer;
 
         struct StopBCHQuery {
@@ -149,6 +148,18 @@ namespace karri {
                 curFirstIdOfBatch.local() = newCurFirstIdOfBatch;
             }
 
+            void curFeasibleSynchronizeDistances() {
+                curFeasible->updateToDistancesInGlobalVectors(curFirstIdOfBatch.local());
+            }
+
+            void startToSearch() {
+                curFeasible->initLocal();
+            }
+
+            void endToSearches() {
+                curFeasible->resetLocalPairs();
+            }
+
         private:
             FeasibleEllipticDistancesT *curFeasible;
             enumerable_thread_specific<int> curFirstIdOfBatch;
@@ -179,6 +190,18 @@ namespace karri {
 
             void setCurFirstIdOfBatch(int const newCurFirstIdOfBatch) {
                 curFirstIdOfBatch.local() = newCurFirstIdOfBatch;
+            }
+
+            void curFeasibleSynchronizeDistances() {
+                curFeasible->updateFromDistancesInGlobalVectors(curFirstIdOfBatch.local());
+            }
+
+            void startFromSearch() {
+                curFeasible->initLocal();
+            }
+
+            void endFromSearches() {
+                curFeasible->resetLocalPairs();
             }
 
         private:
@@ -251,8 +274,6 @@ namespace karri {
 
             // Run for pickups:
             Timer timer;
-
-
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticPickups);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticPickups);
             preliminarySearchForPickups();
@@ -317,17 +338,29 @@ namespace karri {
 
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
-            {runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
+            {
+                runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
+            });
+
+            // Done with to searches
+            updateDistancesToPdLocs.endToSearches();
 
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
-            {runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);});
+            {
+                runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
+            });
+            
+            // Done with from searches
+            updateDistancesFromPdLocs.endFromSearches();
         }
 
         template<typename SpotContainerT>
         void runRegularBCHSearchesFrom(const int startId, const int endId,
                                        const SpotContainerT &pdLocs) {
             assert(endId > startId && endId - startId <= K);
+
+            updateDistancesFromPdLocs.startFromSearch();
 
             std::array<int, K> pdLocHeads;
 
@@ -348,12 +381,17 @@ namespace karri {
             ++numSearchesRun;
             totalNumEdgeRelaxations += localFromQuery.getNumEdgeRelaxations();
             totalNumVerticesSettled += localFromQuery.getNumVerticesSettled();
+
+            // After a search batch of K PDLocs, write the distances back to the global vectors
+             updateDistancesFromPdLocs.curFeasibleSynchronizeDistances();
         }
 
         template<typename SpotContainerT>
         void runRegularBCHSearchesTo(const int startId, const int endId,
                                      const SpotContainerT &pdLocs) {
             assert(endId > startId && endId - startId <= K);
+
+            updateDistancesToPdLocs.startToSearch();
 
             std::array<int, K> travelTimes;
             std::array<int, K> pdLocTails;
@@ -376,6 +414,9 @@ namespace karri {
             ++numSearchesRun;
             totalNumEdgeRelaxations += localToQuery.getNumEdgeRelaxations();
             totalNumVerticesSettled += localToQuery.getNumVerticesSettled();
+            
+            // After a search batch of K PDLocs, write the distances back to the global vectors
+             updateDistancesToPdLocs.curFeasibleSynchronizeDistances();
         }
 
         template<PDLocType type, typename PDLocsT>
