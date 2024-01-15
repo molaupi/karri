@@ -217,24 +217,16 @@ template<typename CostCalculatorT>
             bestCost = INFTY;
             notUsingVehicleIsBest = false;
             notUsingVehicleDist = INFTY;
-
-            bestAssignmentOnFixedRoutes = Assignment();
-            bestCostOnFixedRoutes = INFTY;
-            notUsingVehicleIsBestOnFixedRoutes = false;
-            fixedRun = false;
         }
 
-        void resetForFixedRouteRun() {
-            fixedRun = true;
-
-            perfStats.clear();
-            pickups.clear();
-            dropoffs.clear();
-
+        void resetFixedData() {
             bestAssignmentOnFixedRoutes = Assignment();
             bestCostOnFixedRoutes = INFTY;
             notUsingVehicleIsBestOnFixedRoutes = false;
-            notUsingVehicleDistOnFixedRoutes = INFTY;
+        }
+
+        void fixedRunOn() {
+            fixedRun = true;
         }
 
         void fixedRunOff() {

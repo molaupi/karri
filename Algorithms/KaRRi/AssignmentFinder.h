@@ -70,16 +70,17 @@ namespace karri {
                   fixedRouteStateData(fixedRouteStateData){}
 
         const RequestState<CostCalculatorT> &findBestAssignment(const Request &req) {
+            reqState.resetFixedData();
+            reqState.fixedRunOn();
+            findBestAssignmentProcedure(req, fixedRouteStateData);
+            reqState.fixedRunOff();
             findBestAssignmentProcedure(req, variableRouteStateData);
-            //findBestAssignmentProcedure(req, fixedRouteStateData);
-            //reqState.fixedRunOff();
             return reqState;
         }
 
 
     private:
 
-        // TODO: Die Fixed Buckets müssen im SystemStateUpdater noch gemacht werden (für elliptic und fpür last stop)
 
         void findBestAssignmentProcedure(const Request &req, RouteStateData &data) {
             // Initialize finder for this request:
@@ -112,7 +113,7 @@ namespace karri {
 
         void initializeForRequest(const Request &req, RouteStateData &data) {
             calc.exchangeRouteStateData(data);
-            requestStateInitializer.initializeRequestState(req, data.getTypeOfData());
+            requestStateInitializer.initializeRequestState(req);
 
             // Initialize components according to new request state:
             ellipticBchSearches.init(data);
