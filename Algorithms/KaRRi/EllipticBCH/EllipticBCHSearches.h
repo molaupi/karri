@@ -42,7 +42,7 @@ namespace karri {
     template<typename InputGraphT,
             typename CHEnvT,
             typename CostFunctionT,
-            typename EllipticBucketsUpdaterT,
+            typename EllipticBucketsWrapperT,
             typename FeasibleEllipticDistancesT,
             typename LabelSetT,
             typename CostCalculatorT>
@@ -56,7 +56,7 @@ namespace karri {
         using LabelMask = typename LabelSetT::LabelMask;
 
 
-        using Buckets = typename EllipticBucketsUpdaterT::BucketContainer;
+        using Buckets = typename EllipticBucketsWrapperT::BucketContainer;
 
         struct StopBCHQuery {
 
@@ -94,7 +94,7 @@ namespace karri {
                     ++numEntriesVisited;
                     const auto distViaV = distToV + entry.distToTarget;
 
-                    if constexpr (EllipticBucketsUpdaterT::SORTED_BY_REM_LEEWAY) {
+                    if constexpr (EllipticBucketsWrapperT::SORTED_BY_REM_LEEWAY) {
                         // Entries in a bucket are ordered by the remaining leeway, i.e. the leeway minus the distance from/to
                         // the stop to/from this vertex.
                         // If all distances break the remaining leeway for this entry, then they also break the remaining leeway
@@ -222,15 +222,13 @@ namespace karri {
 
         EllipticBCHSearches(const InputGraphT &inputGraph,
                             const Fleet &fleet,
-                            const EllipticBucketsUpdaterT &ellipticBucketsUpdater,
                             const LastStopsAtVertices &variableLastStopsAtVertices,
                             const LastStopsAtVertices &fixedLastStopsAtVertices,
                             const CHEnvT &chEnv,
                             FeasibleEllipticDistancesT &feasibleEllipticPickups,
                             FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
                             RequestState<CostCalculatorT> &requestState)
-                : ellipticBucketsUpdater(ellipticBucketsUpdater),
-                inputGraph(inputGraph),
+                : inputGraph(inputGraph),
                 fleet(fleet),
                 ch(chEnv.getCH()),
                 requestState(requestState),
@@ -277,24 +275,22 @@ namespace karri {
         }
 
         // Initialize searches for new request
-        void init(RouteStateData &data) {
+        void init(RouteStateData &data, EllipticBucketsWrapperT &buckets) {
 
             Timer timer;
-
-            sourceBuckets = &ellipticBucketsUpdater.getSourceBuckets(data.getTypeOfData());
 
             updateDistancesToPdLocs.setCurRouteStateData(&data);
             updateDistancesFromPdLocs.setCurRouteStateData(&data);
 
-            updateDistancesToPdLocs.setCurBuckets(&ellipticBucketsUpdater.getSourceBuckets(data.getTypeOfData()));
-            updateDistancesFromPdLocs.setCurBuckets(&ellipticBucketsUpdater.getTargetBuckets(data.getTypeOfData()));
+            updateDistancesToPdLocs.setCurBuckets(&buckets.getSourceBuckets());
+            updateDistancesFromPdLocs.setCurBuckets(&buckets.getTargetBuckets());
 
             // Find pickups at existing stops for new request and initialize distances.
-            const auto pickupsAtExistingStops = findPDLocsAtExistingStops<PICKUP>(requestState.pickups, data);
+            const auto pickupsAtExistingStops = findPDLocsAtExistingStops<PICKUP>(requestState.pickups, data, buckets);
             feasibleEllipticPickups.init(requestState.numPickups(), pickupsAtExistingStops, inputGraph, data);
 
             // Find dropoffs at existing stops for new request and initialize distances.
-            const auto dropoffsAtExistingStops = findPDLocsAtExistingStops<DROPOFF>(requestState.dropoffs, data);
+            const auto dropoffsAtExistingStops = findPDLocsAtExistingStops<DROPOFF>(requestState.dropoffs, data, buckets);
             feasibleEllipticDropoffs.init(requestState.numDropoffs(), dropoffsAtExistingStops, inputGraph, data);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
@@ -387,14 +383,13 @@ namespace karri {
 
         template<PDLocType type, typename PDLocsT>
         std::vector<PDLocAtExistingStop>
-        findPDLocsAtExistingStops(const PDLocsT &pdLocs, const RouteStateData &routeStateData) {
+        findPDLocsAtExistingStops(const PDLocsT &pdLocs, const RouteStateData &routeStateData, EllipticBucketsWrapperT &buckets) {
             std::vector<PDLocAtExistingStop> res;
 
             for (const auto &pdLoc: pdLocs) {
                 const auto head = inputGraph.edgeHead(pdLoc.loc);
                 const auto headRank = ch.rank(head);
-                assert(sourceBuckets != nullptr);
-                for (const auto &e: sourceBuckets->getBucketOf(headRank)) {
+                for (const auto &e: buckets.getSourceBuckets().getBucketOf(headRank)) {
                     if (e.distToTarget == 0) {
                         const int vehId = routeStateData.vehicleIdOf(e.targetId);
                         const int stopIdx = routeStateData.stopPositionOf(e.targetId);
@@ -425,14 +420,12 @@ namespace karri {
             return res;
         }
 
-        const EllipticBucketsUpdaterT &ellipticBucketsUpdater;
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CH &ch;
         RequestState<CostCalculatorT> &requestState;
 
-        const typename EllipticBucketsUpdaterT::BucketContainer *sourceBuckets;
         const LastStopsAtVertices &variableLastStopsAtVertices;
         const LastStopsAtVertices &fixedLastStopsAtVertices;
 

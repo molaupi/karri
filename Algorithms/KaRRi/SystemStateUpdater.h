@@ -42,6 +42,7 @@ namespace karri {
             typename RouteStateUpdaterT,
             typename FixedRouteStateUpdaterT,
             typename CostCalculatorT,
+            typename BucketsWrapperT,
             typename LoggerT = NullLogger>
     class SystemStateUpdater {
 
@@ -52,6 +53,7 @@ namespace karri {
                            PathTrackerT &pathTracker,
                            RouteStateUpdaterT &variableUpdater, RouteStateData &variableData,
                            FixedRouteStateUpdaterT &fixedUpdater, RouteStateData &fixedData,
+                           BucketsWrapperT &fixedBuckets, BucketsWrapperT &variableBuckets,
                            EllipticBucketsUpdaterT &ellipticBucketsEnv,
                            LastStopBucketsUpdaterT &lastStopBucketsEnv,
                            LastStopsAtVertices &variableLastStopsAtVertices,
@@ -68,6 +70,8 @@ namespace karri {
                   fixedData(fixedData),
                   fleet(fleet),
                   ellipticBucketsEnv(ellipticBucketsEnv),
+                  fixedBuckets(fixedBuckets),
+                  variableBuckets(variableBuckets),
                   lastStopBucketsEnv(lastStopBucketsEnv),
                   variableLastStopsAtVertices(variableLastStopsAtVertices),
                   fixedLastStopsAtVertices(fixedLastStopsAtVertices),
@@ -184,8 +188,8 @@ namespace karri {
             pathTracker.logCompletedLeg(veh);
 
             // Update buckets and route state
-            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, variableData);
-            ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1, variableData);
+            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, variableData, variableBuckets);
+            ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1, variableData, variableBuckets);
 
 
             auto stopIds = variableData.stopIdsFor(veh.vehicleId);
@@ -222,8 +226,8 @@ namespace karri {
 
                 newPickup.pickedupReqAndDropoff.clear();
             }
-            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, fixedData);
-            ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1, fixedData);
+            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, fixedData, fixedBuckets);
+            ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1, fixedData, fixedBuckets);
 
             fixedUpdater.removeStartOfCurrentLeg(veh.vehicleId);
 
@@ -369,14 +373,14 @@ namespace karri {
         void movePreviousStopToCurrentLocationForReroute(const Vehicle &veh) {
             assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
             auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
-            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, variableData);
-            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, fixedData);
+            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, variableData, variableBuckets);
+            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, fixedData, fixedBuckets);
             variableUpdater.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
-            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, variableData);
+            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, variableData, variableBuckets);
 
             if (fixedData.numStopsOf(veh.vehicleId) > 1) {
                 fixedUpdater.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
-                ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, fixedData);
+                ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, fixedData, fixedBuckets);
                 return;
             }
             const auto oldLocHead = inputGraph.edgeHead(fixedData.stopLocationsFor(veh.vehicleId)[0]);
@@ -402,9 +406,9 @@ namespace karri {
 
             // If we use buckets sorted by remaining leeway, we have to update the leeway of all
             // entries for stops of this vehicle.
-            if constexpr (EllipticBucketsUpdaterT::SORTED_BY_REM_LEEWAY) {
-                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(*asgn.vehicle, variableData);
-                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(*asgn.vehicle, variableData);
+            if constexpr (BucketsWrapperT::SORTED_BY_REM_LEEWAY) {
+                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(*asgn.vehicle, variableData, variableBuckets);
+                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(*asgn.vehicle, variableData, variableBuckets);
             }
         }
 
@@ -412,8 +416,8 @@ namespace karri {
             const auto vehId = pickup.vehicleId;
 
             if (!pickUpWasFixed) {
-                ellipticBucketsEnv.generateTargetBucketEntries(fleet[vehId], pickup.insertIndex, fixedData);
-                ellipticBucketsEnv.generateSourceBucketEntries(fleet[vehId], pickup.insertIndex, fixedData);
+                ellipticBucketsEnv.generateTargetBucketEntries(fleet[vehId], pickup.insertIndex, fixedData, fixedBuckets);
+                ellipticBucketsEnv.generateSourceBucketEntries(fleet[vehId], pickup.insertIndex, fixedData, fixedBuckets);
             }
         }
 
@@ -424,15 +428,15 @@ namespace karri {
             if (dropoffAtExistingStop)
                 return;
 
-            ellipticBucketsEnv.generateTargetBucketEntries(fleet[vehId], dropoff.insertIndex, fixedData);
+            ellipticBucketsEnv.generateTargetBucketEntries(fleet[vehId], dropoff.insertIndex, fixedData, fixedBuckets);
 
             if (dropoff.insertIndex < fixedData.numStopsOf(vehId) - 1) {
-                ellipticBucketsEnv.generateSourceBucketEntries(fleet[vehId], dropoff.insertIndex, fixedData);
+                ellipticBucketsEnv.generateSourceBucketEntries(fleet[vehId], dropoff.insertIndex, fixedData, fixedBuckets);
                 return;
             }
 
             const int formerLastStopIdx = dropoff.insertIndex - (pickupWasAtEnd && !pickUpWasFixed) - 1;
-            ellipticBucketsEnv.generateSourceBucketEntries(fleet[vehId], formerLastStopIdx, fixedData);
+            ellipticBucketsEnv.generateSourceBucketEntries(fleet[vehId], formerLastStopIdx, fixedData, fixedBuckets);
 
             lastStopBucketsEnv.removeBucketEntries(fleet[vehId], formerLastStopIdx, fixedData);
             lastStopBucketsEnv.generateBucketEntries(fleet[vehId], dropoff.insertIndex, fixedData);
@@ -445,9 +449,9 @@ namespace karri {
             fixedLastStopsAtVertices.insertLastStopAt(newLocHead, vehId);
 
 
-            if constexpr (EllipticBucketsUpdaterT::SORTED_BY_REM_LEEWAY) {
-                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(fleet[dropoff.vehicleId], fixedData);
-                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(fleet[dropoff.vehicleId], fixedData);
+            if constexpr (BucketsWrapperT::SORTED_BY_REM_LEEWAY) {
+                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(fleet[dropoff.vehicleId], fixedData, fixedBuckets);
+                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(fleet[dropoff.vehicleId], fixedData, fixedBuckets);
             }
         }
 
@@ -457,19 +461,19 @@ namespace karri {
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
 
             if (!pickupAtExistingStop) {
-                ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, pickupIndex, variableData);
-                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, pickupIndex, variableData);
+                ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, pickupIndex, variableData, variableBuckets);
+                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, pickupIndex, variableData, variableBuckets);
             }
 
             // If no new stop was inserted for the pickup, we do not need to generate any new entries for it.
             if (dropoffAtExistingStop)
                 return;
 
-            ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, dropoffIndex, variableData);
+            ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, dropoffIndex, variableData, variableBuckets);
 
             // If dropoff is not the new last stop, we generate elliptic source buckets for it.
             if (dropoffIndex < variableData.numStopsOf(vehId) - 1) {
-                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, dropoffIndex, variableData);
+                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, dropoffIndex, variableData, variableBuckets);
                 return;
             }
 
@@ -477,7 +481,7 @@ namespace karri {
             // Generate elliptic source bucket entries for former last stop
             const auto pickupAtEnd = pickupIndex + 1 == dropoffIndex && pickupIndex > asgn.pickupStopIdx;
             const int formerLastStopIdx = dropoffIndex - pickupAtEnd - 1;
-            ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, formerLastStopIdx, variableData);
+            ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, formerLastStopIdx, variableData, variableBuckets);
 
             // Remove last stop bucket entries for former last stop and generate them for dropoff
             lastStopBucketsEnv.removeBucketEntries(*asgn.vehicle, formerLastStopIdx, variableData);
@@ -539,6 +543,8 @@ namespace karri {
 
         // Bucket state
         EllipticBucketsUpdaterT &ellipticBucketsEnv;
+        BucketsWrapperT &fixedBuckets;
+        BucketsWrapperT &variableBuckets;
         LastStopBucketsUpdaterT &lastStopBucketsEnv;
         LastStopsAtVertices &variableLastStopsAtVertices;
         LastStopsAtVertices &fixedLastStopsAtVertices;

@@ -39,7 +39,7 @@
 
 // Forward declarations for friend
 namespace karri {
-    template<typename, typename, bool>
+    template<typename, typename, typename>
     class EllipticBucketsUpdater;
 }
 
@@ -56,7 +56,7 @@ template <
     typename QueueT = AddressableQuadHeap>
 class DagShortestPaths {
 
-    template<typename, typename, bool>
+    template<typename, typename, typename>
     friend class karri::EllipticBucketsUpdater;
 
 

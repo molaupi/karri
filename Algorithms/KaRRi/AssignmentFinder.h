@@ -44,7 +44,8 @@ namespace karri {
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
             typename RelevantPDLocsFilterT,
-            typename CostCalculatorT
+            typename CostCalculatorT,
+            typename BucketsWrapperT
     >
     class AssignmentFinder {
 
@@ -55,7 +56,9 @@ namespace karri {
                          OrdAssignmentsT &ordinaryAssigments, PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments, DalsAssignmentsT &dalsAssignments,
                          RelevantPDLocsFilterT &relevantPdLocsFilter,
-                         RouteStateData &variableRouteStateData, RouteStateData &fixedRouteStateData, CostCalculatorT &calc)
+                         RouteStateData &variableRouteStateData, RouteStateData &fixedRouteStateData,
+                         BucketsWrapperT &variableBuckets, BucketsWrapperT &fixedBuckets,
+                         CostCalculatorT &calc)
                 : reqState(requestState),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
@@ -67,7 +70,9 @@ namespace karri {
                   relevantPdLocsFilter(relevantPdLocsFilter),
                   calc(calc),
                   variableRouteStateData(variableRouteStateData),
-                  fixedRouteStateData(fixedRouteStateData){}
+                  fixedRouteStateData(fixedRouteStateData),
+                  variableBuckets(variableBuckets),
+                  fixedBuckets(fixedBuckets){}
 
         const RequestState<CostCalculatorT> &findBestAssignment(const Request &req) {
             reqState.resetFixedData();
@@ -116,7 +121,11 @@ namespace karri {
             requestStateInitializer.initializeRequestState(req);
 
             // Initialize components according to new request state:
-            ellipticBchSearches.init(data);
+            if (data.getTypeOfData() == RouteStateDataType::VARIABLE) {
+                ellipticBchSearches.init(data, variableBuckets);
+            } else {
+                ellipticBchSearches.init(data, fixedBuckets);
+            }
             pdDistanceSearches.init();
             ordAssignments.init();
             pbnsAssignments.init();
@@ -138,5 +147,8 @@ namespace karri {
 
         RouteStateData &variableRouteStateData;
         RouteStateData &fixedRouteStateData;
+
+        BucketsWrapperT &variableBuckets;
+        BucketsWrapperT &fixedBuckets;
     };
 }

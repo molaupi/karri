@@ -411,10 +411,15 @@ int main(int argc, char *argv[]) {
         CostCalculator calc(inputConfig);
         RequestState<CostCalculator> reqState(calc, inputConfig);
 
+
         // Construct Elliptic BCH searches:
         static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
-        using EllipticBuckets = EllipticBucketsUpdater<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
-        EllipticBuckets ellipticBuckets(vehicleInputGraph, *vehChEnv, inputConfig,
+        using BucketsWrapper = BucketsWrapper<ELLIPTIC_SORTED_BUCKETS>;
+        BucketsWrapper variableBuckets(vehicleInputGraph.numVertices());
+        BucketsWrapper fixedBuckets(vehicleInputGraph.numVertices());
+
+        using EllipticBucketsUpdater = EllipticBucketsUpdater<VehicleInputGraph, VehCHEnv, BucketsWrapper>;
+        EllipticBucketsUpdater ellipticBucketUpdater(vehicleInputGraph, *vehChEnv, inputConfig,
                                               reqState.stats().updateStats);
 
         using EllipticBCHLabelSet = std::conditional_t<KARRI_ELLIPTIC_BCH_USE_SIMD,
@@ -429,9 +434,9 @@ int main(int argc, char *argv[]) {
         LastStopsAtVertices fixedLastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
 
         using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
-                EllipticBuckets, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet, CostCalculator>;
+                BucketsWrapper, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet, CostCalculator>;
 
-        EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, ellipticBuckets, variableLastStopsAtVertices, fixedLastStopsAtVertices,
+        EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, variableLastStopsAtVertices, fixedLastStopsAtVertices,
                                                  *vehChEnv, feasibleEllipticPickups, feasibleEllipticDropoffs, reqState);
 
 
@@ -565,10 +570,12 @@ int main(int argc, char *argv[]) {
                 PALSInsertionsFinderImpl,
                 DALSInsertionsFinderImpl,
                 RelevantPDLocsFilterImpl,
-                CostCalculator>;
+                CostCalculator,
+                BucketsWrapper>;
         InsertionFinderImpl insertionFinder(reqState, requestStateInitializer, ellipticSearches, pdDistanceQuery,
                                             ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
-                                            dalsInsertionsFinder, relevantPdLocsFilter, variableData, fixedData, calc);
+                                            dalsInsertionsFinder, relevantPdLocsFilter, variableData, fixedData,
+                                            variableBuckets, fixedBuckets, calc);
 
 
 #if KARRI_OUTPUT_VEHICLE_PATHS
@@ -580,10 +587,12 @@ int main(int argc, char *argv[]) {
 #endif
 
 
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBuckets, LastStopBuckets
-        , CurVehLocToPickupSearchesImpl, VehPathTracker, RouteStateUpdater, FixedRouteStateUpdaterImpl, CostCalculator, std::ofstream>;
+        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsUpdater, LastStopBuckets
+        , CurVehLocToPickupSearchesImpl, VehPathTracker, RouteStateUpdater, FixedRouteStateUpdaterImpl,
+        CostCalculator, BucketsWrapper, std::ofstream>;
         SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, inputConfig, curVehLocToPickupSearches,
-                                                  pathTracker, variableUpdater, variableData, fixedUpdater, fixedData, ellipticBuckets, lastStopBucketsUpdater,
+                                                  pathTracker, variableUpdater, variableData, fixedUpdater, fixedData, fixedBuckets, variableBuckets,
+                                                  ellipticBucketUpdater, lastStopBucketsUpdater,
                                                   variableLastStopsAtVertices, fixedLastStopsAtVertices, fleet);
 
         // Initialize last stop state for initial locations of vehicles
