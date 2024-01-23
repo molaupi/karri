@@ -69,6 +69,7 @@ template<typename CostCalculatorT>
         std::vector<PDLoc> pickups;
         std::vector<PDLoc> dropoffs;
 
+
         int numPickups() const {
             return pickups.size();
         }

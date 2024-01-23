@@ -31,24 +31,26 @@ namespace karri {
                           variableBuckets(variableBuckets),
                           fixedBuckets(fixedBuckets) {}
 
-        std::vector<RequestState<CostCalculatorT>> &calculateChanges(const Request &req) {
+        std::vector<RequestState<CostCalculatorT>*> &calculateChanges(const Request &req) {
+            if (currentResult.size() > 0) {
+                delete currentResult[0];
+            }
             currentResult.clear();
-            auto reqState = createAndInitializeRequestState(req);
+            auto *reqState = createAndInitializeRequestState(req);
             calc.exchangeRouteStateData(variableRouteStateData);
-            asgnFinder.findBestAssignment(reqState, variableRouteStateData, variableBuckets);
+            asgnFinder.findBestAssignment(*reqState, variableRouteStateData, variableBuckets);
             currentResult.push_back(reqState);
             return currentResult;
         }
 
-        RequestState<CostCalculatorT> createAndInitializeRequestState(const Request &req) {
-            auto newRequestState = RequestState<CostCalculatorT>(calc, config);
-            requestStateInitializer.initializeRequestState(req, newRequestState);
+        RequestState<CostCalculatorT> *createAndInitializeRequestState(const Request &req) {
+            auto *newRequestState = new RequestState<CostCalculatorT>(calc, config);
+            requestStateInitializer.initializeRequestState(req, *newRequestState);
             return newRequestState;
         }
-
-
-        std::vector<RequestState<CostCalculatorT>> currentResult = {};
     private:
+        std::vector<RequestState<CostCalculatorT>*> currentResult = {};
+
         AssignmentFinderT &asgnFinder;
 
         // Old Requests, their cost and location: oldReqData[req.requestId] = (Request, cost, location)

@@ -281,7 +281,7 @@ namespace karri {
             Timer timer;
 
             const auto &request = requests[reqId];
-            auto &asgnFinderResponse = assignmentManager.calculateChanges(request)[0];
+            auto &asgnFinderResponse = *assignmentManager.calculateChanges(request)[0];
             systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse);
 
             applyAssignment(asgnFinderResponse, reqId, occTime);
