@@ -60,6 +60,7 @@ add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNet
         ../Algorithms/KaRRi/RouteState/RouteStateDataType.h
         ../Algorithms/KaRRi/LastStopSearches/LastStopBucketsUpdater.h
         ../Algorithms/KaRRi/EllipticBCH/BucketsWrapper.h
+        ../Algorithms/KaRRi/AssignmentManager.h
 )
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
 

@@ -76,14 +76,10 @@ namespace karri {
 
         FindPDLocsInRadiusQuery(const PassengerGraphT &forwardPsgGraph,
                                 const PassengerGraphT &reversePsgGraph,
-                                const InputConfig &inputConfig,
-                                std::vector<PDLoc> &pickups,
-                                std::vector<PDLoc> &dropoffs)
+                                const InputConfig &inputConfig)
                 : forwardGraph(forwardPsgGraph),
                   reverseGraph(reversePsgGraph),
                   inputConfig(inputConfig),
-                  pickups(pickups),
-                  dropoffs(dropoffs),
                   pickupSearch(forwardPsgGraph, {inputConfig.pickupRadius},
                                {searchSpace}),
                   dropoffSearch(reversePsgGraph, {inputConfig.dropoffRadius},
@@ -92,7 +88,7 @@ namespace karri {
                   rand(seed) {}
 
         // Pickups will be collected into the given pickups vector and dropoffs will be collected into the given dropoffs vector
-        void findPDLocs(const int origin, const int destination) {
+        void findPDLocs(const int origin, const int destination, std::vector<PDLoc> &pickups, std::vector<PDLoc> &dropoffs) {
             assert(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
             pickups.clear();
             dropoffs.clear();
@@ -100,13 +96,13 @@ namespace karri {
             searchSpace.clear();
             auto headOfOriginEdge = forwardGraph.edgeHead(origin);
             pickupSearch.run(headOfOriginEdge);
-            turnSearchSpaceIntoPickupLocations();
+            turnSearchSpaceIntoPickupLocations(pickups);
 
             searchSpace.clear();
             auto tailOfDestEdge = forwardGraph.edgeTail(destination);
             auto destOffset = forwardGraph.travelTime(destination);
             dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
-            turnSearchSpaceIntoDropoffLocations();
+            turnSearchSpaceIntoDropoffLocations(dropoffs);
 
             finalizePDLocs(origin, pickups, inputConfig.maxNumPickups);
             finalizePDLocs(destination, dropoffs, inputConfig.maxNumDropoffs);
@@ -114,7 +110,7 @@ namespace karri {
 
     private:
 
-        void turnSearchSpaceIntoPickupLocations() {
+        void turnSearchSpaceIntoPickupLocations(std::vector<PDLoc> &pickups) {
             for (const auto &v: searchSpace) {
                 const auto distToV = pickupSearch.getDistance(v);
                 assert(distToV <= inputConfig.pickupRadius);
@@ -129,7 +125,7 @@ namespace karri {
             }
         }
 
-        void turnSearchSpaceIntoDropoffLocations() {
+        void turnSearchSpaceIntoDropoffLocations(std::vector<PDLoc> &dropoffs) {
             for (const auto &v: searchSpace) {
                 const auto distToV = dropoffSearch.getDistance(v);
                 assert(distToV <= inputConfig.dropoffRadius);
@@ -207,8 +203,6 @@ namespace karri {
         const PassengerGraphT &forwardGraph;
         const PassengerGraphT &reverseGraph;
         const InputConfig &inputConfig;
-        std::vector<PDLoc> &pickups;
-        std::vector<PDLoc> &dropoffs;
         PickupSearch pickupSearch;
         DropoffSearch dropoffSearch;
 

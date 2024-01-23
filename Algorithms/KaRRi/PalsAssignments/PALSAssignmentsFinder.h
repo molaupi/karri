@@ -40,7 +40,7 @@ namespace karri {
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
                               const CostCalculatorT &calculator, const LastStopsAtVertices &variableLastStopsAtVertices, const LastStopsAtVertices &fixedLastStopsAtVertices,
-                              const PDDistancesT &pdDistances, RequestState<CostCalculatorT> &requestState)
+                              const PDDistancesT &pdDistances)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
@@ -48,15 +48,17 @@ namespace karri {
                   variableLastStopsAtVertices(variableLastStopsAtVertices),
                   fixedLastStopsAtVertices(fixedLastStopsAtVertices),
                   pdDistances(pdDistances),
-                  requestState(requestState) {}
+                  requestState(nullptr) {}
 
         void findAssignments(const RouteStateData &data) {
+            assert(requestState);
             findAssignmentsWherePickupCoincidesWithLastStop(data);
-            strategy.tryPickupAfterLastStop(data);
+            strategy.tryPickupAfterLastStop(data, *requestState);
+            requestState = nullptr;
         }
 
-        void init() {
-            // no op
+        void init(RequestState<CostCalculatorT> &reqState) {
+            requestState = &reqState;
         }
 
     private:
@@ -74,7 +76,7 @@ namespace karri {
             const LastStopsAtVertices &curLastStopVertices = routeStateData.getTypeOfData() == RouteStateDataType::VARIABLE ?
                                                              variableLastStopsAtVertices : fixedLastStopsAtVertices; //TODO: LastStopVertex
 
-            for (const auto &p: requestState.pickups) {
+            for (const auto &p: requestState->pickups) {
                 asgn.pickup = &p;
 
                 const int head = inputGraph.edgeHead(asgn.pickup->loc);
@@ -89,8 +91,8 @@ namespace karri {
 
                     // Calculate lower bound on insertion cost with this pickup and vehicle
                     const auto lowerBoundCost = calculator.calcCostLowerBoundForPickupAfterLastStop(
-                            fleet[vehId], *asgn.pickup, 0, requestState.minDirectPDDist, requestState);
-                    if (lowerBoundCost > requestState.getBestCost())
+                            fleet[vehId], *asgn.pickup, 0, requestState->minDirectPDDist, *requestState);
+                    if (lowerBoundCost > requestState->getBestCost())
                         continue;
 
                     // If necessary, check paired insertion with each dropoff
@@ -98,19 +100,19 @@ namespace karri {
                     asgn.pickupStopIdx = numStops - 1;
                     asgn.dropoffStopIdx = numStops - 1;
 
-                    for (const auto &d: requestState.dropoffs) {
+                    for (const auto &d: requestState->dropoffs) {
                         asgn.dropoff = &d;
-                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff, *requestState);
                         ++numInsertionsForCoinciding;
-                        requestState.tryAssignment(asgn);
+                        requestState->tryAssignment(asgn);
                     }
                 }
             }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().palsAssignmentsStats.pickupAtLastStop_tryAssignmentsTime += time;
-            requestState.stats().palsAssignmentsStats.pickupAtLastStop_numCandidateVehicles += numCandidateVehiclesForCoinciding;
-            requestState.stats().palsAssignmentsStats.pickupAtLastStop_numAssignmentsTried += numInsertionsForCoinciding;
+            requestState->stats().palsAssignmentsStats.pickupAtLastStop_tryAssignmentsTime += time;
+            requestState->stats().palsAssignmentsStats.pickupAtLastStop_numCandidateVehicles += numCandidateVehiclesForCoinciding;
+            requestState->stats().palsAssignmentsStats.pickupAtLastStop_numAssignmentsTried += numInsertionsForCoinciding;
         }
 
         StrategyT &strategy;
@@ -121,7 +123,7 @@ namespace karri {
         const LastStopsAtVertices &variableLastStopsAtVertices;
         const LastStopsAtVertices &fixedLastStopsAtVertices;
         const PDDistancesT &pdDistances;
-        RequestState<CostCalculatorT> &requestState;
+        RequestState<CostCalculatorT> *requestState;
 
     };
 }

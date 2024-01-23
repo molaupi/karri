@@ -36,7 +36,6 @@ namespace karri {
     // Core of the KaRRi algorithm: Given a ride request r, this facility finds the optimal assignment of r to the route
     // of a vehicle and a pickup and dropoff location, according to the current state of all vehicle routes.
     template<
-            typename RequestStateInitializerT,
             typename EllipticBCHSearchesT,
             typename PDDistanceSearchesT,
             typename OrdAssignmentsT,
@@ -51,39 +50,49 @@ namespace karri {
 
     public:
 
-        AssignmentFinder(RequestState<CostCalculatorT> &requestState, RequestStateInitializerT &requestStateInitializer,
-                         EllipticBCHSearchesT &ellipticBchSearches, PDDistanceSearchesT &pdDistanceSearches,
+        AssignmentFinder(EllipticBCHSearchesT &ellipticBchSearches, PDDistanceSearchesT &pdDistanceSearches,
                          OrdAssignmentsT &ordinaryAssigments, PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments, DalsAssignmentsT &dalsAssignments,
-                         RelevantPDLocsFilterT &relevantPdLocsFilter,
-                         RouteStateData &variableRouteStateData, RouteStateData &fixedRouteStateData,
-                         BucketsWrapperT &variableBuckets, BucketsWrapperT &fixedBuckets,
-                         CostCalculatorT &calc)
-                : reqState(requestState),
-                  requestStateInitializer(requestStateInitializer),
-                  ellipticBchSearches(ellipticBchSearches),
+                         RelevantPDLocsFilterT &relevantPdLocsFilter)
+                : ellipticBchSearches(ellipticBchSearches),
                   pdDistanceSearches(pdDistanceSearches),
                   ordAssignments(ordinaryAssigments),
                   pbnsAssignments(pbnsAssignments),
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
-                  relevantPdLocsFilter(relevantPdLocsFilter),
-                  calc(calc),
-                  variableRouteStateData(variableRouteStateData),
-                  fixedRouteStateData(fixedRouteStateData),
-                  variableBuckets(variableBuckets),
-                  fixedBuckets(fixedBuckets){}
+                  relevantPdLocsFilter(relevantPdLocsFilter) {}
 
-        const RequestState<CostCalculatorT> &findBestAssignment(const Request &req) {
-            reqState.resetFixedData();
-            reqState.fixedRunOn();
-            findBestAssignmentProcedure(req, fixedRouteStateData);
-            reqState.fixedRunOff();
-            findBestAssignmentProcedure(req, variableRouteStateData);
+        void findBestAssignment(RequestState<CostCalculatorT> &requestState, RouteStateData &data, BucketsWrapperT &buckets) {
+            // Initialize finder for this request:
+            initializeForRequest(requestState, data, buckets);
 
+            // Compute PD distances:
+            pdDistanceSearches.run();  // Nutzt keinen routestate
+
+            // Try PALS assignments:
+            palsAssignments.findAssignments(data);
+
+            // Run elliptic BCH searches:
+            ellipticBchSearches.run(data);
+
+            // Filter feasible PD-locations between ordinary stops:
+            relevantPdLocsFilter.filterOrdinary(data, requestState);
+
+            // Try ordinary assignments:
+            ordAssignments.findAssignments(data);
+
+            // Filter feasible PD-locations before next stops:
+            relevantPdLocsFilter.filterBeforeNextStop(data, requestState);
+
+            // Try DALS assignments:
+            dalsAssignments.findAssignments(data);
+
+            // Try PBNS assignments:
+            pbnsAssignments.findAssignments(data);
+        }
+
+        /**
             auto costBarrier = reqState.getBestCost() - reqState.getBestCostOnFixedRoutes();
-
-            /**
             if (costBarrier > 0) {
                 const auto missingStops = getMissingStops(reqState.getBestAssignmentOnFixedRoutes().vehicle->vehicleId);
                 const auto reassignableRequests = getReassignableRequests(missingStops);
@@ -96,11 +105,10 @@ namespace karri {
             else
                 oldLocation.push_back(reqState.getBestAssignment().pickup->loc);
 
-            */
-            return reqState;
-        }
 
-        std::vector<int> getReassignableRequests(const std::vector<int> stopIds) {
+
+
+                std::vector<int> getReassignableRequests(const std::vector<int> stopIds) {
             std::vector<int> result;
             for (const auto id: stopIds) {
                for (const auto req:  variableRouteStateData.getRequestsPickedUpAt(id)) {
@@ -126,59 +134,23 @@ namespace karri {
             return result;
 
         }
+            */
+
+
 
 
     private:
 
-
-        void findBestAssignmentProcedure(const Request &req, RouteStateData &data) {
-            // Initialize finder for this request:
-            initializeForRequest(req, data);
-
-            // Compute PD distances:
-            pdDistanceSearches.run();  // Nutzt keinen routestate
-
-            // Try PALS assignments:
-            palsAssignments.findAssignments(data);
-
-            // Run elliptic BCH searches:
-            ellipticBchSearches.run(data);
-
-            // Filter feasible PD-locations between ordinary stops:
-            relevantPdLocsFilter.filterOrdinary(data);
-
-            // Try ordinary assignments:
-            ordAssignments.findAssignments(data);
-
-            // Filter feasible PD-locations before next stops:
-            relevantPdLocsFilter.filterBeforeNextStop(data);
-
-            // Try DALS assignments:
-            dalsAssignments.findAssignments(data);
-
-            // Try PBNS assignments:
-            pbnsAssignments.findAssignments(data);
-        }
-
-        void initializeForRequest(const Request &req, RouteStateData &data) {
-            calc.exchangeRouteStateData(data);
-            requestStateInitializer.initializeRequestState(req);
-
+        void initializeForRequest(RequestState<CostCalculatorT> &requestState, RouteStateData &data, BucketsWrapperT &buckets) {
             // Initialize components according to new request state:
-            if (data.getTypeOfData() == RouteStateDataType::VARIABLE) {
-                ellipticBchSearches.init(data, variableBuckets);
-            } else {
-                ellipticBchSearches.init(data, fixedBuckets);
-            }
-            pdDistanceSearches.init();
-            ordAssignments.init();
-            pbnsAssignments.init();
-            palsAssignments.init();
-            dalsAssignments.init();
+            ellipticBchSearches.init(data, buckets, requestState);
+            pdDistanceSearches.init(requestState);
+            ordAssignments.init(requestState);
+            pbnsAssignments.init(requestState);
+            palsAssignments.init(requestState);
+            dalsAssignments.init(requestState);
         }
 
-        RequestState<CostCalculatorT> &reqState;
-        RequestStateInitializerT &requestStateInitializer;
         EllipticBCHSearchesT &ellipticBchSearches; // Elliptic BCH searches that find distances between existing stops and PD-locations (except after last stop).
         PDDistanceSearchesT &pdDistanceSearches; // PD-distance searches that compute distances from pickups to dropoffs.
         OrdAssignmentsT &ordAssignments; // Tries ordinary assignments where pickup and dropoff are inserted between existing stops.
@@ -186,17 +158,5 @@ namespace karri {
         PalsAssignmentsT &palsAssignments; // Tries PALS assignments where pickup and dropoff are inserted after the last stop.
         DalsAssignmentsT &dalsAssignments; // Tries DALS assignments where only the dropoff is inserted after the last stop.
         RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
-
-        CostCalculatorT &calc;
-
-        RouteStateData &variableRouteStateData;
-        RouteStateData &fixedRouteStateData;
-
-        BucketsWrapperT &variableBuckets;
-        BucketsWrapperT &fixedBuckets;
-
-        std::vector<Request> oldRequests; // Stores Request, cost, location for a request at oldRequests[reqId]
-        std::vector<int> oldCost;
-        std::vector<int> oldLocation;
     };
 }

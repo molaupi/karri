@@ -48,7 +48,7 @@ namespace karri {
 
     public:
 
-        SystemStateUpdater(const InputGraphT &inputGraph, RequestState<CostCalculatorT> &requestState,
+        SystemStateUpdater(const InputGraphT &inputGraph,
                            const InputConfig &inputConfig, const CurVehLocsT &curVehLocs,
                            PathTrackerT &pathTracker,
                            RouteStateUpdaterT &variableUpdater, RouteStateData &variableData,
@@ -60,7 +60,6 @@ namespace karri {
                            LastStopsAtVertices &fixedLastStopsAtVertices,
                            Fleet &fleet)
                 : inputGraph(inputGraph),
-                  requestState(requestState),
                   inputConfig(inputConfig),
                   curVehLocs(curVehLocs),
                   pathTracker(pathTracker),
@@ -138,7 +137,7 @@ namespace karri {
                                                                           stats::UpdatePerformanceStats::LOGGER_COLS))) {}
 
 
-        void insertBestAssignment(int &pickupStopId, int &dropoffStopId) {
+        void insertBestAssignment(int &pickupStopId, int &dropoffStopId, RequestState<CostCalculatorT> &requestState) {
             Timer timer;
 
             if (requestState.isNotUsingVehicleBest()) {
@@ -159,7 +158,7 @@ namespace karri {
             const auto [pickupIndex, dropoffIndex] = variableUpdater.insert(asgn, requestState);
 
 
-            updateStopInfos(asgn, pickupIndex, dropoffIndex);
+            updateStopInfos(asgn, pickupIndex, dropoffIndex, requestState);
 
             if (pickupIndex == 0)
                 lastMinutePickup(vehId);
@@ -169,10 +168,10 @@ namespace karri {
 
             if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 &&
                     variableData.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) {
-                movePreviousStopToCurrentLocationForReroute(*asgn.vehicle); //TODO: Momentan überspringe ich dann einfach den fixedRouteState falls dieser nicht genug stops hat
+                movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
             }
 
-            updateBucketState(asgn, pickupIndex, dropoffIndex);
+            updateBucketState(asgn, pickupIndex, dropoffIndex, requestState);
 
             pickupStopId = variableData.stopIdsFor(vehId)[pickupIndex];
             dropoffStopId = variableData.stopIdsFor(vehId)[dropoffIndex];
@@ -252,7 +251,7 @@ namespace karri {
         }
 
 
-        void writeBestAssignmentToLogger() {
+        void writeBestAssignmentToLogger(const RequestState<CostCalculatorT> &requestState) {
             bestAssignmentsLogger
                     << requestState.originalRequest.requestId << ", "
                     << requestState.originalRequest.requestTime << ", "
@@ -297,7 +296,7 @@ namespace karri {
                     << requestState.getBestCost() << "\n";
         }
 
-        void writePerformanceLogs() {
+        void writePerformanceLogs(const RequestState<CostCalculatorT> &requestState) {
             overallPerfLogger << requestState.originalRequest.requestId << ", "
                               << requestState.stats().getLoggerRow() << "\n";
             initializationPerfLogger << requestState.originalRequest.requestId << ", "
@@ -400,9 +399,9 @@ namespace karri {
         // assignment that has already been inserted into routeState as well as the stop index of the pickup and
         // dropoff after the insertion.
         void updateBucketState(const Assignment &asgn,
-                               const int pickupIndex, const int dropoffIndex) {
+                               const int pickupIndex, const int dropoffIndex, RequestState<CostCalculatorT> &requestState) {
 
-            generateBucketStateForNewStops(asgn, pickupIndex, dropoffIndex);
+            generateBucketStateForNewStops(asgn, pickupIndex, dropoffIndex, requestState);
 
             // If we use buckets sorted by remaining leeway, we have to update the leeway of all
             // entries for stops of this vehicle.
@@ -455,7 +454,7 @@ namespace karri {
             }
         }
 
-        void generateBucketStateForNewStops(const Assignment &asgn, const int pickupIndex, const int dropoffIndex) {
+        void generateBucketStateForNewStops(const Assignment &asgn, const int pickupIndex, const int dropoffIndex, RequestState<CostCalculatorT> &requestState) {
             const auto vehId = asgn.vehicle->vehicleId;
             const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
@@ -497,7 +496,7 @@ namespace karri {
             requestState.stats().updateStats.lastStopsAtVerticesUpdateTime += lastStopsAtVerticesUpdateTime;
         }
 
-        void updateStopInfos(const Assignment &assignment, const int pickupIndex, const int dropoffIndex) {
+        void updateStopInfos(const Assignment &assignment, const int pickupIndex, const int dropoffIndex, RequestState<CostCalculatorT> &requestState) {
             //Update data for FixedRouteState
             const int reqId = requestState.originalRequest.requestId;
             if (maxArrTimeAtDropForRequest.size() < reqId + 1)
@@ -527,7 +526,6 @@ namespace karri {
         }
 
         const InputGraphT &inputGraph;
-        RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
         const CurVehLocsT &curVehLocs;
         PathTrackerT &pathTracker;

@@ -46,7 +46,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             IsVehEligibleForDropoffAfterLastStop(const CollectiveBCHStrategy &strat) : strat(strat) {}
 
-            bool operator()(const int &vehId) const { //TODO: Problem Fall für BCHStrategy und die Funktionen noch anpassen dass die dann keine Referenz kriegen
+            bool operator()(const int &vehId) const {
                 assert(strat.routeData != nullptr);
                 return strat.routeData->numStopsOf(vehId) > 1 &&
                        (strat.relevantPickupsBeforeNextStop.hasRelevantSpotsFor(vehId) ||
@@ -69,7 +69,6 @@ namespace karri::DropoffAfterLastStopStrategies {
                               LastStopBucketsUpdaterT &lastStopBucketsEnv,
                               const CostCalculatorT &calculator,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
-                              RequestState<CostCalculatorT> &requestState,
                               const RelevantPDLocs &relevantOrdinaryPickups,
                               const RelevantPDLocs &relevantPickupsBeforeNextStop,
                               const InputConfig &inputConfig)
@@ -81,32 +80,30 @@ namespace karri::DropoffAfterLastStopStrategies {
                   curVehLocToPickupSearches(curVehLocToPickupSearches),
                   closestDropoffSearch(inputGraph, fleet.size(), chEnv.getCH(), {chEnv.getCH().upwardGraph()}),
                   ch(chEnv.getCH()),
-                  requestState(requestState),
                   relevantOrdinaryPickups(relevantOrdinaryPickups),
                   relevantPickupsBeforeNextStop(relevantPickupsBeforeNextStop),
                   inputConfig(inputConfig),
                   isVehEligibleForDropoffAfterLastStop(*this),
                   minCostSearch(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv,
-                                isVehEligibleForDropoffAfterLastStop, requestState,
-                                inputConfig),
+                                isVehEligibleForDropoffAfterLastStop, inputConfig),
                   distsFromLastStopToDropoffs(0, INFTY),
                   checkPBNSForVehicle(fleet.size()),
                   fullCHQuery(chEnv.template getFullCHQuery<FallBackCHLabelSet>()) {}
 
-        void tryDropoffAfterLastStop(const RouteStateData &data) {
+        void tryDropoffAfterLastStop(const RouteStateData &data, RequestState<CostCalculatorT> &requestState) {
             routeData = &data;
             closestDropoffSearch.exchangeBuckets(lastStopBuckets.getBuckets(data.getTypeOfData()));
-            runCollectiveSearch(data);
-            enumerateAssignments(data);
+            runCollectiveSearch(data, requestState);
+            enumerateAssignments(data, requestState);
         }
 
 
     private:
 
-        void runCollectiveSearch(const RouteStateData &routeStateData) {
+        void runCollectiveSearch(const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
             Timer timer;
 
-            minCostSearch.run(routeStateData);
+            minCostSearch.run(routeStateData, requestState);
 
             auto& stats = requestState.stats().dalsAssignmentsStats;
             stats.searchTime +=  minCostSearch.getRunTime();
@@ -129,7 +126,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         // breakers, and filter them again using cost lower bounds after trying all feasible assignments with pareto best
         // dropoffs. Then, if any constraint breakers remain for a vehicle veh, we compute the distances from the last
         // stop of veh to all dropoffs and try every assignment explicitly.
-        void enumerateAssignments(const RouteStateData &routeStateData) {
+        void enumerateAssignments(const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
             const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
                                            curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
             int numAssignmentsTried = 0;
@@ -142,9 +139,9 @@ namespace karri::DropoffAfterLastStopStrategies {
             constraintBreakers.clear();
 
             enumerateAssignmentsWithOrdinaryPickup(numAssignmentsTried, numParetoBestLabels, numFallBackChSearches,
-                                                   ranClosestDropoffSearch, routeStateData);
+                                                   ranClosestDropoffSearch, routeStateData, requestState);
             enumerateAssignmentsWithPBNS(numAssignmentsTried, numParetoBestLabels, numFallBackChSearches,
-                                         ranClosestDropoffSearch, routeStateData);
+                                         ranClosestDropoffSearch, routeStateData, requestState);
 
             // Time spent to locate vehicles and compute distances from current vehicle locations to pickups is countedDropoff
             // into PBNS time so subtract it here.
@@ -167,7 +164,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         void enumerateAssignmentsWithOrdinaryPickup(int &numAssignmentsTried, int &numParetoBestLabels,
-                                                    int &numFallBackChSearches, bool &ranClosestDropoffSearch, const RouteStateData &routeStateData) {
+                                                    int &numFallBackChSearches, bool &ranClosestDropoffSearch, const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
             using namespace time_utils;
             Assignment asgn;
 
@@ -264,22 +261,22 @@ namespace karri::DropoffAfterLastStopStrategies {
                 }
             }
 
-            filterConstraintBreakersBasedOnCost();
+            filterConstraintBreakersBasedOnCost(requestState);
             if (!constraintBreakers.empty()) {
                 closestDropoffSearch.run(requestState.dropoffs);
                 ranClosestDropoffSearch = true;
-                filterConstraintBreakersBasedOnDetour(routeStateData);
+                filterConstraintBreakersBasedOnDetour(routeStateData, requestState);
 
                 // For every remaining constraint breaker, we know that the cost ignoring the constraint is better than
                 // the best known cost and that there is a dropoff for which the constraint is held.
                 // Therefore, we have to try all dropoffs to see if there is one for which both of those aspects are true.
-                evaluateConstraintBreakersWithAllDropoffs(numAssignmentsTried, numFallBackChSearches, routeStateData);
+                evaluateConstraintBreakersWithAllDropoffs(numAssignmentsTried, numFallBackChSearches, routeStateData, requestState);
             }
         }
 
         void
         enumerateAssignmentsWithPBNS(int &numAssignmentsTried, int &, int &numFallBackChSearches,
-                                     bool &ranClosestDropoffSearch, const RouteStateData &routeStateData) {
+                                     bool &ranClosestDropoffSearch, const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
             using namespace time_utils;
 
             Assignment asgn;
@@ -399,18 +396,18 @@ namespace karri::DropoffAfterLastStopStrategies {
                 }
             }
 
-            filterConstraintBreakersBasedOnCost();
+            filterConstraintBreakersBasedOnCost(requestState);
             if (!constraintBreakers.empty()) {
                 if (!ranClosestDropoffSearch) {
                     closestDropoffSearch.run(requestState.dropoffs);
                     ranClosestDropoffSearch = true;
                 }
-                filterConstraintBreakersBasedOnDetour(routeStateData);
+                filterConstraintBreakersBasedOnDetour(routeStateData, requestState);
 
                 // For every remaining constraint breaker, we know that the cost ignoring the constraint is better than
                 // the best known cost and that there is a dropoff for which the constraint is held.
                 // Therefore, we have to try all dropoffs to see if there is one for which both of those aspects are true.
-                evaluateConstraintBreakersWithAllDropoffs(numAssignmentsTried, numFallBackChSearches, routeStateData);
+                evaluateConstraintBreakersWithAllDropoffs(numAssignmentsTried, numFallBackChSearches, routeStateData, requestState);
             }
         }
 
@@ -420,7 +417,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         // constraint. We now filter out the constraint breakers that lead to cost worse than that.
         // Constraint breakers have to be given ordered by vehicles.
         // We maintain the order of constraint breakers.
-        void filterConstraintBreakersBasedOnCost() {
+        void filterConstraintBreakersBasedOnCost(RequestState<CostCalculatorT> &requestState) {
             int cur = 0;
             int nextGoodOffset = 0;
             while (cur + nextGoodOffset < constraintBreakers.size()) {
@@ -445,7 +442,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         // it out.
         // Constraint breakers have to be given ordered by vehicles.
         // We maintain the order of constraint breakers.
-        void filterConstraintBreakersBasedOnDetour(const RouteStateData &routeStateData) {
+        void filterConstraintBreakersBasedOnDetour(const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
             using namespace time_utils;
             int cur = 0;
             int nextGoodOffset = 0;
@@ -481,7 +478,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         // Computes distances from last stop of each affected vehicle to each dropoff and tries the assignments of each
         // constraint breaker with each dropoff.
         // Constraint breakers have to be given ordered by vehicles.
-        void evaluateConstraintBreakersWithAllDropoffs(int &numAssignmentsTried, int &numFallbackChSearchesRun, const RouteStateData &routeStateData) {
+        void evaluateConstraintBreakersWithAllDropoffs(int &numAssignmentsTried, int &numFallbackChSearchesRun, const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
 
             int lastVehId = constraintBreakers.empty() ? INVALID_ID : constraintBreakers[0].vehicle->vehicleId;
             int startOfLastVehId = 0;
@@ -499,7 +496,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                     // Calculate the rest of the distances.
                     numFallbackChSearchesRun += computeDistancesFromLastStopToAllDropoffs(lastVehId,
-                                                                                          distsFromLastStopToDropoffs, routeStateData);
+                                                                                          distsFromLastStopToDropoffs, routeStateData, requestState);
 
                     // Explicitly evaluate all assignments using a constraint breaker of this vehicle and any dropoff.
                     for (int j = startOfLastVehId; j < i; ++j) {
@@ -526,7 +523,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         // Computes distances from last stop of given vehicle to each dropoff and stores the results in distances.
         // Skips dropoffs for which the given distances vector already has a valid entry.
         // Returns number of CH searches run.
-        int computeDistancesFromLastStopToAllDropoffs(const int vehId, TimestampedVector<int> &distances, const RouteStateData &routeStateData) {
+        int computeDistancesFromLastStopToAllDropoffs(const int vehId, TimestampedVector<int> &distances, const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
             assert(distances.size() == requestState.numDropoffs());
 
             int numSearchesRun = 0;
@@ -588,7 +585,6 @@ namespace karri::DropoffAfterLastStopStrategies {
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         ClosestDropoffToLastStopQuery closestDropoffSearch;
         const CH &ch;
-        RequestState<CostCalculatorT> &requestState;
         const RelevantPDLocs &relevantOrdinaryPickups;
         const RelevantPDLocs &relevantPickupsBeforeNextStop;
 

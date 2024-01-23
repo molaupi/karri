@@ -22,15 +22,6 @@ namespace karri {
     template<typename InputGraphT, typename CHEnvT, typename BucketsWrapperT>
     class EllipticBucketsUpdater {
 
-        using Entry = BucketEntryWithLeeway;
-
-        struct DoesEntryHaveLargerRemainingLeeway {
-            bool operator()(const Entry &e1, const Entry &e2) const {
-                return e1.leeway - e1.distToTarget > e2.leeway - e2.distToTarget;
-            }
-        };
-
-
         struct StopWhenLeewayExceeded {
             explicit StopWhenLeewayExceeded(const int &currentLeeway) : currentLeeway(currentLeeway) {}
 
@@ -56,9 +47,8 @@ namespace karri {
 
     public:
 
-
-        EllipticBucketsUpdater(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                               const InputConfig &inputConfig, karri::stats::UpdatePerformanceStats &stats)
+        // TODO: karri::stats::UpdatePerformanceStats &stats werden nicht mehr gelogged, da notifyStops in SystemUpdater nicht sinnvoll an eine RequestState kommt
+        EllipticBucketsUpdater(const InputGraphT &inputGraph, const CHEnvT &chEnv, const InputConfig &inputConfig)
                 : inputGraph(inputGraph), ch(chEnv.getCH()), inputConfig(inputConfig),
                   forwardSearchFromNewStop(
                           chEnv.getForwardTopologicalSearch(StoreSearchSpace(searchSpace),
@@ -71,8 +61,7 @@ namespace karri {
                   currentLeeway(INFTY),
                   searchSpace(),
                   descendentHasEntry(inputGraph.numVertices()),
-                  deleteSearchSpace(inputGraph.numVertices()),
-                  stats(stats) {}
+                  deleteSearchSpace(inputGraph.numVertices()) {}
 
 
         void generateSourceBucketEntries(const Vehicle &veh, const int stopIndex, RouteStateData &routeStateData, BucketsWrapperT &buckets) {
@@ -124,7 +113,8 @@ namespace karri {
             const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
-            int64_t numVerticesVisited = 0, numEntriesScanned = 0;
+            //int64_t numVerticesVisited = 0;
+            int64_t numEntriesScanned = 0;
             Timer timer;
             auto updateSourceLeeway = [&](BucketEntryWithLeeway& e) {
                 if (routeStateData.vehicleIdOf(e.targetId) != veh.vehicleId)
@@ -150,20 +140,21 @@ namespace karri {
                         deleteSearchSpace.insert(w);
                     }
                 }
-                ++numVerticesVisited;
+                //++numVerticesVisited;
                 numEntriesScanned += sourceBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.elliptic_update_time += time;
-            stats.elliptic_update_numVerticesVisited += numVerticesVisited;
-            stats.elliptic_update_numEntriesScanned += numEntriesScanned;
+            //const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            //stats.elliptic_update_time += time;
+            //stats.elliptic_update_numVerticesVisited += numVerticesVisited;
+            //stats.elliptic_update_numEntriesScanned += numEntriesScanned;
         }
 
         void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle &veh, RouteStateData &routeStateData, BucketsWrapperT &buckets) {
             const auto numStops = routeStateData.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
-            int64_t numVerticesVisited = 0, numEntriesScanned = 0;
+            //int64_t numVerticesVisited = 0;
+            int64_t numEntriesScanned = 0;
             Timer timer;
             auto updateTargetLeeway = [&](BucketEntryWithLeeway& e) {
                 if (routeStateData.vehicleIdOf(e.targetId) != veh.vehicleId)
@@ -189,13 +180,13 @@ namespace karri {
                         deleteSearchSpace.insert(w);
                     }
                 }
-                ++numVerticesVisited;
+                //++numVerticesVisited;
                 numEntriesScanned += targetBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.elliptic_update_time += time;
-            stats.elliptic_update_numVerticesVisited += numVerticesVisited;
-            stats.elliptic_update_numEntriesScanned += numEntriesScanned;
+            //const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            //stats.elliptic_update_time += time;
+            //stats.elliptic_update_numVerticesVisited += numVerticesVisited;
+            //stats.elliptic_update_numEntriesScanned += numEntriesScanned;
         }
 
         void deleteSourceBucketEntries(const Vehicle &veh, const int stopIndex, RouteStateData &routeStateData, BucketsWrapperT &buckets) {
@@ -228,7 +219,7 @@ namespace karri {
                                    SearchFromNeighbor &searchFromNeighbor,
                                    const CH::SearchGraph &neighborGraph,
                                    typename BucketsWrapperT::BucketContainer &buckets) {
-            int64_t numEntriesGenerated = 0;
+            //int64_t numEntriesGenerated = 0;
             Timer timer;
 
             // Run topological search from new stop and memorize search space:
@@ -265,7 +256,7 @@ namespace karri {
                 const bool inEllipse = searchFromNewStop.getDistance(v) + searchFromNeighbor.getDistance(v) <= leeway;
                 if ((!betterHigherPathExists && inEllipse) || descendentHasEntry[v]) {
                     buckets.insert(v, {stopId, searchFromNewStop.getDistance(v), leeway});
-                    ++numEntriesGenerated;
+                    //++numEntriesGenerated;
 
                     // Always insert entries at every vertex on the branch, so we obtain a tree of entries that can be
                     // used in delete operations.
@@ -274,15 +265,16 @@ namespace karri {
                 }
             }
 
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.elliptic_generate_time += time;
-            stats.elliptic_generate_numVerticesInSearchSpace += searchSpace.size();
-            stats.elliptic_generate_numEntriesInserted += numEntriesGenerated;
+            //const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            //stats.elliptic_generate_time += time;
+            //stats.elliptic_generate_numVerticesInSearchSpace += searchSpace.size();
+            //stats.elliptic_generate_numEntriesInserted += numEntriesGenerated;
         }
 
         void
         deleteBucketEntries(const int stopId, const int root, const CH::SearchGraph &graph, typename BucketsWrapperT::BucketContainer &buckets) {
-            int64_t numVerticesVisited = 0, numEntriesScanned = 0;
+            //int64_t numVerticesVisited = 0;
+            int64_t numEntriesScanned = 0;
             Timer timer;
             deleteSearchSpace.clear();
             deleteSearchSpace.insert(root);
@@ -294,13 +286,13 @@ namespace karri {
                         deleteSearchSpace.insert(w);
                     }
                 }
-                ++numVerticesVisited;
+                //++numVerticesVisited;
                 numEntriesScanned += buckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.elliptic_delete_time += time;
-            stats.elliptic_delete_numVerticesVisited += numVerticesVisited;
-            stats.elliptic_delete_numEntriesScanned += numEntriesScanned;
+            //const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            //stats.elliptic_delete_time += time;
+            //stats.elliptic_delete_numVerticesVisited += numVerticesVisited;
+            //stats.elliptic_delete_numEntriesScanned += numEntriesScanned;
         }
 
 
@@ -318,7 +310,5 @@ namespace karri {
         BitVector descendentHasEntry;
 
         Subset deleteSearchSpace;
-
-        karri::stats::UpdatePerformanceStats &stats;
     };
 }

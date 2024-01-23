@@ -109,7 +109,7 @@ namespace karri::PDDistanceQueryStrategies {
                     const auto firstDropoffIdInBatch = dropoffBatchLabel.targetId * K;
                     if (firstDropoffIdInBatch == DropoffBatchLabel::invalid_target)
                         continue;
-                    for (int i = 0; i < K && firstDropoffIdInBatch + i < computer.requestState.numDropoffs(); ++i) {
+                    for (int i = 0; i < K && firstDropoffIdInBatch + i < computer.requestState->numDropoffs(); ++i) {
                         computer.updatePDDistances(computer.curFirstPickupId, firstDropoffIdInBatch + i,
                                                    distToV + dropoffBatchLabel.distToDropoff[i]);
                     }
@@ -133,11 +133,10 @@ namespace karri::PDDistanceQueryStrategies {
 
         BCHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
                     PDDistances<LabelSetT, CostCalculatorT> &distances,
-                    RequestState<CostCalculatorT> &requestState,
                     VehicleToPDLocQueryT &vehicleToPDLocQuery)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
-                  requestState(requestState),
+                  requestState(nullptr),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
                   distances(distances),
                   dropoffBuckets(inputGraph.numVertices()),
@@ -152,39 +151,40 @@ namespace karri::PDDistanceQueryStrategies {
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
         void run() {
-            assert(requestState.pickups[0].loc == requestState.originalRequest.origin
-                   && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
+            assert(requestState);
+            assert(requestState->pickups[0].loc == requestState->originalRequest.origin
+                   && requestState->dropoffs[0].loc == requestState->originalRequest.destination);
             Timer timer;
 
-            if (requestState.numPickups() == 1 && requestState.numDropoffs() == 1) {
-                requestState.minDirectPDDist = requestState.originalReqDirectDist;
+            if (requestState->numPickups() == 1 && requestState->numDropoffs() == 1) {
+                requestState->minDirectPDDist = requestState->originalReqDirectDist;
                 return;
             }
 
-            const auto numDropoffSearches = requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
+            const auto numDropoffSearches = requestState->numDropoffs() / K + (requestState->numDropoffs() % K != 0);
             dropoffBuckets.init(numDropoffSearches);
 
 
             // Compute upper bound on every PD distance by adding the longest vehicle distance from any pickup to the
             // origin, the distance from the origin to the destination, and the longest distance from the destination
             // to any dropoff.
-            vehicleToPDLocQuery.runReverse(requestState.pickups);
-            vehicleToPDLocQuery.runForward(requestState.dropoffs);
+            vehicleToPDLocQuery.runReverse(requestState->pickups);
+            vehicleToPDLocQuery.runForward(requestState->dropoffs);
 
             int maxPickupToOriginVehDist = 0;
-            for (const auto &pickup: requestState.pickups) {
+            for (const auto &pickup: requestState->pickups) {
                 maxPickupToOriginVehDist = std::max(maxPickupToOriginVehDist, pickup.vehDistToCenter);
             }
 
             int maxDestToDropoffVehDist = 0;
-            for (const auto &dropoff: requestState.dropoffs) {
+            for (const auto &dropoff: requestState->dropoffs) {
                 maxDestToDropoffVehDist = std::max(maxDestToDropoffVehDist, dropoff.vehDistFromCenter);
             }
 
             if (maxPickupToOriginVehDist >= INFTY || maxDestToDropoffVehDist >= INFTY) {
                 upperBoundDirectPDDist = INFTY;
             } else {
-                upperBoundDirectPDDist = maxPickupToOriginVehDist + requestState.originalReqDirectDist +
+                upperBoundDirectPDDist = maxPickupToOriginVehDist + requestState->originalReqDirectDist +
                                          maxDestToDropoffVehDist; // read by stopping criterion of searches
             }
 
@@ -194,9 +194,9 @@ namespace karri::PDDistanceQueryStrategies {
             std::array<int, K> dropoffOffsets{};
             // Run searches for full pickup batches
             int dropoffId = 0;
-            for (; dropoffId < requestState.numDropoffs();) {
-                tailRanks[dropoffId % K] = ch.rank(inputGraph.edgeTail(requestState.dropoffs[dropoffId].loc));
-                dropoffOffsets[dropoffId % K] = inputGraph.travelTime(requestState.dropoffs[dropoffId].loc);
+            for (; dropoffId < requestState->numDropoffs();) {
+                tailRanks[dropoffId % K] = ch.rank(inputGraph.edgeTail(requestState->dropoffs[dropoffId].loc));
+                dropoffOffsets[dropoffId % K] = inputGraph.travelTime(requestState->dropoffs[dropoffId].loc);
                 ++dropoffId;
                 if (dropoffId % K == 0) {
                     dropoffBatchId = dropoffId / K - 1;
@@ -215,7 +215,7 @@ namespace karri::PDDistanceQueryStrategies {
             }
 
             const int64_t dropoffBucketEntryGenTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.dropoffBucketEntryGenTime = dropoffBucketEntryGenTime;
+            requestState->stats().pdDistancesStats.dropoffBucketEntryGenTime = dropoffBucketEntryGenTime;
             timer.restart();
 
             // Run pickup searches against dropoff buckets:
@@ -225,8 +225,8 @@ namespace karri::PDDistanceQueryStrategies {
             std::array<int, K> headRanks{};
             // Run searches for full pickup batches
             int pickupId = 0;
-            for (; pickupId < requestState.numPickups();) {
-                headRanks[pickupId % K] = ch.rank(inputGraph.edgeHead(requestState.pickups[pickupId].loc));
+            for (; pickupId < requestState->numPickups();) {
+                headRanks[pickupId % K] = ch.rank(inputGraph.edgeHead(requestState->pickups[pickupId].loc));
                 ++pickupId;
                 if (pickupId % K == 0) {
                     curFirstPickupId = pickupId - K;
@@ -245,30 +245,32 @@ namespace karri::PDDistanceQueryStrategies {
             }
 
 
-            requestState.minDirectPDDist = distances.getMinDirectDistance();
+            requestState->minDirectPDDist = distances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
+            requestState->stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
+            requestState = nullptr;
         }
 
-        void init() {
+        void init(RequestState<CostCalculatorT> &reqState) {
             Timer timer;
-            distances.clear();
-            distances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
+            requestState = &reqState;
+            distances.clear(*requestState);
+            distances.updateDistanceIfSmaller(0, 0, requestState->originalReqDirectDist, *requestState);
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime += time;
+            requestState->stats().pdDistancesStats.initializationTime += time;
         }
 
     private:
 
         void
         updatePDDistances(const unsigned int firstPickupId, const unsigned int dropoffId, const DistanceLabel &dist) {
-            distances.updateDistanceBatchIfSmaller(firstPickupId, dropoffId, dist);
+            distances.updateDistanceBatchIfSmaller(firstPickupId, dropoffId, dist, *requestState);
         }
 
         const InputGraphT &inputGraph;
         const CH &ch;
-        RequestState<CostCalculatorT> &requestState;
+        RequestState<CostCalculatorT> *requestState;
         VehicleToPDLocQueryT &vehicleToPDLocQuery;
 
         PDDistances<LabelSetT, CostCalculatorT> &distances;

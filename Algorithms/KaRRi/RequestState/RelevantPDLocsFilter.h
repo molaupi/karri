@@ -37,14 +37,12 @@ namespace karri {
     public:
 
         RelevantPDLocsFilter(const Fleet &fleet, const CostCalculatorT &calculator,
-                             RequestState<CostCalculatorT> &requestState,
                              const InputConfig &inputConfig, const FeasibleDistancesT &feasiblePickupDistances,
                              const FeasibleDistancesT &feasibleDropoffDistances,
                              RelevantPDLocs &relOrdinaryPickups, RelevantPDLocs &relOrdinaryDropoffs,
                              RelevantPDLocs &relPickupsBeforeNextStop, RelevantPDLocs &relDropoffsBeforeNextStop)
                 : fleet(fleet),
                   calculator(calculator),
-                  requestState(requestState),
                   inputConfig(inputConfig),
                   feasiblePickupDistances(feasiblePickupDistances),
                   feasibleDropoffDistances(feasibleDropoffDistances),
@@ -54,11 +52,11 @@ namespace karri {
                   relDropoffsBeforeNextStop(relDropoffsBeforeNextStop) {}
 
 
-        void filterOrdinary(const RouteStateData &data) {
+        void filterOrdinary(const RouteStateData &data, RequestState<CostCalculatorT> &requestState) {
             Timer timer;
 
-            const int numRelStopsForPickups = filterOrdinaryPickups(data);
-            const int numRelStopsForDropoffs = filterOrdinaryDropoffs(data);
+            const int numRelStopsForPickups = filterOrdinaryPickups(data, requestState);
+            const int numRelStopsForDropoffs = filterOrdinaryDropoffs(data, requestState);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ordAssignmentsStats.filterRelevantPDLocsTime += time;
@@ -66,19 +64,19 @@ namespace karri {
             requestState.stats().ordAssignmentsStats.numRelevantStopsForDropoffs += numRelStopsForDropoffs;
         }
 
-        int filterOrdinaryPickups(const RouteStateData &data) {
-            return filter<false, false>(feasiblePickupDistances, relOrdinaryPickups, requestState.numPickups(), data);
+        int filterOrdinaryPickups(const RouteStateData &data, RequestState<CostCalculatorT> &requestState) {
+            return filter<false, false>(feasiblePickupDistances, relOrdinaryPickups, requestState.numPickups(), data, requestState);
         }
 
-        int filterOrdinaryDropoffs(const RouteStateData &data) {
-            return filter<false, true>(feasibleDropoffDistances, relOrdinaryDropoffs, requestState.numDropoffs(), data);
+        int filterOrdinaryDropoffs(const RouteStateData &data, RequestState<CostCalculatorT> &requestState) {
+            return filter<false, true>(feasibleDropoffDistances, relOrdinaryDropoffs, requestState.numDropoffs(), data, requestState);
         }
 
-        void filterBeforeNextStop(const RouteStateData &data) {
+        void filterBeforeNextStop(const RouteStateData &data, RequestState<CostCalculatorT> &requestState) {
             Timer timer;
 
-            const int numRelStopsForPickups = filterPickupsBeforeNextStop(data);
-            const int numRelStopsForDropoffs = filterDropoffsBeforeNextStop(data);
+            const int numRelStopsForPickups = filterPickupsBeforeNextStop(data, requestState);
+            const int numRelStopsForDropoffs = filterDropoffsBeforeNextStop(data, requestState);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pbnsAssignmentsStats.filterRelevantPDLocsTime += time;
@@ -86,19 +84,19 @@ namespace karri {
             requestState.stats().pbnsAssignmentsStats.numRelevantStopsForDropoffs += numRelStopsForDropoffs;
         }
 
-        int filterPickupsBeforeNextStop(const RouteStateData &data) {
-            return filter<true, false>(feasiblePickupDistances, relPickupsBeforeNextStop, requestState.numPickups(), data);
+        int filterPickupsBeforeNextStop(const RouteStateData &data, RequestState<CostCalculatorT> &requestState) {
+            return filter<true, false>(feasiblePickupDistances, relPickupsBeforeNextStop, requestState.numPickups(), data, requestState);
         }
 
-        int filterDropoffsBeforeNextStop(const RouteStateData &data) {
-            return filter<true, true>(feasibleDropoffDistances, relDropoffsBeforeNextStop, requestState.numDropoffs(), data);
+        int filterDropoffsBeforeNextStop(const RouteStateData &data, RequestState<CostCalculatorT> &requestState) {
+            return filter<true, true>(feasibleDropoffDistances, relDropoffsBeforeNextStop, requestState.numDropoffs(), data, requestState);
         }
 
     private:
 
 
         template<bool beforeNextStop, bool isDropoff>
-        int filter(const FeasibleDistancesT &feasible, RelevantPDLocs &rel, const int numPDLocs, const RouteStateData &routeStateData) {
+        int filter(const FeasibleDistancesT &feasible, RelevantPDLocs &rel, const int numPDLocs, const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
 
             // For each stop s, prune the pickups and dropoffs deemed relevant for an ordinary assignment after s by
             // checking them against constraints and lower bounds.
@@ -149,9 +147,9 @@ namespace karri {
                         // Compute lower bound cost based on whether we are dealing with pickups or dropoffs
                         int minCost;
                         if constexpr (isDropoff) {
-                            minCost = getMinCostForDropoff(fleet[vehId], i, minDistToPDLoc, minDistFromPDLoc, routeStateData);
+                            minCost = getMinCostForDropoff(fleet[vehId], i, minDistToPDLoc, minDistFromPDLoc, routeStateData, requestState);
                         } else {
-                            minCost = getMinCostForPickup(fleet[vehId], i, minDistToPDLoc, minDistFromPDLoc, routeStateData);
+                            minCost = getMinCostForPickup(fleet[vehId], i, minDistToPDLoc, minDistFromPDLoc, routeStateData, requestState);
                         }
 
                         if (minCost <= requestState.getBestCost()) {
@@ -166,9 +164,9 @@ namespace karri {
 
                                 bool isRelevant;
                                 if constexpr (isDropoff) {
-                                    isRelevant = isDropoffRelevant(fleet[vehId], i, id, distToPDLoc, distFromPDLoc, routeStateData);
+                                    isRelevant = isDropoffRelevant(fleet[vehId], i, id, distToPDLoc, distFromPDLoc, routeStateData, requestState);
                                 } else {
-                                    isRelevant = isPickupRelevant(fleet[vehId], i, id, distToPDLoc, distFromPDLoc, routeStateData);
+                                    isRelevant = isPickupRelevant(fleet[vehId], i, id, distToPDLoc, distFromPDLoc, routeStateData, requestState);
                                 }
 
                                 if (isRelevant) {
@@ -196,7 +194,7 @@ namespace karri {
 
         inline bool isPickupRelevant(const Vehicle &veh, const int stopIndex, const unsigned int pickupId,
                                      const int distFromStopToPickup,
-                                     const int distFromPickupToNextStop, const RouteStateData &routeStateData) const {
+                                     const int distFromPickupToNextStop, const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) const {
             using namespace time_utils;
 
             const int &vehId = veh.vehicleId;
@@ -235,7 +233,7 @@ namespace karri {
         inline bool isDropoffRelevant(const Vehicle &veh, const int stopIndex, const unsigned int dropoffId,
                                       const int distFromStopToDropoff,
                                       const int distFromDropoffToNextStop,
-                                      const RouteStateData &routeStateData) {
+                                      const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
             using namespace time_utils;
 
             const int &vehId = veh.vehicleId;
@@ -279,7 +277,7 @@ namespace karri {
         }
 
         inline int getMinCostForPickup(const Vehicle &veh, const int stopIndex, const int minDistToPickup,
-                                       const int minDistFromPickup, const RouteStateData &routeStateData) const {
+                                       const int minDistFromPickup, const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) const {
             using namespace time_utils;
             const int minVehDepTimeAtPickup =
                     getVehDepTimeAtStopForRequest(veh.vehicleId, stopIndex, requestState, routeStateData)
@@ -294,7 +292,7 @@ namespace karri {
         }
 
         inline int getMinCostForDropoff(const Vehicle &veh, const int stopIndex, const int minDistToDropoff,
-                                        const int minDistFromDropoff, const RouteStateData &routeStateData) const {
+                                        const int minDistFromDropoff, const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) const {
             using namespace time_utils;
             int minInitialDropoffDetour = calcInitialDropoffDetour(veh.vehicleId, stopIndex, minDistToDropoff,
                                                                    minDistFromDropoff, false, routeStateData, inputConfig);
@@ -305,7 +303,6 @@ namespace karri {
 
         const Fleet &fleet;
         const CostCalculatorT &calculator;
-        RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
 
         const FeasibleDistancesT &feasiblePickupDistances;

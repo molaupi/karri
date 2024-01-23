@@ -37,21 +37,18 @@ namespace karri {
 
     public:
         RequestStateInitializer(const VehInputGraphT &vehInputGraph, const PsgInputGraphT &psgInputGraph,
-                                const VehCHEnvT &vehChEnv, const PsgCHEnvT &psgChEnv,
-                                RequestState<CostCalculatorT> &requestState, const InputConfig &inputConfig,
+                                const VehCHEnvT &vehChEnv, const PsgCHEnvT &psgChEnv, const InputConfig &inputConfig,
                                 VehicleToPDLocQueryT &vehicleToPdLocQuery)
                 : vehInputGraph(vehInputGraph), psgInputGraph(psgInputGraph),
                   revPsgGraph(psgInputGraph.getReverseGraph()),
                   vehCh(vehChEnv.getCH()), psgCh(psgChEnv.getCH()),
                   vehChQuery(vehChEnv.template getFullCHQuery<>()), psgChQuery(psgChEnv.template getFullCHQuery<>()),
-                  requestState(requestState),
                   inputConfig(inputConfig),
-                  findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph, inputConfig, requestState.pickups,
-                                          requestState.dropoffs),
+                  findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph, inputConfig),
                   vehicleToPdLocQuery(vehicleToPdLocQuery) {}
 
 
-        void initializeRequestState(const Request &req) {
+        void initializeRequestState(const Request &req, RequestState<CostCalculatorT> &requestState) {
             Timer timer;
 
             requestState.reset();
@@ -63,7 +60,7 @@ namespace karri {
             assert(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
             const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
 
-            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph);
+            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph, requestState.pickups, requestState.dropoffs);
 
             // Log road categories of PDLocs
             for (const auto &p: requestState.pickups)
@@ -122,7 +119,6 @@ namespace karri {
         VehCHQuery vehChQuery;
         PsgCHQuery psgChQuery;
 
-        RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
 
         FindPDLocsInRadiusQuery<PsgInputGraphT> findPdLocsInRadiusQuery;

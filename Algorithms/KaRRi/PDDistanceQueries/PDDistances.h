@@ -39,9 +39,9 @@ namespace karri {
         static constexpr int K = LabelSetT::K;
 
 
-        PDDistances(const RequestState<CostCalculatorT> &requestState) : requestState(requestState) {}
+        PDDistances() {}
 
-        void clear() {
+        void clear(const RequestState<CostCalculatorT> &requestState) {
             minDirectDist = INFTY;
             const int numLabelsPerDropoff = (requestState.numPickups() / K + (requestState.numPickups() % K != 0));
             const int numNeededLabels = numLabelsPerDropoff * requestState.numDropoffs();
@@ -55,21 +55,21 @@ namespace karri {
         }
 
         // IDs refer to the indices in the vectors of pickups/dropoffs given at the last initialize() call.
-        int getDirectDistance(const unsigned int pickupId, const unsigned int dropoffId) const {
+        int getDirectDistance(const unsigned int pickupId, const unsigned int dropoffId, const RequestState<CostCalculatorT> &requestState) const {
             assert(pickupId < requestState.numPickups());
             assert(dropoffId < requestState.numDropoffs());
-            const int res = labelFor(pickupId, dropoffId)[pickupId % K];
+            const int res = labelFor(pickupId, dropoffId, requestState)[pickupId % K];
             assert(res < INFTY);
             return res;
         }
 
-        int getDirectDistance(const PDLoc &pickup, const PDLoc &dropoff) const {
-            return getDirectDistance(pickup.id, dropoff.id);
+        int getDirectDistance(const PDLoc &pickup, const PDLoc &dropoff, const RequestState<CostCalculatorT> &requestState) const {
+            return getDirectDistance(pickup.id, dropoff.id, requestState);
         }
 
         const DistanceLabel &getDirectDistancesForBatchOfPickups(const unsigned int firstPickupIdInBatch,
-                                                                 const unsigned int &dropoffId) const {
-            return labelFor(firstPickupIdInBatch, dropoffId);
+                                                                 const unsigned int &dropoffId, const RequestState<CostCalculatorT> &requestState) const {
+            return labelFor(firstPickupIdInBatch, dropoffId, requestState);
         }
 
         int getDistanceToDestinationFrom(const int pickupID) const {
@@ -85,9 +85,9 @@ namespace karri {
         }
 
         // Compares a current PD-distance to the given distance and updates the distances if the given distances are smaller.
-        void updateDistanceIfSmaller(const unsigned int pickupId, const unsigned int dropoffId, const int dist) {
+        void updateDistanceIfSmaller(const unsigned int pickupId, const unsigned int dropoffId, const int dist, const RequestState<CostCalculatorT> &requestState) {
             const auto offsetInBatch = pickupId % K;
-            auto &label = labelFor(pickupId, dropoffId);
+            auto &label = labelFor(pickupId, dropoffId, requestState);
             if (dist < label[offsetInBatch]) {
                 label[offsetInBatch] = dist;
                 minDirectDist = std::min(minDirectDist, dist);
@@ -103,8 +103,8 @@ namespace karri {
         // ones for which the given distances are smaller.
         // Batch consists of K subsequent pickup IDs and is defined by the first ID in the batch.
         void updateDistanceBatchIfSmaller(const unsigned int firstPickupId, const unsigned int dropoffId,
-                                          const DistanceLabel &dist) {
-            auto &label = labelFor(firstPickupId, dropoffId);
+                                          const DistanceLabel &dist, const RequestState<CostCalculatorT> &requestState) {
+            auto &label = labelFor(firstPickupId, dropoffId, requestState);
             const auto smaller = dist < label;
             if (smaller) {
                 label.setIf(dist, smaller);
@@ -117,15 +117,13 @@ namespace karri {
 
     private:
 
-        DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId) {
+        DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId, const RequestState<CostCalculatorT> &requestState) {
             return distances[(pickupId / K) * requestState.numDropoffs() + dropoffId];
         }
 
-        const DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId) const {
+        const DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId, const RequestState<CostCalculatorT> &requestState) const {
             return distances[(pickupId / K) * requestState.numDropoffs() + dropoffId];
         }
-
-        const RequestState<CostCalculatorT> &requestState;
 
         // Distances are stored as vectors of size K (DistanceLabel).
         // ceil(numPickups / K) labels per dropoff, sequentially arranged by increasing dropoffId.

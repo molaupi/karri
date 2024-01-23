@@ -115,12 +115,11 @@ namespace karri {
         CurVehLocToPickupSearches(const InputGraphT &graph,
                                   VehicleLocatorT &locator,
                                   const CHEnvT &chEnv,
-                                  RequestState<CostCalculatorT> &requestState,
                                   const int fleetSize)
                 : inputGraph(graph),
                   vehicleLocator(locator),
                   ch(chEnv.getCH()),
-                  requestState(requestState),
+                  requestState(nullptr),
                   fleetSize(fleetSize),
                   distances(),
                   currentVehicleLocations(fleetSize, INVALID_LOC),
@@ -139,7 +138,8 @@ namespace karri {
                   waitingQueue(),
                   distFromCurVehLocation(chEnv.getCH().upwardGraph().numVertices(), INFTY) {}
 
-        void initialize(const int now) {
+        void initialize(const int now, RequestState<CostCalculatorT> &reqState) {
+            requestState = &reqState;
             currentTime = now;
 
             clearDistances();
@@ -152,16 +152,18 @@ namespace karri {
         }
 
         bool knowsDistance(const int vehId, const unsigned int pickupId) const {
+            assert(requestState);
             assert(vehId >= 0 && vehId < fleetSize);
-            assert(pickupId < requestState.numPickups());
-            const int idx = vehId * requestState.numPickups() + pickupId;
+            assert(pickupId < requestState->numPickups());
+            const int idx = vehId * requestState->numPickups() + pickupId;
             return distances[idx] != unknownDist;
         }
 
         int getDistance(const int vehId, const unsigned int pickupId) const {
+            assert(requestState);
             assert(vehId >= 0 && vehId < fleetSize);
-            assert(pickupId < requestState.numPickups());
-            const int idx = vehId * requestState.numPickups() + pickupId;
+            assert(pickupId < requestState->numPickups());
+            const int idx = vehId * requestState->numPickups() + pickupId;
             return distances[idx];
         }
 
@@ -178,8 +180,9 @@ namespace karri {
         // Register pickups for which we want to know the distance from the current location of a vehicle to this pickup.
         // All pickups registered until the next call to computeExactDistancesVia() will be processed with the same vehicle.
         void addPickupForProcessing(const int pickupId, const int distFromPrevStopToPickup) {
+            assert(requestState);
             assert(pickupId >= 0);
-            assert(pickupId < requestState.pickups.size());
+            assert(pickupId < requestState->pickups.size());
             waitingQueue.push_back({pickupId, distFromPrevStopToPickup});
         }
 
@@ -187,7 +190,7 @@ namespace karri {
         // last call to this function or initialize()). Skips pickups for which the distance via the given vehicle is
         // already known.
         void computeExactDistancesVia(const Vehicle &vehicle, const RouteStateData &routeStateData) {
-
+            assert(requestState);
             assert(routeStateData.numStopsOf(vehicle.vehicleId) > 1);
             curLeeway = routeStateData.leewayOfLegStartingAt(routeStateData.stopIdsFor(vehicle.vehicleId)[0]);
             if (waitingQueue.empty()) return;
@@ -202,7 +205,7 @@ namespace karri {
             if (vehLocation.location == routeStateData.stopLocationsFor(vehicle.vehicleId)[0]) {
                 fillDistancesForVehicleAtPrevStop(vehicle, routeStateData);
                 waitingQueue.clear();
-                prevNumPickups = requestState.numPickups();
+                prevNumPickups = requestState->numPickups();
                 return;
             }
 
@@ -220,9 +223,9 @@ namespace karri {
                 const auto pickupId = it->first;
 
                 if (!knowsDistance(vehicle.vehicleId, pickupId)) {
-                    const auto pickupLocation = requestState.pickups[pickupId].loc;
+                    const auto pickupLocation = requestState->pickups[pickupId].loc;
                     if (vehLocation.location == pickupLocation) {
-                        const int idx = vehicle.vehicleId * requestState.numPickups() + pickupId;
+                        const int idx = vehicle.vehicleId * requestState->numPickups() + pickupId;
                         distances[idx] = distToCurLoc;
                     } else {
                         targets[i] = ch.rank(inputGraph.edgeTail(pickupLocation));
@@ -258,7 +261,7 @@ namespace karri {
 
                     // Set found distances.
                     for (int j = 0; j < endOfBatch; ++j) {
-                        const int idx = vehicle.vehicleId * requestState.numPickups() + curPickupIds[j];
+                        const int idx = vehicle.vehicleId * requestState->numPickups() + curPickupIds[j];
                         distances[idx] = tentativeDistances[j];
                     }
 
@@ -267,7 +270,7 @@ namespace karri {
             }
 
             waitingQueue.clear();
-            prevNumPickups = requestState.numPickups();
+            prevNumPickups = requestState->numPickups();
 
             totalVehicleToPickupSearchTimeForRequest += timer.elapsed<std::chrono::nanoseconds>();
             totalNumCHSearchesRunForRequest += numChSearchesRun;
@@ -301,7 +304,7 @@ namespace karri {
                                [&](const auto &l) { return l == INVALID_LOC; }));
             vehiclesWithKnownLocation.clear();
 
-            const int numDistances = requestState.numPickups() * fleetSize;
+            const int numDistances = requestState->numPickups() * fleetSize;
             if (numDistances > distances.size()) {
                 const int diff = numDistances - distances.size();
                 distances.insert(distances.end(), diff, unknownDist);
@@ -318,11 +321,11 @@ namespace karri {
         void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle, const RouteStateData &routeStateData) {
             const auto &stopLocations = routeStateData.stopLocationsFor(vehicle.vehicleId);
             for (const auto &[pickupId, distFromPrevStopToPickup]: waitingQueue) {
-                if (stopLocations[0] != requestState.pickups[pickupId].loc) {
-                    const int idx = vehicle.vehicleId * requestState.numPickups() + pickupId;
+                if (stopLocations[0] != requestState->pickups[pickupId].loc) {
+                    const int idx = vehicle.vehicleId * requestState->numPickups() + pickupId;
                     distances[idx] = distFromPrevStopToPickup;
                 } else {
-                    const int idx = vehicle.vehicleId * requestState.numPickups() + pickupId;
+                    const int idx = vehicle.vehicleId * requestState->numPickups() + pickupId;
                     distances[idx] = 0;
                 }
             }
@@ -331,7 +334,7 @@ namespace karri {
         const InputGraphT &inputGraph;
         VehicleLocatorT &vehicleLocator;
         const CH &ch;
-        RequestState<CostCalculatorT> &requestState;
+        RequestState<CostCalculatorT> *requestState;
         const int fleetSize;
 
 

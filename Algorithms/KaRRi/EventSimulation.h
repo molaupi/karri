@@ -35,7 +35,7 @@
 namespace karri {
 
 
-    template<typename AssignmentFinderT,
+    template<typename AssignmentManagerT,
             typename SystemStateUpdaterT>
     class EventSimulation {
 
@@ -68,13 +68,13 @@ namespace karri {
 
         EventSimulation(
                 const Fleet &fleet, const std::vector<Request> &requests, const int stopTime,
-                AssignmentFinderT &assignmentFinder, SystemStateUpdaterT &systemStateUpdater,
+                AssignmentManagerT &assignmentManager, SystemStateUpdaterT &systemStateUpdater,
                 const RouteStateData &scheduledStops,
                 const bool verbose = false)
                 : fleet(fleet),
                   requests(requests),
                   stopTime(stopTime),
-                  assignmentFinder(assignmentFinder),
+                  assignmentManager(assignmentManager),
                   systemStateUpdater(systemStateUpdater),
                   scheduledStops(scheduledStops),
                   vehicleEvents(fleet.size()),
@@ -281,8 +281,8 @@ namespace karri {
             Timer timer;
 
             const auto &request = requests[reqId];
-            const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request);
-            systemStateUpdater.writeBestAssignmentToLogger();
+            auto &asgnFinderResponse = assignmentManager.calculateChanges(request)[0];
+            systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse);
 
             applyAssignment(asgnFinderResponse, reqId, occTime);
 
@@ -291,16 +291,16 @@ namespace karri {
         }
 
         template<typename AssignmentFinderResponseT>
-        void applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, const int reqId, const int occTime) {
+        void applyAssignment(AssignmentFinderResponseT &asgnFinderResponse, const int reqId, const int occTime) {
             if (asgnFinderResponse.isNotUsingVehicleBest()) {
                 requestState[reqId] = WALKING_TO_DEST;
                 requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
                 requestData[reqId].depTime = occTime;
                 requestData[reqId].walkingTimeToPickup = 0;
                 requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.getNotUsingVehicleDist();
-                requestData[reqId].fixedAssignmentCost = asgnFinderResponse.getBestCostOnFixedRoutes();
+                requestData[reqId].fixedAssignmentCost = INFTY;
                 requestEvents.increaseKey(reqId, occTime + asgnFinderResponse.getNotUsingVehicleDist());
-                systemStateUpdater.writePerformanceLogs();
+                systemStateUpdater.writePerformanceLogs(asgnFinderResponse);
                 return;
             }
 
@@ -311,7 +311,7 @@ namespace karri {
             const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
             if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
                 requestState[reqId] = FINISHED;
-                systemStateUpdater.writePerformanceLogs();
+                systemStateUpdater.writePerformanceLogs(asgnFinderResponse);
                 return;
             }
 
@@ -319,11 +319,11 @@ namespace karri {
             requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
             requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
-            requestData[reqId].fixedAssignmentCost = asgnFinderResponse.getBestCostOnFixedRoutes();
+            requestData[reqId].fixedAssignmentCost = INFTY;
 
             int pickupStopId, dropoffStopId;
-            systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId);
-            systemStateUpdater.writePerformanceLogs();
+            systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId, asgnFinderResponse);
+            systemStateUpdater.writePerformanceLogs(asgnFinderResponse);
             assert(pickupStopId >= 0 && dropoffStopId >= 0);
 
             const auto vehId = bestAsgn.vehicle->vehicleId;
@@ -377,7 +377,7 @@ namespace karri {
         const Fleet &fleet;
         const std::vector<Request> &requests;
         const int stopTime;
-        AssignmentFinderT &assignmentFinder;
+        AssignmentManagerT &assignmentManager;
         SystemStateUpdaterT &systemStateUpdater;
         const RouteStateData &scheduledStops;
 

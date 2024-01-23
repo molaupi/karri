@@ -27,7 +27,7 @@
 namespace karri {
 
 // Wrapper around DALS strategy.
-    template<typename StrategyT>
+    template<typename StrategyT, typename CostCalculatorT>
     class DALSAssignmentsFinder {
 
     public:
@@ -35,16 +35,19 @@ namespace karri {
         DALSAssignmentsFinder(StrategyT &strategy) : strategy(strategy) {}
 
         void findAssignments(const RouteStateData &data) {
-            strategy.tryDropoffAfterLastStop(data);
+            assert(requestState);
+            strategy.tryDropoffAfterLastStop(data, *requestState);
+            requestState = nullptr;
         }
 
-        void init() {
-            // no op
+        void init(RequestState<CostCalculatorT> &reqState) {
+            requestState = &reqState;
         }
 
     private:
 
         StrategyT &strategy;
+        RequestState<CostCalculatorT> *requestState;
 
     };
 }

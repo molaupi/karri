@@ -37,6 +37,7 @@ namespace karri {
     template<typename CHEnvT,
             typename LastStopBucketsUpdaterT,
             typename PrunerT,
+            typename CostCalculatorT,
             typename LabelSetT = BasicLabelSet<0, ParentInfo::FULL_PARENT_INFO>>
     class LastStopBCHQuery {
 
@@ -172,6 +173,10 @@ namespace karri {
 
         void exchangeBuckets(const typename LastStopBucketsUpdaterT::BucketContainer &newBuckets) {
             bucketContainer = &newBuckets;
+        }
+
+        void exchangeRequestStateInPruner(RequestState<CostCalculatorT> &requestState) {
+            pruner.setRequestState(requestState);
         }
 
     private:

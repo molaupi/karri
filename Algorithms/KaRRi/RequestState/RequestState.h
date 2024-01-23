@@ -110,27 +110,21 @@ template<typename CostCalculatorT>
         // Information about best known assignment for current request
 
         const Assignment &getBestAssignment() const {
-            return fixedRun ? bestAssignmentOnFixedRoutes : bestAssignment;
-        }
-
-        const Assignment &getBestAssignmentOnFixedRoutes() const {
-            return bestAssignmentOnFixedRoutes;
+            return bestAssignment;
         }
 
         const int &getBestCost() const {
-            return fixedRun ? bestCostOnFixedRoutes : bestCost;
+            return bestCost;
         }
 
-        const int &getBestCostOnFixedRoutes() const {
-            return bestCostOnFixedRoutes;
-        }
+
 
         bool isNotUsingVehicleBest() const {
-            return fixedRun ? notUsingVehicleIsBestOnFixedRoutes : notUsingVehicleIsBest;
+            return notUsingVehicleIsBest;
         }
 
         const int &getNotUsingVehicleDist() const {
-            return fixedRun ? notUsingVehicleDistOnFixedRoutes : notUsingVehicleDist;
+            return notUsingVehicleDist;
         }
 
         bool tryAssignment(const Assignment &asgn) {
@@ -140,19 +134,6 @@ template<typename CostCalculatorT>
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
             assert(calculator.calc(asgn, *this) == cost);
-
-            if (fixedRun) {
-                if (cost < bestCostOnFixedRoutes || (cost == bestCostOnFixedRoutes &&
-                                         breakCostTie(asgn, bestAssignmentOnFixedRoutes))) {
-
-                    bestAssignmentOnFixedRoutes = asgn;
-                    bestCostOnFixedRoutes = cost;
-                    notUsingVehicleIsBestOnFixedRoutes = false;
-                    notUsingVehicleIsBestOnFixedRoutes = INFTY;
-                    return true;
-                }
-                return false;
-            }
 
             if (cost < bestCost || (cost == bestCost &&
                                      breakCostTie(asgn, bestAssignment))) {
@@ -169,16 +150,6 @@ template<typename CostCalculatorT>
         void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
             const int cost = CostCalculatorT::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this,
                                                                         inputConfig);
-
-            if (fixedRun) {
-                if (cost < bestCostOnFixedRoutes) {
-                    bestAssignmentOnFixedRoutes = Assignment();
-                    bestCostOnFixedRoutes = cost;
-                    notUsingVehicleIsBestOnFixedRoutes = true;
-                    notUsingVehicleDistOnFixedRoutes = notUsingVehDist;
-                }
-                return;
-            }
 
             if (cost < bestCost) {
                 bestAssignment = Assignment();
@@ -219,20 +190,6 @@ template<typename CostCalculatorT>
             notUsingVehicleDist = INFTY;
         }
 
-        void resetFixedData() {
-            bestAssignmentOnFixedRoutes = Assignment();
-            bestCostOnFixedRoutes = INFTY;
-            notUsingVehicleIsBestOnFixedRoutes = false;
-        }
-
-        void fixedRunOn() {
-            fixedRun = true;
-        }
-
-        void fixedRunOff() {
-            fixedRun = false;
-        }
-
     private:
 
         stats::DispatchingPerformanceStats perfStats;
@@ -247,12 +204,5 @@ template<typename CostCalculatorT>
         int bestCost;
         bool notUsingVehicleIsBest;
         int notUsingVehicleDist;
-
-        // Information about best known assignment for current request on fixed routes
-        bool fixedRun = false;
-        Assignment bestAssignmentOnFixedRoutes;
-        int bestCostOnFixedRoutes;
-        bool notUsingVehicleIsBestOnFixedRoutes;
-        int notUsingVehicleDistOnFixedRoutes;
     };
 }

@@ -42,11 +42,12 @@ namespace karri::PickupAfterLastStopStrategies {
         struct PickupAfterLastStopPruner {
 
             PickupAfterLastStopPruner(IndividualBCHStrategy &strat, const CostCalculatorT &calc)
-                    : strat(strat), calc(calc) {}
+                    : strat(strat), calc(calc), currReqState(nullptr) {}
 
             LabelMask isWorseThanUpperBoundCost(const DistanceLabel &distancesToPickups,
                                       const bool considerPickupWalkingDists = false) const {
-                assert(strat.requestState.minDirectPDDist < INFTY);
+                assert(currReqState);
+                assert(currReqState->minDirectPDDist < INFTY);
 
                 if (strat.upperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with distancesToPickups[i] >= INFTY or
@@ -56,9 +57,9 @@ namespace karri::PickupAfterLastStopStrategies {
 
                 const auto &walkingDists = considerPickupWalkingDists ? strat.currentPickupWalkingDists : 0;
 
-                const DistanceLabel directDists = strat.requestState.minDirectPDDist;
+                const DistanceLabel directDists = currReqState->minDirectPDDist;
                 DistanceLabel costLowerBound = calc.template calcLowerBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
-                        distancesToPickups, directDists, walkingDists, strat.requestState);
+                        distancesToPickups, directDists, walkingDists, *currReqState);
 
                 return strat.upperBoundCost < costLowerBound;
             }
@@ -67,7 +68,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 const DistanceLabel cost = calc.template calcUpperBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
                         strat.fleet[vehId], distancesToPickups, strat.curPassengerArrTimesAtPickups,
                         strat.curDistancesToDest,
-                        strat.currentPickupWalkingDists, strat.requestState);
+                        strat.currentPickupWalkingDists, *currReqState);
 
                 strat.upperBoundCost = std::min(strat.upperBoundCost, cost.horizontalMin());
             }
@@ -77,12 +78,17 @@ namespace karri::PickupAfterLastStopStrategies {
                 return true;
             }
 
+            void setRequestState(RequestState<CostCalculatorT> &requestState) {
+                currReqState = &requestState;
+            }
+
         private:
             IndividualBCHStrategy &strat;
             const CostCalculatorT &calc;
+            RequestState<CostCalculatorT> *currReqState;
         };
 
-        using PickupBCHQuery = LastStopBCHQuery<CHEnvT, LastStopBucketsEnvT, PickupAfterLastStopPruner, LabelSetT>;
+        using PickupBCHQuery = LastStopBCHQuery<CHEnvT, LastStopBucketsEnvT, PickupAfterLastStopPruner, CostCalculatorT, LabelSetT>;
 
     public:
 
@@ -92,14 +98,12 @@ namespace karri::PickupAfterLastStopStrategies {
                               const CostCalculatorT &calculator,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const PDDistancesT &pdDistances,
-                              RequestState<CostCalculatorT> &requestState,
                               const int& bestCostBeforeQuery,
                               const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   pdDistances(pdDistances),
-                  requestState(requestState),
                   bestCostBeforeQuery(bestCostBeforeQuery),
                   inputConfig(inputConfig),
                   lastStopBucketsEnv(lastStopBucketsEnv),
@@ -107,21 +111,22 @@ namespace karri::PickupAfterLastStopStrategies {
                   search(distances, chEnv, vehiclesSeenForPickups, PickupAfterLastStopPruner(*this, calculator)),
                   vehiclesSeenForPickups(fleet.size()) {}
 
-        void tryPickupAfterLastStop(const RouteStateData &routeStateData) {
+        void tryPickupAfterLastStop(const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
             search.exchangeBuckets(lastStopBucketsEnv.getBuckets(routeStateData.getTypeOfData()));
-            runBchSearches();
-            enumerateAssignments(routeStateData);
+            search.exchangeRequestStateInPruner(requestState);
+            runBchSearches(requestState);
+            enumerateAssignments(routeStateData, requestState);
         }
 
     private:
 
         // Run BCH searches that find distances from last stops to pickups
-        void runBchSearches() {
+        void runBchSearches(RequestState<CostCalculatorT> &requestState) {
             Timer timer;
 
-            initPickupSearches();
+            initPickupSearches(requestState);
             for (int i = 0; i < requestState.numPickups(); i += K)
-                runSearchesForPickupBatch(i);
+                runSearchesForPickupBatch(i, requestState);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().palsAssignmentsStats.searchTime += searchTime;
@@ -132,7 +137,7 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Enumerate assignments with pickup after last stop
-        void enumerateAssignments(const RouteStateData &routeStateData) {
+        void enumerateAssignments(const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
             using namespace time_utils;
 
 
@@ -178,7 +183,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
                         // Try inserting pair with pickup after last stop:
                         ++numAssignmentsTried;
-                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff, requestState);
                         requestState.tryAssignment(asgn);
                     }
                 }
@@ -194,7 +199,7 @@ namespace karri::PickupAfterLastStopStrategies {
             return distances.getDistance(vehId, pickupId);
         }
 
-        void initPickupSearches() {
+        void initPickupSearches(RequestState<CostCalculatorT> &requestState) {
             totalNumEdgeRelaxations = 0;
             totalNumVerticesSettled = 0;
             totalNumEntriesScanned = 0;
@@ -205,7 +210,7 @@ namespace karri::PickupAfterLastStopStrategies {
             distances.init(numPickupBatches);
         }
 
-        void runSearchesForPickupBatch(const int firstPickupId) {
+        void runSearchesForPickupBatch(const int firstPickupId, RequestState<CostCalculatorT> &requestState) {
             assert(firstPickupId % K == 0 && firstPickupId < requestState.numPickups());
 
 
@@ -219,7 +224,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 travelTimes[i] = inputGraph.travelTime(pickup.loc);
                 currentPickupWalkingDists[i] = pickup.walkingDist;
                 curPassengerArrTimesAtPickups[i] = requestState.getPassengerArrAtPickup(pickup.id);
-                curDistancesToDest[i] = pdDistances.getDirectDistance(pickup.id, 0);
+                curDistancesToDest[i] = pdDistances.getDirectDistance(pickup.id, 0, requestState);
             }
 
             distances.setCurBatchIdx(firstPickupId / K);
@@ -234,7 +239,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const Fleet &fleet;
         const CostCalculatorT &calculator;
         const PDDistancesT &pdDistances;
-        RequestState<CostCalculatorT> &requestState;
         const int& bestCostBeforeQuery;
         const InputConfig &inputConfig;
 

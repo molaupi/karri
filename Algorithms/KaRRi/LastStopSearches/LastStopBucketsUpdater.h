@@ -93,7 +93,7 @@ namespace karri {
 
     public:
 
-        LastStopBucketsUpdater(const InputGraphT &inputGraph, const CHEnvT &chEnv, karri::stats::UpdatePerformanceStats &stats)
+        LastStopBucketsUpdater(const InputGraphT &inputGraph, const CHEnvT &chEnv)
         : inputGraph(inputGraph),
         ch(chEnv.getCH()),
         searchGraph(ch.upwardGraph()),
@@ -104,8 +104,7 @@ namespace karri {
         variableEntryDelSearch(chEnv.getForwardSearch(DeleteEntry(variableBucketContainer, vehicleId, verticesVisitedInSearch, entriesVisitedInSearch))),
         fixedEntryGenSearch(chEnv.getForwardSearch(GenerateEntry(fixedBucketContainer, vehicleId, verticesVisitedInSearch),
                                                    StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
-        fixedEntryDelSearch(chEnv.getForwardSearch(DeleteEntry(fixedBucketContainer, vehicleId, verticesVisitedInSearch, entriesVisitedInSearch))),
-        stats(stats) {}
+        fixedEntryDelSearch(chEnv.getForwardSearch(DeleteEntry(fixedBucketContainer, vehicleId, verticesVisitedInSearch, entriesVisitedInSearch))) {}
 
 
         const BucketContainer &getBuckets(BucketType type) const {
@@ -131,8 +130,8 @@ namespace karri {
                 fixedEntryGenSearch.run(ch.rank(stopVertex));
             }
 
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.lastStopBucketsGenerateEntriesTime += time;
+            //const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            //stats.lastStopBucketsGenerateEntriesTime += time;
 
 //        bucketGenLogger << verticesVisitedInSearch << ',' << time << '\n';
         }
@@ -156,8 +155,8 @@ namespace karri {
                 fixedEntryDelSearch.run(ch.rank(stopVertex));
             }
 
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.lastStopBucketsDeleteEntriesTime += time;
+            //const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            //stats.lastStopBucketsDeleteEntriesTime += time;
 
 //        bucketDelLogger << verticesVisitedInSearch << ',' << entriesVisitedInSearch << ',' << time << '\n';
         }
@@ -186,7 +185,7 @@ namespace karri {
         GenerateEntriesSearch fixedEntryGenSearch;
         DeleteEntriesSearch fixedEntryDelSearch;
 
-        karri::stats::UpdatePerformanceStats &stats;
+        //karri::stats::UpdatePerformanceStats &stats; TODO: Die stats werden hier nicht aufgenommen da es zu Beginn keinen RequestState gibt
 
     };
 

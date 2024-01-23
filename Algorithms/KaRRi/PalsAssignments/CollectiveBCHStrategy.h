@@ -59,22 +59,19 @@ namespace karri::PickupAfterLastStopStrategies {
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               PDDistancesT &pdDistances,
                               const CostCalculatorT &calculator,
-                              RequestState<CostCalculatorT> &requestState,
                               const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   ch(chEnv.getCH()),
-                  requestState(requestState),
                   inputConfig(inputConfig),
-                  minCostSearch(inputGraph, fleet, chEnv, pdDistances, calculator, lastStopBucketsEnv,
-                                requestState, inputConfig),
+                  minCostSearch(inputGraph, fleet, chEnv, pdDistances, calculator, lastStopBucketsEnv, inputConfig),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
                   pdDistances(pdDistances),
                   fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, pdDistances,
-                                   requestState, minCostSearch.getUpperBoundCostWithHardConstraints(), inputConfig) {}
+                                   minCostSearch.getUpperBoundCostWithHardConstraints(), inputConfig) {}
 
-        void tryPickupAfterLastStop(const RouteStateData &routeStateData) {
+        void tryPickupAfterLastStop(const RouteStateData &routeStateData, RequestState<CostCalculatorT> &requestState) {
 
 
             auto &stats = requestState.stats().palsAssignmentsStats;
@@ -115,7 +112,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_initializationTime += colInitTime;
             stats.collective_numPromisingDropoffs += promisingDropoffIds.size();
 
-            minCostSearch.run(promisingDropoffIds, requestState.getBestCost(), routeStateData);
+            minCostSearch.run(promisingDropoffIds, requestState.getBestCost(), routeStateData, requestState);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.searchTime += searchTime;
@@ -156,7 +153,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_usedFallback = true;
 
             // Otherwise fall back to computing distances explicitly:
-            fallbackStrategy.tryPickupAfterLastStop(routeStateData);
+            fallbackStrategy.tryPickupAfterLastStop(routeStateData, requestState);
         }
 
     private:
@@ -165,7 +162,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const Fleet &fleet;
         const CostCalculatorT &calculator;
         const CH &ch;
-        RequestState<CostCalculatorT> &requestState;
         const InputConfig &inputConfig;
 
         MinCostPairAfterLastStopQueryInst minCostSearch;
