@@ -86,10 +86,10 @@ namespace karri {
 
             if (maxStopId >= startOfRangeInDistToPDLocs.size()) {
                 stopLocks.resize(maxStopId + 1, SpinLock());
-                startOfRangeInDistToPDLocs.resize(maxStopId + 1);
-                startOfRangeInDistFromPDLocs.resize(maxStopId + 1);
-                startOfRangeInMeetingVerticesToPDLocs.resize(maxStopId + 1);
-                startOfRangeInMeetingVerticesFromPDLocs.resize(maxStopId + 1);
+                startOfRangeInDistToPDLocs.resize(maxStopId + 1, INVALID_INDEX);
+                startOfRangeInDistFromPDLocs.resize(maxStopId + 1, INVALID_INDEX);
+                startOfRangeInMeetingVerticesToPDLocs.resize(maxStopId + 1, INVALID_INDEX);
+                startOfRangeInMeetingVerticesFromPDLocs.resize(maxStopId + 1, INVALID_INDEX);
                 minDistToPDLoc.clear();
                 minDistToPDLoc = std::vector<std::atomic_int>(maxStopId + 1);
                 minDistFromPDLocToNextStop.clear();
@@ -283,21 +283,20 @@ namespace karri {
                 // We assume the from-searches are run after the to-searches. If the stop does not have entries yet, it was
                 // considered irrelevant for the to-searches (regardless of whether we allow dynamic allocation or not).
                 // Therefore, this stop cannot be relevant on both sides which means we can skip it here.
-                allocateEntriesFor(i);
-                    
-                const LabelMask improved = localDistFromPDLocToNextStop[i] < distFromRelevantPDLocsToNextStop[startOfRangeInDistFromPDLocs[i] + firstPDLocId / K];
+                if (startOfRangeInDistToPDLocs[i] != INVALID_INDEX) {
+                    const LabelMask improved = localDistFromPDLocToNextStop[i] < distFromRelevantPDLocsToNextStop[startOfRangeInDistFromPDLocs[i] + firstPDLocId / K];
 
-                distFromRelevantPDLocsToNextStop[startOfRangeInDistFromPDLocs[i] + firstPDLocId / K].setIf(localDistFromPDLocToNextStop[i], improved);
-                meetingVerticesFromRelevantPDLocsToNextStop[startOfRangeInMeetingVerticesFromPDLocs[i] + firstPDLocId / K].setIf(localMeetingVerticesFromPDLocToNextStop[i], improved);
+                    distFromRelevantPDLocsToNextStop[startOfRangeInDistFromPDLocs[i] + firstPDLocId / K].setIf(localDistFromPDLocToNextStop[i], improved);
+                    meetingVerticesFromRelevantPDLocsToNextStop[startOfRangeInMeetingVerticesFromPDLocs[i] + firstPDLocId / K].setIf(localMeetingVerticesFromPDLocToNextStop[i], improved);
 
-                // Write values for new entry and set pointer from PD loc to the entries
-                if (anySet(improved)) {
-                    const int minNewDistFromPDLocToNextStop = localDistFromPDLocToNextStop[i].horizontalMin();
-                    auto& minFromPDLocAtomic = minDistFromPDLocToNextStop[i];
-                    int expectedMinForStop = minFromPDLocAtomic.load(std::memory_order_relaxed);
-                    while(expectedMinForStop > minNewDistFromPDLocToNextStop && !minFromPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistFromPDLocToNextStop, std::memory_order_relaxed));
-                }              
-                
+                    // Write values for new entry and set pointer from PD loc to the entries
+                    if (anySet(improved)) {
+                        const int minNewDistFromPDLocToNextStop = localDistFromPDLocToNextStop[i].horizontalMin();
+                        auto& minFromPDLocAtomic = minDistFromPDLocToNextStop[i];
+                        int expectedMinForStop = minFromPDLocAtomic.load(std::memory_order_relaxed);
+                        while(expectedMinForStop > minNewDistFromPDLocToNextStop && !minFromPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistFromPDLocToNextStop, std::memory_order_relaxed));
+                    }              
+                }
             }
         }
 
@@ -431,7 +430,7 @@ namespace karri {
             minDistToPDLoc[stopId].store(INFTY);
             minDistFromPDLocToNextStop[stopId].store(INFTY);
 
-            currLock.unlock();        
+            currLock.unlock();
 
             vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
             
