@@ -31,6 +31,7 @@
 #include <iostream>
 
 #include <csv.h>
+#include <oneapi/tbb/global_control.h>
 
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "Tools/Logging/LogManager.h"
@@ -139,6 +140,10 @@ inline void printUsage() {
 }
 
 int main(int argc, char *argv[]) {
+
+    // Setting maximum parallelism (i.e. number of threads)
+//    auto g = tbb::global_control(oneapi::tbb::global_control::max_allowed_parallelism, 1);
+
     using namespace karri;
     try {
         CommandLineParser clp(argc, argv);
