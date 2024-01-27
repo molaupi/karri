@@ -155,6 +155,9 @@ namespace karri {
                 curFeasible->initLocal();
             }
 
+            void endToSearches() {
+                curFeasible->endToSearches();
+            }
 
         private:
             FeasibleEllipticDistancesT *curFeasible;
@@ -196,6 +199,9 @@ namespace karri {
                 curFeasible->initLocal();
             }
 
+            void endFromSearches() {
+                curFeasible->endFromSearches();
+            }
 
         private:
             const RouteState &routeState;
@@ -330,12 +336,17 @@ namespace karri {
                 runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
             });
 
+            // Done with to searches
+            updateDistancesToPdLocs.endToSearches();
+
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [=] (int i) 
             {
                 runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs);
             });
             
+            // Done with from searches
+            updateDistancesFromPdLocs.endFromSearches();
         }
 
         template<typename SpotContainerT>
@@ -365,7 +376,7 @@ namespace karri {
             totalNumVerticesVisited.add_fetch(localFromQuery.getNumVerticesSettled(), std::memory_order_relaxed);
 
             // After a search batch of K PDLocs, write the distances back to the global vectors
-             updateDistancesFromPdLocs.curFeasibleSynchronizeDistances();
+            updateDistancesFromPdLocs.curFeasibleSynchronizeDistances();
         }
 
         template<typename SpotContainerT>
@@ -397,7 +408,7 @@ namespace karri {
             totalNumVerticesVisited.add_fetch(localToQuery.getNumVerticesSettled(), std::memory_order_relaxed);
             
             // After a search batch of K PDLocs, write the distances back to the global vectors
-             updateDistancesToPdLocs.curFeasibleSynchronizeDistances();
+            updateDistancesToPdLocs.curFeasibleSynchronizeDistances();
         }
 
         template<PDLocType type, typename PDLocsT>
