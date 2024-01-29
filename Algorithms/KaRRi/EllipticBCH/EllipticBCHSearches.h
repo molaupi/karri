@@ -68,7 +68,7 @@ namespace karri {
 
         struct StopBCHQuery {
 
-            StopBCHQuery(const int &distUpperBound, enumerable_thread_specific<int> &numTimesStoppingCriterionMet)
+            StopBCHQuery(const int &distUpperBound, int &numTimesStoppingCriterionMet)
                     : distUpperBound(distUpperBound),
                       numTimesStoppingCriterionMet(numTimesStoppingCriterionMet) {}
 
@@ -76,20 +76,20 @@ namespace karri {
             bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
                 const LabelMask distExceedsUpperBound = distToV > DistanceLabel(distUpperBound);
                 const bool stop = allSet(distExceedsUpperBound);
-                numTimesStoppingCriterionMet.local() += stop;
+                numTimesStoppingCriterionMet += stop;
                 return stop;
             }
 
         private:
             const int &distUpperBound;
-            enumerable_thread_specific<int> &numTimesStoppingCriterionMet;
+            int &numTimesStoppingCriterionMet;
         };
 
 
         template<typename UpdateDistancesT>
         struct ScanOrdinaryBucket {
             explicit ScanOrdinaryBucket(const Buckets &buckets, UpdateDistancesT &updateDistances,
-                                        enumerable_thread_specific<int> &numEntriesVisited, enumerable_thread_specific<int> &numEntriesVisitedWithDistSmallerLeeway)
+                                        int &numEntriesVisited, int &numEntriesVisitedWithDistSmallerLeeway)
                     : buckets(buckets),
                       updateDistances(updateDistances),
                       numEntriesVisited(numEntriesVisited),
@@ -99,7 +99,7 @@ namespace karri {
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
 
                 for (const auto &entry: buckets.getBucketOf(v)) {
-                    ++numEntriesVisited.local();
+                    ++numEntriesVisited;
                     const auto distViaV = distToV + entry.distToTarget;
 
                     if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
@@ -112,7 +112,7 @@ namespace karri {
                     }
 
                     // Otherwise, check if the tentative distances needs to be updated.
-                    ++numEntriesVisitedWithDistSmallerLeeway.local();
+                    ++numEntriesVisitedWithDistSmallerLeeway;
                     updateDistances(v, entry, distViaV);
                 }
 
@@ -122,10 +122,9 @@ namespace karri {
         private:
             const Buckets &buckets;
             UpdateDistancesT &updateDistances;
-            enumerable_thread_specific<int> &numEntriesVisited;
-            enumerable_thread_specific<int> &numEntriesVisitedWithDistSmallerLeeway;
+            int &numEntriesVisited;
+            int &numEntriesVisitedWithDistSmallerLeeway;
         };
-
 
         struct UpdateDistancesToPDLocs {
 
@@ -226,14 +225,14 @@ namespace karri {
                   numEntriesScanned(0),
                   numEntriesScannedWithDistSmallerLeeway(0),
                   numTimesStoppingCriterionMet(0),
-                  toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
+                  toQuery([&]() {return chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
                           ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
-                                            numEntriesScanned, numEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
-                  fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
+                                            numEntriesScanned.local(), numEntriesScannedWithDistSmallerLeeway.local()),
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet.local()));}),
+                  fromQuery([&]() {return chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
                           ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
-                                            numEntriesScanned, numEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
+                                            numEntriesScanned.local(), numEntriesScannedWithDistSmallerLeeway.local()),
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet.local()));}),
                   totalNumEdgeRelaxations(0),
                   totalNumVerticesVisited(0) {}
 
@@ -291,9 +290,12 @@ namespace karri {
 
         template<typename SpotContainerT>
         void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs) {
-            numEntriesScanned.clear();
-            numEntriesScannedWithDistSmallerLeeway.clear();
-            numTimesStoppingCriterionMet.clear();
+            for (auto& local : numEntriesScanned)
+                local = 0;
+            for (auto& local : numEntriesScannedWithDistSmallerLeeway)
+                local = 0;
+            for (auto& local : numTimesStoppingCriterionMet)
+                local = 0;
             totalNumEdgeRelaxations.store(0);
             totalNumVerticesVisited.store(0);
 
