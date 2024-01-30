@@ -294,10 +294,16 @@ namespace karri {
             removalOfAllCols(stopId, rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
         }
 
-        ConstantVectorRange<int> getRequestsPickedUpAt(const int stopId) {
+        ConstantVectorRange<int> getRequestsPickedUpAt(const int stopId) const {
             const auto pickupRange = rangeOfRequestsPickedUpAtStop[stopId];
             return {requestsPickedUpAtStop.begin() + pickupRange.start,
                     requestsPickedUpAtStop.begin() + pickupRange.end};
+        }
+
+        ConstantVectorRange<int> getRequestsDroppedOffAt(const int stopId) const {
+            const auto pickupRange = rangeOfRequestsDroppedOffAtStop[stopId];
+            return {requestsDroppedOffAtStop.begin() + pickupRange.start,
+                    requestsDroppedOffAtStop.begin() + pickupRange.end};
         }
 
         ScheduledStop getNextScheduledStop(const int vehId) const {

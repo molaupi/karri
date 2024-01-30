@@ -307,7 +307,7 @@ namespace karri {
                                                              const typename LabelSet::DistanceLabel &psgArrTimesAtPickups,
                                                              const typename LabelSet::DistanceLabel &distancesToDest,
                                                              const typename LabelSet::DistanceLabel &pickupWalkingDists,
-                                                             const RequestContext &context) const { //TODO: Problem case beim calculator
+                                                             const RequestContext &context) const {
             using DistanceLabel = typename LabelSet::DistanceLabel;
             using LabelMask = typename LabelSet::LabelMask;
             using namespace time_utils;

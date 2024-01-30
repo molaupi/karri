@@ -203,6 +203,26 @@ namespace karri {
             deleteBucketEntries(stopId, root, ch.downwardGraph(), buckets.getTargetBuckets());
         }
 
+        // This function must be called before the routes are exchanged!
+        //TODO: Ist es möglich (und schneller) nur die richtigen Buckets zu löschen und dann die Leeways zu updaten?
+        void exchangeBucketEntries(const Vehicle &veh, RouteStateData &currData, RouteStateData &newData, BucketsWrapperT &currBuckets) {
+            assert(newData.numStopsOf(veh.vehicleId) >= 1);
+            // Deleting old buckets
+            for (int stopIndex = 0; stopIndex < currData.numStopsOf(veh.vehicleId); stopIndex++) {
+                deleteSourceBucketEntries(veh, stopIndex, currData, currBuckets);
+                deleteTargetBucketEntries(veh, stopIndex, currData, currBuckets);
+            }
+
+            // Refilling relevant buckets with new data
+            generateSourceBucketEntries(veh, 0, newData, currBuckets);
+            if (newData.numStopsOf(veh.vehicleId) == 1) return;
+            for (int stopIndex = 1; stopIndex < newData.numStopsOf(veh.vehicleId) - 1; stopIndex++) {
+                generateSourceBucketEntries(veh, stopIndex, newData, currBuckets);
+                generateTargetBucketEntries(veh, stopIndex, newData, currBuckets);
+            }
+            generateTargetBucketEntries(veh, newData.numStopsOf(veh.vehicleId) - 1, newData, currBuckets);
+        }
+
     private:
 
 

@@ -577,10 +577,12 @@ int main(int argc, char *argv[]) {
                 InsertionFinderImpl,
                 CostCalculator,
                 RequestStateInitializerImpl,
-                BucketsWrapper>;
+                BucketsWrapper,
+                RouteStateUpdater,
+                CurVehLocToPickupSearchesImpl>;
 
         AssignmentManager asgnManager(insertionFinder, calc, inputConfig, requestStateInitializer,
-                                      variableData, fixedData, variableBuckets, fixedBuckets);
+                                      variableData, fixedData, variableBuckets, fixedBuckets, variableUpdater, curVehLocToPickupSearches);
 
 
 #if KARRI_OUTPUT_VEHICLE_PATHS

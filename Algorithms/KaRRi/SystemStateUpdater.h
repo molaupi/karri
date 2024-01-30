@@ -395,6 +395,30 @@ namespace karri {
         }
 
 
+
+        void exchangeRoutesFor(Vehicle &veh) {
+            const int vehId = veh.vehicleId;
+            bool lastStopIdentical = variableData.stopIdsFor(vehId)[variableData.numStopsOf(vehId) - 1] ==
+                    fixedData.stopIdsFor(vehId)[fixedData.numStopsOf(vehId) - 1];
+            // Exchange elliptic buckets
+            ellipticBucketsEnv.exchangeBucketEntries(veh, variableData, fixedData, variableBuckets);
+
+            // Update last stop vertice
+            if (!lastStopIdentical) {
+                const auto oldLocHead = inputGraph.edgeHead(variableData.stopLocationsFor(vehId)[variableData.numStopsOf(vehId) - 1]);
+                const auto newLocHead = inputGraph.edgeHead(fixedData.stopLocationsFor(vehId)[fixedData.numStopsOf(vehId) - 1]);
+                variableLastStopsAtVertices.removeLastStopAt(oldLocHead, vehId);
+                variableLastStopsAtVertices.insertLastStopAt(newLocHead, vehId);
+            }
+
+            // Update LastStopBuckets and exchange actual routes
+            lastStopBucketsEnv.removeBucketEntries(veh, variableData.numStopsOf(vehId) - 1, variableData); // TODO: Kann man darauf verzichten wenn letzter Stop gleich?
+            variableUpdater.exchangeRouteFor(vehId, fixedData);
+            lastStopBucketsEnv.generateBucketEntries(veh, variableData.numStopsOf(vehId) - 1, variableData);
+        }
+
+
+
         // Updates the bucket state (elliptic buckets, last stop buckets, lastStopsAtVertices structure) given an
         // assignment that has already been inserted into routeState as well as the stop index of the pickup and
         // dropoff after the insertion.

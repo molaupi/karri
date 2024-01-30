@@ -223,9 +223,72 @@ namespace karri {
             recalculateVehWaitTimesAtDropoffsPrefixSum(vehId, 0, data.numStopsOf(vehId) - 1, 0, numDropoffsPrefixSum, vehWaitTimesPrefixSum);
         }
 
+        void exchangeRouteFor(const int vehId, const RouteStateData &otherData) {
+            assert(data.numStopsOf(vehId) >= otherData.numStopsOf(vehId));
+            const auto otherStopIds = otherData.stopIdsFor(vehId);
+            auto stopIds = data.stopIdsFor(vehId);
+            int index = 0;
+            bool maxLeewayChanged = false;
+
+            while (index < data.numStopsOf(vehId)) {
+                if (index >= otherData.numStopsOf(vehId) || stopIds[index] != otherStopIds[index]) {
+                    if (data.getStopIdOfMaxLeeway() == stopIds[index]) {
+                        maxLeewayChanged = true;
+                    }
+                    deleteRouteDataFor(vehId, stopIds[index], index);
+                    stopIds = data.stopIdsFor(vehId);
+                    continue;
+                }
+                data.updateSchedArrTimesFor(vehId, index, otherData.schedArrTimesFor(vehId)[index]);
+                data.updateSchedDepTimesFor(vehId, index, otherData.schedDepTimesFor(vehId)[index]);
+                data.updateMaxArrTimesFor(vehId, index, otherData.maxArrTimesFor(vehId)[index]);
+                data.updateOccupanciesFor(vehId, index, otherData.occupanciesFor(vehId)[index]);
+                data.updateVehWaitTimesPrefixSumFor(vehId, index, otherData.vehWaitTimesPrefixSumFor(vehId)[index]);
+                data.updateVehWaitTimesUntilDropoffsPrefixSumFor(vehId, index, otherData.vehWaitTimesUntilDropoffsPrefixSumsFor(vehId)[index]);
+                data.updateNumDropoffsPrefixSumFor(vehId, index, otherData.numDropoffsPrefixSumFor(vehId)[index]);
+                data.updateIdOfPreviousStopOf(stopIds[index], otherData.idOfPreviousStopOf(stopIds[index]));
+                data.updateStopPositionOf(stopIds[index], index);
+
+                const int leeway = otherData.leewayOfLegStartingAt(stopIds[index]);
+                data.updateLeewayOfLegStartingAt(stopIds[index], leeway);
+                if (data.getMaxLeeway() < leeway) {
+                    data.updateMaxLeeway(stopIds[index], leeway);
+                } else if (data.getStopIdOfMaxLeeway() == stopIds[index]) {
+                    maxLeewayChanged = true;
+                }
+
+                data.removeDroppedOffRequests(stopIds[index]);
+                data.removePickedUpRequests(stopIds[index]);
+                for (const int reqId: otherData.getRequestsPickedUpAt(stopIds[index])) {
+                    data.addPickedUpRequest(stopIds[index], reqId);
+                }
+                for (const int reqId: otherData.getRequestsDroppedOffAt(stopIds[index])) {
+                    data.addDroppedOffRequest(stopIds[index], reqId);
+                }
+
+                index++;
+            }
+
+            if (maxLeewayChanged) {
+                recomputeMaxLeeway();
+            }
+            assert(index == otherData.numStopsOf(vehId) && index == data.numStopsOf(vehId));
+        }
+
 
     private:
 
+        // This method only removes and invalidates the data for one stopId.
+        // There are value arrays inside RouteData that store codependent data which need to be updated separately.
+        void deleteRouteDataFor(const int vehId, const int stopId, const int index) {
+            data.removePickedUpRequests(stopId);
+            data.removeDroppedOffRequests(stopId);
+            data.removeStopFor(vehId, stopId, index);
+            data.updateIdOfPreviousStopOf(stopId, INVALID_ID);
+            data.updateStopPositionOf(stopId, INVALID_INDEX);
+            data.updateLeewayOfLegStartingAt(stopId, 0);
+            data.updateVehicleIdOf(stopId, INVALID_ID);
+        }
 
         void rereshRouteDataDatastructures(const int vehId, ConstantVectorRange<int> &stopIds, ConstantVectorRange<int> &schedDepTimes,
                 ConstantVectorRange<int> &schedArrTimes, ConstantVectorRange<int> &maxArrTimes, ConstantVectorRange<int> &stopLocations,

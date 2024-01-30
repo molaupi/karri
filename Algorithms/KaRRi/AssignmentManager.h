@@ -14,33 +14,59 @@ namespace karri {
     template<typename AssignmentFinderT,
             typename CostCalculatorT,
             typename RequestStateInitializerT,
-            typename BucketsWrapperT>
+            typename BucketsWrapperT,
+            typename RouteStateUpdaterT,
+            typename CurVehLocT>
     class AssignmentManager {
 
     public:
         AssignmentManager(AssignmentFinderT &asgnFinder, CostCalculatorT &calc,
                           InputConfig &config, RequestStateInitializerT &requestStateInitializer,
                           RouteStateData &variableRouteStateData, RouteStateData &fixedRouteStateData,
-                          BucketsWrapperT &variableBuckets, BucketsWrapperT &fixedBuckets):
+                          BucketsWrapperT &variableBuckets, BucketsWrapperT &fixedBuckets,
+                          RouteStateUpdaterT &varUpdater, CurVehLocT &vehLocator):
                           asgnFinder(asgnFinder),
                           calc(calc),
                           config(config),
                           requestStateInitializer(requestStateInitializer),
                           variableRouteStateData(variableRouteStateData),
                           fixedRouteStateData(fixedRouteStateData),
+                          varUpdater(varUpdater),
                           variableBuckets(variableBuckets),
-                          fixedBuckets(fixedBuckets) {}
+                          fixedBuckets(fixedBuckets),
+                          vehLocator(vehLocator) {}
 
+        //TODO: Wenn Einfügen auf selbem Fahrzeug der losgelösten Requests möglich sein soll, muss man
+        // es möglich sein Route (und Bucket) exchanges rückgängig zu machen (falls Kosten doch größer sind)
         std::vector<RequestState<CostCalculatorT>*> &calculateChanges(const Request &req) {
             if (currentResult.size() > 0) {
                 delete currentResult[0];
             }
             currentResult.clear();
-            auto *reqState = createAndInitializeRequestState(req);
-            calc.exchangeRouteStateData(variableRouteStateData);
-            asgnFinder.findBestAssignment(*reqState, variableRouteStateData, variableBuckets);
-            currentResult.push_back(reqState);
+            auto *varReqState = createAndInitializeRequestState(req);
+            auto *fixedReqState = createAndInitializeRequestState(req);
+            searchBestAssignmentOn(variableRouteStateData, variableBuckets, *varReqState);
+            searchBestAssignmentOn(fixedRouteStateData, fixedBuckets, *fixedReqState);
+
+            delete fixedReqState;
+
+            const int varVehId = varReqState->getBestAssignment().vehicle->vehicleId;
+            //TODO: Können hier Probleme auftreten mit dem vehLocator? Die aktuelle Location wird immer auf der variablen Strecke berechnet unabhängig vom reqState.
+            // Also könnte man stattdessen einfach den vehLocator eine run(reqState) und eine initialize() (clearing) methode geben?
+            // Für die if Bedingung könnte man alternativ auch fragen, ob es ein PBNS Assinment war (In RequestState ein Asgn. Typen hinzufügen?)
+            if(!varReqState->isNotUsingVehicleBest() && !vehLocator.knowsCurrentLocationOf(varVehId) && variableRouteStateData.numStopsOf(varVehId) > 1) {
+                vehLocator.initialize(req.requestTime, *varReqState);
+                vehLocator.addPickupForProcessing(varReqState->getBestAssignment().pickup->id, varReqState->getBestAssignment().distToPickup);
+                vehLocator.computeExactDistancesVia(*varReqState->getBestAssignment().vehicle, variableRouteStateData);
+            }
+
+            currentResult.push_back(varReqState);
             return currentResult;
+        }
+
+        void searchBestAssignmentOn(RouteStateData &data, BucketsWrapperT &buckets, RequestState<CostCalculatorT> &reqState) {
+            calc.exchangeRouteStateData(data);
+            asgnFinder.findBestAssignment(reqState, data, buckets);
         }
 
         RequestState<CostCalculatorT> *createAndInitializeRequestState(const Request &req) {
@@ -65,8 +91,12 @@ namespace karri {
         RouteStateData &variableRouteStateData;
         RouteStateData &fixedRouteStateData;
 
+        RouteStateUpdaterT &varUpdater;
+
         BucketsWrapperT &variableBuckets;
         BucketsWrapperT &fixedBuckets;
+
+        CurVehLocT &vehLocator;
     };
 
 }
