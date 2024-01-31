@@ -28,6 +28,9 @@
 #include "Algorithms/KaRRi/LastStopSearches/LastStopBCHQuery.h"
 #include "Algorithms/KaRRi/LastStopSearches/TentativeLastStopDistances.h"
 
+#include <atomic>
+#include <tbb/parallel_for.h>
+
 namespace karri::DropoffAfterLastStopStrategies {
 
     template<typename InputGraphT,
@@ -164,14 +167,18 @@ namespace karri::DropoffAfterLastStopStrategies {
             Timer timer;
 
             initDropoffSearches();
-            for (unsigned int i = 0; i < requestState.numDropoffs(); i += K)
+            tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&] (int i)
+            {
                 runSearchesForDropoffBatch(i);
+            });
+            // for (unsigned int i = 0; i < requestState.numDropoffs(); i += K)
+            //     runSearchesForDropoffBatch(i);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().dalsAssignmentsStats.searchTime += searchTime;
-            requestState.stats().dalsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations;
-            requestState.stats().dalsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled;
-            requestState.stats().dalsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned;
+            requestState.stats().dalsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load();
+            requestState.stats().dalsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load();
+            requestState.stats().dalsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load();
             requestState.stats().dalsAssignmentsStats.numCandidateVehicles += vehiclesSeenForDropoffs.size();
         }
 
@@ -365,9 +372,9 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         void initDropoffSearches() {
-            totalNumEdgeRelaxations = 0;
-            totalNumVerticesSettled = 0;
-            totalNumEntriesScanned = 0;
+            totalNumEdgeRelaxations.store(0);
+            totalNumVerticesSettled.store(0);
+            totalNumEntriesScanned.store(0);
 
             upperBoundCost = requestState.getBestCost();
             vehiclesSeenForDropoffs.clear();
@@ -394,12 +401,12 @@ namespace karri::DropoffAfterLastStopStrategies {
                 currentDropoffWalkingDists[i] = dropoff.walkingDist;
             }
 
-            lastStopDistances.setCurBatchIdx(batchIdx);
+            // lastStopDistances.setCurBatchIdx(batchIdx);
             search.run(dropoffTails, travelTimes);
 
-            totalNumEdgeRelaxations += search.getNumEdgeRelaxations();
-            totalNumVerticesSettled += search.getNumVerticesSettled();
-            totalNumEntriesScanned += search.getNumEntriesScanned();
+            totalNumEdgeRelaxations.add_fetch(search.getNumEdgeRelaxations(), std::memory_order_relaxed);
+            totalNumVerticesSettled.add_fetch(search.getNumVerticesSettled(), std::memory_order_relaxed);
+            totalNumEntriesScanned.add_fetch(search.getNumEntriesScanned(), std::memory_order_relaxed);
         }
 
 
@@ -424,17 +431,17 @@ namespace karri::DropoffAfterLastStopStrategies {
         };
         std::vector<PickupBeforeNextStopContinuation> pbnsContinuations;
 
-        int upperBoundCost;
+        int upperBoundCost; // no update -> no atomic?
 
         // Vehicles seen by any last stop search
-        Subset vehiclesSeenForDropoffs;
+        ThreadSafeSubset vehiclesSeenForDropoffs;
         DropoffBCHQuery search;
         DistanceLabel currentDropoffWalkingDists;
         TentativeLastStopDistances<LabelSet> lastStopDistances;
 
-        int totalNumEdgeRelaxations;
-        int totalNumVerticesSettled;
-        int totalNumEntriesScanned;
+        CAtomic<int> totalNumEdgeRelaxations;
+        CAtomic<int> totalNumVerticesSettled;
+        CAtomic<int> totalNumEntriesScanned;
 
     };
 
