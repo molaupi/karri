@@ -26,13 +26,15 @@
 #pragma once
 
 #include "DataStructures/Labels/BasicLabelSet.h"
-#include "DataStructures/Containers/Subset.h"
+#include "DataStructures/Containers/ThreadSafeSubset.h"
 #include "Algorithms/CH/CH.h"
 #include "Tools/Constants.h"
 #include "TentativeLastStopDistances.h"
 
-namespace karri {
+#include <tbb/enumerable_thread_specific.h>
 
+namespace karri {
+    using namespace tbb;
 
     template<typename CHEnvT,
             typename LastStopBucketsEnvT,
@@ -45,12 +47,38 @@ namespace karri {
         static constexpr int K = LabelSetT::K;
         using DistanceLabel = typename LabelSetT::DistanceLabel;
         using LabelMask = typename LabelSetT::LabelMask;
+        using ThreadLocalTentativeDistances = typename TentativeLastStopDistances<LabelSetT>::ThreadLocalTentativeLastStopDistances;
+
+        struct UpdateDistancesToPDLocs {
+
+            UpdateDistancesToPDLocs() : curTentative(nullptr) {}
+
+            void operator()(const int vehId, const DistanceLabel& distToPDLoc, const LabelMask& mask) {
+
+                assert(curTentative);
+                return curTentative->setDistancesForCurBatchIf(vehId, distToPDLoc, mask);
+            }
+
+            DistanceLabel getDistances(const int &vehId) {
+                return curTentative->getDistancesForCurBatch(vehId);
+            }
+
+            void setCurLocalTentative(ThreadLocalTentativeDistances *const newCurTentative) {
+                curTentative = newCurTentative;
+            }
+
+        private:
+            ThreadLocalTentativeDistances *curTentative;
+        };
+        
 
         struct ScanSortedBucket {
 
         public:
 
-            explicit ScanSortedBucket(LastStopBCHQuery &search) : search(search) {}
+            explicit ScanSortedBucket(LastStopBCHQuery &search, UpdateDistancesToPDLocs &updateDistances) 
+                    : search(search),
+                      updateDistances(updateDistances) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int v, DistLabelT &distFromV, const DistLabelContainerT & /*distLabels*/) {
@@ -117,8 +145,8 @@ namespace karri {
                     }
                 }
 
-                search.numEntriesVisited += numEntriesScannedHere;
-                ++search.numVerticesSettled;
+                search.numEntriesVisited.local() += numEntriesScannedHere;
+                ++search.numVerticesSettled.local();
 
                 return false;
             }
@@ -128,14 +156,14 @@ namespace karri {
             void tryUpdatingDistance(const int vehId, const DistanceLabel& distToPDLoc) {
                 // Update tentative distances to v for any searches where distViaV admits a possible better assignment
                 // than the current best and where distViaV is at least as good as the current tentative distance.
-                LabelMask mask = ~(search.tentativeDistances.getDistancesForCurBatch(vehId) < distToPDLoc);
+                LabelMask mask = ~(updateDistances.getDistances(vehId) < distToPDLoc);
                 mask &= distToPDLoc < INFTY;
                 if (!anySet(mask))
                     return;
 
                 mask &= ~search.pruner.isWorseThanBestKnownVehicleDependent(vehId, distToPDLoc);
                 if (anySet(mask)) { // if any search requires updates, update the right ones according to mask
-                    search.tentativeDistances.setDistancesForCurBatchIf(vehId, distToPDLoc, mask);
+                    updateDistances(vehId, distToPDLoc, mask);
                     search.vehiclesSeen.insert(vehId);
                     search.pruner.updateUpperBoundCost(vehId, distToPDLoc);
                 }
@@ -143,6 +171,7 @@ namespace karri {
 
 
             LastStopBCHQuery &search;
+            UpdateDistancesToPDLocs &updateDistances;
         };
 
 
@@ -159,6 +188,7 @@ namespace karri {
 
         };
 
+        typedef typename CHEnvT::template UpwardSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT> UpwardSearchType;
 
     public:
 
@@ -167,10 +197,11 @@ namespace karri {
                 TentativeLastStopDistances <LabelSetT> &tentativeLastStopDistances,
                 const CHEnvT &chEnv,
                 const RouteState& routeState,
-                Subset &vehiclesSeen,
+                ThreadSafeSubset &vehiclesSeen,
                 PrunerT pruner)
-                : upwardSearch(chEnv.template getReverseSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT>(
-                ScanSortedBucket(*this), StopLastStopBCH(*this))),
+                : updateDistancesToPdLocs(),
+                  upwardSearch([&]() {return chEnv.template getReverseSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT>(
+                ScanSortedBucket(*this, updateDistancesToPdLocs.local()), StopLastStopBCH(*this));}),
                   pruner(pruner),
                   ch(chEnv.getCH()),
                   bucketContainer(lastStopBucketsEnv.getBuckets()),
@@ -182,29 +213,43 @@ namespace karri {
 
         void run(const std::array<int, K> &sources,
                  const std::array<int, K> offsets = {}) {
-            numVerticesSettled = 0;
-            numEntriesVisited = 0;
+            for (auto& local : numVerticesSettled)
+                local = 0;
+            for (auto& local : numEntriesVisited)
+                local = 0;
+            
+            // Get reference to thread local result structure once and have search work on it.
+            auto localTentativeDistances = tentativeDistances.getThreadLocalTentativeDistances();
+            localTentativeDistances.initForSearch();
+            auto& localUpdateDistances = updateDistancesToPdLocs.local();
+            localUpdateDistances.setCurLocalTentative(&localTentativeDistances);
+                    
             std::array<int, K> sources_ranks = {};
             std::transform(sources.begin(), sources.end(), sources_ranks.begin(),
                            [&](const int v) { return ch.rank(v); });
-            upwardSearch.runWithOffset(sources_ranks, offsets);
+
+            UpwardSearchType& localUpwardSearch = upwardSearch.local();      
+            localUpwardSearch.runWithOffset(sources_ranks, offsets);
         }
 
-        int getNumEdgeRelaxations() const {
-            return upwardSearch.getNumEdgeRelaxations();
+        int getNumEdgeRelaxations() {
+            int sum = 0;
+            for (auto& localSearch : upwardSearch)
+                sum += localSearch.getNumEdgeRelaxations(); 
+            return sum;
         }
 
-        int getNumVerticesSettled() const {
-            return numVerticesSettled;
+        int getNumVerticesSettled() {
+            return numVerticesSettled.combine([](const int& n1, const int& n2){return n1 + n2;});
         }
 
-        int getNumEntriesScanned() const {
-            return numEntriesVisited;
+        int getNumEntriesScanned() {
+            return numEntriesVisited.combine([](const int& n1, const int& n2){return n1 + n2;});
         }
 
     private:
-
-        typename CHEnvT::template UpwardSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT> upwardSearch;
+        enumerable_thread_specific<UpdateDistancesToPDLocs> updateDistancesToPdLocs;
+        enumerable_thread_specific<UpwardSearchType> upwardSearch;
         PrunerT pruner;
 
         const CH &ch;
@@ -212,10 +257,11 @@ namespace karri {
         const RouteState& routeState;
 
         TentativeLastStopDistances <LabelSetT> &tentativeDistances;
-
-        Subset &vehiclesSeen;
-        int numVerticesSettled;
-        int numEntriesVisited;
+        
+        ThreadSafeSubset &vehiclesSeen;
+        
+        enumerable_thread_specific<int> numVerticesSettled;
+        enumerable_thread_specific<int> numEntriesVisited;
     };
 
 }

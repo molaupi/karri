@@ -30,6 +30,9 @@
 #include "Algorithms/KaRRi/LastStopSearches/LastStopBCHQuery.h"
 #include "Tools/Timer.h"
 
+#include <atomic>
+#include <tbb/parallel_for.h>
+
 namespace karri::PickupAfterLastStopStrategies {
 
     template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsEnvT, typename PDDistancesT, typename LabelSetT>
@@ -54,7 +57,8 @@ namespace karri::PickupAfterLastStopStrategies {
                                                    const bool considerPickupWalkingDists = false) const {
                 assert(strat.requestState.minDirectPDDist < INFTY);
 
-                if (strat.upperBoundCost >= INFTY) {
+                int currUpperBoundCost = strat.upperBoundCost.load(std::memory_order_relaxed);
+                if (currUpperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with distancesToPickups[i] >= INFTY or
                     // minDirectDistances[i] >= INFTY are worse than the current best.
                     return ~(distancesToPickups < INFTY);
@@ -71,7 +75,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
                 costLowerBound.setIf(DistanceLabel(INFTY), ~(distancesToPickups < INFTY));
 
-                return strat.upperBoundCost < costLowerBound;
+                return strat.upperBoundCost < currUpperBoundCost;
             }
 
             // Returns whether a given arrival time and minimum distance from a vehicle's last stop to the pickup cannot
@@ -83,7 +87,8 @@ namespace karri::PickupAfterLastStopStrategies {
                                                   const DistanceLabel &minDistancesToPickups) const {
                 assert(strat.requestState.minDirectPDDist < INFTY);
 
-                if (strat.upperBoundCost >= INFTY) {
+                int currUpperBoundCost = strat.upperBoundCost.load(std::memory_order_relaxed);
+                if (currUpperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with arrTimesAtPickups[i] >= INFTY or
                     // minDistancesToPickups[i] >= INFTY are worse than the current best.
                     return ~((arrTimesAtPickups < INFTY) & (minDistancesToPickups < INFTY));
@@ -100,12 +105,14 @@ namespace karri::PickupAfterLastStopStrategies {
 
                 costLowerBound.setIf(DistanceLabel(INFTY),
                                      ~((arrTimesAtPickups < INFTY) & (minDistancesToPickups < INFTY)));
-                return strat.upperBoundCost < costLowerBound;
+                return currUpperBoundCost < costLowerBound;
             }
 
             LabelMask isWorseThanBestKnownVehicleDependent(const int vehId,
                                                             const DistanceLabel &distancesToPickups) {
-                if (strat.upperBoundCost >= INFTY) {
+        
+                int currUpperBoundCost = strat.upperBoundCost.load(std::memory_order_relaxed);
+                if (currUpperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with distancesToDropoffs[i] >= INFTY are worse than
                     // the current best.
                     return ~(distancesToPickups < INFTY);
@@ -125,7 +132,7 @@ namespace karri::PickupAfterLastStopStrategies {
                         strat.requestState);
 
                 costLowerBound.setIf(INFTY, ~(distancesToPickups < INFTY));
-                return strat.upperBoundCost < costLowerBound;
+                return currUpperBoundCost < costLowerBound;
             }
 
             void updateUpperBoundCost(const int vehId, const DistanceLabel &distancesToPickups) {
@@ -135,7 +142,14 @@ namespace karri::PickupAfterLastStopStrategies {
                         strat.curDistancesToDest,
                         strat.currentPickupWalkingDists, strat.requestState);
 
-                strat.upperBoundCost = std::min(strat.upperBoundCost, cost.horizontalMin());
+                // Compare and exchange for atomic int
+                const int minNewCost = cost.horizontalMin();
+                auto &upperBoundCostAtomic = strat.upperBoundCost;
+                int expectedUpperBoundCost = upperBoundCostAtomic.load(std::memory_order_relaxed);
+                while (expectedUpperBoundCost > minNewCost && !upperBoundCostAtomic.compare_exchange_strong(
+                    expectedUpperBoundCost, minNewCost, std::memory_order_relaxed));
+
+                // strat.upperBoundCost = std::min(strat.upperBoundCost, cost.horizontalMin());
             }
 
             bool isVehicleEligible(const int &) const {
@@ -187,14 +201,18 @@ namespace karri::PickupAfterLastStopStrategies {
             Timer timer;
 
             initPickupSearches();
-            for (int i = 0; i < requestState.numPickups(); i += K)
+            tbb::parallel_for(int(0), static_cast<int>(requestState.numPickups()), K, [&] (int i)
+            {
                 runSearchesForPickupBatch(i);
+            });
+            // for (int i = 0; i < requestState.numPickups(); i += K)
+            //     runSearchesForPickupBatch(i);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().palsAssignmentsStats.searchTime += searchTime;
-            requestState.stats().palsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations;
-            requestState.stats().palsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled;
-            requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned;
+            requestState.stats().palsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load();
+            requestState.stats().palsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load();
+            requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load();
             requestState.stats().palsAssignmentsStats.numCandidateVehicles += vehiclesSeenForPickups.size();
         }
 
@@ -263,11 +281,11 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         void initPickupSearches() {
-            totalNumEdgeRelaxations = 0;
-            totalNumVerticesSettled = 0;
-            totalNumEntriesScanned = 0;
+            totalNumEdgeRelaxations.store(0);
+            totalNumVerticesSettled.store(0);
+            totalNumEntriesScanned.store(0);
 
-            upperBoundCost = bestCostBeforeQuery;
+            upperBoundCost.store(bestCostBeforeQuery);
             vehiclesSeenForPickups.clear();
             const int numPickupBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
             distances.init(numPickupBatches);
@@ -290,12 +308,15 @@ namespace karri::PickupAfterLastStopStrategies {
                 curDistancesToDest[i] = pdDistances.getDirectDistance(pickup.id, 0);
             }
 
-            distances.setCurBatchIdx(firstPickupId / K);
+            // distances.setCurBatchIdx(firstPickupId / K);
             search.run(pickupTails, travelTimes);
 
-            totalNumEdgeRelaxations += search.getNumEdgeRelaxations();
-            totalNumVerticesSettled += search.getNumVerticesSettled();
-            totalNumEntriesScanned += search.getNumEntriesScanned();
+            totalNumEdgeRelaxations.add_fetch(search.getNumEdgeRelaxations(), std::memory_order_relaxed);
+            totalNumVerticesSettled.add_fetch(search.getNumVerticesSettled(), std::memory_order_relaxed);
+            totalNumEntriesScanned.add_fetch(search.getNumEntriesScanned(), std::memory_order_relaxed);
+
+            // After a search batch of K PDLocs, write the distances back to the global vectors
+            distances.updateDistancesInGlobalVectors(firstPickupId);
         }
 
         const InputGraphT &inputGraph;
@@ -307,20 +328,20 @@ namespace karri::PickupAfterLastStopStrategies {
         const int &bestCostBeforeQuery;
         const InputConfig &inputConfig;
 
-        int upperBoundCost;
+        std::atomic_int upperBoundCost;
 
         TentativeLastStopDistances<LabelSetT> distances;
         PickupBCHQuery search;
 
         // Vehicles seen by any last stop pickup search
-        Subset vehiclesSeenForPickups;
+        ThreadSafeSubset vehiclesSeenForPickups;
         DistanceLabel currentPickupWalkingDists;
         DistanceLabel curPassengerArrTimesAtPickups;
         DistanceLabel curDistancesToDest;
 
-        int totalNumEdgeRelaxations;
-        int totalNumVerticesSettled;
-        int totalNumEntriesScanned;
+        CAtomic<int> totalNumEdgeRelaxations;
+        CAtomic<int> totalNumVerticesSettled;
+        CAtomic<int> totalNumEntriesScanned;
 
     };
 
