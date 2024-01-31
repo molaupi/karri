@@ -59,7 +59,7 @@ $ cd Publications/KaRRi
 $ bash DownloadGermanyOSMData.sh .
 $ bash FilterGermanyOSMData.sh .
 $ bash PreprocessOSMData.sh . Germany Berlin BoundaryPolygons
-$ bash GenerateKnownInstancesInputData.sh . Berlin-1pct pedestrian
+$ bash GenerateKnownInstanceInputData.sh . Berlin-1pct pedestrian
 ```
 
 To generate the input data for the other instances, simply replace ```Berlin-1pct``` with the instance name 
