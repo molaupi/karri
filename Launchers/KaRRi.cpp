@@ -30,6 +30,8 @@
 
 #include <csv.h>
 
+#include <oneapi/tbb/global_control.h>
+
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "Tools/Logging/LogManager.h"
 #include "DataStructures/Graph/Graph.h"
@@ -139,6 +141,10 @@ inline void printUsage() {
 
 int main(int argc, char *argv[]) {
     using namespace karri;
+
+//    auto g = tbb::global_control(tbb::global_control::max_allowed_parallelism, 1);
+//    unused(g);
+
     try {
         CommandLineParser clp(argc, argv);
         if (clp.isSet("help")) {

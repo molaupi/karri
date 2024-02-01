@@ -50,35 +50,30 @@ namespace karri {
 
     public:
 
-    // Represents information that one thread computes during one Last Stop BCH search. Can be incorporated into
-    // global result at end of search.
-    class ThreadLocalTentativeLastStopDistances {
+        // Represents information that one thread computes during one Last Stop BCH search. Can be incorporated into
+        // global result at end of search.
+        class ThreadLocalTentativeLastStopDistances {
 
             friend TentativeLastStopDistances;
 
         public:
 
-            ThreadLocalTentativeLastStopDistances(const int &fleetSize,
-                                                 std::vector<int>& indexInDistanceVector,
-                                                 std::vector<DistanceLabel>& distance) :
-                    fleetSize(fleetSize),
+            ThreadLocalTentativeLastStopDistances(std::vector<int> &indexInDistanceVector,
+                                                  std::vector<DistanceLabel> &distance) :
                     indexInDistanceVector(indexInDistanceVector),
                     distance(distance) {}
 
             void initForSearch() {
                 distance.clear();
 
-                if (indexInDistanceVector.size() < fleetSize)
-                    indexInDistanceVector.resize(fleetSize);
-
-                for (int i = 0; i < fleetSize; ++i)
+                for (int i = 0; i < indexInDistanceVector.size(); ++i)
                     indexInDistanceVector[i] = INVALID_INDEX;
             }
 
             void
             setDistancesForCurBatchIf(const int &vehId, const DistanceLabel &distanceBatch,
-                                  const LabelMask &batchInsertMask) {
-                assert(vehId >= 0 && vehId <= fleetSize);
+                                      const LabelMask &batchInsertMask) {
+                assert(vehId >= 0 && vehId < indexInDistanceVector.size());
                 assert(distanceBatch.horizontalMin() >= 0 && distanceBatch.horizontalMin() < INFTY);
 
                 if (!anySet(batchInsertMask))
@@ -113,24 +108,27 @@ namespace karri {
                 distance.push_back(DistanceLabel(INFTY));
             }
 
-            const int &fleetSize;
-
-            std::vector<int> indexInDistanceVector;
-            std::vector<DistanceLabel> distance;
+            std::vector<int> &indexInDistanceVector;
+            std::vector<DistanceLabel> &distance;
 
         };
 
-        TentativeLastStopDistances(const size_t fleetSize)
-                : fleetSize(fleetSize),
+        TentativeLastStopDistances(const size_t pFleetSize)
+                : fleetSize(pFleetSize),
                   startIdxForVeh(fleetSize, INVALID_INDEX),
                   distances(),
                   stopLocks(fleetSize, SpinLock()),
-                  writeResultsToGlobalVehicleOrder([&]{ return Permutation::getRandomPermutation(fleetSize, std::minstd_rand(seedCounter.fetch_add(1, std::memory_order_relaxed)));}) {}
+                  threadLocalIndexInDistanceVector(fleetSize),
+                  threadLocalDistances(),
+                  writeResultsToGlobalVehicleOrder([&] {
+                      return Permutation::getRandomPermutation(fleetSize, std::minstd_rand(
+                              seedCounter.fetch_add(1, std::memory_order_relaxed)));
+                  }) {}
 
         void init(const int &numBatches) {
             curNumBatches = numBatches;
-            startIdxForVeh.clear();
-            startIdxForVeh = TimestampedVector(fleetSize, INVALID_INDEX);
+//            startIdxForVeh.clear();
+            std::fill(startIdxForVeh.begin(), startIdxForVeh.end(), INVALID_INDEX);
             distances.clear();
         }
 
@@ -152,13 +150,14 @@ namespace karri {
         // object encapsulates the local result of the thread for that search. This way, the underlying TLS structures
         // are only queried once per search.
         ThreadLocalTentativeLastStopDistances getThreadLocalTentativeDistances() {
-            return ThreadLocalTentativeLastStopDistances(fleetSize, indexInDistanceVector.local(), distance.local());
+            return ThreadLocalTentativeLastStopDistances(threadLocalIndexInDistanceVector.local(),
+                                                         threadLocalDistances.local());
         }
 
         void updateDistancesInGlobalVectors(const int firstPDLocId) {
 
-            const auto &localIndices = indexInDistanceVector.local();
-            const auto &localDistances = distance.local();
+            const auto &localIndices = threadLocalIndexInDistanceVector.local();
+            const auto &localDistances = threadLocalDistances.local();
 
             for (const auto &vehId: writeResultsToGlobalVehicleOrder.local()) {
                 const auto &idx = localIndices[vehId];
@@ -170,12 +169,11 @@ namespace karri {
                     const LabelMask improved =
                             dist < distances[startIdxForVeh[vehId] + firstPDLocId / K];
 
-                    distances[startIdxForVeh[vehId] + firstPDLocId / K].setIf(dist,improved);
+                    distances[startIdxForVeh[vehId] + firstPDLocId / K].setIf(dist, improved);
 
                 }
             }
         }
-
 
 
     private:
@@ -189,7 +187,7 @@ namespace karri {
             }
 
             const auto distancesIt = distances.grow_by(curNumBatches, DistanceLabel(INFTY));
-            
+
             startIdxForVeh[vehId] = distancesIt - distances.begin();
 
             currLock.unlock();
@@ -197,18 +195,19 @@ namespace karri {
         }
 
         int curNumBatches;
-        const size_t &fleetSize;
+        const size_t fleetSize;
 
         // Index and value array for global distances
-        TimestampedVector<int> startIdxForVeh;
+//        TimestampedVector<int> startIdxForVeh;
+        std::vector<int> startIdxForVeh;
         tbb::concurrent_vector<DistanceLabel> distances; // curNumBatches DistanceLabels per vehicle
 
         // One spinlock per vehicle to synchronize dynamic allocation in global result
         std::vector<SpinLock> stopLocks;
 
         // Thread Local Storage for local distances calculation
-        tbb::enumerable_thread_specific<std::vector<int>> indexInDistanceVector;
-        tbb::enumerable_thread_specific<std::vector<DistanceLabel>> distance;
+        tbb::enumerable_thread_specific<std::vector<int>> threadLocalIndexInDistanceVector;
+        tbb::enumerable_thread_specific<std::vector<DistanceLabel>> threadLocalDistances;
 
         int curBatchIdx;
 

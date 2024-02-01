@@ -51,7 +51,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             static constexpr bool INCLUDE_IDLE_VEHICLES = false;
 
-            DropoffAfterLastStopPruner(IndividualBCHStrategy &strat,
+            DropoffAfterLastStopPruner(const IndividualBCHStrategy &strat,
                                        const CostCalculator &calc)
                     : strat(strat), calc(calc) {}
 
@@ -68,7 +68,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     return ~(distancesToDropoffs < INFTY);
                 }
 
-                const DistanceLabel walkingDists = considerWalkingDists ? strat.currentDropoffWalkingDists : 0;
+                const DistanceLabel walkingDists = considerWalkingDists ? currentDropoffWalkingDists : 0;
                 const DistanceLabel costLowerBound = calc.template calcKVehicleIndependentCostLowerBoundsForDALSWithKnownMinDistToDropoff<LabelSet>(
                         walkingDists, distancesToDropoffs, 0, strat.requestState);
 
@@ -90,13 +90,13 @@ namespace karri::DropoffAfterLastStopStrategies {
                 }
 
                 const DistanceLabel costLowerBound = calc.template calcKVehicleIndependentCostLowerBoundsForDALSWithKnownMinArrTime<LabelSet>(
-                        strat.currentDropoffWalkingDists, minDistancesToDropoffs, arrTimesAtDropoffs, strat.requestState);
+                        currentDropoffWalkingDists, minDistancesToDropoffs, arrTimesAtDropoffs, strat.requestState);
 
                 return strat.upperBoundCost < costLowerBound;
             }
 
             LabelMask isWorseThanBestKnownVehicleDependent(const int vehId,
-                                                            const DistanceLabel& distancesToDropoffs) {
+                                                           const DistanceLabel &distancesToDropoffs) {
                 if (strat.upperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with distancesToDropoffs[i] >= INFTY are worse than
                     // the current best.
@@ -104,7 +104,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                 }
 
                 const DistanceLabel costLowerBound = calc.template calcKVehicleDependentCostLowerBoundsForDALSWithKnownDistToDropoff<LabelSet>(
-                        vehId, strat.currentDropoffWalkingDists, distancesToDropoffs, 0, strat.requestState);
+                        vehId, currentDropoffWalkingDists, distancesToDropoffs, 0, strat.requestState);
                 return strat.upperBoundCost < costLowerBound;
             }
 
@@ -122,7 +122,10 @@ namespace karri::DropoffAfterLastStopStrategies {
             }
 
         private:
-            IndividualBCHStrategy &strat;
+            friend IndividualBCHStrategy;
+
+            const IndividualBCHStrategy &strat;
+            DistanceLabel currentDropoffWalkingDists;
             const CostCalculator &calc;
         };
 
@@ -150,9 +153,10 @@ namespace karri::DropoffAfterLastStopStrategies {
                   relevantPickupsBeforeNextStop(relevantPickupsBeforeNextStop),
                   checkPBNSForVehicle(fleet.size()),
                   vehiclesSeenForDropoffs(fleet.size()),
+                  localPruners(DropoffAfterLastStopPruner(*this, calculator)),
                   search(lastStopBucketsEnv, lastStopDistances, chEnv, routeState,
                          vehiclesSeenForDropoffs,
-                         DropoffAfterLastStopPruner(*this, calculator)),
+                         localPruners),
                   lastStopDistances(fleet.size()) {}
 
         void tryDropoffAfterLastStop() {
@@ -166,9 +170,9 @@ namespace karri::DropoffAfterLastStopStrategies {
         void runBchQueries() {
             Timer timer;
 
+
             initDropoffSearches();
-            tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&] (int i)
-            {
+            tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&](int i) {
                 runSearchesForDropoffBatch(i);
             });
             // for (unsigned int i = 0; i < requestState.numDropoffs(); i += K)
@@ -176,9 +180,9 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().dalsAssignmentsStats.searchTime += searchTime;
-            requestState.stats().dalsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load();
-            requestState.stats().dalsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load();
-            requestState.stats().dalsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load();
+            requestState.stats().dalsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load(std::memory_order_relaxed);
+            requestState.stats().dalsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load(std::memory_order_relaxed);
+            requestState.stats().dalsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(std::memory_order_relaxed);
             requestState.stats().dalsAssignmentsStats.numCandidateVehicles += vehiclesSeenForDropoffs.size();
         }
 
@@ -244,7 +248,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (entry.stopIndex < curPickupIndex) {
                             // New smaller pickup index reached: Check if seating capacity and cost lower bound admit
                             // any valid assignments at this or earlier indices.
-                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders > asgn.vehicle->capacity)
+                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders >
+                                asgn.vehicle->capacity)
                                 break;
 
                             assert(entry.stopIndex < numStops - 1);
@@ -292,7 +297,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                     continue;
 
                 if (routeState.numStopsOf(vehId) == 0 ||
-                    routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders > fleet[vehId].capacity)
+                    routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders >
+                    fleet[vehId].capacity)
                     continue;
 
                 pbnsContinuations.clear();
@@ -388,7 +394,9 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         void runSearchesForDropoffBatch(const unsigned int firstDropoffId) {
             assert(firstDropoffId % K == 0 && firstDropoffId < requestState.numDropoffs());
-            const int batchIdx = firstDropoffId / K;
+//            const int batchIdx = firstDropoffId / K;
+
+            auto &localPruner = localPruners.local();
 
             std::array<int, K> dropoffTails;
             std::array<int, K> travelTimes;
@@ -398,15 +406,19 @@ namespace karri::DropoffAfterLastStopStrategies {
                                                                         : requestState.dropoffs[firstDropoffId];
                 dropoffTails[i] = inputGraph.edgeTail(dropoff.loc);
                 travelTimes[i] = inputGraph.travelTime(dropoff.loc);
-                currentDropoffWalkingDists[i] = dropoff.walkingDist;
+                localPruner.currentDropoffWalkingDists[i] = dropoff.walkingDist;
             }
 
             // lastStopDistances.setCurBatchIdx(batchIdx);
             search.run(dropoffTails, travelTimes);
 
-            totalNumEdgeRelaxations.add_fetch(search.getNumEdgeRelaxations(), std::memory_order_relaxed);
-            totalNumVerticesSettled.add_fetch(search.getNumVerticesSettled(), std::memory_order_relaxed);
-            totalNumEntriesScanned.add_fetch(search.getNumEntriesScanned(), std::memory_order_relaxed);
+            // After a search batch of K PDLocs, write the distances back to the global vectors
+            lastStopDistances.updateDistancesInGlobalVectors(firstDropoffId);
+
+            totalNumEdgeRelaxations.add_fetch(search.getLocalNumEdgeRelaxations(), std::memory_order_relaxed);
+            totalNumVerticesSettled.add_fetch(search.getLocalNumVerticesSettled(), std::memory_order_relaxed);
+            totalNumEntriesScanned.add_fetch(search.getLocalNumEntriesScanned(), std::memory_order_relaxed);
+
         }
 
 
@@ -435,8 +447,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         // Vehicles seen by any last stop search
         ThreadSafeSubset vehiclesSeenForDropoffs;
+        tbb::enumerable_thread_specific<DropoffAfterLastStopPruner> localPruners;
         DropoffBCHQuery search;
-        DistanceLabel currentDropoffWalkingDists;
         TentativeLastStopDistances<LabelSet> lastStopDistances;
 
         CAtomic<int> totalNumEdgeRelaxations;

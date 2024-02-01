@@ -53,7 +53,7 @@ namespace karri {
 
             UpdateDistancesToPDLocs() : curTentative(nullptr) {}
 
-            void operator()(const int vehId, const DistanceLabel& distToPDLoc, const LabelMask& mask) {
+            void operator()(const int vehId, const DistanceLabel &distToPDLoc, const LabelMask &mask) {
 
                 assert(curTentative);
                 return curTentative->setDistancesForCurBatchIf(vehId, distToPDLoc, mask);
@@ -70,21 +70,28 @@ namespace karri {
         private:
             ThreadLocalTentativeDistances *curTentative;
         };
-        
+
 
         struct ScanSortedBucket {
 
         public:
 
-            explicit ScanSortedBucket(LastStopBCHQuery &search, UpdateDistancesToPDLocs &updateDistances) 
+            explicit ScanSortedBucket(LastStopBCHQuery &search,
+                                      PrunerT &pruner,
+                                      UpdateDistancesToPDLocs &updateDistances,
+                                      int& numVerticesSettled,
+                                      int& numEntriesVisited)
                     : search(search),
-                      updateDistances(updateDistances) {}
+                      pruner(pruner),
+                      updateDistances(updateDistances),
+                      numVerticesSettled(numVerticesSettled),
+                      numEntriesVisited(numEntriesVisited) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int v, DistLabelT &distFromV, const DistLabelContainerT & /*distLabels*/) {
 
                 // Check if we can prune at this vertex based only on the distance from v to the pickup(s)
-                if (allSet(search.pruner.doesDistanceNotAdmitBestAsgn(distFromV, true)))
+                if (allSet(pruner.doesDistanceNotAdmitBestAsgn(distFromV, true)))
                     return true;
 
                 int numEntriesScannedHere = 0;
@@ -95,7 +102,7 @@ namespace karri {
                         ++numEntriesScannedHere;
 
                         const int &vehId = entry.targetId;
-                        if (!search.pruner.isVehicleEligible(vehId))
+                        if (!pruner.isVehicleEligible(vehId))
                             continue;
 
                         const DistanceLabel distViaV = distFromV + DistanceLabel(entry.distToTarget);
@@ -113,11 +120,11 @@ namespace karri {
                             assert(search.routeState.numStopsOf(vehId) == 1);
                             const DistanceLabel distFromLastStopToV = entry.distToTarget;
                             const DistanceLabel distViaV = distFromLastStopToV + distFromV;
-                            const auto atLeastAsGoodAsCurBest = ~search.pruner.doesDistanceNotAdmitBestAsgn(distViaV, true);
+                            const auto atLeastAsGoodAsCurBest = ~pruner.doesDistanceNotAdmitBestAsgn(distViaV, true);
                             if (!anySet(atLeastAsGoodAsCurBest))
                                 break;
 
-                            if (!search.pruner.isVehicleEligible(vehId))
+                            if (!pruner.isVehicleEligible(vehId))
                                 continue;
 
                             tryUpdatingDistance(vehId, distViaV);
@@ -125,35 +132,37 @@ namespace karri {
                     }
 
                     auto nonIdleBucket = search.bucketContainer.getNonIdleBucketOf(v);
-                    for (const auto& entry : nonIdleBucket) {
+                    for (const auto &entry: nonIdleBucket) {
                         ++numEntriesScannedHere;
-                        const int& vehId = entry.targetId;
+                        const int &vehId = entry.targetId;
                         assert(search.routeState.numStopsOf(vehId) > 1);
                         const DistanceLabel arrTimeAtV = entry.distToTarget;
                         const DistanceLabel arrTimeAtPDLoc = arrTimeAtV + distFromV;
-                        const auto atLeastAsGoodAsCurBest = ~search.pruner.doesArrTimeNotAdmitBestAsgn(arrTimeAtPDLoc,distFromV);
+                        const auto atLeastAsGoodAsCurBest = ~pruner.doesArrTimeNotAdmitBestAsgn(arrTimeAtPDLoc,
+                                                                                                distFromV);
                         if (!anySet(atLeastAsGoodAsCurBest))
                             break;
 
-                        if (!search.pruner.isVehicleEligible(vehId))
+                        if (!pruner.isVehicleEligible(vehId))
                             continue;
 
 
-                        const auto depTimeAtLastStop = search.routeState.schedDepTimesFor(vehId)[search.routeState.numStopsOf(vehId) - 1];
+                        const auto depTimeAtLastStop = search.routeState.schedDepTimesFor(vehId)[
+                                search.routeState.numStopsOf(vehId) - 1];
                         const auto distViaV = arrTimeAtPDLoc - depTimeAtLastStop;
                         tryUpdatingDistance(vehId, distViaV);
                     }
                 }
 
-                search.numEntriesVisited.local() += numEntriesScannedHere;
-                ++search.numVerticesSettled.local();
+                numEntriesVisited += numEntriesScannedHere;
+                ++numVerticesSettled;
 
                 return false;
             }
 
         private:
 
-            void tryUpdatingDistance(const int vehId, const DistanceLabel& distToPDLoc) {
+            void tryUpdatingDistance(const int vehId, const DistanceLabel &distToPDLoc) {
                 // Update tentative distances to v for any searches where distViaV admits a possible better assignment
                 // than the current best and where distViaV is at least as good as the current tentative distance.
                 LabelMask mask = ~(updateDistances.getDistances(vehId) < distToPDLoc);
@@ -161,30 +170,33 @@ namespace karri {
                 if (!anySet(mask))
                     return;
 
-                mask &= ~search.pruner.isWorseThanBestKnownVehicleDependent(vehId, distToPDLoc);
+                mask &= ~pruner.isWorseThanBestKnownVehicleDependent(vehId, distToPDLoc);
                 if (anySet(mask)) { // if any search requires updates, update the right ones according to mask
                     updateDistances(vehId, distToPDLoc, mask);
                     search.vehiclesSeen.insert(vehId);
-                    search.pruner.updateUpperBoundCost(vehId, distToPDLoc);
+                    pruner.updateUpperBoundCost(vehId, distToPDLoc);
                 }
             }
 
 
             LastStopBCHQuery &search;
+            PrunerT &pruner;
             UpdateDistancesToPDLocs &updateDistances;
+            int& numVerticesSettled;
+            int& numEntriesVisited;
         };
 
 
         struct StopLastStopBCH {
-            explicit StopLastStopBCH(const LastStopBCHQuery &search) : search(search) {}
+            explicit StopLastStopBCH(const PrunerT &pruner) : pruner(pruner) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) const {
-                return allSet(search.pruner.doesDistanceNotAdmitBestAsgn(distToV, false));
+                return allSet(pruner.doesDistanceNotAdmitBestAsgn(distToV, false));
             }
 
         private:
-            const LastStopBCHQuery &search;
+            const PrunerT& pruner;
 
         };
 
@@ -194,72 +206,74 @@ namespace karri {
 
         LastStopBCHQuery(
                 const LastStopBucketsEnvT &lastStopBucketsEnv,
-                TentativeLastStopDistances <LabelSetT> &tentativeLastStopDistances,
+                TentativeLastStopDistances<LabelSetT> &tentativeLastStopDistances,
                 const CHEnvT &chEnv,
-                const RouteState& routeState,
+                const RouteState &routeState,
                 ThreadSafeSubset &vehiclesSeen,
-                PrunerT pruner)
-                : updateDistancesToPdLocs(),
-                  upwardSearch([&]() {return chEnv.template getReverseSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT>(
-                ScanSortedBucket(*this, updateDistancesToPdLocs.local()), StopLastStopBCH(*this));}),
-                  pruner(pruner),
-                  ch(chEnv.getCH()),
+                tbb::enumerable_thread_specific<PrunerT> &pPruners)
+                : ch(chEnv.getCH()),
                   bucketContainer(lastStopBucketsEnv.getBuckets()),
                   routeState(routeState),
                   tentativeDistances(tentativeLastStopDistances),
+                  pruners(pPruners),
+                  updateDistancesToPdLocs(),
+                  upwardSearch([&]() {
+                      return chEnv.template getReverseSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT>(
+                              ScanSortedBucket(*this, pruners.local(), updateDistancesToPdLocs.local(), numVerticesSettled.local(), numEntriesVisited.local()),
+                              StopLastStopBCH(pruners.local()));
+                  }),
                   vehiclesSeen(vehiclesSeen),
                   numVerticesSettled(0),
                   numEntriesVisited(0) {}
 
         void run(const std::array<int, K> &sources,
                  const std::array<int, K> offsets = {}) {
-            for (auto& local : numVerticesSettled)
-                local = 0;
-            for (auto& local : numEntriesVisited)
-                local = 0;
-            
+
+            numVerticesSettled.local() = 0;
+            numEntriesVisited.local() = 0;
+
             // Get reference to thread local result structure once and have search work on it.
             auto localTentativeDistances = tentativeDistances.getThreadLocalTentativeDistances();
             localTentativeDistances.initForSearch();
-            auto& localUpdateDistances = updateDistancesToPdLocs.local();
+            auto &localUpdateDistances = updateDistancesToPdLocs.local();
             localUpdateDistances.setCurLocalTentative(&localTentativeDistances);
-                    
+
             std::array<int, K> sources_ranks = {};
             std::transform(sources.begin(), sources.end(), sources_ranks.begin(),
                            [&](const int v) { return ch.rank(v); });
 
-            UpwardSearchType& localUpwardSearch = upwardSearch.local();      
+            UpwardSearchType &localUpwardSearch = upwardSearch.local();
             localUpwardSearch.runWithOffset(sources_ranks, offsets);
         }
 
-        int getNumEdgeRelaxations() {
-            int sum = 0;
-            for (auto& localSearch : upwardSearch)
-                sum += localSearch.getNumEdgeRelaxations(); 
-            return sum;
+        int getLocalNumEdgeRelaxations() {
+            return upwardSearch.local().getNumEdgeRelaxations();
         }
 
-        int getNumVerticesSettled() {
-            return numVerticesSettled.combine([](const int& n1, const int& n2){return n1 + n2;});
+        int getLocalNumVerticesSettled() {
+            return numVerticesSettled.local();
         }
 
-        int getNumEntriesScanned() {
-            return numEntriesVisited.combine([](const int& n1, const int& n2){return n1 + n2;});
+        int getLocalNumEntriesScanned() {
+            return numEntriesVisited.local();
         }
 
     private:
-        enumerable_thread_specific<UpdateDistancesToPDLocs> updateDistancesToPdLocs;
-        enumerable_thread_specific<UpwardSearchType> upwardSearch;
-        PrunerT pruner;
 
         const CH &ch;
         const typename LastStopBucketsEnvT::BucketContainer &bucketContainer;
-        const RouteState& routeState;
+        const RouteState &routeState;
 
-        TentativeLastStopDistances <LabelSetT> &tentativeDistances;
-        
+        TentativeLastStopDistances<LabelSetT> &tentativeDistances;
+        enumerable_thread_specific<PrunerT> &pruners;
+
+
+        enumerable_thread_specific<UpdateDistancesToPDLocs> updateDistancesToPdLocs;
+        enumerable_thread_specific<UpwardSearchType> upwardSearch;
+
+
         ThreadSafeSubset &vehiclesSeen;
-        
+
         enumerable_thread_specific<int> numVerticesSettled;
         enumerable_thread_specific<int> numEntriesVisited;
     };
