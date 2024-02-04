@@ -199,106 +199,27 @@ namespace karri::PickupAfterLastStopStrategies {
                   vehiclesSeenForPickups(fleet.size()) {}
 
         void tryPickupAfterLastStop() {
-            runBchSearches();
-            enumerateAssignments();
-        }
-
-    private:
-
-        // Run BCH searches that find distances from last stops to pickups
-        void runBchSearches() {
             Timer timer;
-
+            CAtomic<int> numAssignmentsTried;
+            numAssignmentsTried.store(0);
             initPickupSearches();
-            tbb::parallel_for(int(0), static_cast<int>(requestState.numPickups()), K, [&](int i) {
-                runSearchesForPickupBatch(i);
-            });
-            // for (int i = 0; i < requestState.numPickups(); i += K)
-            //     runSearchesForPickupBatch(i);
 
-            const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().palsAssignmentsStats.searchTime += searchTime;
+            tbb::parallel_for(int(0), static_cast<int>(requestState.numPickups()), K, [&](int i) {
+                runBchSearchAndEnumerate(i, numAssignmentsTried);
+            });
+
+            const auto searchAndTryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
+
+            requestState.stats().palsAssignmentsStats.searchTime += searchAndTryAssignmentsTime;
             requestState.stats().palsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load(std::memory_order_relaxed);
             requestState.stats().palsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load(std::memory_order_relaxed);
             requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(std::memory_order_relaxed);
             requestState.stats().palsAssignmentsStats.numCandidateVehicles += vehiclesSeenForPickups.size();
+            requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(std::memory_order_relaxed);
+
         }
 
-        // Enumerate assignments with pickup after last stop
-        void enumerateAssignments() {       
-            // using namespace time_utils;
-
-
-            // int numAssignmentsTried = 0;
-            // Timer timer;
-
-            // Assignment asgn;
-            // for (const auto &vehId: vehiclesSeenForPickups) {
-
-            //     const int numStops = routeState.numStopsOf(vehId);
-            //     if (numStops == 0)
-            //         continue;
-
-            //     asgn.vehicle = &fleet[vehId];
-            //     asgn.pickupStopIdx = numStops - 1;
-            //     asgn.dropoffStopIdx = numStops - 1;
-
-            //     for (auto &p: requestState.pickups) {
-            //         asgn.pickup = &p;
-            //         asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
-            //         if (asgn.distToPickup >= INFTY)
-            //             continue;
-
-            //         // Compute cost lower bound for this pickup specifically
-            //         const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState,
-            //                                                                   routeState, inputConfig);
-            //         const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
-            //                                                 getVehDepTimeAtStopForRequest(vehId, numStops - 1,
-            //                                                                               requestState, routeState);
-            //         const auto psgTimeTillDepAtThisPickup =
-            //                 depTimeAtThisPickup - requestState.originalRequest.requestTime;
-            //         const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);
-            //         const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
-            //                                                                                  psgTimeTillDepAtThisPickup,
-            //                                                                                  minDirectDistForThisPickup,
-            //                                                                                  asgn.pickup->walkingDist,
-            //                                                                                  0,
-            //                                                                                  requestState);
-            //         if (minCost > requestState.getBestCost())
-            //             continue;
-
-            //         for (auto &d: requestState.dropoffs) {
-            //             asgn.dropoff = &d;
-
-            //             // Try inserting pair with pickup after last stop:
-            //             ++numAssignmentsTried;
-            //             asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
-            //             requestState.tryAssignment(asgn);
-            //         }
-            //     }
-            // }
-
-            // const int64_t tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
-            // requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
-
-            Timer timer;
-            CAtomic<int> numAssignmentsTried;
-            numAssignmentsTried.store(0);    
-
-            tbb::parallel_for(int(0), static_cast<int>(requestState.numPickups()), K, [&](int i) {
-                int numAssignmentsTriedLocal = enumeratePickup(requestState.pickups[i]);
-                numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
-            });
-            
-            const int64_t tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
-            requestState.stats().palsAssignmentsStats.tryAssignmentsTime += tryAssignmentsTime;
-        }
-
-
-        inline int getDistanceToPickup(const int vehId, const unsigned int pickupId) {
-            return distances.getDistance(vehId, pickupId);
-        }
+    private:
 
         void initPickupSearches() {
             totalNumEdgeRelaxations.store(0);
@@ -309,6 +230,17 @@ namespace karri::PickupAfterLastStopStrategies {
             vehiclesSeenForPickups.clear();
             const int numPickupBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
             distances.init(numPickupBatches);
+        }
+
+        // Run BCH searches and enumerate assignments within a thread
+        void runBchSearchAndEnumerate(const int firstPickupId, CAtomic<int> &numAssignmentsTried) {
+            runSearchesForPickupBatch(firstPickupId);
+            int numAssignmentsTriedLocal = enumeratePickup(requestState.pickups[firstPickupId]);
+            numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
+        }
+
+        inline int getDistanceToPickup(const int vehId, const unsigned int pickupId) {
+            return distances.getDistance(vehId, pickupId);
         }
 
         void runSearchesForPickupBatch(const int firstPickupId) {
@@ -406,7 +338,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         std::atomic_int upperBoundCost;
 
-        // Spin lock to try assingment
+        // Spin lock for try assignment
         SpinLock lock;
 
         TentativeLastStopDistances<LabelSetT> distances;
