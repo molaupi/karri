@@ -205,7 +205,7 @@ namespace karri::PickupAfterLastStopStrategies {
             initPickupSearches();
 
             tbb::parallel_for(int(0), static_cast<int>(requestState.numPickups()), K, [&](int i) {
-                runBchSearchAndEnumerate(i, numAssignmentsTried);
+                runBchSearchesAndEnumerate(i, numAssignmentsTried);
             });
 
             const auto searchAndTryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -233,10 +233,9 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Run BCH searches and enumerate assignments within a thread
-        void runBchSearchAndEnumerate(const int firstPickupId, CAtomic<int> &numAssignmentsTried) {
+        void runBchSearchesAndEnumerate(const int firstPickupId, CAtomic<int> &numAssignmentsTried) {
             runSearchesForPickupBatch(firstPickupId);
-            int numAssignmentsTriedLocal = enumeratePickup(requestState.pickups[firstPickupId]);
-            numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
+            enumeratePickup(requestState.pickups[firstPickupId], numAssignmentsTried);
         }
 
         inline int getDistanceToPickup(const int vehId, const unsigned int pickupId) {
@@ -273,12 +272,12 @@ namespace karri::PickupAfterLastStopStrategies {
 
         }
 
-        int enumeratePickup(const PDLoc &pickup) {
+        void enumeratePickup(const PDLoc &pickup, CAtomic<int> &numAssignmentsTried) {
             using namespace time_utils;
             Assignment asgn;
             asgn.pickup = &pickup;
 
-            int numAssignmentsTried = 0;
+            int numAssignmentsTriedLocal = 0;
 
             for (const auto &vehId: vehiclesSeenForPickups) {
 
@@ -316,7 +315,7 @@ namespace karri::PickupAfterLastStopStrategies {
                     asgn.dropoff = &d;
 
                     // Try inserting pair with pickup after last stop:
-                    ++numAssignmentsTried;
+                    ++numAssignmentsTriedLocal;
                     asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                     lock.lock();
                     requestState.tryAssignment(asgn);
@@ -324,7 +323,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 }
             }
 
-            return numAssignmentsTried;
+            numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
         }
 
         const InputGraphT &inputGraph;

@@ -30,6 +30,9 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
+#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "tbb/concurrent_vector.h"
+
 namespace karri {
 
 
@@ -55,17 +58,29 @@ namespace karri {
         RelevantPDLocs(const int fleetSize)
                 : fleetSize(fleetSize),
                   startOfRelevantPDLocs(fleetSize + 1),
+                  startOfRelevantPDLocsTS(fleetSize + 1),
                   relevantSpots(),
                   vehiclesWithRelevantSpots(fleetSize) {}
 
-        const Subset &getVehiclesWithRelevantPDLocs() const {
+        const ThreadSafeSubset &getVehiclesWithRelevantPDLocs() const {
             return vehiclesWithRelevantSpots;
         }
+
+        void setStartOfRelevantPDLocs(const int vehId, const int index) {
+            startOfRelevantPDLocs[vehId] = index;
+            startOfRelevantPDLocsTS[vehId] = index;
+        }
+
 
         bool hasRelevantSpotsFor(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
             return startOfRelevantPDLocs[vehId] != startOfRelevantPDLocs[vehId + 1];
         }
+
+        bool hasRelevantSpotsForTS(const int vehId) const {
+            assert(vehId >= 0 && vehId < fleetSize);
+            return startOfRelevantPDLocsTS[vehId] != startOfRelevantPDLocsTS[vehId + 1];
+        }        
 
         IteratorRange<It> relevantSpotsFor(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
@@ -84,8 +99,9 @@ namespace karri {
 
         const int fleetSize;
         std::vector<int> startOfRelevantPDLocs;
+        tbb::concurrent_vector<int> startOfRelevantPDLocsTS;
         RelevantPDLocVector relevantSpots;
-        Subset vehiclesWithRelevantSpots;
+        ThreadSafeSubset vehiclesWithRelevantSpots;
 
     };
 }
