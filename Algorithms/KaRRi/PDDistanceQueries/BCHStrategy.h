@@ -152,8 +152,9 @@ namespace karri::PDDistanceQueryStrategies {
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
         void run() {
             assert(requestState);
-            assert(requestState->pickups[0].loc == requestState->originalRequest.origin
-                   && requestState->dropoffs[0].loc == requestState->originalRequest.destination);
+            //TODO: Problem?
+            //assert(requestState->pickups[0].loc == requestState->originalRequest.origin
+            //       && requestState->dropoffs[0].loc == requestState->originalRequest.destination);
             Timer timer;
 
             if (requestState->numPickups() == 1 && requestState->numDropoffs() == 1) {

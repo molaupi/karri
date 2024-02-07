@@ -223,8 +223,9 @@ namespace karri {
             recalculateVehWaitTimesAtDropoffsPrefixSum(vehId, 0, data.numStopsOf(vehId) - 1, 0, numDropoffsPrefixSum, vehWaitTimesPrefixSum);
         }
 
-        void exchangeRouteFor(const int vehId, const RouteStateData &otherData) {
+        std::vector<int> exchangeRouteFor(const int vehId, const RouteStateData &otherData) {
             assert(data.numStopsOf(vehId) >= otherData.numStopsOf(vehId));
+            std::vector<int> result;
             const auto otherStopIds = otherData.stopIdsFor(vehId);
             auto stopIds = data.stopIdsFor(vehId);
             int index = 0;
@@ -235,6 +236,7 @@ namespace karri {
                     if (data.getStopIdOfMaxLeeway() == stopIds[index]) {
                         maxLeewayChanged = true;
                     }
+                    result.push_back(stopIds[index]);
                     deleteRouteDataFor(vehId, stopIds[index], index);
                     stopIds = data.stopIdsFor(vehId);
                     continue;
@@ -273,6 +275,7 @@ namespace karri {
                 recomputeMaxLeeway();
             }
             assert(index == otherData.numStopsOf(vehId) && index == data.numStopsOf(vehId));
+            return result;
         }
 
 

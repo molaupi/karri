@@ -93,9 +93,9 @@ namespace karri {
                 // Try pseudo-assignment for passenger walking to destination without using vehicle
                 timer.restart();
 
-                const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(requestState.pickups[0].psgLoc));
-                const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(requestState.dropoffs[0].psgLoc));
-                const int destOffset = psgInputGraph.travelTime(requestState.dropoffs[0].psgLoc);
+                const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
+                const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
+                const int destOffset = psgInputGraph.travelTime(destInPsgGraph);
                 psgChQuery.run(originHeadRank, destTailRank);
                 const auto totalDist = psgChQuery.getDistance() + destOffset;
                 requestState.tryNotUsingVehicleAssignment(totalDist, destOffset);

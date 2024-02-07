@@ -42,14 +42,15 @@ namespace karri {
 template<typename CostCalculatorT>
     struct RequestState {
 
-        RequestState(const CostCalculatorT &calculator, const InputConfig &inputConfig)
-                : originalRequest(),
+        RequestState(const CostCalculatorT &calculator, const InputConfig &inputConfig, const RouteStateDataType type)
+                : type(type),
+                  originalRequest(),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
                   pickups(),
                   dropoffs(),
                   calculator(calculator),
-                  inputConfig(inputConfig) {}
+                  inputConfig(inputConfig){}
 
 
         ~RequestState() {
@@ -62,12 +63,16 @@ template<typename CostCalculatorT>
 
 
         // Information about current request itself
+        RouteStateDataType type;
+
         Request originalRequest;
         int originalReqDirectDist;
         int minDirectPDDist;
 
         std::vector<PDLoc> pickups;
         std::vector<PDLoc> dropoffs;
+
+        int blockedVehId = INVALID_ID;
 
 
         int numPickups() const {
@@ -135,6 +140,8 @@ template<typename CostCalculatorT>
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
             assert(calculator.calc(asgn, *this) == cost);
+
+            if (asgn.vehicle->vehicleId == blockedVehId) return false;
 
             if (cost < bestCost || (cost == bestCost &&
                                      breakCostTie(asgn, bestAssignment))) {

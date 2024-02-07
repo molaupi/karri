@@ -142,13 +142,15 @@ namespace karri {
             requestState = &reqState;
             currentTime = now;
 
-            clearDistances();
             waitingQueue.clear();
-
 
             totalLocatingVehiclesTimeForRequest = 0;
             totalVehicleToPickupSearchTimeForRequest = 0;
             totalNumCHSearchesRunForRequest = 0;
+        }
+
+        void resetDistances() {
+            clearDistances();
         }
 
         bool knowsDistance(const int vehId, const unsigned int pickupId) const {
@@ -205,7 +207,7 @@ namespace karri {
             if (vehLocation.location == routeStateData.stopLocationsFor(vehicle.vehicleId)[0]) {
                 fillDistancesForVehicleAtPrevStop(vehicle, routeStateData);
                 waitingQueue.clear();
-                prevNumPickups = requestState->numPickups();
+                prevNumPickups += requestState->numPickups();
                 return;
             }
 
@@ -270,7 +272,7 @@ namespace karri {
             }
 
             waitingQueue.clear();
-            prevNumPickups = requestState->numPickups();
+            prevNumPickups += requestState->numPickups();
 
             totalVehicleToPickupSearchTimeForRequest += timer.elapsed<std::chrono::nanoseconds>();
             totalNumCHSearchesRunForRequest += numChSearchesRun;
@@ -294,17 +296,19 @@ namespace karri {
 
             // Clear the distances for every vehicle for which we computed the current location:
             for (const auto &vehId: vehiclesWithKnownLocation) {
-                const int start = vehId * prevNumPickups;
-                const int end = start + prevNumPickups;
-                std::fill(distances.begin() + start, distances.begin() + end, unknownDist);
-                currentVehicleLocations[vehId] = INVALID_LOC;
+            //    const int start = vehId * prevNumPickups;
+            //    const int end = start + prevNumPickups;
+            //    std::fill(distances.begin() + start, distances.begin() + end, unknownDist);
+               currentVehicleLocations[vehId] = INVALID_LOC;
             }
+            prevNumPickups = 0;
+            std::fill(distances.begin(), distances.end(), unknownDist); //TODO: Fehler finden!
             assert(std::all_of(distances.begin(), distances.end(), [&](const auto &d) { return d == unknownDist; }));
             assert(std::all_of(currentVehicleLocations.begin(), currentVehicleLocations.end(),
                                [&](const auto &l) { return l == INVALID_LOC; }));
             vehiclesWithKnownLocation.clear();
 
-            const int numDistances = requestState->numPickups() * fleetSize;
+            const int numDistances = requestState ? requestState->numPickups() * fleetSize : 0; //TODO: ist das ok?
             if (numDistances > distances.size()) {
                 const int diff = numDistances - distances.size();
                 distances.insert(distances.end(), diff, unknownDist);

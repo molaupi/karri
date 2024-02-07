@@ -137,50 +137,17 @@ namespace karri {
                                                                           stats::UpdatePerformanceStats::LOGGER_COLS))) {}
 
 
-        void insertBestAssignment(int &pickupStopId, int &dropoffStopId, RequestState<CostCalculatorT> &requestState) {
-            Timer timer;
 
-            if (requestState.isNotUsingVehicleBest()) {
-                pickupStopId = -1;
-                dropoffStopId = -1;
-                return;
+
+        void applyChanges(std::vector<RequestState<CostCalculator >*> &assignments) {
+            int pickupId, dropoffId;
+            for (auto *curr: assignments) {
+                if (curr->type == RouteStateDataType::FIXED) {
+                    exchangeRoutesFor(*curr->getBestAssignment().vehicle);
+                }
+                insertBestAssignment(pickupId, dropoffId, *curr);
+                assert(pickupId >= 0 && dropoffId >= 0);
             }
-
-            auto &asgn = requestState.getBestAssignment();
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup->loc));
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff->loc));
-            assert(asgn.vehicle != nullptr);
-
-            const auto vehId = asgn.vehicle->vehicleId;
-            const auto numStopsBefore = variableData.numStopsOf(vehId);
-
-            timer.restart();
-            const auto [pickupIndex, dropoffIndex] = variableUpdater.insert(asgn, requestState);
-
-
-            updateStopInfos(asgn, pickupIndex, dropoffIndex, requestState);
-
-            if (pickupIndex == 0)
-                lastMinutePickup(vehId);
-
-            const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
-
-            if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 &&
-                    variableData.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) {
-                movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
-            }
-
-            updateBucketState(asgn, pickupIndex, dropoffIndex, requestState);
-
-            pickupStopId = variableData.stopIdsFor(vehId)[pickupIndex];
-            dropoffStopId = variableData.stopIdsFor(vehId)[dropoffIndex];
-
-            // Register the inserted pickup and dropoff with the path data
-            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
-            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
-            pathTracker.updateForBestAssignment(pickupIndex, dropoffIndex, numStopsBefore, dropoffAtExistingStop);
-
         }
 
         void notifyStopStarted(const Vehicle &veh) {
@@ -213,7 +180,7 @@ namespace karri {
                     calcInsertIndex(dropoffStopInfo, tuple.second, false);
                     dropoffStopInfo.maxArrTimeAtDropoff = maxArrTimeAtDropForRequest[tuple.first];
                     fixedUpdater.addNewDropoff(dropoffStopInfo, tuple.first, tuple.second);
-
+                    assert(stopInfos[tuple.second].vehicleId == veh.vehicleId);
                     // Updating buckets
                     generateFixedBucketStateForNewPickup(newPickup, pickUpWasFixed);
                     generateFixedBucketStateForNewDropoff(dropoffStopInfo, pickUpWasAtEnd, pickUpWasFixed);
@@ -319,6 +286,52 @@ namespace karri {
 
     private:
 
+        void insertBestAssignment(int &pickupStopId, int &dropoffStopId, RequestState<CostCalculatorT> &requestState) {
+            Timer timer;
+
+            if (requestState.isNotUsingVehicleBest()) {
+                pickupStopId = -1;
+                dropoffStopId = -1;
+                return;
+            }
+
+            auto &asgn = requestState.getBestAssignment();
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup->loc));
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff->loc));
+            assert(asgn.vehicle != nullptr);
+
+            const auto vehId = asgn.vehicle->vehicleId;
+            const auto numStopsBefore = variableData.numStopsOf(vehId);
+
+            timer.restart();
+            const auto [pickupIndex, dropoffIndex] = variableUpdater.insert(asgn, requestState);
+
+
+            updateStopInfos(asgn, pickupIndex, dropoffIndex, requestState);
+
+            if (pickupIndex == 0)
+                lastMinutePickup(vehId);
+
+            const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
+
+            if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 &&
+                variableData.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) {
+                movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
+            }
+
+            updateBucketState(asgn, pickupIndex, dropoffIndex, requestState);
+
+            pickupStopId = variableData.stopIdsFor(vehId)[pickupIndex];
+            dropoffStopId = variableData.stopIdsFor(vehId)[dropoffIndex];
+
+            // Register the inserted pickup and dropoff with the path data
+            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
+            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
+            pathTracker.updateForBestAssignment(pickupIndex, dropoffIndex, numStopsBefore, dropoffAtExistingStop);
+
+        }
+
         void lastMinutePickup(const int vehId) {
             auto stopIds = variableData.stopIdsFor(vehId);
 
@@ -396,7 +409,7 @@ namespace karri {
 
 
 
-        void exchangeRoutesFor(Vehicle &veh) {
+        void exchangeRoutesFor(const Vehicle &veh) {
             const int vehId = veh.vehicleId;
             bool lastStopIdentical = variableData.stopIdsFor(vehId)[variableData.numStopsOf(vehId) - 1] ==
                     fixedData.stopIdsFor(vehId)[fixedData.numStopsOf(vehId) - 1];
@@ -413,7 +426,9 @@ namespace karri {
 
             // Update LastStopBuckets and exchange actual routes
             lastStopBucketsEnv.removeBucketEntries(veh, variableData.numStopsOf(vehId) - 1, variableData); // TODO: Kann man darauf verzichten wenn letzter Stop gleich?
-            variableUpdater.exchangeRouteFor(vehId, fixedData);
+            for (const int stopId: variableUpdater.exchangeRouteFor(vehId, fixedData)) {
+                stopInfos[stopId] = StopInfo();
+            }
             lastStopBucketsEnv.generateBucketEntries(veh, variableData.numStopsOf(vehId) - 1, variableData);
         }
 
