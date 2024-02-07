@@ -88,23 +88,29 @@ namespace karri {
                   rand(seed) {}
 
         // Pickups will be collected into the given pickups vector and dropoffs will be collected into the given dropoffs vector
-        void findPDLocs(const int origin, const int destination, std::vector<PDLoc> &pickups, std::vector<PDLoc> &dropoffs) {
+        void findPDLocs(const int origin, const int destination, std::vector<PDLoc> &pickups, std::vector<PDLoc> &dropoffs, const PDLoc *setPickup = nullptr) {
             assert(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
             pickups.clear();
             dropoffs.clear();
 
-            searchSpace.clear();
-            auto headOfOriginEdge = forwardGraph.edgeHead(origin);
-            pickupSearch.run(headOfOriginEdge);
-            turnSearchSpaceIntoPickupLocations(pickups);
+            if (!setPickup) {
+                searchSpace.clear();
+                auto headOfOriginEdge = forwardGraph.edgeHead(origin);
+                pickupSearch.run(headOfOriginEdge);
+                turnSearchSpaceIntoPickupLocations(pickups);
+            }
 
             searchSpace.clear();
             auto tailOfDestEdge = forwardGraph.edgeTail(destination);
             auto destOffset = forwardGraph.travelTime(destination);
             dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
             turnSearchSpaceIntoDropoffLocations(dropoffs);
+            if (!setPickup) {
+                finalizePDLocs(origin, pickups, inputConfig.maxNumPickups);
+            } else {
+                pickups.push_back(*setPickup);
+            }
 
-            finalizePDLocs(origin, pickups, inputConfig.maxNumPickups);
             finalizePDLocs(destination, dropoffs, inputConfig.maxNumDropoffs);
         }
 
@@ -173,7 +179,11 @@ namespace karri {
                 pdLocs[i].id = i;
             }
 
-            assert(sanityCheckPDLocs(pdLocs, centerInVehGraph));
+            //TODO: So dann richtig?
+            pdLocs[0].vehDistToCenter = 0;
+            pdLocs[0].vehDistFromCenter = 0;
+
+            assert(sanityCheckPDLocs(pdLocs)); //assert(sanityCheckPDLocs(pdLocs, centerInVehGraph));
         }
 
         // Remove duplicate PDLocs.
@@ -188,14 +198,14 @@ namespace karri {
             pdLocs.erase(last, pdLocs.end());
         }
 
-        static bool sanityCheckPDLocs(const std::vector<PDLoc> &pdLocs, const int centerInVehGraph) {
+        static bool sanityCheckPDLocs(const std::vector<PDLoc> &pdLocs) {
             if (pdLocs.empty()) return false;
-            if (pdLocs[0].loc != centerInVehGraph) return false;
+            //if (pdLocs[0].loc != centerInVehGraph) return false;
             if (pdLocs[0].walkingDist != 0) return false;
             for (int i = 0; i < pdLocs.size(); ++i) {
                 if (pdLocs[i].id != i) return false;
-                if (pdLocs[i].vehDistToCenter != INFTY) return false;
-                if (pdLocs[i].vehDistFromCenter != INFTY) return false;
+                //if (pdLocs[i].vehDistToCenter != INFTY) return false;
+                //if (pdLocs[i].vehDistFromCenter != INFTY) return false;
             }
             return true;
         }

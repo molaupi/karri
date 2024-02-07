@@ -48,7 +48,7 @@ namespace karri {
                   vehicleToPdLocQuery(vehicleToPdLocQuery) {}
 
 
-        void initializeRequestState(const Request &req, RequestState<CostCalculatorT> &requestState) {
+        void initializeRequestState(const Request &req, RequestState<CostCalculatorT> &requestState, const PDLoc *setPickup = nullptr) {
             Timer timer;
 
             requestState.reset();
@@ -60,7 +60,7 @@ namespace karri {
             assert(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
             const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
 
-            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph, requestState.pickups, requestState.dropoffs);
+            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph, requestState.pickups, requestState.dropoffs, setPickup);
 
             // Log road categories of PDLocs
             for (const auto &p: requestState.pickups)
@@ -70,8 +70,8 @@ namespace karri {
 
 
             // Precalculate the vehicle distances from pickups to origin and from destination to dropoffs for upper bounds on PD distances
-            vehicleToPdLocQuery.runReverse(requestState.pickups);
-            vehicleToPdLocQuery.runForward(requestState.dropoffs);
+            vehicleToPdLocQuery.runReverse(requestState.pickups, req.origin);
+            vehicleToPdLocQuery.runForward(requestState.dropoffs, req.origin);
 
             const auto findHaltingSpotsTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().initializationStats.findPDLocsInRadiusTime = findHaltingSpotsTime;
@@ -89,6 +89,7 @@ namespace karri {
             requestState.stats().initializationStats.computeODDistanceTime = directSearchTime;
 
 
+            // TODO: Reassignment fix
             if (!inputConfig.alwaysUseVehicle) {
                 // Try pseudo-assignment for passenger walking to destination without using vehicle
                 timer.restart();

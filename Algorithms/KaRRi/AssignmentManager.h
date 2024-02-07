@@ -109,11 +109,7 @@ namespace karri {
 
         RequestState<CostCalculatorT> *createAndInitializeRequestState(const Request &req, const RouteStateDataType type, const PDLoc *setLoc = nullptr) {
             auto *newRequestState = new RequestState<CostCalculatorT>(calc, config, type);
-            requestStateInitializer.initializeRequestState(req, *newRequestState);
-            if (setLoc) {
-                newRequestState->pickups.clear();
-                newRequestState->pickups.push_back(*setLoc);
-            }
+            requestStateInitializer.initializeRequestState(req, *newRequestState, setLoc);
             return newRequestState;
         }
 

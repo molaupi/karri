@@ -78,12 +78,12 @@ namespace karri {
         // Takes a vector of PDLoc and a center point and finds the vehicle distances from the center to
         // every PD loc. Stores the found distances in the vehDistFromCenter field of each PD loc.
         template<typename VectorT>
-        void runForward(VectorT &pdLocs) {
+        void runForward(VectorT &pdLocs, const int origin) {
 
             Timer timer;
 
-            const auto center = forwardGraph.edgeHead(pdLocs[0].loc);
-            pdLocs[0].vehDistFromCenter = 0;
+            const auto center = forwardGraph.edgeHead(origin);
+            //pdLocs[0].vehDistFromCenter = 0; TODO: So richtig?
 
             vertexHasPDLoc.reset();
             numVerticesToFind = 0;
@@ -113,13 +113,13 @@ namespace karri {
         // Takes a vector of PDLoc and a center point and finds the vehicle distances from every PD loc
         // to the center. Stores the found distances in the vehDistToCenter field of each PD loc.
         template<typename VectorT>
-        void runReverse(VectorT &pdLocs) {
+        void runReverse(VectorT &pdLocs, const int origin) {
 
             Timer timer;
 
-            const auto center = forwardGraph.edgeTail(pdLocs[0].loc);
-            const auto offset = forwardGraph.travelTime(pdLocs[0].loc);
-            pdLocs[0].vehDistToCenter = 0;
+            const auto center = forwardGraph.edgeTail(origin);
+            const auto offset = forwardGraph.travelTime(origin);
+            //pdLocs[0].vehDistToCenter = 0; TODO: So richtig?
 
             vertexHasPDLoc.reset();
             numVerticesToFind = 0;

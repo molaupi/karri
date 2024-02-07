@@ -169,8 +169,10 @@ namespace karri::PDDistanceQueryStrategies {
             // Compute upper bound on every PD distance by adding the longest vehicle distance from any pickup to the
             // origin, the distance from the origin to the destination, and the longest distance from the destination
             // to any dropoff.
-            vehicleToPDLocQuery.runReverse(requestState->pickups);
-            vehicleToPDLocQuery.runForward(requestState->dropoffs);
+            if (requestState->pickups.size() > 1) {
+                vehicleToPDLocQuery.runReverse(requestState->pickups, requestState->originalRequest.origin);
+            }
+            vehicleToPDLocQuery.runForward(requestState->dropoffs, requestState->originalRequest.origin);
 
             int maxPickupToOriginVehDist = 0;
             for (const auto &pickup: requestState->pickups) {
