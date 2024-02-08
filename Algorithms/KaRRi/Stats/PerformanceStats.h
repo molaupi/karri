@@ -282,11 +282,13 @@ namespace karri::stats {
         int64_t numEdgeRelaxationsInSearchGraph;
         int64_t numVerticesOrLabelsSettled;
         int64_t numEntriesOrLastStopsScanned;
-        int64_t searchTime;
+        int64_t searchTimeLocal;
 
         int64_t numCandidateVehicles;
         int64_t numAssignmentsTried;
-        int64_t tryAssignmentsTime;
+        int64_t tryAssignmentsTimeLocal;
+
+        int64_t searchAndTryAssignmentsTime;
 
         // Stats about pickup coinciding with last stop (same independent of PALS strategy):
         int64_t pickupAtLastStop_numCandidateVehicles;
@@ -303,7 +305,7 @@ namespace karri::stats {
         bool collective_usedFallback;
 
         int64_t getTotalTime() const {
-            return initializationTime + searchTime + tryAssignmentsTime + pickupAtLastStop_tryAssignmentsTime;
+            return initializationTime + searchAndTryAssignmentsTime + pickupAtLastStop_tryAssignmentsTime;
         }
 
         void clear() {
@@ -311,10 +313,11 @@ namespace karri::stats {
             numEdgeRelaxationsInSearchGraph = 0;
             numVerticesOrLabelsSettled = 0;
             numEntriesOrLastStopsScanned = 0;
-            searchTime = 0;
+            searchTimeLocal = 0;
             numCandidateVehicles = 0;
             numAssignmentsTried = 0;
-            tryAssignmentsTime = 0;
+            tryAssignmentsTimeLocal = 0;
+            searchAndTryAssignmentsTime = 0;
             pickupAtLastStop_numCandidateVehicles = 0;
             pickupAtLastStop_numAssignmentsTried = 0;
             pickupAtLastStop_tryAssignmentsTime = 0;
@@ -333,10 +336,11 @@ namespace karri::stats {
                 "num_edge_relaxations,"
                 "num_vertices_or_labels_settled,"
                 "num_entries_or_last_stops_scanned,"
-                "search_time,"
+                "search_time_local,"
                 "num_candidate_vehicles,"
                 "num_assignments_tried,"
-                "try_assignments_time,"
+                "try_assignments_time_local,"
+                "search_and_try_assignments_time,"
                 "pickup_at_last_stop.num_candidate_vehicles,"
                 "pickup_at_last_stop.num_assignments_tried,"
                 "pickup_at_last_stop.try_assignments_time,"
@@ -356,10 +360,11 @@ namespace karri::stats {
                << numEdgeRelaxationsInSearchGraph << ", "
                << numVerticesOrLabelsSettled << ", "
                << numEntriesOrLastStopsScanned << ", "
-               << searchTime << ", "
+               << searchTimeLocal << ", "
                << numCandidateVehicles << ", "
                << numAssignmentsTried << ", "
-               << tryAssignmentsTime << ", "
+               << tryAssignmentsTimeLocal << ", "
+               << searchAndTryAssignmentsTime << ", "
                << pickupAtLastStop_numCandidateVehicles << ", "
                << pickupAtLastStop_numAssignmentsTried << ", "
                << pickupAtLastStop_tryAssignmentsTime << ", "

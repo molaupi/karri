@@ -36,6 +36,8 @@
 #include "Algorithms/KaRRi/CostCalculator.h"
 #include "Algorithms/KaRRi/RequestState/FindPDLocsInRadiusQuery.h"
 
+#include "Parallel/atomic_wrapper.h"
+
 namespace karri {
 
 // Holds information relating to a specific request like its pickups and dropoffs and the best known assignment.
@@ -48,7 +50,8 @@ namespace karri {
                   pickups(),
                   dropoffs(),
                   calculator(calculator),
-                  inputConfig(inputConfig) {}
+                  inputConfig(inputConfig),
+                  lock() {}
 
 
         ~RequestState() {
@@ -126,22 +129,27 @@ namespace karri {
 
         bool tryAssignment(const Assignment &asgn) {
             const auto cost = calculator.calc(asgn, *this);
-            return tryAssignmentWithKnownCost(asgn, cost);
+            lock.lock();
+            const bool result = tryAssignmentWithKnownCost(asgn, cost);
+            lock.unlock();
+            return result;
         }
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
             assert(calculator.calc(asgn, *this) == cost);
 
-            if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
+            if (!(cost < INFTY) || !(cost < bestCost || (cost == bestCost &&
                                     breakCostTie(asgn, bestAssignment)))) {
-
-                bestAssignment = asgn;
-                bestCost = cost;
-                notUsingVehicleIsBest = false;
-                notUsingVehicleDist = INFTY;
-                return true;
+                return false;
+                
             }
-            return false;
+
+            bestAssignment = asgn;
+            bestCost = cost;
+            notUsingVehicleIsBest = false;
+            notUsingVehicleDist = INFTY;
+
+            return true;
         }
 
         void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
@@ -194,6 +202,9 @@ namespace karri {
 
         const CostCalculator &calculator;
         const InputConfig &inputConfig;
+
+        // Spin lock for try assignment
+        SpinLock lock;
 
         // Information about best known assignment for current request
         Assignment bestAssignment;

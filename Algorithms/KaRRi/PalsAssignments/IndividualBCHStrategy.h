@@ -191,7 +191,8 @@ namespace karri::PickupAfterLastStopStrategies {
                   requestState(requestState),
                   bestCostBeforeQuery(bestCostBeforeQuery),
                   inputConfig(inputConfig),
-                  lock(),
+                  localSearchTime(0),
+                  localTryAssignmentsTime(0),
                   distances(fleet.size()),
                   threadLocalPruners(PickupAfterLastStopPruner(*this, calculator)),
                   search(lastStopBucketsEnv, distances, chEnv, routeState, vehiclesSeenForPickups,
@@ -199,6 +200,9 @@ namespace karri::PickupAfterLastStopStrategies {
                   vehiclesSeenForPickups(fleet.size()) {}
 
         void tryPickupAfterLastStop() {
+            // Helper lambda to get sum of stats from thread local queries
+            static const auto sumInts = [](const int& n1, const int& n2) {return n1 + n2;};
+
             Timer timer;
             CAtomic<int> numAssignmentsTried;
             numAssignmentsTried.store(0);
@@ -210,7 +214,10 @@ namespace karri::PickupAfterLastStopStrategies {
 
             const auto searchAndTryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
 
-            requestState.stats().palsAssignmentsStats.searchTime += searchAndTryAssignmentsTime;
+            requestState.stats().palsAssignmentsStats.searchAndTryAssignmentsTime += searchAndTryAssignmentsTime;
+            requestState.stats().palsAssignmentsStats.searchTimeLocal += localSearchTime.combine(sumInts);
+            requestState.stats().palsAssignmentsStats.tryAssignmentsTimeLocal += localTryAssignmentsTime.combine(sumInts);
+
             requestState.stats().palsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load(std::memory_order_relaxed);
             requestState.stats().palsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load(std::memory_order_relaxed);
             requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(std::memory_order_relaxed);
@@ -222,6 +229,11 @@ namespace karri::PickupAfterLastStopStrategies {
     private:
 
         void initPickupSearches() {
+            for (auto& local : localSearchTime)
+                local = 0;
+            for (auto& local : localTryAssignmentsTime)
+                local = 0;
+
             totalNumEdgeRelaxations.store(0);
             totalNumVerticesSettled.store(0);
             totalNumEntriesScanned.store(0);
@@ -234,8 +246,15 @@ namespace karri::PickupAfterLastStopStrategies {
 
         // Run BCH searches and enumerate assignments within a thread
         void runBchSearchesAndEnumerate(const int firstPickupId, CAtomic<int> &numAssignmentsTried) {
+            Timer timer;
             runSearchesForPickupBatch(firstPickupId);
+            localSearchTime.local() += timer.elapsed<std::chrono::nanoseconds>();
+
+            timer.restart();
             enumeratePickup(requestState.pickups[firstPickupId], numAssignmentsTried);
+            localTryAssignmentsTime.local() += timer.elapsed<std::chrono::nanoseconds>();
+
+
         }
 
         inline int getDistanceToPickup(const int vehId, const unsigned int pickupId) {
@@ -276,6 +295,8 @@ namespace karri::PickupAfterLastStopStrategies {
             using namespace time_utils;
             Assignment asgn;
             asgn.pickup = &pickup;
+            int localBestCost = INFTY;
+            Assignment localBestAsgn = asgn;
 
             int numAssignmentsTriedLocal = 0;
 
@@ -317,10 +338,19 @@ namespace karri::PickupAfterLastStopStrategies {
                     // Try inserting pair with pickup after last stop:
                     ++numAssignmentsTriedLocal;
                     asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
-                    lock.lock();
-                    requestState.tryAssignment(asgn);
-                    lock.unlock();
+
+                    const auto curCost = calculator.calc(asgn, requestState);
+                    if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
+                                    breakCostTie(asgn, localBestAsgn)))) {
+                        localBestCost = curCost;
+                        localBestAsgn = asgn;
+                    }
                 }
+            }
+
+            // Try assignment once for best assignment calculated by current thread
+            if (localBestCost <= requestState.getBestCost()) {
+                requestState.tryAssignment(localBestAsgn);
             }
 
             numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
@@ -337,8 +367,8 @@ namespace karri::PickupAfterLastStopStrategies {
 
         std::atomic_int upperBoundCost;
 
-        // Spin lock for try assignment
-        SpinLock lock;
+        enumerable_thread_specific<int64_t> localSearchTime;
+        enumerable_thread_specific<int64_t> localTryAssignmentsTime;
 
         TentativeLastStopDistances<LabelSetT> distances;
         tbb::enumerable_thread_specific<PickupAfterLastStopPruner> threadLocalPruners;
