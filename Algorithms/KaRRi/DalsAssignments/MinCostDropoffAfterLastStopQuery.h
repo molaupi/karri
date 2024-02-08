@@ -345,8 +345,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             int numEntriesScannedHere = 0;
 
-            if constexpr (!LastStopBucketsEnvT::SORTED) {
-                auto bucket = lastStopBuckets.getUnsortedBucketOf(v);
+            if constexpr (LastStopBucketsEnvT::SORTING == UNSORTED) {
+                auto bucket = lastStopBuckets.getBucketOf(v);
                 for (const auto &entry: bucket) {
                     ++numEntriesScannedHere;
 
@@ -374,7 +374,38 @@ namespace karri::DropoffAfterLastStopStrategies {
                     const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
                     insertLabelAtVehicleAndClean(vehId, labelAtVeh);
                 }
-            } else {
+            } else if constexpr (LastStopBucketsEnvT::SORTING == ONLY_DIST) {
+                auto bucket = lastStopBuckets.getBucketOf(v);
+                for (const auto &entry: bucket) {
+                    ++numEntriesScannedHere;
+
+                    const int &vehId = entry.targetId;
+                    const int fullDistToDropoff = entry.distToTarget + label.distToDropoff;
+
+                    const auto costFromLastStop = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
+                            fullDistToDropoff, dropoff, requestState);
+
+                    // Entries are sorted by distance so if vehicle independent lower bound cost is worse than best
+                    // known cost it will also be for all remaining entries.
+                    if (costFromLastStop > requestState.getBestCost())
+                        break;
+
+                    // If vehicle is not eligible for dropoff after last stop assignments, it does not need to be regarded.
+                    if (!isVehEligibleForDropoffAfterLastStop(vehId))
+                        continue;
+
+                    // If full distance to dropoff leads to violation of service time constraint, an assignment with this
+                    // vehicle and dropoff does not need to be regarded.
+                    const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId,
+                                                                                   routeState.numStopsOf(vehId) - 1,
+                                                                                   requestState, routeState);
+                    if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff + inputConfig.stopTime)
+                        continue;
+
+                    const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
+                    insertLabelAtVehicleAndClean(vehId, labelAtVeh);
+                }
+            }  else {
 
                 // Idle vehicles cannot lead to dropoff after last stop queries, so only consider non-idle ones.
                 auto nonIdleBucket = lastStopBuckets.getNonIdleBucketOf(v);

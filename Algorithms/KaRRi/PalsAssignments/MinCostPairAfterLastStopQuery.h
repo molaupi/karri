@@ -549,11 +549,32 @@ namespace karri::PickupAfterLastStopStrategies {
 
             int numEntriesScannedInBucket = 0;
 
-            if constexpr (!LastStopBucketsEnvT::SORTED) {
-                auto bucket = lastStopBuckets.getUnsortedBucketOf(rank);
+            if constexpr (LastStopBucketsEnvT::SORTING == UNSORTED) {
+                auto bucket = lastStopBuckets.getBucketOf(rank);
                 for (const auto &entry: bucket) {
                     ++numEntriesScannedInBucket;
                     const int fullDistToPickup = entry.distToTarget + label.distToPickup;
+                    tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn);
+                }
+            } else if constexpr (LastStopBucketsEnvT::SORTING == ONLY_DIST) {
+                // Scan bucket. Sorted by distance, stop early if distance does not permit a better insertion than
+                // one already seen.
+                auto bucket = lastStopBuckets.getBucketOf(rank);
+                for (const auto &entry: bucket) {
+                    ++numEntriesScannedInBucket;
+                    const int fullDistToPickup = entry.distToTarget + label.distToPickup;
+                    // Vehicles are ordered by distToTarget, i.e. once we scan a vehicle where the lower bound cost
+                    // based on the vehicle distance to the pickup (i.e. irrespective of possible vehicle waiting for
+                    // the passenger at the pickup) is larger than the best known assignment cost, the rest of the
+                    // vehicles in the bucket will also be worse since lowerBoundCostForEarlyBreak monotonously grows
+                    // with the vehicles (given constant pickup and dropoff).
+                    const auto vehTimeTillDepAtPickup = fullDistToPickup + inputConfig.stopTime;
+                    const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
+                            vehTimeTillDepAtPickup, std::max(pickup.walkingDist, vehTimeTillDepAtPickup),
+                            directDist, pickup.walkingDist, dropoff.walkingDist, requestState);
+                    if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
+                        break;
+
                     tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn);
                 }
             } else {

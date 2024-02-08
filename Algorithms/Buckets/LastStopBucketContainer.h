@@ -78,7 +78,8 @@ public:
 
     }
 
-    Bucket getUnsortedBucketOf(const int v) const {
+    // Returns full bucket in arbitrary order.
+    Bucket getBucketOf(const int v) const {
         assert(v >= 0);
         assert(v < bucketPositions.size());
         const auto &pos = bucketPositions[v];

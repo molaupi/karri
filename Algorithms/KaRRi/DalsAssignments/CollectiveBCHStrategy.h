@@ -57,7 +57,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
 
         using MinCostLabelSearch = MinCostDropoffAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, IsVehEligibleForDropoffAfterLastStop>;
-        using ClosestDropoffToLastStopQuery = ClosestPDLocToLastStopBCHQueryWithStallOnDemand<InputGraphT, CHEnvT, typename LastStopBucketsEnvT::BucketContainer>;
+        using ClosestDropoffToLastStopQuery = ClosestPDLocToLastStopBCHQueryWithStallOnDemand<InputGraphT, CHEnvT, LastStopBucketsEnvT>;
 
     public:
 
@@ -77,7 +77,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                   routeState(routeState),
                   calculator(calculator),
                   curVehLocToPickupSearches(curVehLocToPickupSearches),
-                  closestDropoffSearch(inputGraph, fleet.size(), chEnv, lastStopBucketsEnv.getBuckets(),
+                  closestDropoffSearch(inputGraph, fleet.size(), chEnv, routeState, lastStopBucketsEnv,
                                        {chEnv.getCH().upwardGraph()}),
                   ch(chEnv.getCH()),
                   requestState(requestState),
@@ -494,7 +494,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     for (const auto &label: minCostSearch.getParetoBestDropoffLabelsFor(lastVehId)) {
                         distsFromLastStopToDropoffs[label.dropoffId] = label.distToDropoff;
                     }
-                    distsFromLastStopToDropoffs[closestDropoffSearch.getIdOfSpotClosestToVeh(
+                    distsFromLastStopToDropoffs[closestDropoffSearch.getIdOfPDLocClosestToVeh(
                             lastVehId)] = closestDropoffSearch.getDistToClosestPDLocFromVeh(lastVehId);
 
                     // Calculate the rest of the distances.

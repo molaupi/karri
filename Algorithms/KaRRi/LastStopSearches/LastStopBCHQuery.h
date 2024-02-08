@@ -61,7 +61,7 @@ namespace karri {
 
                 int numEntriesScannedHere = 0;
 
-                if constexpr (!LastStopBucketsEnvT::SORTED) {
+                if constexpr (LastStopBucketsEnvT::SORTING == UNSORTED) {
                     auto bucket = search.bucketContainer.getBucketOf(v);
                     for (const auto &entry: bucket) {
                         ++numEntriesScannedHere;
@@ -71,6 +71,24 @@ namespace karri {
                             continue;
 
                         const DistanceLabel distViaV = distFromV + DistanceLabel(entry.distToTarget);
+                        tryUpdatingDistance(vehId, distViaV);
+                    }
+                } else if constexpr (LastStopBucketsEnvT::SORTING == ONLY_DIST) {
+                    auto bucket = search.bucketContainer.getBucketOf(v);
+
+                    for (const auto &entry: bucket) {
+                        ++numEntriesScannedHere;
+
+                        const int &vehId = entry.targetId;
+                        const DistanceLabel distFromLastStopToV = entry.distToTarget;
+                        const DistanceLabel distViaV = distFromLastStopToV + distFromV;
+                        const auto atLeastAsGoodAsCurBest = ~search.pruner.doesDistanceNotAdmitBestAsgn(distViaV, true);
+                        if (!anySet(atLeastAsGoodAsCurBest))
+                            break;
+
+                        if (!search.pruner.isVehicleEligible(vehId))
+                            continue;
+
                         tryUpdatingDistance(vehId, distViaV);
                     }
                 } else {

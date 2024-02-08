@@ -183,13 +183,29 @@ else(KARRI_DALS_USE_SIMD)
     target_compile_definitions(karri PRIVATE KARRI_DALS_USE_SIMD=false)
 endif (KARRI_DALS_USE_SIMD)
 
-### Applies for COL, IND
-option(KARRI_LAST_STOP_BCH_SORTED_BUCKETS "Use sorted buckets for last stop BCH searches. (Applies for COL, IND)" ON)
-if (KARRI_LAST_STOP_BCH_SORTED_BUCKETS)
-    target_compile_definitions(karri PRIVATE KARRI_LAST_STOP_BCH_SORTED_BUCKETS=true)
-else(KARRI_LAST_STOP_BCH_SORTED_BUCKETS)
-    target_compile_definitions(karri PRIVATE KARRI_LAST_STOP_BCH_SORTED_BUCKETS=false)
-endif (KARRI_LAST_STOP_BCH_SORTED_BUCKETS)
+### Applies for COL, IND (Sorting of last stop buckets)
+set(FULL_SORTED_CODE 1)
+set(ONLY_DIST_SORTED_CODE 2)
+set(UNSORTED_CODE 3)
+target_compile_definitions(karri PRIVATE KARRI_LAST_STOP_FULL_SORTED=${FULL_SORTED_CODE})
+target_compile_definitions(karri PRIVATE KARRI_LAST_STOP_ONLY_DIST_SORTED=${ONLY_DIST_SORTED_CODE})
+target_compile_definitions(karri PRIVATE KARRI_LAST_STOP_UNSORTED=${UNSORTED_CODE})
+set(KARRI_LAST_STOP_SORTING_ARG_VALUES FULL ONLY_DIST UNSORTED)
+
+set(KARRI_LAST_STOP_BCH_SORTING FULL CACHE STRING "Type of sorting to use for buckets for last stop BCH searches: FULL, ONLY_DIST, or UNSORTED. (Applies for COL, IND)")
+set_property(CACHE KARRI_LAST_STOP_BCH_SORTING PROPERTY STRINGS ${KARRI_LAST_STOP_SORTING_ARG_VALUES})
+list(FIND KARRI_LAST_STOP_SORTING_ARG_VALUES ${KARRI_LAST_STOP_BCH_SORTING} index)
+if (index EQUAL -1)
+    message(FATAL_ERROR "KARRI_LAST_STOP_BCH_SORTING must be one of ${KARRI_LAST_STOP_SORTING_ARG_VALUES}")
+endif ()
+
+if (${KARRI_LAST_STOP_BCH_SORTING} STREQUAL FULL)
+    target_compile_definitions(karri PRIVATE KARRI_LAST_STOP_BCH_SORTING=${FULL_SORTED_CODE}) # Full last stop bucket sorting
+elseif(${KARRI_LAST_STOP_BCH_SORTING} STREQUAL ONLY_DIST)
+    target_compile_definitions(karri PRIVATE KARRI_LAST_STOP_BCH_SORTING=${ONLY_DIST_SORTED_CODE}) # Last stop bucket sorting only by distance
+else()
+    target_compile_definitions(karri PRIVATE KARRI_LAST_STOP_BCH_SORTING=${UNSORTED_CODE}) # Unsorted last stop buckets
+endif()
 
 ### Applies for COL
 option(KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS "Precompute promising dropoffs and use only those in MinCostPair search. (Applies for PALS Strategy = COL)" OFF)

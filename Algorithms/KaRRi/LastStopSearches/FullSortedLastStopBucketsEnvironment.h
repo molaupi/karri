@@ -33,11 +33,12 @@
 #include "Algorithms/CH/CH.h"
 #include "Tools/Timer.h"
 #include "Algorithms/Buckets/LastStopBucketContainer.h"
+#include "LastStopBucketsSortingType.h"
 
 namespace karri {
 
     template<typename InputGraphT, typename CHEnvT>
-    class SortedLastStopBucketsEnvironment {
+    class FullSortedLastStopBucketsEnvironment {
 
 
         // .targetId is vehicle ID
@@ -51,7 +52,7 @@ namespace karri {
         };
 
     public:
-        static constexpr bool SORTED = true;
+        static constexpr LastStopBucketsSortingType SORTING = FULL;
 
         using BucketContainer = LastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
 
@@ -205,9 +206,9 @@ namespace karri {
 
     public:
 
-        SortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                                         const RouteState &routeState,
-                                         karri::stats::UpdatePerformanceStats &stats)
+        FullSortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
+                                             const RouteState &routeState,
+                                             karri::stats::UpdatePerformanceStats &stats)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   searchGraph(ch.upwardGraph()),
