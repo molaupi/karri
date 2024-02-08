@@ -119,7 +119,7 @@ namespace karri {
 
             for (int vehId = 0; vehId < fleet.size(); ++vehId) {
                 const auto &veh = fleet[vehId];
-                rel.setStartOfRelevantPDLocs(vehId, rel.relevantSpots.size());
+                rel.startOfRelevantPDLocs[vehId] = rel.relevantSpots.size();
 
                 if (!vehiclesWithFeasibleDistances.contains(vehId))
                     continue;
@@ -188,7 +188,7 @@ namespace karri {
                     rel.vehiclesWithRelevantSpots.insert(vehId);
             }
 
-            rel.setStartOfRelevantPDLocs(fleet.size(), rel.relevantSpots.size());
+            rel.startOfRelevantPDLocs[fleet.size()] = rel.relevantSpots.size();
 
             assert(std::all_of(rel.relevantSpots.begin(), rel.relevantSpots.end(),
                                [&](const auto &h) {

@@ -299,7 +299,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             asgn.dropoff = &dropoff;
             
             for (const auto &vehId: vehiclesSeenForDropoffs) {
-                if (!relevantOrdinaryPickups.hasRelevantSpotsForTS(vehId)) {
+                if (!relevantOrdinaryPickups.hasRelevantSpotsFor(vehId)) {
                     // vehicle may still have relevant assignment with pickup before next stop
                     checkPBNSForVehicle.set(vehId, true);
                     continue;

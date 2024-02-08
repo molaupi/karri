@@ -108,10 +108,12 @@ namespace karri {
             return distances[idx];
         }
 
-        bool knowsCurrentLocationOf(const int vehId) const {
-            assert(vehId >= 0 && vehId < fleetSize);
-            return vehiclesWithKnownLocation.contains(vehId) && currentVehicleLocations[vehId] != INVALID_LOC;
-        }
+//        bool knowsCurrentLocationOf(const int vehId) const {
+//            assert(vehId >= 0 && vehId < fleetSize);
+//
+//
+//            return vehiclesWithKnownLocation.contains(vehId) && currentVehicleLocations[vehId] != INVALID_LOC;
+//        }
 
         const VehicleLocation &getCurrentLocationOf(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
@@ -123,9 +125,9 @@ namespace karri {
 
             assert(routeState.numStopsOf(vehicle.vehicleId) > 1);
 
-            if (!knowsCurrentLocationOf(vehicle.vehicleId)) {
-                locateVehicle(vehicle);
-            }
+//            if (!knowsCurrentLocationOf(vehicle.vehicleId)) {
+            locateVehicle(vehicle);
+//            }
             const auto &vehLocation = currentVehicleLocations[vehicle.vehicleId];
             assert(vehLocation != INVALID_LOC);
 
@@ -147,10 +149,9 @@ namespace karri {
                     distances[idx] = distToCurLoc;
                 } else {
                     FullQuery &localCHQuery = chQuery.local();
-                    localCHQuery.run(vehLocation.location, pickupLocation);
-                    distances[idx] = localCHQuery.getDistance();
+                    localCHQuery.run(ch.rank(inputGraph.edgeHead(vehLocation.location)), ch.rank(inputGraph.edgeTail(pickupLocation)));
+                    distances[idx] = localCHQuery.getDistance() + inputGraph.travelTime(pickupLocation);
                     ++numChSearchesRun;
-
                 }
             }
 
@@ -204,7 +205,7 @@ namespace karri {
             SpinLock &curVehLock = vehLocks[vehId];
             curVehLock.lock();
             
-            if (vehiclesWithKnownLocation.contains(vehId)) {
+            if (currentVehicleLocations[vehId] != INVALID_LOC) {
                 curVehLock.unlock();
             }
 
@@ -213,9 +214,9 @@ namespace karri {
             totalLocatingVehiclesTimeForRequest.add_fetch(timer.elapsed<std::chrono::nanoseconds>(), std::memory_order_relaxed);
 
             currentVehicleLocations[vehId] = curLoc;
-            vehiclesWithKnownLocation.insert(vehId);
-
             curVehLock.unlock();
+
+            vehiclesWithKnownLocation.insert(vehId);
 
         }
 
