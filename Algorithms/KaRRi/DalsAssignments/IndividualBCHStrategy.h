@@ -27,6 +27,7 @@
 
 #include "Algorithms/KaRRi/LastStopSearches/LastStopBCHQuery.h"
 #include "Algorithms/KaRRi/LastStopSearches/TentativeLastStopDistances.h"
+#include "Algorithms/KaRRi/PbnsAssignments/CurVehLocationToPickupSearches.h"
 
 #include "Parallel/thread_safe_fast_reset_flag_array.h"
 #include "Parallel/atomic_wrapper.h"
