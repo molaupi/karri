@@ -389,12 +389,14 @@ namespace karri::stats {
         int64_t numEdgeRelaxationsInSearchGraph;
         int64_t numVerticesOrLabelsSettled;
         int64_t numEntriesOrLastStopsScanned;
-        int64_t searchTime;
+        int64_t searchTimeLocal;
 
         int64_t numCandidateVehicles;
         int64_t numCandidateDropoffsAcrossAllVehicles;
         int64_t numAssignmentsTried;
-        int64_t tryAssignmentsTime;
+        int64_t tryAssignmentsTimeLocal;
+
+        int64_t searchAndTryAssignmentsTime;
 
         // Stats only relevant for collective DALS strategy:
         int64_t collective_numDominationRelationTests;
@@ -403,7 +405,7 @@ namespace karri::stats {
         int64_t collective_initializationTime;
 
         int64_t getTotalTime() const {
-            return initializationTime + searchTime + tryAssignmentsTime;
+            return initializationTime + searchAndTryAssignmentsTime;
         }
 
         void clear() {
@@ -411,11 +413,12 @@ namespace karri::stats {
             numEdgeRelaxationsInSearchGraph = 0;
             numVerticesOrLabelsSettled = 0;
             numEntriesOrLastStopsScanned = 0;
-            searchTime = 0;
+            searchTimeLocal = 0;
             numCandidateVehicles = 0;
             numCandidateDropoffsAcrossAllVehicles = 0;
             numAssignmentsTried = 0;
-            tryAssignmentsTime = 0;
+            tryAssignmentsTimeLocal = 0;
+            searchAndTryAssignmentsTime = 0;
             collective_numDominationRelationTests = 0;
             collective_ranClosestDropoffSearch = false;
             collective_numDirectCHSearches = 0;
@@ -429,11 +432,12 @@ namespace karri::stats {
                 "num_edge_relaxations,"
                 "num_vertices_or_labels_settled,"
                 "num_entries_or_last_stops_scanned,"
-                "search_time,"
+                "search_time_local,"
                 "num_candidate_vehicles,"
                 "num_candidate_dropoffs,"
                 "num_assignments_tried,"
-                "try_assignments_time,"
+                "try_assignments_time_local,"
+                "search_and_try_assignments_time,"
                 "collective.num_domination_relation_tests,"
                 "collective.ran_closest_dropoff_search,"
                 "collective.num_direct_ch_searches,"
@@ -447,11 +451,12 @@ namespace karri::stats {
                << numEdgeRelaxationsInSearchGraph << ", "
                << numVerticesOrLabelsSettled << ", "
                << numEntriesOrLastStopsScanned << ", "
-               << searchTime << ", "
+               << searchTimeLocal << ", "
                << numCandidateVehicles << ", "
                << numCandidateDropoffsAcrossAllVehicles << ", "
                << numAssignmentsTried << ", "
-               << tryAssignmentsTime << ", "
+               << tryAssignmentsTimeLocal << ", "
+               << searchAndTryAssignmentsTime << ", "
                << collective_numDominationRelationTests << ", "
                << collective_ranClosestDropoffSearch << ", "
                << collective_numDirectCHSearches << ", "

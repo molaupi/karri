@@ -80,7 +80,7 @@ namespace karri {
                   vehiclesWithKnownLocation(fleetSize),
                   vehLocks(fleetSize, SpinLock()),
                   currentTime(-1),
-                  chQuery(chEnv.template getFullCHQuery<>()),
+                  chQuery([&]() { return chEnv.template getFullCHQuery<>(); }),
                   totalLocatingVehiclesTimeForRequest(0),
                   totalVehicleToPickupSearchTimeForRequest(0),
                   totalNumCHSearchesRunForRequest(0) {}
@@ -150,7 +150,7 @@ namespace karri {
                 } else {
                     FullQuery &localCHQuery = chQuery.local();
                     localCHQuery.run(ch.rank(inputGraph.edgeHead(vehLocation.location)), ch.rank(inputGraph.edgeTail(pickupLocation)));
-                    distances[idx] = localCHQuery.getDistance() + inputGraph.travelTime(pickupLocation);
+                    distances[idx] = distToCurLoc + localCHQuery.getDistance() + inputGraph.travelTime(pickupLocation);
                     ++numChSearchesRun;
                 }
             }
@@ -163,15 +163,15 @@ namespace karri {
 
 
         int64_t getTotalLocatingVehiclesTimeForRequest() const {
-            return totalLocatingVehiclesTimeForRequest;
+            return totalLocatingVehiclesTimeForRequest.load(std::memory_order_relaxed);
         }
 
         int64_t getTotalVehicleToPickupSearchTimeForRequest() const {
-            return totalVehicleToPickupSearchTimeForRequest;
+            return totalVehicleToPickupSearchTimeForRequest.load(std::memory_order_relaxed);
         }
 
         int64_t getTotalNumCHSearchesRunForRequest() const {
-            return totalNumCHSearchesRunForRequest;
+            return totalNumCHSearchesRunForRequest.load(std::memory_order_relaxed);
         }
 
     private:
@@ -207,7 +207,10 @@ namespace karri {
             
             if (currentVehicleLocations[vehId] != INVALID_LOC) {
                 curVehLock.unlock();
+                return;
             }
+
+            assert(currentVehicleLocations[vehId] == INVALID_LOC);
 
             Timer timer;
             const auto curLoc = vehicleLocator.computeCurrentLocation(vehicle, currentTime);

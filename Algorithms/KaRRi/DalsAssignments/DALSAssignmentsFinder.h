@@ -39,7 +39,7 @@ namespace karri {
         }
 
         void init() {
-            // no op
+            strategy.init();
         }
 
     private:

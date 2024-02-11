@@ -28,6 +28,7 @@
 #include "Algorithms/KaRRi/LastStopSearches/LastStopBCHQuery.h"
 #include "Algorithms/KaRRi/LastStopSearches/TentativeLastStopDistances.h"
 #include "Algorithms/KaRRi/PbnsAssignments/CurVehLocationToPickupSearches.h"
+#include "DataStructures/Utilities/Permutation.h"
 
 #include "Parallel/thread_safe_fast_reset_flag_array.h"
 #include "Parallel/atomic_wrapper.h"
@@ -156,52 +157,77 @@ namespace karri::DropoffAfterLastStopStrategies {
                   relevantOrdinaryPickups(relevantOrdinaryPickups),
                   relevantPickupsBeforeNextStop(relevantPickupsBeforeNextStop),
                   checkPBNSForVehicle(fleet.size()),
-                  lockOrdinary(),
-                  lockPBNS(),
                   vehiclesSeenForDropoffs(fleet.size()),
                   localPruners(DropoffAfterLastStopPruner(*this, calculator)),
                   search(lastStopBucketsEnv, lastStopDistances, chEnv, routeState,
                          vehiclesSeenForDropoffs,
                          localPruners),
-                  lastStopDistances(fleet.size()) {}
+                  lastStopDistances(fleet.size()),
+                  localSearchTime(0),
+                  localTryAssignmentsTime(0),
+                  relevantVehiclesPBNSOrder([&]{ return Permutation::getRandomPermutation(relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs().size(), 
+                                                std::minstd_rand(seedCounter.fetch_add(1, std::memory_order_relaxed)));}) {}
 
-        void tryDropoffAfterLastStop() {
-            runBchQueries();
-            enumerateAssignments();
+        void init() {
+            curVehLocToPickupSearches.initialize(requestState.originalRequest.requestTime);
+            relevantVehiclesPBNSOrder.clear();
         }
 
-    private:
+        void tryDropoffAfterLastStop() {
+            // Helper lambda to get sum of stats from thread local queries
+            static const auto sumInts = [](const int& n1, const int& n2) {return n1 + n2;};
 
-        // Run BCH queries that obtain distances from last stops to dropoffs
-        void runBchQueries() {
             Timer timer;
-
-
+            CAtomic<int> numAssignmentsTried;
+            numAssignmentsTried.store(0);
             initDropoffSearches();
+
             tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&](int i) {
-                runSearchesForDropoffBatch(i);
+                runBchSearchesAndEnumerateOrdinary(i, numAssignmentsTried);
             });
 
-            const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().dalsAssignmentsStats.searchTime += searchTime;
+            enumerateAssignmentsWithPBNS(numAssignmentsTried);
+
+            const auto searchAndTryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
+
+            requestState.stats().dalsAssignmentsStats.searchAndTryAssignmentsTime += searchAndTryAssignmentsTime;
+            requestState.stats().dalsAssignmentsStats.searchTimeLocal += localSearchTime.combine(sumInts);
+            requestState.stats().dalsAssignmentsStats.tryAssignmentsTimeLocal += localTryAssignmentsTime.combine(sumInts);
+
+
             requestState.stats().dalsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load(std::memory_order_relaxed);
             requestState.stats().dalsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load(std::memory_order_relaxed);
             requestState.stats().dalsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(std::memory_order_relaxed);
             requestState.stats().dalsAssignmentsStats.numCandidateVehicles += vehiclesSeenForDropoffs.size();
+            requestState.stats().dalsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(std::memory_order_relaxed);
         }
 
-        // Enumerate DALS assignments
-        void enumerateAssignments() {
-            int numAssignmentsTried = 0;
-            CAtomic<int> numAssignmentsTriedAtomic;
-            numAssignmentsTriedAtomic.store(0);
+    private:
+
+        // Run BCH searches and enumerate assignments within a thread
+        void runBchSearchesAndEnumerateOrdinary(const unsigned int firstDropoffId, CAtomic<int> &numAssignmentsTried) {
+            Timer timer;
+            runSearchesForDropoffBatch(firstDropoffId);
+            localSearchTime.local() += timer.elapsed<std::chrono::nanoseconds>();
+
+            timer.restart();
+            enumerateDropoffWithOrdinaryPickup(requestState.dropoffs[firstDropoffId], numAssignmentsTried);
+            localTryAssignmentsTime.local() += timer.elapsed<std::chrono::nanoseconds>();
+
+        }
+        
+        // Enumerate assignments where the pickup is before the next stop (PBNS + DALS):
+        void enumerateAssignmentsWithPBNS(CAtomic<int> &numAssignmentsTried) {
             const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
                                            curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
             Timer timer;
 
-            // parallel_for without synchronisation point in betweeen
-            enumerateAssignmentsWithOrdinaryPickup(numAssignmentsTriedAtomic);
-            enumerateAssignmentsWithPBNS(numAssignmentsTriedAtomic);
+            // tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&](int i) {
+            //     enumerateDropoffWithPBNS(requestState.dropoffs[i], numAssignmentsTried);
+            // });
+            for (const auto &dropoff: requestState.dropoffs) {
+                enumerateDropoffWithPBNS(dropoff, numAssignmentsTried);
+            }
 
             // Time spent to locate vehicles and compute distances from current vehicle locations to pickups is counted
             // into PBNS time so subtract it here.
@@ -210,9 +236,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                                      pbnsTimeBefore;
 
             const int64_t tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>() - pbnsTime;
-            requestState.stats().dalsAssignmentsStats.tryAssignmentsTime += tryAssignmentsTime;
-            requestState.stats().dalsAssignmentsStats.numAssignmentsTried += (numAssignmentsTried + 
-                numAssignmentsTriedAtomic.load(std::memory_order_relaxed));
+            localTryAssignmentsTime.local() += tryAssignmentsTime;
 
             // Find total number of candidate dropoffs for statistics
             int totalNumberOfCandidateDropoffs = 0;
@@ -222,34 +246,16 @@ namespace karri::DropoffAfterLastStopStrategies {
             requestState.stats().dalsAssignmentsStats.numCandidateDropoffsAcrossAllVehicles += totalNumberOfCandidateDropoffs;
         }
 
-        // Enumerate assignments where pickup is after next stop (ordinary pickup):
-        void enumerateAssignmentsWithOrdinaryPickup(CAtomic<int> &numAssignmentsTried) {
-
-            checkPBNSForVehicle.reset();
-            tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&](int i) {
-                enumerateDropoffWithOrdinaryPickup(requestState.dropoffs[i], numAssignmentsTried);
-            });
-        }
-
-        // Enumerate assignments where the pickup is before the next stop (PBNS + DALS):
-        void enumerateAssignmentsWithPBNS(CAtomic<int> &numAssignmentsTried) {
-            Assignment asgn;
-            asgn.pickupStopIdx = 0;
-
-            // tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&](int i) {
-            //     enumerateDropoffWithPBNS(requestState.dropoffs[i], numAssignmentsTried);
-            // });
-
-            for (const auto &dropoff: requestState.dropoffs) {
-                enumerateDropoffWithPBNS(dropoff, numAssignmentsTried);
-            }
-        }
-
         inline int getDistanceToDropoff(const int vehId, const unsigned int dropoffId) {
             return lastStopDistances.getDistance(vehId, dropoffId);
         }
 
         void initDropoffSearches() {
+            for (auto& local : localSearchTime)
+                local = 0;
+            for (auto& local : localTryAssignmentsTime)
+                local = 0;
+
             totalNumEdgeRelaxations.store(0);
             totalNumVerticesSettled.store(0);
             totalNumEntriesScanned.store(0);
@@ -266,7 +272,6 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         void runSearchesForDropoffBatch(const unsigned int firstDropoffId) {
             assert(firstDropoffId % K == 0 && firstDropoffId < requestState.numDropoffs());
-//            const int batchIdx = firstDropoffId / K;
 
             auto &localPruner = localPruners.local();
 
@@ -281,7 +286,6 @@ namespace karri::DropoffAfterLastStopStrategies {
                 localPruner.currentDropoffWalkingDists[i] = dropoff.walkingDist;
             }
 
-            // lastStopDistances.setCurBatchIdx(batchIdx);
             search.run(dropoffTails, travelTimes);
 
             // After a search batch of K PDLocs, write the distances back to the global vectors
@@ -294,10 +298,11 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         void enumerateDropoffWithOrdinaryPickup(const PDLoc &dropoff, CAtomic<int> &numAssignmentsTried) {
-            int numAssignmentsTriedLocal = 0;
             Assignment asgn;
             asgn.dropoff = &dropoff;
             
+            int numAssignmentsTriedLocal = 0;
+
             for (const auto &vehId: vehiclesSeenForDropoffs) {
                 if (!relevantOrdinaryPickups.hasRelevantSpotsFor(vehId)) {
                     // vehicle may still have relevant assignment with pickup before next stop
@@ -348,9 +353,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     asgn.pickupStopIdx = entry.stopIndex;
                     asgn.distToPickup = entry.distToPDLoc;
                     asgn.distFromPickup = entry.distFromPDLocToNextStop;
-                    lockOrdinary.lock();
                     requestState.tryAssignment(asgn);
-                    lockOrdinary.unlock();
                 }
 
                 if (pickupIt == relevantPickupsInRevOrder.end()) {
@@ -365,6 +368,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         void enumerateDropoffWithPBNS(const PDLoc &dropoff, CAtomic<int> &numAssignmentsTried) {
             int numAssignmentsTriedLocal = 0;
             Assignment asgn;
+            asgn.pickupStopIdx = 0;
             asgn.dropoff = &dropoff;
             for (const auto &vehId: relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs()) {
 
@@ -397,25 +401,19 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                     if (curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id)) {
                         asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
-                        // lockPBNS.lock();
                         requestState.tryAssignment(asgn);
-                        // lockPBNS.unlock();
                         ++numAssignmentsTriedLocal;
                     } else {
                         asgn.distToPickup = entry.distToPDLoc;
                         const auto lowerBoundCost = calculator.calc(asgn, requestState);
-
-                        // lockPBNS.lock();
                         
                         const bool checkLowerBoundCost = lowerBoundCost < requestState.getBestCost() ||
                             (lowerBoundCost == requestState.getBestCost() &&
                                 breakCostTie(asgn, requestState.getBestAssignment()));
-                        // lockPBNS.unlock();
                         if (checkLowerBoundCost) {
                             // In this case, we need the exact distance to the pickup via the current location of the
                             // vehicle. 
-                            curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id, asgn.distToPickup);
-                            curVehLocToPickupSearches.computeExactDistancesVia(fleet[asgn.vehicle->vehicleId]);
+                            curVehLocToPickupSearches.computeExactDistancesVia(fleet[asgn.vehicle->vehicleId], asgn.pickup->id, asgn.distToPickup);
 
                             assert(asgn.pickup->id >= 0 && asgn.pickup->id < requestState.numPickups());
                             assert(asgn.dropoff->id >= 0 && asgn.dropoff->id < requestState.numDropoffs());
@@ -434,9 +432,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                             ++numAssignmentsTriedLocal;
                             asgn.dropoffStopIdx = numStops - 1;
-                            // lockPBNS.lock();
                             requestState.tryAssignment(asgn);
-                            // lockPBNS.unlock();
                         }
                     }
                 }
@@ -457,26 +453,23 @@ namespace karri::DropoffAfterLastStopStrategies {
         // Flag per vehicle that tells us if we still have to consider a pickup before the next stop of the vehicle.
         ThreadSafeFastResetFlagArray<> checkPBNSForVehicle;
 
-        // Records for postponing and bundling computations of distances from current locations of vehicles to
-        // pickups needed in the PBNS+DALS case.
-        // struct PickupBeforeNextStopContinuation {
-        //     int pickupID;
-        //     int distFromPickup;
-        //     int fromDropoffID;
-        // };
-        // std::vector<PickupBeforeNextStopContinuation> pbnsContinuations;
-
         int upperBoundCost;
-
-        // Spin lock for try assignment
-        SpinLock lockOrdinary;
-        SpinLock lockPBNS;
 
         // Vehicles seen by any last stop search
         ThreadSafeSubset vehiclesSeenForDropoffs;
         tbb::enumerable_thread_specific<DropoffAfterLastStopPruner> localPruners;
         DropoffBCHQuery search;
         TentativeLastStopDistances<LabelSet> lastStopDistances;
+
+        enumerable_thread_specific<int64_t> localSearchTime;
+        enumerable_thread_specific<int64_t> localTryAssignmentsTime;
+
+        // Counter for generating differing seeds for random permutations between threads
+        std::atomic_int seedCounter;
+        // Each thread generates one random permutation of thread ids. The permutation defines the order in which
+        // a threads local results are written to the global result. This helps to alleviate contention on the
+        // spin locks (separate per stop id) used to synchronize global writes.
+        tbb::enumerable_thread_specific<Permutation> relevantVehiclesPBNSOrder;
 
         CAtomic<int> totalNumEdgeRelaxations;
         CAtomic<int> totalNumVerticesSettled;
