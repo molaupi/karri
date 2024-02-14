@@ -477,14 +477,14 @@ int main(int argc, char *argv[]) {
 
         // Construct PBNS assignments finder:
         using CurVehLocToPickupLabelSet = PDDistancesLabelSet;
-        using CurVehLocToPickupSearchesImpl = CurVehLocToPickupSearches<VehicleInputGraph, VehicleLocatorImpl, VehCHEnv, CurVehLocToPickupLabelSet>;
-        CurVehLocToPickupSearchesImpl curVehLocToPickupSearches(vehicleInputGraph, locator, *vehChEnv, routeState,
+        using CurVehLocationToPickupSearchesImpl = CurVehLocationToPickupSearches<VehicleInputGraph, VehicleLocatorImpl, VehCHEnv, CurVehLocToPickupLabelSet>;
+        CurVehLocationToPickupSearchesImpl curVehLocationToPickupSearches(vehicleInputGraph, locator, *vehChEnv, routeState,
                                                                 reqState, fleet.size());
 
 
-        using PBNSInsertionsFinderImpl = PBNSAssignmentsFinder<PDDistancesImpl, CurVehLocToPickupSearchesImpl>;
+        using PBNSInsertionsFinderImpl = PBNSAssignmentsFinder<PDDistancesImpl, CurVehLocationToPickupSearchesImpl>;
         PBNSInsertionsFinderImpl pbnsInsertionsFinder(relPickupsBeforeNextStop, relOrdinaryDropoffs,
-                                                      relDropoffsBeforeNextStop, pdDistances, curVehLocToPickupSearches,
+                                                      relDropoffsBeforeNextStop, pdDistances, curVehLocationToPickupSearches,
                                                       fleet, calc, routeState, reqState);
 
 
@@ -547,9 +547,6 @@ int main(int argc, char *argv[]) {
         using DALSLabelSet = std::conditional_t<KARRI_DALS_USE_SIMD,
                 SimdLabelSet<KARRI_DALS_LOG_K, ParentInfo::NO_PARENT_INFO>,
                 BasicLabelSet<KARRI_DALS_LOG_K, ParentInfo::NO_PARENT_INFO>>;
-        using CurVehLocationToPickupSearchesImpl = CurVehLocationToPickupSearches<VehicleInputGraph, VehicleLocatorImpl, VehCHEnv, CurVehLocToPickupLabelSet>;
-        CurVehLocationToPickupSearchesImpl curVehLocationToPickupSearches(vehicleInputGraph, locator, *vehChEnv, routeState,
-                                                                reqState, fleet.size());
         using DALSStrategy = DropoffAfterLastStopStrategies::IndividualBCHStrategy<VehicleInputGraph, VehCHEnv, LastStopBucketsEnv, CurVehLocationToPickupSearchesImpl, DALSLabelSet>;
         DALSStrategy dalsStrategy(vehicleInputGraph, fleet, *vehChEnv, calc, lastStopBucketsEnv,
                                   curVehLocationToPickupSearches, routeState, reqState, relOrdinaryPickups,
@@ -593,8 +590,8 @@ int main(int argc, char *argv[]) {
 #endif
 
 
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl, CurVehLocationToPickupSearchesImpl, VehPathTracker, std::ofstream>;
-        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, inputConfig, curVehLocToPickupSearches, curVehLocationToPickupSearches,
+        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, CurVehLocationToPickupSearchesImpl, VehPathTracker, std::ofstream>;
+        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, inputConfig, curVehLocationToPickupSearches,
                                                   pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv,
                                                   lastStopsAtVertices);
 

@@ -85,11 +85,13 @@ namespace karri {
 
                 assert(routeState.occupanciesFor(vehId)[0]  + requestState.originalRequest.numRiders <= fleet[vehId].capacity);
 
-                determineNecessaryExactDistances(fleet[vehId]);
+                // determineNecessaryExactDistances(fleet[vehId]);
 
-                curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId]);
+                // curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId]);
 
-                finishContinuations(fleet[vehId]);
+                // finishContinuations(fleet[vehId]);
+
+                calculateNecessaryExactDistances(fleet[vehId]);
             }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>() -
@@ -113,6 +115,98 @@ namespace karri {
 
     private:
 
+        void calculateNecessaryExactDistances(const Vehicle &veh) {
+            using namespace time_utils;
+            const auto &relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(veh.vehicleId);
+            const auto &relDropoffsBeforeNextStopForVeh = relDropoffsBNS.relevantSpotsFor(veh.vehicleId);
+            const auto stopLocations = routeState.stopLocationsFor(veh.vehicleId);
+            const auto numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto vehId = veh.vehicleId;
+
+            Assignment asgn(&veh);
+
+            for (const auto &entry: relPickupsBNS.relevantSpotsFor(veh.vehicleId)) {
+                asgn.pickup = &requestState.pickups[entry.pdId];
+
+                // Distance from stop 0 to pickup is actually a lower bound on the distance from stop 0 via the
+                // vehicle's current location to the pickup => we get lower bound costs.
+                asgn.distToPickup = entry.distToPDLoc;
+                const int distFromPickup = entry.distFromPDLocToNextStop;
+
+                // For paired assignments before next stop, first try a lower bound with the smallest direct PD distance
+                const auto lowerBoundCostPairedAssignment = calculator.calcCostLowerBoundForPairedAssignmentBeforeNextStop(
+                        veh, *asgn.pickup, asgn.distToPickup, requestState.minDirectPDDist,
+                        distFromPickup, requestState);
+                if (lowerBoundCostPairedAssignment < requestState.getBestCost()) {
+                    // const auto scannedUntil = tryLowerBoundsForPaired(asgn);
+                    assert(asgn.vehicle && asgn.pickup);
+
+                    if (relDropoffsBNS.getVehiclesWithRelevantPDLocs().contains(vehId)) {
+                        asgn.distFromPickup = 0;
+                        asgn.dropoffStopIdx = 0;
+
+                        for (auto dropoffIt = relDropoffsBeforeNextStopForVeh.begin(); 
+                            dropoffIt != relDropoffsBeforeNextStopForVeh.end(); ++dropoffIt) {
+                            const auto &dropoffEntry = *dropoffIt;
+                            asgn.dropoff = &requestState.dropoffs[dropoffEntry.pdId];
+                            if (stopLocations[1] == asgn.dropoff->loc)
+                                continue;
+
+                            asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                            asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
+                            if (asgn.distFromDropoff >= INFTY)
+                                    continue;
+                            const auto cost = calculator.calc(asgn, requestState);
+                            if (cost < requestState.getBestCost() || (cost == requestState.getBestCost() &&
+                                                                    breakCostTie(asgn, requestState.getBestAssignment()))) {
+                                // Lower bound is better than best known cost => We need the exact distance to pickup.
+                                // Return and postpone remaining combinations.
+                                curVehLocToPickupSearches.computeExactDistancesVia(veh, asgn.pickup->id, asgn.distToPickup);
+                                asgn.distToPickup = curVehLocToPickupSearches.getDistance(veh.vehicleId, asgn.pickup->id);
+                                if (asgn.distToPickup >= INFTY)
+                                    continue;
+
+                                ++numAssignmentsTriedWithPickupBeforeNextStop;
+                                requestState.tryAssignment(asgn);
+                            }
+                        }
+                    }
+                }
+
+                asgn.distFromPickup = distFromPickup;
+                assert(asgn.vehicle && asgn.pickup);
+
+                if (relOrdinaryDropoffs.getVehiclesWithRelevantPDLocs().contains(vehId)) {
+                    for (auto dropoffIt = relOrdinaryDropoffsForVeh.begin(); dropoffIt < relOrdinaryDropoffsForVeh.end(); ++dropoffIt) {
+                        const auto &dropoffEntry = *dropoffIt;
+                        asgn.dropoff = &requestState.dropoffs[dropoffEntry.pdId];
+
+                        if (dropoffEntry.stopIndex + 1 < numStops &&
+                            stopLocations[dropoffEntry.stopIndex + 1] == asgn.dropoff->loc)
+                            continue;
+                        if (asgn.dropoff->loc == asgn.pickup->loc)
+                            continue;
+
+                        asgn.dropoffStopIdx = dropoffEntry.stopIndex;
+                        asgn.distToDropoff = dropoffEntry.distToPDLoc;
+                        asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
+
+                        const auto cost = calculator.calc(asgn, requestState);
+                        if (cost < requestState.getBestCost() || (cost == requestState.getBestCost() &&
+                                                                breakCostTie(asgn, requestState.getBestAssignment()))) {
+                            // Lower bound is better than best known cost => We need the exact distance to pickup.
+                            // Return and postpone remaining combinations.
+                            curVehLocToPickupSearches.computeExactDistancesVia(veh, asgn.pickup->id, asgn.distToPickup);
+                            asgn.distToPickup = curVehLocToPickupSearches.getDistance(veh.vehicleId, asgn.pickup->id);
+                            if (asgn.distToPickup >= INFTY)
+                                continue;
+                            requestState.tryAssignment(asgn);
+                            ++numAssignmentsTriedWithPickupBeforeNextStop;
+                        }
+                    }
+                }
+            }
+        }
 
         // Filters combinations of pickups and dropoffs using a cost lower bound.
         // If a combination is found for a pickup that cannot be filtered, we need the exact distance from the vehicle
@@ -169,7 +263,7 @@ namespace karri {
                 }
             }
         }
-
+        
 
         // Examines combinations of a given pickup and all dropoffs before the next stop of a given vehicle until a
         // paired assignment needs the exact distance to the pickup via the vehicle. Returns an iterator to the dropoff at

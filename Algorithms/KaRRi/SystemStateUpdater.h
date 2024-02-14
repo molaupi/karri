@@ -37,7 +37,6 @@ namespace karri {
             typename EllipticBucketsEnvT,
             typename LastStopBucketsEnvT,
             typename CurVehLocsT,
-            typename CurVehLocationsT,
             typename PathTrackerT,
             typename LoggerT = NullLogger>
     class SystemStateUpdater {
@@ -46,7 +45,6 @@ namespace karri {
 
         SystemStateUpdater(const InputGraphT &inputGraph, RequestState &requestState,
                            const InputConfig &inputConfig, const CurVehLocsT &curVehLocs,
-                           const CurVehLocationsT &curVehLocations,
                            PathTrackerT &pathTracker,
                            RouteState &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
                            LastStopBucketsEnvT &lastStopBucketsEnv,
@@ -55,7 +53,6 @@ namespace karri {
                   requestState(requestState),
                   inputConfig(inputConfig),
                   curVehLocs(curVehLocs),
-                  curVehLocations(curVehLocations),
                   pathTracker(pathTracker),
                   routeState(routeState),
                   ellipticBucketsEnv(ellipticBucketsEnv),
@@ -265,9 +262,7 @@ namespace karri {
         void movePreviousStopToCurrentLocationForReroute(const Vehicle &veh) {
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
 //            assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
-            auto loc1 = curVehLocs.getCurrentLocationOf(veh.vehicleId);
-            auto loc2 = curVehLocations.getCurrentLocationOf(veh.vehicleId);
-            auto loc = loc1.location == INVALID_EDGE ? loc2 : loc1;
+            auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
             routeState.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
             ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
         }
@@ -354,7 +349,6 @@ namespace karri {
         RequestState &requestState;
         const InputConfig &inputConfig;
         const CurVehLocsT &curVehLocs;
-        const CurVehLocationsT &curVehLocations;
         PathTrackerT &pathTracker;
 
         // Route state
