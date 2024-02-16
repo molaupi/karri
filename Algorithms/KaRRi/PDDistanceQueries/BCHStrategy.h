@@ -157,11 +157,6 @@ namespace karri::PDDistanceQueryStrategies {
             //       && requestState->dropoffs[0].loc == requestState->originalRequest.destination);
             Timer timer;
 
-            if (requestState->numPickups() == 1 && requestState->numDropoffs() == 1) {
-                requestState->minDirectPDDist = requestState->originalReqDirectDist;
-                return;
-            }
-
             const auto numDropoffSearches = requestState->numDropoffs() / K + (requestState->numDropoffs() % K != 0);
             dropoffBuckets.init(numDropoffSearches);
 
@@ -259,7 +254,6 @@ namespace karri::PDDistanceQueryStrategies {
             Timer timer;
             requestState = &reqState;
             distances.clear(*requestState);
-            distances.updateDistanceIfSmaller(0, 0, requestState->originalReqDirectDist, *requestState);
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState->stats().pdDistancesStats.initializationTime += time;
         }

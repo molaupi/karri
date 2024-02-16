@@ -203,6 +203,10 @@ namespace karri {
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
+            if (requestState.originalRequest.requestId == 3979) {
+                std::cout << "";
+            }
+
             assert(distFromStopToPickup + distFromPickupToNextStop >=
                    calcLengthOfLegStartingAt(stopIndex, vehId, routeStateData));
 
