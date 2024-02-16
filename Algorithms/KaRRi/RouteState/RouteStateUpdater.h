@@ -21,7 +21,7 @@ namespace karri {
             const auto vehId = asgn.vehicle->vehicleId;
             const auto &pickup = *asgn.pickup;
             const auto &dropoff = *asgn.dropoff;
-            const int now = requestState.originalRequest.requestTime;
+            const int now = requestState.originalRequest.requestTime; //TODO: Bei reassining stimmt das nicht. Macht es Sinn das anzupassen
             auto pickupIndex = asgn.pickupStopIdx;
             auto dropoffIndex = asgn.dropoffStopIdx;
 

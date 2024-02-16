@@ -91,53 +91,6 @@ namespace karri {
             pbnsAssignments.findAssignments(data);
         }
 
-        /**
-            auto costBarrier = reqState.getBestCost() - reqState.getBestCostOnFixedRoutes();
-            if (costBarrier > 0) {
-                const auto missingStops = getMissingStops(reqState.getBestAssignmentOnFixedRoutes().vehicle->vehicleId);
-                const auto reassignableRequests = getReassignableRequests(missingStops);
-            }
-
-            oldRequests.push_back(req);
-            oldCost.push_back(reqState.getBestCost());
-            if (reqState.isNotUsingVehicleBest())
-                oldLocation.push_back(-1);
-            else
-                oldLocation.push_back(reqState.getBestAssignment().pickup->loc);
-
-
-
-
-                std::vector<int> getReassignableRequests(const std::vector<int> stopIds) {
-            std::vector<int> result;
-            for (const auto id: stopIds) {
-               for (const auto req:  variableRouteStateData.getRequestsPickedUpAt(id)) {
-                   result.push_back(req);
-               }
-            }
-            return result;
-        }
-
-        std::vector<int> getMissingStops(const int vehId) {
-            const auto fixedStopIds = fixedRouteStateData.stopIdsFor(vehId);
-            const auto variableStopIds = variableRouteStateData.stopIdsFor(vehId);
-            int counter = 0;
-            std::vector<int> result;
-
-            for (const auto id: variableStopIds) {
-                if (counter >= fixedStopIds.size() || fixedStopIds[counter] != id) {
-                    result.push_back(id);
-                    continue;
-                }
-                counter++;
-            }
-            return result;
-
-        }
-            */
-
-
-
 
     private:
 

@@ -429,6 +429,13 @@ namespace karri {
             for (const int stopId: variableUpdater.exchangeRouteFor(vehId, fixedData)) {
                 stopInfos[stopId] = StopInfo();
             }
+
+            for (const int stopId: variableData.stopIdsFor(vehId)) {
+                assert(stopInfos[stopId].isFixed || stopId == vehId);
+                stopInfos[stopId].isFixed = true;
+                stopInfos[stopId].pickedupReqAndDropoff.clear();
+            }
+
             lastStopBucketsEnv.generateBucketEntries(veh, variableData.numStopsOf(vehId) - 1, variableData);
         }
 

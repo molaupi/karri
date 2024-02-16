@@ -57,11 +57,11 @@ namespace karri {
 
                 for (const auto reqId: reassignableRequests) {
                     const auto oldData = oldReqData[reqId];
-                    assert(std::get<0>(oldData).requestId == reqId);
                     auto *newReqState = createAndInitializeRequestState(std::get<0>(oldData),
                             RouteStateDataType::VARIABLE, &std::get<2>(oldData));
                     newReqState->blockedVehId = fixedAssignment.vehicle->vehicleId;
                     searchBestAssignmentOn(variableRouteStateData, variableBuckets, *newReqState);
+                    assert(newReqState->isNotUsingVehicleBest() || newReqState->getBestAssignment().vehicle->vehicleId != newReqState->blockedVehId);
                     currentResult.push_back(newReqState);
                 }
 
