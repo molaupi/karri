@@ -172,7 +172,7 @@ namespace karri::PDDistanceQueryStrategies {
             if (requestState->pickups.size() > 1) {
                 vehicleToPDLocQuery.runReverse(requestState->pickups, requestState->originalRequest.origin);
             }
-            vehicleToPDLocQuery.runForward(requestState->dropoffs, requestState->originalRequest.origin);
+            vehicleToPDLocQuery.runForward(requestState->dropoffs, requestState->originalRequest.destination);
 
             int maxPickupToOriginVehDist = 0;
             for (const auto &pickup: requestState->pickups) {
