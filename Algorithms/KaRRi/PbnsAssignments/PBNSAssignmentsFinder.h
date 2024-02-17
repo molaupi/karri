@@ -59,10 +59,13 @@ namespace karri {
                   requestState(requestState) {}
 
         void findAssignments() {
-            numAssignmentsTriedWithPickupBeforeNextStop = 0;
+            numAssignmentsTriedWithPickupBeforeNextStop.store(0, std::memory_order_relaxed);
             Timer timer;
 
             int numCandidateVehicles = 0;
+
+            std::vector<std::pair<RelevantPDLocs::RelevantPDLoc, int>> jobs; 
+            
             for (const auto &vehId: relPickupsBNS.getVehiclesWithRelevantPDLocs()) {
 
                 if (!relOrdinaryDropoffs.hasRelevantSpotsFor(vehId) && !relDropoffsBNS.hasRelevantSpotsFor(vehId))
@@ -71,14 +74,22 @@ namespace karri {
 
                 assert(routeState.occupanciesFor(vehId)[0]  + requestState.originalRequest.numRiders <= fleet[vehId].capacity);
 
-                calculateNecessaryExactDistances(fleet[vehId]);
+                for (const auto &entry: relPickupsBNS.relevantSpotsFor(vehId)) {
+                    jobs.emplace_back(entry, vehId);
+                }
             }
+
+            auto permutation = Permutation::getRandomPermutation(jobs.size(), std::minstd_rand(requestState.originalRequest.requestId));
+
+            tbb::parallel_for(int(0), static_cast<int>(jobs.size()), 1, [&](int i) {
+                calculateNecessaryExactDistancesForPickup(jobs[permutation[i]].first, fleet[jobs[permutation[i]].second]);
+            });
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>() -
                               curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest();
             requestState.stats().pbnsAssignmentsStats.tryAssignmentsTime += time;
             requestState.stats().pbnsAssignmentsStats.numCandidateVehicles += numCandidateVehicles;
-            requestState.stats().pbnsAssignmentsStats.numAssignmentsTried += numAssignmentsTriedWithPickupBeforeNextStop;
+            requestState.stats().pbnsAssignmentsStats.numAssignmentsTried += numAssignmentsTriedWithPickupBeforeNextStop.load(std::memory_order_relaxed);
 
             requestState.stats().pbnsAssignmentsStats.locatingVehiclesTime += curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest();
             requestState.stats().pbnsAssignmentsStats.numCHSearches += curVehLocToPickupSearches.getTotalNumCHSearchesRunForRequest();
@@ -95,13 +106,6 @@ namespace karri {
 
     private:
 
-        void calculateNecessaryExactDistances(const Vehicle &veh) {
-            // Usage of K
-            tbb::parallel_for(int(0), static_cast<int>(relPickupsBNS.relevantSpotsFor(veh.vehicleId).size()), 1, [&](int i) {
-                calculateNecessaryExactDistancesForPickup(relPickupsBNS.relevantSpotsFor(veh.vehicleId)[i], veh);
-            });
-        }
-
         void calculateNecessaryExactDistancesForPickup(const RelevantPDLocs::RelevantPDLoc &entry, const Vehicle &veh) {
             using namespace time_utils;
             const auto &relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(veh.vehicleId);
@@ -113,6 +117,11 @@ namespace karri {
             Assignment asgn(&veh);
             asgn.pickup = &requestState.pickups[entry.pdId];
 
+            int localBestCost = INFTY;
+            Assignment localBestAsgn = asgn;
+
+            int numAssignmentsTriedWithPickupBeforeNextStopLocal = 0;
+
             // Distance from stop 0 to pickup is actually a lower bound on the distance from stop 0 via the
             // vehicle's current location to the pickup => we get lower bound costs.
             asgn.distToPickup = entry.distToPDLoc;
@@ -123,7 +132,6 @@ namespace karri {
                     veh, *asgn.pickup, asgn.distToPickup, requestState.minDirectPDDist,
                     distFromPickup, requestState);
             if (lowerBoundCostPairedAssignment < requestState.getBestCost()) {
-                // const auto scannedUntil = tryLowerBoundsForPaired(asgn);
                 assert(asgn.vehicle && asgn.pickup);
 
                 if (relDropoffsBNS.getVehiclesWithRelevantPDLocs().contains(vehId)) {
@@ -142,8 +150,8 @@ namespace karri {
                         if (asgn.distFromDropoff >= INFTY)
                                 continue;
                         const auto cost = calculator.calc(asgn, requestState);
-                        if (cost < requestState.getBestCost() || (cost == requestState.getBestCost() &&
-                                                                breakCostTie(asgn, requestState.getBestAssignment()))) {
+                        if (cost < localBestCost || (cost == localBestCost &&
+                                                                breakCostTie(asgn, localBestAsgn))) {
                             // Lower bound is better than best known cost => We need the exact distance to pickup.
                             // Return and postpone remaining combinations.
                             curVehLocToPickupSearches.computeExactDistancesVia(veh, asgn.pickup->id, asgn.distToPickup);
@@ -151,8 +159,14 @@ namespace karri {
                             if (asgn.distToPickup >= INFTY)
                                 continue;
 
-                            ++numAssignmentsTriedWithPickupBeforeNextStop;
-                            requestState.tryAssignment(asgn);
+                            ++numAssignmentsTriedWithPickupBeforeNextStopLocal;
+
+                            const auto curCost = calculator.calc(asgn, requestState);
+                            if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
+                                            breakCostTie(asgn, localBestAsgn)))) {
+                                localBestCost = curCost;
+                                localBestAsgn = asgn;
+                            }
                         }
                     }
                 }
@@ -177,19 +191,32 @@ namespace karri {
                     asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
 
                     const auto cost = calculator.calc(asgn, requestState);
-                    if (cost < requestState.getBestCost() || (cost == requestState.getBestCost() &&
-                                                            breakCostTie(asgn, requestState.getBestAssignment()))) {
+                    if (cost < localBestCost || (cost == localBestCost &&
+                                                            breakCostTie(asgn, localBestAsgn))) {
                         // Lower bound is better than best known cost => We need the exact distance to pickup.
                         // Return and postpone remaining combinations.
                         curVehLocToPickupSearches.computeExactDistancesVia(veh, asgn.pickup->id, asgn.distToPickup);
                         asgn.distToPickup = curVehLocToPickupSearches.getDistance(veh.vehicleId, asgn.pickup->id);
                         if (asgn.distToPickup >= INFTY)
                             continue;
-                        requestState.tryAssignment(asgn);
-                        ++numAssignmentsTriedWithPickupBeforeNextStop;
+
+                        const auto curCost = calculator.calc(asgn, requestState);
+                        if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
+                                        breakCostTie(asgn, localBestAsgn)))) {
+                            localBestCost = curCost;
+                            localBestAsgn = asgn;
+                        }
+
+                        ++numAssignmentsTriedWithPickupBeforeNextStopLocal;
                     }
                 }
             }
+
+            if (localBestAsgn.vehicle && localBestAsgn.pickup && localBestAsgn.dropoff)
+                requestState.tryAssignment(localBestAsgn);
+
+            numAssignmentsTriedWithPickupBeforeNextStop.add_fetch(numAssignmentsTriedWithPickupBeforeNextStopLocal,
+                std::memory_order_relaxed);
         }
 
         const RelevantPDLocs &relPickupsBNS;
@@ -202,7 +229,7 @@ namespace karri {
         const RouteState &routeState;
         RequestState &requestState;
 
-        int numAssignmentsTriedWithPickupBeforeNextStop;
+        CAtomic<int> numAssignmentsTriedWithPickupBeforeNextStop;
 
     };
 }

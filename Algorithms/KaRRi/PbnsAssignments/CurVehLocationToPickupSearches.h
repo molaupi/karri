@@ -163,15 +163,15 @@ namespace karri {
 
 
         int64_t getTotalLocatingVehiclesTimeForRequest() const {
-            return totalLocatingVehiclesTimeForRequest.load(std::memory_order_relaxed);
+            return totalLocatingVehiclesTimeForRequest;
         }
 
         int64_t getTotalVehicleToPickupSearchTimeForRequest() const {
-            return totalVehicleToPickupSearchTimeForRequest.load(std::memory_order_relaxed);
+            return totalVehicleToPickupSearchTimeForRequest;
         }
 
         int64_t getTotalNumCHSearchesRunForRequest() const {
-            return totalNumCHSearchesRunForRequest.load(std::memory_order_relaxed);
+            return totalNumCHSearchesRunForRequest;
         }
 
     private:

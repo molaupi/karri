@@ -349,9 +349,8 @@ namespace karri::PickupAfterLastStopStrategies {
             }
 
             // Try assignment once for best assignment calculated by current thread
-            if (localBestCost <= requestState.getBestCost()) {
+            if (localBestAsgn.vehicle && localBestAsgn.pickup && localBestAsgn.dropoff)
                 requestState.tryAssignment(localBestAsgn);
-            }
 
             numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
         }
