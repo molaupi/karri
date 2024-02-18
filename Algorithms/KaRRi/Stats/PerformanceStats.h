@@ -216,16 +216,16 @@ namespace karri::stats {
         int64_t numRelevantStopsForDropoffs;
         int64_t filterRelevantPDLocsTime;
 
-        int64_t locatingVehiclesTime;
+        int64_t locatingVehiclesTimeLocal;
         int64_t numCHSearches;
         int64_t directCHSearchTime;
 
         int64_t numCandidateVehicles;
         int64_t numAssignmentsTried;
-        int64_t tryAssignmentsTime;
+        int64_t tryAssignmentsAndLocatingVehiclesTime;
 
         int64_t getTotalTime() const {
-            return initializationTime + filterRelevantPDLocsTime + tryAssignmentsTime + locatingVehiclesTime;
+            return initializationTime + filterRelevantPDLocsTime + tryAssignmentsAndLocatingVehiclesTime;
         }
 
         void clear() {
@@ -234,13 +234,13 @@ namespace karri::stats {
             numRelevantStopsForDropoffs = 0;
             filterRelevantPDLocsTime = 0;
 
-            locatingVehiclesTime = 0;
+            locatingVehiclesTimeLocal = 0;
             numCHSearches = 0;
             directCHSearchTime = 0;
 
             numCandidateVehicles = 0;
             numAssignmentsTried = 0;
-            tryAssignmentsTime = 0;
+            tryAssignmentsAndLocatingVehiclesTime = 0;
         }
 
         static constexpr auto LOGGER_NAME = "perf_pbns.csv";
@@ -249,12 +249,12 @@ namespace karri::stats {
                 "num_relevant_stops_for_pickups,"
                 "num_relevant_stops_for_dropoffs,"
                 "filter_relevant_pd_locs_time,"
-                "locating_vehicles_time,"
+                "locating_vehicles_time_local,"
                 "num_ch_searches,"
                 "direct_ch_search_time,"
                 "num_candidate_vehicles,"
                 "num_assignments_tried,"
-                "try_assignments_time,"
+                "try_assignments_and_locating_vehicles_time,"
                 "total_time\n";
 
 
@@ -264,12 +264,12 @@ namespace karri::stats {
                << numRelevantStopsForPickups << ", "
                << numRelevantStopsForDropoffs << ", "
                << filterRelevantPDLocsTime << ", "
-               << locatingVehiclesTime << ", "
+               << locatingVehiclesTimeLocal << ", "
                << numCHSearches << ", "
                << directCHSearchTime << ", "
                << numCandidateVehicles << ", "
                << numAssignmentsTried << ", "
-               << tryAssignmentsTime << ", "
+               << tryAssignmentsAndLocatingVehiclesTime << ", "
                << getTotalTime();
             return ss.str();
         }
