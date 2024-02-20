@@ -164,9 +164,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                          localPruners),
                   lastStopDistances(fleet.size()),
                   localSearchTime(0),
-                  localTryAssignmentsTime(0) {}
-                //   relevantVehiclesPBNSOrder([&]{ return Permutation::getRandomPermutation(relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs().size(), 
-                //                                 std::minstd_rand(seedCounter.fetch_add(1, std::memory_order_relaxed)));}) {}
+                  localTryAssignmentsTime(0),
+                   relevantVehiclesPBNSOrder([&]{ return Permutation::getRandomPermutation(relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs().size(),
+                                                 std::minstd_rand(seedCounter.fetch_add(1, std::memory_order_relaxed)));}) {}
 
         void tryDropoffAfterLastStop() {
             // Helper lambda to get sum of stats from thread local queries
@@ -241,7 +241,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             upperBoundCost = requestState.getBestCost();
             vehiclesSeenForDropoffs.clear();
             checkPBNSForVehicle.reset();
-            // relevantVehiclesPBNSOrder.clear();
+             relevantVehiclesPBNSOrder.clear();
 
             // Construct more space for dropoff labels if needed.
             const int numDropoffBatches =
@@ -364,8 +364,11 @@ namespace karri::DropoffAfterLastStopStrategies {
             int localBestCost = INFTY;
             Assignment localBestAsgn = asgn;
 
-            // for (const auto &vehId: relevantVehiclesPBNSOrder.local()) {
-            for (const auto &vehId: relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs()) {
+            const auto& relVehicles = relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs();
+             for (const auto &permIdx: relevantVehiclesPBNSOrder.local()) {
+//            for (const auto &vehId: relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs()) {
+
+                const auto vehId = *(relVehicles.begin() + permIdx);
 
                 if (!vehiclesSeenForDropoffs.contains(vehId))
                     continue;
@@ -472,11 +475,11 @@ namespace karri::DropoffAfterLastStopStrategies {
         tbb::enumerable_thread_specific<int64_t> localTryAssignmentsTime;
 
         // Counter for generating differing seeds for random permutations between threads
-        // std::atomic_int seedCounter;
+         std::atomic_int seedCounter;
         // Each thread generates one random permutation of thread ids. The permutation defines the order in which
         // a threads local results are written to the global result. This helps to alleviate contention on the
         // spin locks (separate per stop id) used to synchronize global writes.
-        // tbb::enumerable_thread_specific<Permutation> relevantVehiclesPBNSOrder;
+         tbb::enumerable_thread_specific<Permutation> relevantVehiclesPBNSOrder;
 
         CAtomic<int> totalNumEdgeRelaxations;
         CAtomic<int> totalNumVerticesSettled;
