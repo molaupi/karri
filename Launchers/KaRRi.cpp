@@ -29,6 +29,7 @@
 #include <iostream>
 
 #include <csv.h>
+#include <tbb/global_control.h>
 
 #include <tbb/global_control.h>
 
@@ -140,6 +141,10 @@ inline void printUsage() {
 }
 
 int main(int argc, char *argv[]) {
+
+    // Setting maximum parallelism (i.e. number of threads)
+//    auto g = tbb::global_control(oneapi::tbb::global_control::max_allowed_parallelism, 1);
+
     using namespace karri;
 
 //    auto g = tbb::global_control(tbb::global_control::max_allowed_parallelism, 1);

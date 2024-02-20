@@ -324,6 +324,7 @@ namespace karri {
             assert(pickupStopId >= 0 && dropoffStopId >= 0);
 
             const auto vehId = bestAsgn.vehicle->vehicleId;
+
             switch (vehicleState[vehId]) {
                 case STOPPING:
                     // Update event time to departure time at current stop since it may have changed
