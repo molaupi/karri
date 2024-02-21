@@ -309,7 +309,7 @@ namespace karri {
             for (int i = 0; i < asgnBatch.size(); i++) {
                 const AssignmentFinderResponseT &resp = *asgnBatch[i];
                 if (resp.isNotUsingVehicleBest()) {
-                    //delete asgnBatch[i];
+                    delete asgnBatch[i];
                     asgnBatch.erase(asgnBatch.begin() + i);
                 }
             }
@@ -329,7 +329,7 @@ namespace karri {
             requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
             requestData[reqId].assignmentCost = mainAssignment.getBestCost();
 
-            systemStateUpdater.applyChanges(asgnBatch);
+            //systemStateUpdater.applyChanges(asgnBatch);
 
             for (const auto reqState: asgnBatch) {
                 const auto vehId = reqState->getBestAssignment().vehicle->vehicleId;
@@ -348,59 +348,6 @@ namespace karri {
                     default:
                         break;
                 }
-            }
-        }
-
-        template<typename AssignmentFinderResponseT>
-        void applyAssignment(AssignmentFinderResponseT &asgnFinderResponse, const int reqId, const int occTime) {
-            if (asgnFinderResponse.isNotUsingVehicleBest()) {
-                requestState[reqId] = WALKING_TO_DEST;
-                requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
-                requestData[reqId].depTime = occTime;
-                requestData[reqId].walkingTimeToPickup = 0;
-                requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.getNotUsingVehicleDist();
-                requestEvents.increaseKey(reqId, occTime + asgnFinderResponse.getNotUsingVehicleDist());
-                systemStateUpdater.writePerformanceLogs(asgnFinderResponse);
-                return;
-            }
-
-            int id, key;
-            requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dropoff
-            assert(id == reqId && key == occTime);
-
-            const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
-            if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
-                requestState[reqId] = FINISHED;
-                systemStateUpdater.writePerformanceLogs(asgnFinderResponse);
-                return;
-            }
-
-            requestState[reqId] = ASSIGNED_TO_VEH;
-            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
-            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
-            requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
-            requestData[reqId].fixedAssignmentCost = INFTY;
-
-            int pickupStopId, dropoffStopId;
-            systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId, asgnFinderResponse);
-            systemStateUpdater.writePerformanceLogs(asgnFinderResponse);
-            assert(pickupStopId >= 0 && dropoffStopId >= 0);
-
-            const auto vehId = bestAsgn.vehicle->vehicleId;
-            switch (vehicleState[vehId]) {
-                case STOPPING:
-                    // Update event time to departure time at current stop since it may have changed
-                    vehicleEvents.updateKey(vehId, scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime);
-                    break;
-                case IDLING:
-                    vehicleState[vehId] = VehicleState::DRIVING;
-                    [[fallthrough]];
-                case DRIVING:
-                    // Update event time to arrival time at next stop since it may have changed (also for case of idling).
-                    vehicleEvents.updateKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
-                    [[fallthrough]];
-                default:
-                    break;
             }
         }
 

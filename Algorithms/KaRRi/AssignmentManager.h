@@ -11,7 +11,9 @@
 
 namespace karri {
 
-    template<typename AssignmentFinderT,
+    template<
+            typename SystemStateUpdaterT,
+            typename AssignmentFinderT,
             typename CostCalculatorT,
             typename RequestStateInitializerT,
             typename BucketsWrapperT,
@@ -20,11 +22,12 @@ namespace karri {
     class AssignmentManager {
 
     public:
-        AssignmentManager(AssignmentFinderT &asgnFinder, CostCalculatorT &calc,
+        AssignmentManager(SystemStateUpdaterT &systemStateUpdater, AssignmentFinderT &asgnFinder, CostCalculatorT &calc,
                           InputConfig &config, RequestStateInitializerT &requestStateInitializer,
                           RouteStateData &variableRouteStateData, RouteStateData &fixedRouteStateData,
                           BucketsWrapperT &variableBuckets, BucketsWrapperT &fixedBuckets,
                           RouteStateUpdaterT &varUpdater, CurVehLocT &vehLocator):
+                          systemStateUpdater(systemStateUpdater),
                           asgnFinder(asgnFinder),
                           calc(calc),
                           config(config),
@@ -38,6 +41,10 @@ namespace karri {
 
         //TODO: Wenn Einfügen auf selbem Fahrzeug der losgelösten Requests möglich sein soll, muss man
         // es möglich sein Route (und Bucket) exchanges rückgängig zu machen (falls Kosten doch größer sind)
+
+        //TODO: Inserts müssen rückgängig gemacht werden können, falls Kosten doch zu hoch sind
+
+        //TODO: Hier wird jetzt nicht beachtete, ob das assignmenht ein Fahrzeug verwendet oder nicht. Da muss dann noch im EventSimulator angepasst werden
         std::vector<RequestState<CostCalculatorT>*> &calculateChanges(const Request &req) {
             for (int i = 0; i < currentResult.size(); i++) delete currentResult[i];
             currentResult.clear();
@@ -48,12 +55,17 @@ namespace karri {
             searchBestAssignmentOn(variableRouteStateData, variableBuckets, *varReqState);
             searchBestAssignmentOn(fixedRouteStateData, fixedBuckets, *fixedReqState);
 
+            int pickupId, dropoffId;
 
             int costBarrier = varReqState->getBestCost() - fixedReqState->getBestCost();
             if (costBarrier > 0) {
+                systemStateUpdater.exchangeRoutesFor(*fixedReqState->getBestAssignment().vehicle);
+                systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *fixedReqState);
+
                 currentResult.push_back(fixedReqState);
+
                 const auto &fixedAssignment = fixedReqState->getBestAssignment();
-                const auto reassignableRequests = getReassignableRequests(fixedAssignment.vehicle->vehicleId);
+                const auto reassignableRequests = getReassignableRequests(fixedAssignment.vehicle->vehicleId, req.requestId);
 
                 for (const auto reqId: reassignableRequests) {
                     const auto oldData = oldReqData[reqId];
@@ -61,13 +73,17 @@ namespace karri {
                             RouteStateDataType::VARIABLE, &std::get<2>(oldData));
                     newReqState->blockedVehId = fixedAssignment.vehicle->vehicleId;
                     searchBestAssignmentOn(variableRouteStateData, variableBuckets, *newReqState);
-                    assert(newReqState->isNotUsingVehicleBest() || newReqState->getBestAssignment().vehicle->vehicleId != newReqState->blockedVehId);
+
+                    systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *newReqState);
+
                     currentResult.push_back(newReqState);
                 }
 
                 updateOldRequestData();
                 return currentResult;
             }
+
+            systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *varReqState);
 
             currentResult.push_back(varReqState);
             updateOldRequestData();
@@ -91,12 +107,14 @@ namespace karri {
         }
 
         // Puts all requests picked up after the 0-th stop into a list
-        std::vector<int> getReassignableRequests(const int vehId) {
+        std::vector<int> getReassignableRequests(const int vehId, const int initiatorRequestId) {
             std::vector<int> result;
             const auto stopIds = variableRouteStateData.stopIdsFor(vehId);
             for (int i = 1; i < variableRouteStateData.numStopsOf(vehId); i++) {
                 for (const auto req:  variableRouteStateData.getRequestsPickedUpAt(stopIds[i])) {
-                    result.push_back(req);
+                    if (initiatorRequestId != req) {
+                        result.push_back(req);
+                    }
                 }
             }
             return result;
@@ -114,6 +132,8 @@ namespace karri {
         }
 
         std::vector<RequestState<CostCalculatorT>*> currentResult = {};
+
+        SystemStateUpdaterT &systemStateUpdater;
 
         AssignmentFinderT &asgnFinder;
 

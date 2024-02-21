@@ -573,16 +573,6 @@ int main(int argc, char *argv[]) {
                                             ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
                                             dalsInsertionsFinder, relevantPdLocsFilter);
 
-        using AssignmentManager = AssignmentManager<
-                InsertionFinderImpl,
-                CostCalculator,
-                RequestStateInitializerImpl,
-                BucketsWrapper,
-                RouteStateUpdater,
-                CurVehLocToPickupSearchesImpl>;
-
-        AssignmentManager asgnManager(insertionFinder, calc, inputConfig, requestStateInitializer,
-                                      variableData, fixedData, variableBuckets, fixedBuckets, variableUpdater, curVehLocToPickupSearches);
 
 
 #if KARRI_OUTPUT_VEHICLE_PATHS
@@ -601,6 +591,19 @@ int main(int argc, char *argv[]) {
                                                   pathTracker, variableUpdater, variableData, fixedUpdater, fixedData, fixedBuckets, variableBuckets,
                                                   ellipticBucketUpdater, lastStopBucketsUpdater,
                                                   variableLastStopsAtVertices, fixedLastStopsAtVertices, fleet);
+
+
+        using AssignmentManager = AssignmentManager<
+                SystemStateUpdaterImpl,
+                InsertionFinderImpl,
+                CostCalculator,
+                RequestStateInitializerImpl,
+                BucketsWrapper,
+                RouteStateUpdater,
+                CurVehLocToPickupSearchesImpl>;
+
+        AssignmentManager asgnManager(systemStateUpdater, insertionFinder, calc, inputConfig, requestStateInitializer,
+                                      variableData, fixedData, variableBuckets, fixedBuckets, variableUpdater, curVehLocToPickupSearches);
 
         // Initialize last stop state for initial locations of vehicles
         for (const auto &veh: fleet) {
