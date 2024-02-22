@@ -32,6 +32,9 @@
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
 #include "DataStructures/Containers/TimestampedVector.h"
 
+#include "Parallel/atomic_wrapper.h"
+#include "tbb/enumerable_thread_specific.h"
+#include "tbb/concurrent_vector.h"
 
 // A bucket container that is meant to be used when the set of sources of labels is known in advance and their search
 // spaces in the CH can be expected to be similar. Let k be the number of sources for which this bucket container will
@@ -51,11 +54,76 @@ class SharedSearchSpaceBucketContainer {
     static_assert(std::is_default_constructible<BucketEntryT>());
 public:
 
-    using Bucket = ConstantVectorRange<BucketEntryT>;
+    using Bucket = ConstantConcurrentVectorRange<BucketEntryT>;
+
+    // Represents information that one thread computes during one bucket search. Can be incorporated into
+    // global result at end of search.
+    class ThreadLocalBuckets {
+
+        friend SharedSearchSpaceBucketContainer;
+
+    public:
+
+        ThreadLocalBuckets(const int &numSearches,
+                                        std::vector<int>& indexInBucketEntriesVector,
+                                        std::vector<BucketEntryT>& bucketEntriesForSingleVertex) :
+                numSearches(numSearches),
+                indexInBucketEntriesVector(indexInBucketEntriesVector),
+                bucketEntriesForSingleVertex(bucketEntriesForSingleVertex) {}
+
+        void initForSearch() {
+            bucketEntriesForSingleVertex.clear();
+
+            if (indexInBucketEntriesVector.size() < numSearches)
+                indexInBucketEntriesVector.resize(numSearches);
+            for (int i = 0; i < numSearches; ++i)
+                indexInBucketEntriesVector[i] = INVALID_INDEX;
+        }
+        
+        bool insertOrUpdate(const int, const BucketEntryT &newEntry) {
+            const int targetId = newEntry.targetId;
+            assert(targetId >= 0);
+            assert(targetId < numSearches);
+
+            // If no entries exist yet for this stop, perform the allocation.
+            if (indexInBucketEntriesVector[targetId] == INVALID_INDEX) {
+                allocateLocalEntriesFor(targetId);
+            }
+
+            // If the entries for this vertex already exist, update the according entry
+            const auto &idx = indexInBucketEntriesVector[targetId];
+            auto &entry = bucketEntriesForSingleVertex[idx];
+            assert(entry.targetId == BucketEntryT().targetId || entry.targetId == newEntry.targetId);
+            entry.cmpAndUpdate(newEntry);
+
+            return true;
+        }
+
+    private:
+
+        // Dynamic Allocation
+        void allocateLocalEntriesFor(const int targetId) {
+            assert(indexInBucketEntriesVector[targetId] == INVALID_INDEX);
+
+            indexInBucketEntriesVector[targetId] = bucketEntriesForSingleVertex.size();
+            bucketEntriesForSingleVertex.push_back(BucketEntryT());
+        }
+
+        const int &numSearches;
+        
+        std::vector<int> &indexInBucketEntriesVector;
+        std::vector<BucketEntryT> &bucketEntriesForSingleVertex;
+
+    };
 
     // Constructs a container that can maintain buckets for the specified number of vertices.
     explicit SharedSearchSpaceBucketContainer(const int numVertices)
-            : numSearches(0), offsetForVertex(numVertices, INVALID_INDEX), entries(0) {
+            : numSearches(0),
+              vertexLocks(numVertices, SpinLock()),
+              offsetForVertex(numVertices, INVALID_INDEX), 
+              entries(0),
+              indexInBucketEntriesVector(),
+              bucketEntriesForSingleVertex() {
         assert(numVertices >= 0);
     }
 
@@ -93,6 +161,23 @@ public:
         return true;
     }
 
+    void updateBucketEntriesInGlobalVectors(const int vertex) {
+
+        const auto &localIndices = indexInBucketEntriesVector.local();
+        const auto &localEntries = bucketEntriesForSingleVertex.local();
+
+        for (int i = 0; i < numSearches; ++i) {
+            const auto &idx = localIndices[i];
+            if (idx != INVALID_INDEX) {
+                allocateEntriesFor(vertex);
+                const auto &localEntry = localEntries[idx]; 
+                auto &entry = entries[offsetForVertex[vertex] + localEntry.targetId];
+                assert(entry.targetId == BucketEntryT().targetId || entry.targetId == localEntry.targetId);
+                entry.cmpAndUpdate(localEntry);
+            }
+        }
+    }
+
     // Removes all entries from all buckets.
     void init(const int newNumSearches) {
         numSearches = newNumSearches;
@@ -100,9 +185,36 @@ public:
         entries.clear();
     }
 
+    // Each thread gets an instance of a ThreadLocalBuckets at the beginning of a search. This
+    // object encapsulates the local result of the thread for that search. This way, the underlying TLS structures
+    // are only queried once per search.
+    ThreadLocalBuckets getThreadLocalBuckets() {
+        return ThreadLocalBuckets(numSearches, indexInBucketEntriesVector.local(), bucketEntriesForSingleVertex.local());
+    }
+
 private:
+    void allocateEntriesFor(const int vertex) {
+        SpinLock &currLock = vertexLocks[vertex];
+        currLock.lock();
+
+        if (offsetForVertex[vertex] != INVALID_INDEX) {
+            currLock.unlock();
+            return;
+        }
+
+        const auto entriesIt = entries.grow_by(numSearches, BucketEntryT());
+        offsetForVertex[vertex] = entriesIt - entries.begin();
+
+        return;
+    } 
 
     int numSearches;
+    std::vector<SpinLock> vertexLocks;
+    
     TimestampedVector<int> offsetForVertex;
-    std::vector<BucketEntryT> entries;
+    tbb::concurrent_vector<BucketEntryT> entries;
+
+    // Thread Local Storage for local bucket entries calculation
+    tbb::enumerable_thread_specific<std::vector<int>> indexInBucketEntriesVector;
+    tbb::enumerable_thread_specific<std::vector<BucketEntryT>> bucketEntriesForSingleVertex;
 };
