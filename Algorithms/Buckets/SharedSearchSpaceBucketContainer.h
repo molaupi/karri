@@ -120,8 +120,7 @@ public:
     explicit SharedSearchSpaceBucketContainer(const int numVertices)
             : numSearches(0),
               vertexLocks(numVertices, SpinLock()),
-              offsetForVertex(numVertices, INVALID_INDEX), 
-              entries(0),
+              offsetForVertex(numVertices, INVALID_INDEX),
               indexInBucketEntriesVector(),
               bucketEntriesForSingleVertex() {
         assert(numVertices >= 0);
@@ -140,26 +139,26 @@ public:
     }
 
     // Inserts the given entry into the bucket of the specified vertex.
-    bool insertOrUpdate(const int vertex, const BucketEntryT &newEntry) {
-        assert(vertex >= 0);
-        assert(vertex < offsetForVertex.size());
-        assert(newEntry.targetId >= 0);
-        assert(newEntry.targetId < numSearches);
+    // bool insertOrUpdate(const int vertex, const BucketEntryT &newEntry) {
+    //     assert(vertex >= 0);
+    //     assert(vertex < offsetForVertex.size());
+    //     assert(newEntry.targetId >= 0);
+    //     assert(newEntry.targetId < numSearches);
 
-        // If this is the first time any search inserts an entry at this vertex, allocate entries for all searches at
-        // this vertex, i.e. construct entries for all possible searches.
-        if (offsetForVertex[vertex] == INVALID_INDEX) {
-            offsetForVertex[vertex] = entries.size();
-            entries.insert(entries.end(), numSearches, BucketEntryT());
-        }
+    //     // If this is the first time any search inserts an entry at this vertex, allocate entries for all searches at
+    //     // this vertex, i.e. construct entries for all possible searches.
+    //     if (offsetForVertex[vertex] == INVALID_INDEX) {
+    //         offsetForVertex[vertex] = entries.size();
+    //         entries.insert(entries.end(), numSearches, BucketEntryT());
+    //     }
 
-        // If the entries for this vertex already exist, update the according entry
-        auto &entry = entries[offsetForVertex[vertex] + newEntry.targetId];
-        assert(entry.targetId == BucketEntryT().targetId || entry.targetId == newEntry.targetId);
-        entry.cmpAndUpdate(newEntry);
+    //     // If the entries for this vertex already exist, update the according entry
+    //     auto &entry = entries[offsetForVertex[vertex] + newEntry.targetId];
+    //     assert(entry.targetId == BucketEntryT().targetId || entry.targetId == newEntry.targetId);
+    //     entry.cmpAndUpdate(newEntry);
 
-        return true;
-    }
+    //     return true;
+    // }
 
     void updateBucketEntriesInGlobalVectors(const int vertex) {
 

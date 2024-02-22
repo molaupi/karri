@@ -103,8 +103,9 @@ namespace karri {
 
         };
 
-        ParallelPDDistances(const RequestState &requestState) 
+        ParallelPDDistances(const RequestState &requestState, const int &numDropoffs) 
             : requestState(requestState),
+              numDropoffs(numDropoffs),
               indexInDistancesVector(),
               distancesForSinglePickup() {}
 
@@ -112,7 +113,7 @@ namespace karri {
         // object encapsulates the local result of the thread for that search. This way, the underlying TLS structures
         // are only queried once per search.
         ThreadLocalPDDistances getThreadLocalPDDistances() {
-            return ThreadLocalPDDistances(requestState.numDropoffs(), indexInDistancesVector.local(), distancesForSinglePickup.local());
+            return ThreadLocalPDDistances(numDropoffs, indexInDistancesVector.local(), distancesForSinglePickup.local());
         }
 
         void clear() {
@@ -219,6 +220,7 @@ namespace karri {
         }
 
         const RequestState &requestState;
+        const int &numDropoffs;
 
         // Distances are stored as vectors of size K (DistanceLabel).
         // ceil(numPickups / K) labels per dropoff, sequentially arranged by increasing dropoffId.

@@ -455,7 +455,7 @@ int main(int argc, char *argv[]) {
         using PDDistancesImpl = PDDistances<PDDistancesLabelSet>;
         PDDistancesImpl pdDistances(reqState);
         using ParallelPDDistancesImpl = ParallelPDDistances<PDDistancesLabelSet>;
-        ParallelPDDistancesImpl parallelPdDistances(reqState);
+        ParallelPDDistancesImpl parallelPdDistances(reqState, reqState.numDropoffs());
 
 #if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
         using PDDistanceQueryImpl = PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, VehicleToPDLocQueryImpl, PDDistancesLabelSet>;
