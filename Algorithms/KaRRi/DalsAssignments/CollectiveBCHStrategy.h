@@ -101,12 +101,15 @@ namespace karri::DropoffAfterLastStopStrategies {
     private:
 
         void runCollectiveSearch() {
+            auto &stats = requestState.stats().dalsAssignmentsStats;
             Timer timer;
-
+            curVehLocToPickupSearches.initialize(requestState.originalRequest.requestTime);
+            stats.collective_initializationTime += timer.elapsed<std::chrono::nanoseconds>();
+            timer.restart();
+            
             minCostSearch.run();
 
-            auto &stats = requestState.stats().dalsAssignmentsStats;
-            stats.searchTime += minCostSearch.getRunTime();
+            stats.collective_searchTime += minCostSearch.getRunTime();
             stats.numEdgeRelaxationsInSearchGraph += minCostSearch.getNumEdgeRelaxations();
             stats.numVerticesOrLabelsSettled += minCostSearch.getNumLabelsRelaxed();
             stats.numEntriesOrLastStopsScanned += minCostSearch.getNumEntriesScanned();
@@ -151,7 +154,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             auto &stats = requestState.stats().dalsAssignmentsStats;
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>() - pbnsTime;
-            stats.tryAssignmentsTime = time;
+            stats.collective_tryAssignmentTime = time;
             stats.numAssignmentsTried += numAssignmentsTried;
             stats.numCandidateDropoffsAcrossAllVehicles += numParetoBestLabels;
             stats.collective_ranClosestDropoffSearch = ranClosestDropoffSearch;

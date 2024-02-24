@@ -296,6 +296,8 @@ namespace karri::stats {
         int64_t pickupAtLastStop_tryAssignmentsTime;
 
         // Stats only relevant for collective PALS strategy:
+        int64_t collective_searchTime;
+        int64_t collective_tryAssignmentTime;
         int64_t collective_pickupVehDistQueryTime;
         int64_t collective_numPromisingDropoffs;
         int64_t collective_numInitialLabelsGenerated;
@@ -305,7 +307,7 @@ namespace karri::stats {
         bool collective_usedFallback;
 
         int64_t getTotalTime() const {
-            return initializationTime + searchAndTryAssignmentsTime + pickupAtLastStop_tryAssignmentsTime;
+            return initializationTime + searchAndTryAssignmentsTime + pickupAtLastStop_tryAssignmentsTime + collective_searchTime + collective_tryAssignmentTime;
         }
 
         void clear() {
@@ -321,6 +323,8 @@ namespace karri::stats {
             pickupAtLastStop_numCandidateVehicles = 0;
             pickupAtLastStop_numAssignmentsTried = 0;
             pickupAtLastStop_tryAssignmentsTime = 0;
+            collective_searchTime = 0;
+            collective_tryAssignmentTime = 0;
             collective_pickupVehDistQueryTime = 0;
             collective_numPromisingDropoffs = 0;
             collective_numInitialLabelsGenerated = 0;
@@ -344,6 +348,8 @@ namespace karri::stats {
                 "pickup_at_last_stop.num_candidate_vehicles,"
                 "pickup_at_last_stop.num_assignments_tried,"
                 "pickup_at_last_stop.try_assignments_time,"
+                "collective.search_time,"
+                "collective.try_assignment_time,"
                 "collective.pickup_veh_dist_query_time,"
                 "collective.num_promising_dropoffs,"
                 "collective.num_initial_labels_generated,"
@@ -368,6 +374,8 @@ namespace karri::stats {
                << pickupAtLastStop_numCandidateVehicles << ", "
                << pickupAtLastStop_numAssignmentsTried << ", "
                << pickupAtLastStop_tryAssignmentsTime << ", "
+               << collective_searchTime << ", "
+               << collective_tryAssignmentTime << ", "
                << collective_pickupVehDistQueryTime << ", "
                << collective_numPromisingDropoffs << ", "
                << collective_numInitialLabelsGenerated << ", "
@@ -399,13 +407,15 @@ namespace karri::stats {
         int64_t searchAndTryAssignmentsTime;
 
         // Stats only relevant for collective DALS strategy:
+        int64_t collective_searchTime;
+        int64_t collective_tryAssignmentTime;
         int64_t collective_numDominationRelationTests;
         bool collective_ranClosestDropoffSearch;
         int64_t collective_numDirectCHSearches;
         int64_t collective_initializationTime;
 
         int64_t getTotalTime() const {
-            return initializationTime + searchAndTryAssignmentsTime;
+            return initializationTime + searchAndTryAssignmentsTime + collective_searchTime + collective_tryAssignmentTime;
         }
 
         void clear() {
@@ -419,6 +429,8 @@ namespace karri::stats {
             numAssignmentsTried = 0;
             tryAssignmentsTimeLocal = 0;
             searchAndTryAssignmentsTime = 0;
+            collective_searchTime = 0;
+            collective_tryAssignmentTime = 0;
             collective_numDominationRelationTests = 0;
             collective_ranClosestDropoffSearch = false;
             collective_numDirectCHSearches = 0;
@@ -438,6 +450,8 @@ namespace karri::stats {
                 "num_assignments_tried,"
                 "try_assignments_time_local,"
                 "search_and_try_assignments_time,"
+                "collective.search_time,"
+                "collective.try_assignments_time,"
                 "collective.num_domination_relation_tests,"
                 "collective.ran_closest_dropoff_search,"
                 "collective.num_direct_ch_searches,"
@@ -457,6 +471,8 @@ namespace karri::stats {
                << numAssignmentsTried << ", "
                << tryAssignmentsTimeLocal << ", "
                << searchAndTryAssignmentsTime << ", "
+               << collective_searchTime << ", "
+               << collective_tryAssignmentTime << ", "
                << collective_numDominationRelationTests << ", "
                << collective_ranClosestDropoffSearch << ", "
                << collective_numDirectCHSearches << ", "

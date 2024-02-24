@@ -59,6 +59,7 @@
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocsFilter.h"
 #include "Algorithms/KaRRi/OrdinaryAssignments/OrdinaryAssignmentsFinder.h"
 #include "Algorithms/KaRRi/PbnsAssignments/PBNSAssignmentsFinder.h"
+#include "Algorithms/KaRRi/PbnsAssignments/CurVehLocationToPickupSearches.h"
 #include "Algorithms/KaRRi/PalsAssignments/PALSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/DalsAssignments/DALSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/LastStopSearches/SortedLastStopBucketsEnvironment.h"
@@ -517,6 +518,9 @@ int main(int argc, char *argv[]) {
                 SimdLabelSet<KARRI_PALS_LOG_K, ParentInfo::NO_PARENT_INFO>,
                 BasicLabelSet<KARRI_PALS_LOG_K, ParentInfo::NO_PARENT_INFO>>;
 
+        using CurVehLocToPickupSearchesImpl = CurVehLocToPickupSearches<VehicleInputGraph, VehicleLocatorImpl, VehCHEnv, CurVehLocToPickupLabelSet>;
+        CurVehLocToPickupSearchesImpl curVehLocToPickupSearches(vehicleInputGraph, locator, *vehChEnv, routeState,
+                                                                reqState, fleet.size());
 
 #if KARRI_PALS_STRATEGY == KARRI_COL
         // Use Collective-BCH PALS Strategy
@@ -595,8 +599,8 @@ int main(int argc, char *argv[]) {
 #endif
 
 
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, CurVehLocationToPickupSearchesImpl, VehPathTracker, std::ofstream>;
-        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, inputConfig, curVehLocationToPickupSearches,
+        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl, CurVehLocationToPickupSearchesImpl, VehPathTracker, std::ofstream>;
+        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, inputConfig, curVehLocToPickupSearches, curVehLocationToPickupSearches,
                                                   pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv,
                                                   lastStopsAtVertices);
 
