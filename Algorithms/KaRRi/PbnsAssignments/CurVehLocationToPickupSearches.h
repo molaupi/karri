@@ -125,9 +125,9 @@ namespace karri {
 
             assert(routeState.numStopsOf(vehicle.vehicleId) > 1);
 
-//            if (!knowsCurrentLocationOf(vehicle.vehicleId)) {
+           if (!vehiclesWithKnownLocation.contains(vehicle.vehicleId)) {
             locateVehicle(vehicle);
-//            }
+           }
             const auto &vehLocation = currentVehicleLocations[vehicle.vehicleId];
             assert(vehLocation != INVALID_LOC);
 
@@ -217,10 +217,9 @@ namespace karri {
             totalLocatingVehiclesTimeForRequest.add_fetch(timer.elapsed<std::chrono::nanoseconds>(), std::memory_order_relaxed);
 
             currentVehicleLocations[vehId] = curLoc;
-            curVehLock.unlock();
-
             vehiclesWithKnownLocation.insert(vehId);
 
+            curVehLock.unlock();
         }
 
         void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle, const unsigned int pickupId, const int distFromPrevStopToPickup) {

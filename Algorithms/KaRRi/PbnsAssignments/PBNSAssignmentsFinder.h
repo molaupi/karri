@@ -98,6 +98,8 @@ namespace karri {
         // Initialize for new request.
         void init() {
             Timer timer;
+            bestAsgnBefore = requestState.getCurBestAssignment();
+            bestCostBefore = requestState.getCurBestCost();
             curVehLocToPickupSearches.initialize(requestState.originalRequest.requestTime);
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pbnsAssignmentsStats.initializationTime += time;
@@ -116,8 +118,8 @@ namespace karri {
             Assignment asgn(&veh);
             asgn.pickup = &requestState.pickups[entry.pdId];
 
-            int localBestCost = INFTY;
-            Assignment localBestAsgn = asgn;
+            Assignment localBestAsgn = bestAsgnBefore;
+            int localBestCost = bestCostBefore;
 
             int numAssignmentsTriedWithPickupBeforeNextStopLocal = 0;
 
@@ -227,6 +229,9 @@ namespace karri {
         const CostCalculator &calculator;
         const RouteState &routeState;
         RequestState &requestState;
+
+        Assignment bestAsgnBefore;
+        int bestCostBefore;
 
         CAtomic<int> numAssignmentsTriedWithPickupBeforeNextStop;
 

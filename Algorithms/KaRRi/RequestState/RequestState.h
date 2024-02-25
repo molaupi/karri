@@ -111,6 +111,14 @@ namespace karri {
 
         // Information about best known assignment for current request
 
+        Assignment getCurBestAssignment() const {
+            return Assignment(bestAssignment);
+        }
+
+        int getCurBestCost() const {
+            return int(bestCost);
+        }
+
         const Assignment &getBestAssignment() const {
             return bestAssignment;
         }
