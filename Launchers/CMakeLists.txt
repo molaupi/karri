@@ -40,6 +40,11 @@ if(OpenMP_FOUND)
     target_link_libraries(karri OpenMP::OpenMP_CXX)
 endif()
 
+if (TBB_FOUND)
+    message("TBB found")
+    target_link_libraries(karri TBB::tbb)
+endif()
+
 # KaRRi compile time parameters
 
 ## Output vehicle paths?

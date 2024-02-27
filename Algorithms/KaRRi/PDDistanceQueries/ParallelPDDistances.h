@@ -28,7 +28,7 @@
 #include "Tools/Simd/AlignedVector.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
-#include "tbb/enumerable_thread_specific.h"
+#include <tbb/enumerable_thread_specific.h>
 #include <atomic>
 
 namespace karri {
