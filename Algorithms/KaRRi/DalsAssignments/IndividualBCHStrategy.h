@@ -241,8 +241,10 @@ namespace karri::DropoffAfterLastStopStrategies {
             upperBoundCost = requestState.getBestCost();
             vehiclesSeenForDropoffs.clear();
             checkPBNSForVehicle.reset();
-             relevantVehiclesPBNSOrder.clear();
+            relevantVehiclesPBNSOrder.clear();
 
+            bestAsgnBefore = requestState.getCurBestAssignment();
+            bestCostBefore = requestState.getCurBestCost();
             // Construct more space for dropoff labels if needed.
             const int numDropoffBatches =
                     requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
@@ -280,8 +282,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         void enumerateDropoffWithOrdinaryPickup(const PDLoc &dropoff, CAtomic<int> &numAssignmentsTried) {
             Assignment asgn;
             asgn.dropoff = &dropoff;
-            int localBestCost = INFTY;
-            Assignment localBestAsgn = asgn;
+            int localBestCost = bestCostBefore;
+            Assignment localBestAsgn = bestAsgnBefore;
             
             int numAssignmentsTriedLocal = 0;
 
@@ -361,8 +363,8 @@ namespace karri::DropoffAfterLastStopStrategies {
             Assignment asgn;
             asgn.pickupStopIdx = 0;
             asgn.dropoff = &dropoff;
-            int localBestCost = INFTY;
-            Assignment localBestAsgn = asgn;
+            int localBestCost = bestCostBefore;
+            Assignment localBestAsgn = bestAsgnBefore;
 
             const auto& relVehicles = relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs();
              for (const auto &permIdx: relevantVehiclesPBNSOrder.local()) {
@@ -480,6 +482,9 @@ namespace karri::DropoffAfterLastStopStrategies {
         // a threads local results are written to the global result. This helps to alleviate contention on the
         // spin locks (separate per stop id) used to synchronize global writes.
          tbb::enumerable_thread_specific<Permutation> relevantVehiclesPBNSOrder;
+
+        Assignment bestAsgnBefore;
+        int bestCostBefore;
 
         CAtomic<int> totalNumEdgeRelaxations;
         CAtomic<int> totalNumVerticesSettled;

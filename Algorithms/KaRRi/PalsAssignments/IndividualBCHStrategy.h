@@ -240,6 +240,9 @@ namespace karri::PickupAfterLastStopStrategies {
 
             upperBoundCost.store(bestCostBeforeQuery);
             vehiclesSeenForPickups.clear();
+            bestAsgnBefore = requestState.getCurBestAssignment();
+            bestCostBefore = requestState.getCurBestCost();
+
             const int numPickupBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
             distances.init(numPickupBatches);
         }
@@ -295,8 +298,8 @@ namespace karri::PickupAfterLastStopStrategies {
             using namespace time_utils;
             Assignment asgn;
             asgn.pickup = &pickup;
-            int localBestCost = INFTY;
-            Assignment localBestAsgn = asgn;
+            int localBestCost = bestCostBefore;
+            Assignment localBestAsgn = bestAsgnBefore;
 
             int numAssignmentsTriedLocal = 0;
 
@@ -375,6 +378,9 @@ namespace karri::PickupAfterLastStopStrategies {
 
         // Vehicles seen by any last stop pickup search
         ThreadSafeSubset vehiclesSeenForPickups;
+
+        Assignment bestAsgnBefore;
+        int bestCostBefore;
 
         CAtomic<int> totalNumEdgeRelaxations;
         CAtomic<int> totalNumVerticesSettled;
