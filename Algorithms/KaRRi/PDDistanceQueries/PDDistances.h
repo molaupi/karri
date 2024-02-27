@@ -43,78 +43,10 @@ namespace karri {
         static constexpr int K = LabelSetT::K;
 
     public:
-    // Represents information that one thread computes during one bucket search. Can be incorporated into
-    // global result at end of search.
-    class ThreadLocalPDDistances {
-
-        friend PDDistances;
-
-    public:
-
-        ThreadLocalPDDistances(const RequestState &requestState,
-                                        std::vector<int>& indexInDistancesVector,
-                                        std::vector<DistanceLabel>& distancesForSinglePickup) :
-                requestState(requestState),
-                indexInDistancesVector(indexInDistancesVector),
-                distancesForSinglePickup(distancesForSinglePickup) {}
-
-            void initForSearch() {
-                distancesForSinglePickup.clear();
-                const int numDropoffs = requestState.numDropoffs();
-
-                if (indexInDistancesVector.size() < numDropoffs)
-                    indexInDistancesVector.resize(numDropoffs);
-                for (int i = 0; i < numDropoffs; ++i)
-                    indexInDistancesVector[i] = INVALID_INDEX;
-            }
-
-            // Compares the current PD-distances for a batch of pickups to one dropoff to the given distances and updates the
-            // ones for which the given distances are smaller.
-            // Batch consists of K subsequent pickup IDs and is defined by the first ID in the batch.
-            void updateDistanceBatchIfSmaller(const unsigned int, const unsigned int dropoffId,
-                                            const DistanceLabel &dist) {
-                if (indexInDistancesVector[dropoffId] == INVALID_INDEX) {
-                    allocateLocalEntriesFor(dropoffId);
-                }
-                
-                const auto &idx = indexInDistancesVector[dropoffId];
-                auto &label = distancesForSinglePickup[idx];
-
-                const auto smaller = dist < label;
-                if (anySet(smaller)) {
-                    label.setIf(dist, smaller);
-                }
-            }
-            
-
-        private:
-
-            // Dynamic Allocation
-            void allocateLocalEntriesFor(const int dropoffId) {
-                assert(indexInDistancesVector[dropoffId] == INVALID_INDEX);
-
-                indexInDistancesVector[dropoffId] = distancesForSinglePickup.size();
-                distancesForSinglePickup.push_back(DistanceLabel(INFTY));
-            }
-
-            const RequestState &requestState;
-            
-            std::vector<int> &indexInDistancesVector;
-            std::vector<DistanceLabel> &distancesForSinglePickup;
-
-        };
 
         PDDistances(const RequestState &requestState) 
-            : requestState(requestState),
-              indexInDistancesVector(),
-              distancesForSinglePickup() {}
+            : requestState(requestState) {}
 
-        // Each thread gets an instance of a ThreadLocalPDDistances at the beginning of a search. This
-        // object encapsulates the local result of the thread for that search. This way, the underlying TLS structures
-        // are only queried once per search.
-        ThreadLocalPDDistances getThreadLocalPDDistances() {
-            return ThreadLocalPDDistances(requestState, indexInDistancesVector.local(), distancesForSinglePickup.local());
-        }
 
         void clear() {
             minDirectDist.store(INFTY, std::memory_order_relaxed);
@@ -178,37 +110,27 @@ namespace karri {
             }
         }
         
-        void updatePDDistancesInGlobalVectors(const unsigned int pickupId) {
-            const auto offsetInBatch = pickupId % K;
+        // Compares the current PD-distances for a batch of pickups to one dropoff to the given distances and updates the
+        // ones for which the given distances are smaller.
+        // Batch consists of K subsequent pickup IDs and is defined by the first ID in the batch.
+        void updateDistanceBatchIfSmaller(const unsigned int firstPickupId, const unsigned int dropoffId,
+                                          const DistanceLabel &dist) {
+            const auto offsetInBatch = firstPickupId % K;
+            auto &label = labelFor(firstPickupId, dropoffId);
+            const auto smaller = dist < label;
+            if (anySet(smaller)) {
+                label.setIf(dist, smaller);
 
-            const auto &localIndices = indexInDistancesVector.local();
-            const auto &localEntries = distancesForSinglePickup.local();
+                const int minNewDist = dist.horizontalMin();
+                auto &minDirectDistAtomic = minDirectDist;
+                int expectedMin = minDirectDistAtomic.load(std::memory_order_relaxed);
+                while (expectedMin > minNewDist &&
+                        !minDirectDistAtomic.compare_exchange_strong(expectedMin, minNewDist, std::memory_order_relaxed));
 
-            for (int dropoffId = 0; dropoffId < requestState.numDropoffs(); ++dropoffId) {
-                const auto &idx = localIndices[dropoffId];
-                const auto &localDist = localEntries[idx];
-                if (pickupId == 9 && dropoffId == 0 && requestState.originalRequest.requestId == 0) {
-                    std::cout << "";
+                if (minNewDist < minDirectDistancesPerPickup[firstPickupId / K][offsetInBatch]) {
+                    minDirectDistancesPerPickup[firstPickupId / K][offsetInBatch] = minNewDist;
                 }
-
-                if (idx != INVALID_INDEX) {
-                    auto &label = labelFor(pickupId, dropoffId);
-                    const auto smaller = localDist < label;
-                    if (anySet(smaller)) {
-                        label.setIf(localDist, smaller);
-                        
-                        const int minNewDist = localDist.horizontalMin();
-                        auto &minDirectDistAtomic = minDirectDist;
-                        int expectedMin = minDirectDistAtomic.load(std::memory_order_relaxed);
-                        while (expectedMin > minNewDist &&
-                                !minDirectDistAtomic.compare_exchange_strong(expectedMin, minNewDist, std::memory_order_relaxed));
-
-                        if (minNewDist < minDirectDistancesPerPickup[pickupId / K][offsetInBatch]) {
-                            minDirectDistancesPerPickup[pickupId / K][offsetInBatch] = minNewDist;
-                        }
-                        assert(minDirectDist <= minDirectDistancesPerPickup[pickupId / K].horizontalMin());
-                    }
-                }
+                assert(minDirectDist <= minDirectDistancesPerPickup[firstPickupId / K].horizontalMin());
             }
         }
 
@@ -230,9 +152,5 @@ namespace karri {
         AlignedVector<DistanceLabel> distances;
         std::atomic_int minDirectDist;
         AlignedVector<DistanceLabel> minDirectDistancesPerPickup;
-
-        // Thread Local Storage for local bucket entries calculation
-        tbb::enumerable_thread_specific<std::vector<int>> indexInDistancesVector;
-        tbb::enumerable_thread_specific<std::vector<DistanceLabel>> distancesForSinglePickup;
     };
 }
