@@ -64,35 +64,25 @@ public:
 
     public:
 
-        ThreadLocalBuckets(const int &numSearches,
-                                        std::vector<int>& indexInBucketEntriesVector,
-                                        std::vector<BucketEntryT>& bucketEntriesForSingleVertex) :
-                numSearches(numSearches),
-                indexInBucketEntriesVector(indexInBucketEntriesVector),
-                bucketEntriesForSingleVertex(bucketEntriesForSingleVertex) {}
+        ThreadLocalBuckets(std::vector<std::pair<int, BucketEntryT>>& pairs) :
+                pairs(pairs) {}
 
         void initForSearch() {
-            bucketEntriesForSingleVertex.clear();
-
-            if (indexInBucketEntriesVector.size() < numSearches)
-                indexInBucketEntriesVector.resize(numSearches);
-            for (int i = 0; i < numSearches; ++i)
-                indexInBucketEntriesVector[i] = INVALID_INDEX;
+            pairs.clear();
         }
         
-        bool insertOrUpdate(const int, const BucketEntryT &newEntry) {
-            const int targetId = newEntry.targetId;
-            assert(targetId >= 0);
-            assert(targetId < numSearches);
+        bool insertOrUpdate(const int v, const BucketEntryT &newEntry) {
+//            const int targetId = newEntry.targetId;
+            assert(newEntry.targetId >= 0);
 
             // If no entries exist yet for this stop, perform the allocation.
-            if (indexInBucketEntriesVector[targetId] == INVALID_INDEX) {
-                allocateLocalEntriesFor(targetId);
+            auto it = std::find_if(pairs.begin(), pairs.end(), [&](const auto& pair) {return pair.first == v;});
+            if (it == pairs.end()) {
+                pairs.push_back({v, newEntry});
+                return true;
             }
 
-            // If the entries for this vertex already exist, update the according entry
-            const auto &idx = indexInBucketEntriesVector[targetId];
-            auto &entry = bucketEntriesForSingleVertex[idx];
+            auto& entry = it->second;
             assert(entry.targetId == BucketEntryT().targetId || entry.targetId == newEntry.targetId);
             entry.cmpAndUpdate(newEntry);
 
@@ -101,18 +91,7 @@ public:
 
     private:
 
-        // Dynamic Allocation
-        void allocateLocalEntriesFor(const int targetId) {
-            assert(indexInBucketEntriesVector[targetId] == INVALID_INDEX);
-
-            indexInBucketEntriesVector[targetId] = bucketEntriesForSingleVertex.size();
-            bucketEntriesForSingleVertex.push_back(BucketEntryT());
-        }
-
-        const int &numSearches;
-        
-        std::vector<int> &indexInBucketEntriesVector;
-        std::vector<BucketEntryT> &bucketEntriesForSingleVertex;
+        std::vector<std::pair<int, BucketEntryT>> &pairs;
 
     };
 
@@ -121,8 +100,7 @@ public:
             : numSearches(0),
               vertexLocks(numVertices, SpinLock()),
               offsetForVertex(numVertices, INVALID_INDEX),
-              indexInBucketEntriesVector(),
-              bucketEntriesForSingleVertex() {
+              localResultPairs() {
         assert(numVertices >= 0);
     }
 
@@ -160,20 +138,19 @@ public:
     //     return true;
     // }
 
-    void updateBucketEntriesInGlobalVectors(const int vertex) {
+    void updateBucketEntriesInGlobalVectors() {
 
-        const auto &localIndices = indexInBucketEntriesVector.local();
-        const auto &localEntries = bucketEntriesForSingleVertex.local();
+//        const auto &localIndices = indexInBucketEntriesVector.local();
+//        const auto &localEntries = bucketEntriesForSingleVertex.local();
 
-        for (int i = 0; i < numSearches; ++i) {
-            const auto &idx = localIndices[i];
-            if (idx != INVALID_INDEX) {
-                allocateEntriesFor(vertex);
-                const auto &localEntry = localEntries[idx]; 
-                auto &entry = entries[offsetForVertex[vertex] + localEntry.targetId];
-                assert(entry.targetId == BucketEntryT().targetId || entry.targetId == localEntry.targetId);
-                entry.cmpAndUpdate(localEntry);
-            }
+        const auto& localPairs = localResultPairs.local();
+
+        for (const auto& pair : localPairs) {
+            const auto& vertex = pair.first;
+            const auto& localEntry = pair.second;
+            allocateEntriesFor(vertex);
+            assert(entries[offsetForVertex[vertex] + localEntry.targetId].targetId == BucketEntryT().targetId || entries[offsetForVertex[vertex] + localEntry.targetId].targetId == localEntry.targetId);
+            entries[offsetForVertex[vertex] + localEntry.targetId] = localEntry;
         }
     }
 
@@ -188,7 +165,8 @@ public:
     // object encapsulates the local result of the thread for that search. This way, the underlying TLS structures
     // are only queried once per search.
     ThreadLocalBuckets getThreadLocalBuckets() {
-        return ThreadLocalBuckets(numSearches, indexInBucketEntriesVector.local(), bucketEntriesForSingleVertex.local());
+        return ThreadLocalBuckets(localResultPairs.local());
+//        return ThreadLocalBuckets(numSearches, indexInBucketEntriesVector.local(), bucketEntriesForSingleVertex.local());
     }
 
 private:
@@ -214,6 +192,7 @@ private:
     tbb::concurrent_vector<BucketEntryT> entries;
 
     // Thread Local Storage for local bucket entries calculation
-    tbb::enumerable_thread_specific<std::vector<int>> indexInBucketEntriesVector;
-    tbb::enumerable_thread_specific<std::vector<BucketEntryT>> bucketEntriesForSingleVertex;
+//    tbb::enumerable_thread_specific<std::vector<int>> indexInBucketEntriesVector;
+//    tbb::enumerable_thread_specific<std::vector<BucketEntryT>> bucketEntriesForSingleVertex;
+    tbb::enumerable_thread_specific<std::vector<std::pair<int, BucketEntryT>>> localResultPairs;
 };

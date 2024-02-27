@@ -327,7 +327,7 @@ namespace karri::PDDistanceQueryStrategies {
 
             localFillBucketsSearch.runWithOffset(tailRanks, dropoffOffsets);
             // After a search batch of K, write the bucket entries back to the global vectors
-            dropoffBuckets.updateBucketEntriesInGlobalVectors(startId);
+            dropoffBuckets.updateBucketEntriesInGlobalVectors();
 
         }
 
