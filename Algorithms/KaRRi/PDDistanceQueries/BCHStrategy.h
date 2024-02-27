@@ -31,7 +31,7 @@
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "DataStructures/Labels/SimdLabelSet.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
-#include "ParallelPDDistances.h"
+#include "PDDistances.h"
 #include "tbb/enumerable_thread_specific.h"
 #include "tbb/parallel_for.h"
 
@@ -71,7 +71,7 @@ namespace karri::PDDistanceQueryStrategies {
 
         using BucketContainer = SharedSearchSpaceBucketContainer<DropoffBatchLabel>;
         using ThreadLocalBuckets = typename BucketContainer::ThreadLocalBuckets;
-        using ThreadLocalPDDistances = typename ParallelPDDistances<LabelSetT>::ThreadLocalPDDistances;
+        using ThreadLocalPDDistances = typename PDDistances<LabelSetT>::ThreadLocalPDDistances;
 
 
         struct StopWhenMaxDistExceeded {
@@ -193,7 +193,7 @@ namespace karri::PDDistanceQueryStrategies {
     public:
 
         BCHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                    ParallelPDDistances<LabelSetT> &distances,
+                    PDDistances<LabelSetT> &distances,
                     RequestState &requestState,
                     VehicleToPDLocQueryT &vehicleToPDLocQuery)
                 : inputGraph(inputGraph),
@@ -372,7 +372,7 @@ namespace karri::PDDistanceQueryStrategies {
         RequestState &requestState;
         VehicleToPDLocQueryT &vehicleToPDLocQuery;
 
-        ParallelPDDistances<LabelSetT> &distances;
+        PDDistances<LabelSetT> &distances;
 
         int upperBoundDirectPDDist;
 

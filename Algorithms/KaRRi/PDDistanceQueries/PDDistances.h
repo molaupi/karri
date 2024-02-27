@@ -28,9 +28,13 @@
 #include "Tools/Simd/AlignedVector.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
+#include <tbb/enumerable_thread_specific.h>
+#include <atomic>
+
 namespace karri {
 
 // Representation of PD-distances, i.e. distances from pickups to dropoffs.
+
     template<typename LabelSetT>
     struct PDDistances {
         using DistanceLabel = typename LabelSetT::DistanceLabel;
@@ -38,11 +42,82 @@ namespace karri {
 
         static constexpr int K = LabelSetT::K;
 
+    public:
+    // Represents information that one thread computes during one bucket search. Can be incorporated into
+    // global result at end of search.
+    class ThreadLocalPDDistances {
 
-        PDDistances(const RequestState &requestState) : requestState(requestState) {}
+        friend PDDistances;
+
+    public:
+
+        ThreadLocalPDDistances(const RequestState &requestState,
+                                        std::vector<int>& indexInDistancesVector,
+                                        std::vector<DistanceLabel>& distancesForSinglePickup) :
+                requestState(requestState),
+                indexInDistancesVector(indexInDistancesVector),
+                distancesForSinglePickup(distancesForSinglePickup) {}
+
+            void initForSearch() {
+                distancesForSinglePickup.clear();
+                const int numDropoffs = requestState.numDropoffs();
+
+                if (indexInDistancesVector.size() < numDropoffs)
+                    indexInDistancesVector.resize(numDropoffs);
+                for (int i = 0; i < numDropoffs; ++i)
+                    indexInDistancesVector[i] = INVALID_INDEX;
+            }
+
+            // Compares the current PD-distances for a batch of pickups to one dropoff to the given distances and updates the
+            // ones for which the given distances are smaller.
+            // Batch consists of K subsequent pickup IDs and is defined by the first ID in the batch.
+            void updateDistanceBatchIfSmaller(const unsigned int, const unsigned int dropoffId,
+                                            const DistanceLabel &dist) {
+                if (indexInDistancesVector[dropoffId] == INVALID_INDEX) {
+                    allocateLocalEntriesFor(dropoffId);
+                }
+                
+                const auto &idx = indexInDistancesVector[dropoffId];
+                auto &label = distancesForSinglePickup[idx];
+
+                const auto smaller = dist < label;
+                if (anySet(smaller)) {
+                    label.setIf(dist, smaller);
+                }
+            }
+            
+
+        private:
+
+            // Dynamic Allocation
+            void allocateLocalEntriesFor(const int dropoffId) {
+                assert(indexInDistancesVector[dropoffId] == INVALID_INDEX);
+
+                indexInDistancesVector[dropoffId] = distancesForSinglePickup.size();
+                distancesForSinglePickup.push_back(DistanceLabel(INFTY));
+            }
+
+            const RequestState &requestState;
+            
+            std::vector<int> &indexInDistancesVector;
+            std::vector<DistanceLabel> &distancesForSinglePickup;
+
+        };
+
+        PDDistances(const RequestState &requestState) 
+            : requestState(requestState),
+              indexInDistancesVector(),
+              distancesForSinglePickup() {}
+
+        // Each thread gets an instance of a ThreadLocalPDDistances at the beginning of a search. This
+        // object encapsulates the local result of the thread for that search. This way, the underlying TLS structures
+        // are only queried once per search.
+        ThreadLocalPDDistances getThreadLocalPDDistances() {
+            return ThreadLocalPDDistances(requestState, indexInDistancesVector.local(), distancesForSinglePickup.local());
+        }
 
         void clear() {
-            minDirectDist = INFTY;
+            minDirectDist.store(INFTY, std::memory_order_relaxed);
             const int numLabelsPerDropoff = (requestState.numPickups() / K + (requestState.numPickups() % K != 0));
             const int numNeededLabels = numLabelsPerDropoff * requestState.numDropoffs();
             distances.clear();
@@ -76,7 +151,7 @@ namespace karri {
             return getDirectDistance(pickupID, 0);
         }
 
-        const int &getMinDirectDistance() const {
+        const std::atomic_int &getMinDirectDistance() const {
             return minDirectDist;
         }
 
@@ -90,7 +165,11 @@ namespace karri {
             auto &label = labelFor(pickupId, dropoffId);
             if (dist < label[offsetInBatch]) {
                 label[offsetInBatch] = dist;
-                minDirectDist = std::min(minDirectDist, dist);
+
+                auto &minDirectDistAtomic = minDirectDist;
+                int expectedMin = minDirectDistAtomic.load(std::memory_order_relaxed);
+                while (expectedMin > dist &&
+                        !minDirectDistAtomic.compare_exchange_strong(expectedMin, dist, std::memory_order_relaxed));
 
                 if (dist < minDirectDistancesPerPickup[pickupId / K][offsetInBatch]) {
                     minDirectDistancesPerPickup[pickupId / K][offsetInBatch] = dist;
@@ -98,19 +177,38 @@ namespace karri {
                 assert(minDirectDist <= minDirectDistancesPerPickup[pickupId / K].horizontalMin());
             }
         }
+        
+        void updatePDDistancesInGlobalVectors(const unsigned int pickupId) {
+            const auto offsetInBatch = pickupId % K;
 
-        // Compares the current PD-distances for a batch of pickups to one dropoff to the given distances and updates the
-        // ones for which the given distances are smaller.
-        // Batch consists of K subsequent pickup IDs and is defined by the first ID in the batch.
-        void updateDistanceBatchIfSmaller(const unsigned int firstPickupId, const unsigned int dropoffId,
-                                          const DistanceLabel &dist) {
-            auto &label = labelFor(firstPickupId, dropoffId);
-            const auto smaller = dist < label;
-            if (anySet(smaller)) {
-                label.setIf(dist, smaller);
-                minDirectDist = std::min(minDirectDist, dist.horizontalMin());
-                minDirectDistancesPerPickup[firstPickupId / K].min(dist);
-                assert(minDirectDist <= minDirectDistancesPerPickup[firstPickupId / K].horizontalMin());
+            const auto &localIndices = indexInDistancesVector.local();
+            const auto &localEntries = distancesForSinglePickup.local();
+
+            for (int dropoffId = 0; dropoffId < requestState.numDropoffs(); ++dropoffId) {
+                const auto &idx = localIndices[dropoffId];
+                const auto &localDist = localEntries[idx];
+                if (pickupId == 9 && dropoffId == 0 && requestState.originalRequest.requestId == 0) {
+                    std::cout << "";
+                }
+
+                if (idx != INVALID_INDEX) {
+                    auto &label = labelFor(pickupId, dropoffId);
+                    const auto smaller = localDist < label;
+                    if (anySet(smaller)) {
+                        label.setIf(localDist, smaller);
+                        
+                        const int minNewDist = localDist.horizontalMin();
+                        auto &minDirectDistAtomic = minDirectDist;
+                        int expectedMin = minDirectDistAtomic.load(std::memory_order_relaxed);
+                        while (expectedMin > minNewDist &&
+                                !minDirectDistAtomic.compare_exchange_strong(expectedMin, minNewDist, std::memory_order_relaxed));
+
+                        if (minNewDist < minDirectDistancesPerPickup[pickupId / K][offsetInBatch]) {
+                            minDirectDistancesPerPickup[pickupId / K][offsetInBatch] = minNewDist;
+                        }
+                        assert(minDirectDist <= minDirectDistancesPerPickup[pickupId / K].horizontalMin());
+                    }
+                }
             }
         }
 
@@ -130,7 +228,11 @@ namespace karri {
         // Distances are stored as vectors of size K (DistanceLabel).
         // ceil(numPickups / K) labels per dropoff, sequentially arranged by increasing dropoffId.
         AlignedVector<DistanceLabel> distances;
-        int minDirectDist;
+        std::atomic_int minDirectDist;
         AlignedVector<DistanceLabel> minDirectDistancesPerPickup;
+
+        // Thread Local Storage for local bucket entries calculation
+        tbb::enumerable_thread_specific<std::vector<int>> indexInDistancesVector;
+        tbb::enumerable_thread_specific<std::vector<DistanceLabel>> distancesForSinglePickup;
     };
 }

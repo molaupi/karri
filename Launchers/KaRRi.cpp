@@ -53,7 +53,6 @@
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
 #include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
-#include "Algorithms/KaRRi/PDDistanceQueries/ParallelPDDistances.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocsFilter.h"
 #include "Algorithms/KaRRi/OrdinaryAssignments/OrdinaryAssignmentsFinder.h"
 #include "Algorithms/KaRRi/PbnsAssignments/PBNSAssignmentsFinder.h"
@@ -454,12 +453,10 @@ int main(int argc, char *argv[]) {
                 BasicLabelSet<KARRI_PD_DISTANCES_LOG_K, ParentInfo::NO_PARENT_INFO>>;
         using PDDistancesImpl = PDDistances<PDDistancesLabelSet>;
         PDDistancesImpl pdDistances(reqState);
-        using ParallelPDDistancesImpl = ParallelPDDistances<PDDistancesLabelSet>;
-        ParallelPDDistancesImpl parallelPdDistances(reqState, reqState.numDropoffs());
 
 #if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
         using PDDistanceQueryImpl = PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, VehicleToPDLocQueryImpl, PDDistancesLabelSet>;
-        PDDistanceQueryImpl pdDistanceQuery(vehicleInputGraph, *vehChEnv, parallelPdDistances, reqState, vehicleToPdLocQuery);
+        PDDistanceQueryImpl pdDistanceQuery(vehicleInputGraph, *vehChEnv, pdDistances, reqState, vehicleToPdLocQuery);
 
 #else // KARRI_PD_STRATEGY == KARRI_CH_PD_STRAT
         using PDDistanceQueryImpl = PDDistanceQueryStrategies::CHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>;
