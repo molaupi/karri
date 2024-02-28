@@ -115,7 +115,6 @@ namespace karri {
         // Batch consists of K subsequent pickup IDs and is defined by the first ID in the batch.
         void updateDistanceBatchIfSmaller(const unsigned int firstPickupId, const unsigned int dropoffId,
                                           const DistanceLabel &dist) {
-            const auto offsetInBatch = firstPickupId % K;
             auto &label = labelFor(firstPickupId, dropoffId);
             const auto smaller = dist < label;
             if (anySet(smaller)) {
@@ -127,10 +126,8 @@ namespace karri {
                 while (expectedMin > minNewDist &&
                         !minDirectDistAtomic.compare_exchange_strong(expectedMin, minNewDist, std::memory_order_relaxed));
 
-                if (minNewDist < minDirectDistancesPerPickup[firstPickupId / K][offsetInBatch]) {
-                    minDirectDistancesPerPickup[firstPickupId / K][offsetInBatch] = minNewDist;
-                }
-                assert(minDirectDist <= minDirectDistancesPerPickup[firstPickupId / K].horizontalMin());
+                minDirectDistancesPerPickup[firstPickupId / K].min(dist);
+                assert(minDirectDist.load(std::memory_order_relaxed) <= minDirectDistancesPerPickup[firstPickupId / K].horizontalMin());
             }
         }
 

@@ -64,25 +64,25 @@ public:
 
     public:
 
-        ThreadLocalBuckets(std::vector<std::pair<int, BucketEntryT>>& pairs) :
+        ThreadLocalBuckets(std::vector<std::pair<int, BucketEntryT>> &pairs) :
                 pairs(pairs) {}
 
         void initForSearch() {
             pairs.clear();
         }
-        
+
         bool insertOrUpdate(const int v, const BucketEntryT &newEntry) {
 //            const int targetId = newEntry.targetId;
             assert(newEntry.targetId >= 0);
 
-            // If no entries exist yet for this stop, perform the allocation.
-            auto it = std::find_if(pairs.begin(), pairs.end(), [&](const auto& pair) {return pair.first == v;});
+            // If no entries exist yet for this vertex, add an entry, otherwise compare to existing entry.
+            auto it = std::find_if(pairs.begin(), pairs.end(), [&](const auto &pair) { return pair.first == v; });
             if (it == pairs.end()) {
                 pairs.push_back({v, newEntry});
                 return true;
             }
 
-            auto& entry = it->second;
+            auto &entry = it->second;
             assert(entry.targetId == BucketEntryT().targetId || entry.targetId == newEntry.targetId);
             entry.cmpAndUpdate(newEntry);
 
@@ -100,7 +100,8 @@ public:
             : numSearches(0),
               vertexLocks(numVertices, SpinLock()),
               offsetForVertex(numVertices, INVALID_INDEX),
-              localResultPairs() {
+              localResultPairs(),
+              seedCounter(0) {
         assert(numVertices >= 0);
     }
 
@@ -143,14 +144,19 @@ public:
 //        const auto &localIndices = indexInBucketEntriesVector.local();
 //        const auto &localEntries = bucketEntriesForSingleVertex.local();
 
-        const auto& localPairs = localResultPairs.local();
+        const auto &localPairs = localResultPairs.local();
 
-        for (const auto& pair : localPairs) {
-            const auto& vertex = pair.first;
-            const auto& localEntry = pair.second;
+        const int seed = seedCounter.fetch_add(1, std::memory_order_relaxed);
+        const auto permutation = Permutation::getRandomPermutation(localPairs.size(), std::minstd_rand(seed));
+
+        for (const auto &idx: permutation) {
+            const auto& pair = localPairs[idx];
+            const auto &vertex = pair.first;
+            const auto &localEntry = pair.second;
             allocateEntriesFor(vertex);
-            assert(entries[offsetForVertex[vertex] + localEntry.targetId].targetId == BucketEntryT().targetId || entries[offsetForVertex[vertex] + localEntry.targetId].targetId == localEntry.targetId);
-            entries[offsetForVertex[vertex] + localEntry.targetId].cmpAndUpdate(localEntry);
+            assert(entries[offsetForVertex[vertex] + localEntry.targetId].targetId == BucketEntryT().targetId ||
+                   entries[offsetForVertex[vertex] + localEntry.targetId].targetId == localEntry.targetId);
+            entries[offsetForVertex[vertex] + localEntry.targetId] = localEntry;
         }
     }
 
@@ -159,7 +165,7 @@ public:
         numSearches = newNumSearches;
         entries.clear();
 
-        for (const auto& v : verticesWithEntries)
+        for (const auto &v: verticesWithEntries)
             offsetForVertex[v] = INVALID_INDEX;
         verticesWithEntries.clear();
     }
@@ -187,7 +193,7 @@ private:
         verticesWithEntries.push_back(vertex);
 
         currLock.unlock();
-    } 
+    }
 
     int numSearches;
     std::vector<SpinLock> vertexLocks;
@@ -201,4 +207,7 @@ private:
 //    tbb::enumerable_thread_specific<std::vector<int>> indexInBucketEntriesVector;
 //    tbb::enumerable_thread_specific<std::vector<BucketEntryT>> bucketEntriesForSingleVertex;
     tbb::enumerable_thread_specific<std::vector<std::pair<int, BucketEntryT>>> localResultPairs;
+
+    // Atomic used to generate unique seeds for creating random permutations.
+    CAtomic<int> seedCounter;
 };
