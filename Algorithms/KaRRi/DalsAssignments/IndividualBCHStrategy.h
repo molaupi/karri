@@ -243,8 +243,8 @@ namespace karri::DropoffAfterLastStopStrategies {
             checkPBNSForVehicle.reset();
             relevantVehiclesPBNSOrder.clear();
 
-            bestAsgnBefore = requestState.getCurBestAssignment();
-            bestCostBefore = requestState.getCurBestCost();
+            bestAsgnBefore = requestState.getBestAssignment();
+            bestCostBefore = requestState.getBestCost();
             // Construct more space for dropoff labels if needed.
             const int numDropoffBatches =
                     requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
@@ -324,7 +324,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                         const auto minCostFromHere = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
                                 asgn.dropoff->walkingDist, asgn.distToDropoff, minTripTimeToLastStop, requestState);
-                        if (minCostFromHere > requestState.getBestCost() || minCostFromHere > localBestCost)
+                        if (minCostFromHere > localBestCost)
                             break;
 
                         curPickupIndex = entry.stopIndex;

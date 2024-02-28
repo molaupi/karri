@@ -111,14 +111,6 @@ namespace karri {
 
         // Information about best known assignment for current request
 
-        Assignment getCurBestAssignment() const {
-            return Assignment(bestAssignment);
-        }
-
-        int getCurBestCost() const {
-            return int(bestCost);
-        }
-
         const Assignment &getBestAssignment() const {
             return bestAssignment;
         }
@@ -137,17 +129,17 @@ namespace karri {
 
         bool tryAssignment(const Assignment &asgn) {
             const auto cost = calculator.calc(asgn, *this);
-            lock.lock();
             const bool result = tryAssignmentWithKnownCost(asgn, cost);
-            lock.unlock();
             return result;
         }
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
             assert(calculator.calc(asgn, *this) == cost);
+            lock.lock();
 
             if (!(cost < INFTY) || !(cost < bestCost || (cost == bestCost &&
                                     breakCostTie(asgn, bestAssignment)))) {
+                lock.unlock();
                 return false;
                 
             }
@@ -157,6 +149,7 @@ namespace karri {
             notUsingVehicleIsBest = false;
             notUsingVehicleDist = INFTY;
 
+            lock.unlock();
             return true;
         }
 

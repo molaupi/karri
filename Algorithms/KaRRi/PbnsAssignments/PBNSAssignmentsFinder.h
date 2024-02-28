@@ -98,8 +98,8 @@ namespace karri {
         // Initialize for new request.
         void init() {
             Timer timer;
-            bestAsgnBefore = requestState.getCurBestAssignment();
-            bestCostBefore = requestState.getCurBestCost();
+            bestAsgnBefore = requestState.getBestAssignment();
+            bestCostBefore = requestState.getBestCost();
             curVehLocToPickupSearches.initialize(requestState.originalRequest.requestTime);
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pbnsAssignmentsStats.initializationTime += time;

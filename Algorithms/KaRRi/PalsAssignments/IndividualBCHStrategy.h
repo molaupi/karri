@@ -240,8 +240,8 @@ namespace karri::PickupAfterLastStopStrategies {
 
             upperBoundCost.store(bestCostBeforeQuery);
             vehiclesSeenForPickups.clear();
-            bestAsgnBefore = requestState.getCurBestAssignment();
-            bestCostBefore = requestState.getCurBestCost();
+            bestAsgnBefore = requestState.getBestAssignment();
+            bestCostBefore = requestState.getBestCost();
 
             const int numPickupBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
             distances.init(numPickupBatches);
@@ -332,7 +332,7 @@ namespace karri::PickupAfterLastStopStrategies {
                                                                                             asgn.pickup->walkingDist,
                                                                                             0,
                                                                                             requestState);
-                if (minCost > requestState.getBestCost())
+                if (minCost > localBestCost)
                     continue;
 
                 for (auto &d: requestState.dropoffs) {
