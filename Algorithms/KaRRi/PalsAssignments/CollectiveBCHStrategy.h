@@ -119,8 +119,8 @@ namespace karri::PickupAfterLastStopStrategies {
 
             minCostSearch.run(promisingDropoffIds, requestState.getBestCost());
 
-            const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
-            stats.searchTime += searchTime;
+//            const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
+//            stats.searchTime += searchTime;
 
             stats.collective_numInitialLabelsGenerated += minCostSearch.getNumInitialLabelsGenerated();
             stats.collective_numInitialLabelsNotPruned += minCostSearch.getNumInitialLabelsNotPruned();
@@ -131,7 +131,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.numEntriesOrLastStopsScanned += minCostSearch.getNumEntriesScanned();
             stats.numCandidateVehicles += 1;
 
-            timer.restart();
+//            timer.restart();
 
 
             const int &minCost = minCostSearch.getBestCostWithoutConstraints();
@@ -147,14 +147,16 @@ namespace karri::PickupAfterLastStopStrategies {
                 assert(calculator.calc(asgn, requestState) == minCost);
                 requestState.tryAssignmentWithKnownCost(asgn, minCost);
 
-                const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
-                stats.tryAssignmentsTime += tryAssignmentsTime;
+//                const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
+//                stats.tryAssignmentsTime += tryAssignmentsTime;
                 stats.numAssignmentsTried += 1;
                 return;
             }
 
-            const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
-            stats.tryAssignmentsTime += tryAssignmentsTime;
+//            const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
+//            stats.tryAssignmentsTime += tryAssignmentsTime;
+
+            stats.searchAndTryAssignmentsTime += timer.elapsed<std::chrono::nanoseconds>();
             stats.collective_usedFallback = true;
 
             // Otherwise fall back to computing distances explicitly:

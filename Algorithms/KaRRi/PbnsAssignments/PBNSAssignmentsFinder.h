@@ -92,13 +92,15 @@ namespace karri {
                 finishContinuations(fleet[vehId]);
             }
 
-            const auto time = timer.elapsed<std::chrono::nanoseconds>() -
-                              curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest();
-            requestState.stats().pbnsAssignmentsStats.tryAssignmentsTime += time;
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+
+            requestState.stats().pbnsAssignmentsStats.tryAssignmentsAndLocatingVehiclesTime += time;
+
+//            requestState.stats().pbnsAssignmentsStats.tryAssignmentsTime += time;
             requestState.stats().pbnsAssignmentsStats.numCandidateVehicles += numCandidateVehicles;
             requestState.stats().pbnsAssignmentsStats.numAssignmentsTried += numAssignmentsTriedWithPickupBeforeNextStop;
 
-            requestState.stats().pbnsAssignmentsStats.locatingVehiclesTime += curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest();
+//            requestState.stats().pbnsAssignmentsStats.locatingVehiclesTime += curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest();
             requestState.stats().pbnsAssignmentsStats.numCHSearches += curVehLocToPickupSearches.getTotalNumCHSearchesRunForRequest();
             requestState.stats().pbnsAssignmentsStats.directCHSearchTime += curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
         }

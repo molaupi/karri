@@ -93,8 +93,13 @@ namespace karri::DropoffAfterLastStopStrategies {
                   fullCHQuery(chEnv.template getFullCHQuery<FallBackCHLabelSet>()) {}
 
         void tryDropoffAfterLastStop() {
+            Timer timer;
+
             runCollectiveSearch();
             enumerateAssignments();
+
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().dalsAssignmentsStats.searchAndTryAssignmentsTime += time;
         }
 
 
@@ -106,7 +111,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             minCostSearch.run();
 
             auto &stats = requestState.stats().dalsAssignmentsStats;
-            stats.searchTime += minCostSearch.getRunTime();
+//            stats.searchTime += minCostSearch.getRunTime();
             stats.numEdgeRelaxationsInSearchGraph += minCostSearch.getNumEdgeRelaxations();
             stats.numVerticesOrLabelsSettled += minCostSearch.getNumLabelsRelaxed();
             stats.numEntriesOrLastStopsScanned += minCostSearch.getNumEntriesScanned();
@@ -127,8 +132,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         // dropoffs. Then, if any constraint breakers remain for a vehicle veh, we compute the distances from the last
         // stop of veh to all dropoffs and try every assignment explicitly.
         void enumerateAssignments() {
-            const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
-                                           curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
+//            const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
+//                                           curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
             int numAssignmentsTried = 0;
             int numParetoBestLabels = 0;
             int numFallBackChSearches = 0;
@@ -145,13 +150,13 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             // Time spent to locate vehicles and compute distances from current vehicle locations to pickups is counted
             // into PBNS time so subtract it here.
-            const int64_t pbnsTime = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
-                                     curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest() -
-                                     pbnsTimeBefore;
+//            const int64_t pbnsTime = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
+//                                     curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest() -
+//                                     pbnsTimeBefore;
 
             auto &stats = requestState.stats().dalsAssignmentsStats;
-            const int64_t time = timer.elapsed<std::chrono::nanoseconds>() - pbnsTime;
-            stats.tryAssignmentsTime = time;
+//            const int64_t time = timer.elapsed<std::chrono::nanoseconds>() - pbnsTime;
+//            stats.tryAssignmentsTime = time;
             stats.numAssignmentsTried += numAssignmentsTried;
             stats.numCandidateDropoffsAcrossAllVehicles += numParetoBestLabels;
             stats.collective_ranClosestDropoffSearch = ranClosestDropoffSearch;

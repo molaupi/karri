@@ -176,22 +176,26 @@ namespace karri::PickupAfterLastStopStrategies {
                   vehiclesSeenForPickups(fleet.size()) {}
 
         void tryPickupAfterLastStop() {
+            Timer timer;
+
             runBchSearches();
             enumerateAssignments();
+
+            requestState.stats().palsAssignmentsStats.searchAndTryAssignmentsTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
     private:
 
         // Run BCH searches that find distances from last stops to pickups
         void runBchSearches() {
-            Timer timer;
+//            Timer timer;
 
             initPickupSearches();
             for (int i = 0; i < requestState.numPickups(); i += K)
                 runSearchesForPickupBatch(i);
 
-            const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().palsAssignmentsStats.searchTime += searchTime;
+//            const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
+//            requestState.stats().palsAssignmentsStats.searchTime += searchTime;
             requestState.stats().palsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations;
             requestState.stats().palsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled;
             requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned;
@@ -204,7 +208,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
 
             int numAssignmentsTried = 0;
-            Timer timer;
+//            Timer timer;
 
             Assignment asgn;
             for (const auto &vehId: vehiclesSeenForPickups) {
@@ -252,9 +256,9 @@ namespace karri::PickupAfterLastStopStrategies {
                 }
             }
 
-            const int64_t tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
+//            const int64_t tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
-            requestState.stats().palsAssignmentsStats.tryAssignmentsTime += tryAssignmentsTime;
+//            requestState.stats().palsAssignmentsStats.tryAssignmentsTime += tryAssignmentsTime;
         }
 
 

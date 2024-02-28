@@ -87,13 +87,14 @@ namespace karri::DropoffAfterLastStopStrategies {
                 }
 
                 const DistanceLabel costLowerBound = calc.template calcKVehicleIndependentCostLowerBoundsForDALSWithKnownMinArrTime<LabelSet>(
-                        strat.currentDropoffWalkingDists, minDistancesToDropoffs, arrTimesAtDropoffs, strat.requestState);
+                        strat.currentDropoffWalkingDists, minDistancesToDropoffs, arrTimesAtDropoffs,
+                        strat.requestState);
 
                 return strat.upperBoundCost < costLowerBound;
             }
 
             LabelMask isWorseThanBestKnownVehicleDependent(const int vehId,
-                                                            const DistanceLabel& distancesToDropoffs) {
+                                                           const DistanceLabel &distancesToDropoffs) {
                 if (strat.upperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with distancesToDropoffs[i] >= INFTY are worse than
                     // the current best.
@@ -153,22 +154,26 @@ namespace karri::DropoffAfterLastStopStrategies {
                   lastStopDistances(fleet.size()) {}
 
         void tryDropoffAfterLastStop() {
+            Timer timer;
+
             runBchQueries();
             enumerateAssignments();
+
+            requestState.stats().dalsAssignmentsStats.searchAndTryAssignmentsTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
     private:
 
         // Run BCH queries that obtain distances from last stops to dropoffs
         void runBchQueries() {
-            Timer timer;
+//            Timer timer;
 
             initDropoffSearches();
             for (unsigned int i = 0; i < requestState.numDropoffs(); i += K)
                 runSearchesForDropoffBatch(i);
 
-            const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().dalsAssignmentsStats.searchTime += searchTime;
+//            const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
+//            requestState.stats().dalsAssignmentsStats.searchTime += searchTime;
             requestState.stats().dalsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations;
             requestState.stats().dalsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled;
             requestState.stats().dalsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned;
@@ -178,21 +183,21 @@ namespace karri::DropoffAfterLastStopStrategies {
         // Enumerate DALS assignments
         void enumerateAssignments() {
             int numAssignmentsTried = 0;
-            const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
-                                           curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
-            Timer timer;
+//            const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
+//                                           curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
+//            Timer timer;
 
             enumerateAssignmentsWithOrdinaryPickup(numAssignmentsTried);
             enumerateAssignmentsWithPBNS(numAssignmentsTried);
 
             // Time spent to locate vehicles and compute distances from current vehicle locations to pickups is counted
             // into PBNS time so subtract it here.
-            const int64_t pbnsTime = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
-                                     curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest() -
-                                     pbnsTimeBefore;
+//            const int64_t pbnsTime = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
+//                                     curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest() -
+//                                     pbnsTimeBefore;
 
-            const int64_t tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>() - pbnsTime;
-            requestState.stats().dalsAssignmentsStats.tryAssignmentsTime += tryAssignmentsTime;
+//            const int64_t tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>() - pbnsTime;
+//            requestState.stats().dalsAssignmentsStats.tryAssignmentsTime += tryAssignmentsTime;
             requestState.stats().dalsAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
 
             // Find total number of candidate dropoffs for statistics
@@ -237,7 +242,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (entry.stopIndex < curPickupIndex) {
                             // New smaller pickup index reached: Check if seating capacity and cost lower bound admit
                             // any valid assignments at this or earlier indices.
-                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders > asgn.vehicle->capacity)
+                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders >
+                                asgn.vehicle->capacity)
                                 break;
 
                             assert(entry.stopIndex < numStops - 1);
@@ -285,7 +291,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                     continue;
 
                 if (routeState.numStopsOf(vehId) == 0 ||
-                    routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders > fleet[vehId].capacity)
+                    routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders >
+                    fleet[vehId].capacity)
                     continue;
 
                 pbnsContinuations.clear();
