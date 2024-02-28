@@ -150,15 +150,18 @@ public:
             const auto& localEntry = pair.second;
             allocateEntriesFor(vertex);
             assert(entries[offsetForVertex[vertex] + localEntry.targetId].targetId == BucketEntryT().targetId || entries[offsetForVertex[vertex] + localEntry.targetId].targetId == localEntry.targetId);
-            entries[offsetForVertex[vertex] + localEntry.targetId] = localEntry;
+            entries[offsetForVertex[vertex] + localEntry.targetId].cmpAndUpdate(localEntry);
         }
     }
 
     // Removes all entries from all buckets.
     void init(const int newNumSearches) {
         numSearches = newNumSearches;
-        offsetForVertex.clear();
         entries.clear();
+
+        for (const auto& v : verticesWithEntries)
+            offsetForVertex[v] = INVALID_INDEX;
+        verticesWithEntries.clear();
     }
 
     // Each thread gets an instance of a ThreadLocalBuckets at the beginning of a search. This
@@ -181,14 +184,17 @@ private:
 
         const auto entriesIt = entries.grow_by(numSearches, BucketEntryT());
         offsetForVertex[vertex] = entriesIt - entries.begin();
+        verticesWithEntries.push_back(vertex);
 
-        return;
+        currLock.unlock();
     } 
 
     int numSearches;
     std::vector<SpinLock> vertexLocks;
-    
-    TimestampedVector<int> offsetForVertex;
+
+//    TimestampedVector<int> offsetForVertex;
+    tbb::concurrent_vector<int> verticesWithEntries;
+    std::vector<int> offsetForVertex;
     tbb::concurrent_vector<BucketEntryT> entries;
 
     // Thread Local Storage for local bucket entries calculation
