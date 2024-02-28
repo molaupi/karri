@@ -307,8 +307,10 @@ namespace karri {
 
             // Process in batches of size K
 
-            // Interleaved to & from searches
-            // für jede PDLoc -> 2 Jobs erstellen
+            // todo:
+            //  Interleaved to & from searches
+            //  One thread local result storing to and from result for the specific PDLoc that the thread is working on.
+            //  Local from search can then leverage result of local to search for the same PDLoc.
 
             // Parallel for with lambda function
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [&] (int i)
@@ -354,7 +356,7 @@ namespace karri {
             totalNumVerticesVisited.add_fetch(localFromQuery.getNumVerticesSettled(), std::memory_order_relaxed);
 
             // After a search batch of K PDLocs, write the distances back to the global vectors
-            feasibleDistances.updateFromDistancesInGlobalVectors(startId);
+            feasibleDistances.updateFromDistancesInGlobalVectors(startId, localFeasibleDistances);
         }
 
         template<typename SpotContainerT, typename FeasibleDistancesT>
@@ -390,7 +392,7 @@ namespace karri {
             totalNumVerticesVisited.add_fetch(localToQuery.getNumVerticesSettled(), std::memory_order_relaxed);
             
             // After a search batch of K PDLocs, write the distances back to the global vectors
-            feasibleDistances.updateToDistancesInGlobalVectors(startId);
+            feasibleDistances.updateToDistancesInGlobalVectors(startId, localFeasibleDistances);
         }
 
         template<PDLocType type, typename PDLocsT>
