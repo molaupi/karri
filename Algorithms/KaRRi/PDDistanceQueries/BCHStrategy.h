@@ -251,9 +251,6 @@ namespace karri::PDDistanceQueryStrategies {
             {
                 fillDropoffBuckets(i, std::min(i + K, static_cast<int>(requestState.numDropoffs())));
             });
-            // for (int i = 0; i < requestState.numDropoffs(); i += K) {
-            //     fillDropoffBuckets(i, std::min(i + K, static_cast<int>(requestState.numDropoffs())));
-            // }
 
             const int64_t dropoffBucketEntryGenTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.dropoffBucketEntryGenTime = dropoffBucketEntryGenTime;
@@ -264,9 +261,6 @@ namespace karri::PDDistanceQueryStrategies {
             {
                 runPickupSearches(i, std::min(i + K, static_cast<int>(requestState.numPickups())));
             });
-            // for (int i = 0; i < requestState.numPickups(); i += K) {
-            //     runPickupSearches(i, std::min(i + K, static_cast<int>(requestState.numPickups())));
-            // }
 
             requestState.minDirectPDDist = distances.getMinDirectDistance().load(std::memory_order_relaxed);
 
@@ -283,11 +277,6 @@ namespace karri::PDDistanceQueryStrategies {
         }
 
     private:
-
-        // void
-        // updatePDDistances(const unsigned int firstPickupId, const unsigned int dropoffId, const DistanceLabel &dist) {
-        //     distances.updateDistanceBatchIfSmaller(firstPickupId, dropoffId, dist);
-        // }
 
         void fillDropoffBuckets(const int startId, const int endId) {
             assert(endId > startId && endId - startId <= K);
@@ -321,8 +310,9 @@ namespace karri::PDDistanceQueryStrategies {
             FillBucketsSearch &localFillBucketsSearch = fillBucketsSearch.local();
 
             localFillBucketsSearch.runWithOffset(tailRanks, dropoffOffsets);
+            
             // After a search batch of K, write the bucket entries back to the global vectors
-            dropoffBuckets.updateBucketEntriesInGlobalVectors();
+            dropoffBuckets.updateBucketEntriesInGlobalVectors(localDropoffBuckets);
 
         }
 

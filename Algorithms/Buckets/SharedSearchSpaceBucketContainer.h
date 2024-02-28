@@ -72,7 +72,6 @@ public:
         }
 
         bool insertOrUpdate(const int v, const BucketEntryT &newEntry) {
-//            const int targetId = newEntry.targetId;
             assert(newEntry.targetId >= 0);
 
             // If no entries exist yet for this vertex, add an entry, otherwise compare to existing entry.
@@ -117,34 +116,9 @@ public:
                       entries.begin() + offsetForVertex[vertex] + numSearches);
     }
 
-    // Inserts the given entry into the bucket of the specified vertex.
-    // bool insertOrUpdate(const int vertex, const BucketEntryT &newEntry) {
-    //     assert(vertex >= 0);
-    //     assert(vertex < offsetForVertex.size());
-    //     assert(newEntry.targetId >= 0);
-    //     assert(newEntry.targetId < numSearches);
+    void updateBucketEntriesInGlobalVectors(const ThreadLocalBuckets &localResult) {
 
-    //     // If this is the first time any search inserts an entry at this vertex, allocate entries for all searches at
-    //     // this vertex, i.e. construct entries for all possible searches.
-    //     if (offsetForVertex[vertex] == INVALID_INDEX) {
-    //         offsetForVertex[vertex] = entries.size();
-    //         entries.insert(entries.end(), numSearches, BucketEntryT());
-    //     }
-
-    //     // If the entries for this vertex already exist, update the according entry
-    //     auto &entry = entries[offsetForVertex[vertex] + newEntry.targetId];
-    //     assert(entry.targetId == BucketEntryT().targetId || entry.targetId == newEntry.targetId);
-    //     entry.cmpAndUpdate(newEntry);
-
-    //     return true;
-    // }
-
-    void updateBucketEntriesInGlobalVectors() {
-
-//        const auto &localIndices = indexInBucketEntriesVector.local();
-//        const auto &localEntries = bucketEntriesForSingleVertex.local();
-
-        const auto &localPairs = localResultPairs.local();
+        const auto &localPairs = localResult.pairs;
 
         const int seed = seedCounter.fetch_add(1, std::memory_order_relaxed);
         const auto permutation = Permutation::getRandomPermutation(localPairs.size(), std::minstd_rand(seed));
@@ -175,7 +149,6 @@ public:
     // are only queried once per search.
     ThreadLocalBuckets getThreadLocalBuckets() {
         return ThreadLocalBuckets(localResultPairs.local());
-//        return ThreadLocalBuckets(numSearches, indexInBucketEntriesVector.local(), bucketEntriesForSingleVertex.local());
     }
 
 private:
@@ -198,14 +171,11 @@ private:
     int numSearches;
     std::vector<SpinLock> vertexLocks;
 
-//    TimestampedVector<int> offsetForVertex;
     tbb::concurrent_vector<int> verticesWithEntries;
     std::vector<int> offsetForVertex;
     tbb::concurrent_vector<BucketEntryT> entries;
 
     // Thread Local Storage for local bucket entries calculation
-//    tbb::enumerable_thread_specific<std::vector<int>> indexInBucketEntriesVector;
-//    tbb::enumerable_thread_specific<std::vector<BucketEntryT>> bucketEntriesForSingleVertex;
     tbb::enumerable_thread_specific<std::vector<std::pair<int, BucketEntryT>>> localResultPairs;
 
     // Atomic used to generate unique seeds for creating random permutations.
