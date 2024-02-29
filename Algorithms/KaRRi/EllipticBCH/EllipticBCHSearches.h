@@ -435,10 +435,7 @@ namespace karri {
         enumerable_thread_specific<int> numEntriesScannedWithDistSmallerLeeway;
         enumerable_thread_specific<int> numTimesStoppingCriterionMet;
 
-        // ToQueryType toQuery;
         enumerable_thread_specific<ToQueryType> toQuery;
-
-        // FromQueryType fromQuery;
         enumerable_thread_specific<FromQueryType> fromQuery;
 
         CAtomic<int> totalNumEdgeRelaxations;

@@ -246,7 +246,7 @@ namespace karri::PDDistanceQueryStrategies {
             }
 
 
-            // Fill dropoff buckets:
+            // Fill dropoff buckets in parallel over dropoffs:
             tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&] (int i)
             {
                 fillDropoffBuckets(i, std::min(i + K, static_cast<int>(requestState.numDropoffs())));
@@ -256,7 +256,7 @@ namespace karri::PDDistanceQueryStrategies {
             requestState.stats().pdDistancesStats.dropoffBucketEntryGenTime = dropoffBucketEntryGenTime;
             timer.restart();
 
-            // Run pickup searches against dropoff buckets:
+            // Run pickup searches against dropoff buckets in parallel over pickups:
             tbb::parallel_for(int(0), static_cast<int>(requestState.numPickups()), K, [&] (int i)
             {
                 runPickupSearches(i, std::min(i + K, static_cast<int>(requestState.numPickups())));
@@ -318,8 +318,6 @@ namespace karri::PDDistanceQueryStrategies {
 
         void runPickupSearches(const int startId, const int endId) {
             assert(endId > startId && endId - startId <= K);
-
-            // Get reference to thread local result structure once and have search work on it.
 
             auto& localUpdateDistances = updatePDDistances.local();
             localUpdateDistances.setCurFirstPickupId(startId);

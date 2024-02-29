@@ -210,7 +210,9 @@ namespace karri {
                     }
                 }
             }
-
+            
+            // Try assignment once for best assignment calculated by current thread,
+            // for both paired and ordinary case
             if (localBestAsgn.vehicle && localBestAsgn.pickup && localBestAsgn.dropoff)
                 requestState.tryAssignment(localBestAsgn);
 

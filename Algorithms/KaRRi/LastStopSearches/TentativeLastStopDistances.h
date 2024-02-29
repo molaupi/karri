@@ -127,7 +127,6 @@ namespace karri {
 
         void init(const int &numBatches) {
             curNumBatches = numBatches;
-//            startIdxForVeh.clear();
             std::fill(startIdxForVeh.begin(), startIdxForVeh.end(), INVALID_INDEX);
             distances.clear();
         }
@@ -198,7 +197,6 @@ namespace karri {
         const size_t fleetSize;
 
         // Index and value array for global distances
-//        TimestampedVector<int> startIdxForVeh;
         std::vector<int> startIdxForVeh;
         tbb::concurrent_vector<DistanceLabel> distances; // curNumBatches DistanceLabels per vehicle
 

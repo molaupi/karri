@@ -56,6 +56,8 @@ namespace karri {
         using LabelMask = typename LabelSetT::LabelMask;
 
         struct ResultEntry {
+            explicit ResultEntry(const int stopId) : stopId(stopId) {}
+
             int stopId = INVALID_ID;
 
             DistanceLabel distFromStopToPDLoc = INFTY;
@@ -80,18 +82,18 @@ namespace karri {
         public:
 
             ThreadLocalFeasibleEllipticDistances(const int &maxStopId,
-                                                 std::vector<int> &indexInPairVector,
+                                                 std::vector<int> &indexInEntriesVector,
                                                  std::vector<ResultEntry> &entries)
                     : maxStopId(maxStopId),
-                      indexInPairVector(indexInPairVector),
+                      indexInEntriesVector(indexInEntriesVector),
                       entries(entries) {}
 
             void initForSearch() {
 
-                if (indexInPairVector.size() < maxStopId + 1)
-                    indexInPairVector.resize(maxStopId + 1, INVALID_INDEX);
+                if (indexInEntriesVector.size() < maxStopId + 1)
+                    indexInEntriesVector.resize(maxStopId + 1, INVALID_INDEX);
                 for (const auto &e: entries)
-                    indexInPairVector[e.stopId] = INVALID_INDEX;
+                    indexInEntriesVector[e.stopId] = INVALID_INDEX;
                 entries.clear();
             }
 
@@ -105,11 +107,11 @@ namespace karri {
                 assert(newDistToPDLoc.horizontalMin() >= 0 && newDistToPDLoc.horizontalMin() < INFTY);
 
                 // If no entries exist yet for this stop, perform the allocation.
-                if (indexInPairVector[stopId] == INVALID_INDEX) {
+                if (indexInEntriesVector[stopId] == INVALID_INDEX) {
                     allocateLocalEntriesFor(stopId);
                 }
 
-                const auto &idx = indexInPairVector[stopId];
+                const auto &idx = indexInEntriesVector[stopId];
                 auto &entry = entries[idx];
 
                 const LabelMask improvedLocal = newDistToPDLoc < entry.distFromStopToPDLoc;
@@ -128,10 +130,10 @@ namespace karri {
 
                 // We assume the same thread runs the to search and then the from search for a PDLoc. If the to search
                 // did not find a result for this stop, we do not need to consider it in the from search.
-                if (indexInPairVector[stopId] == INVALID_INDEX)
+                if (indexInEntriesVector[stopId] == INVALID_INDEX)
                     return LabelMask(false);
 
-                const auto &idx = indexInPairVector[stopId];
+                const auto &idx = indexInEntriesVector[stopId];
                 auto &entry = entries[idx];
 
                 const LabelMask improvedLocal = newDistFromPDLocToNextStop < entry.distFromPDLocToNextStop;
@@ -146,15 +148,15 @@ namespace karri {
 
             // Dynamic Allocation
             void allocateLocalEntriesFor(const int stopId) {
-                assert(indexInPairVector[stopId] == INVALID_INDEX);
+                assert(indexInEntriesVector[stopId] == INVALID_INDEX);
 
-                indexInPairVector[stopId] = entries.size();
-                entries.push_back({stopId});
+                indexInEntriesVector[stopId] = entries.size();
+                entries.push_back(ResultEntry(stopId));
             }
 
             const int &maxStopId;
 
-            std::vector<int> &indexInPairVector;
+            std::vector<int> &indexInEntriesVector;
             std::vector<ResultEntry> &entries;
 
         };
@@ -164,7 +166,7 @@ namespace karri {
                   maxStopId(routeState.getMaxStopId()),
                   startOfRange(fleetSize, INVALID_INDEX),
                   stopLocks(fleetSize, SpinLock()),
-                  indexInPairVector(),
+                  indexInEntriesVector(),
                   localResults(),
                   writeResultsToGlobalStopOrder([&] {
                       return Permutation::getRandomPermutation(maxStopId + 1, std::minstd_rand(
@@ -234,7 +236,7 @@ namespace karri {
         // object encapsulates the local result of the thread for that search. This way, the underlying TLS structures
         // are only queried once per search.
         ThreadLocalFeasibleEllipticDistances getThreadLocalFeasibleDistances() {
-            return ThreadLocalFeasibleEllipticDistances(maxStopId, indexInPairVector.local(), localResults.local());
+            return ThreadLocalFeasibleEllipticDistances(maxStopId, indexInEntriesVector.local(), localResults.local());
         }
 
         bool hasPotentiallyRelevantPDLocs(const int stopId) const {
@@ -245,7 +247,7 @@ namespace karri {
         // Writes the distances computed by a single thread for a batch of K PDLocs to the global result.
         void writeThreadLocalResultToGlobalResult(const int firstPDLocId,
                                                   const ThreadLocalFeasibleEllipticDistances &localResult) {
-            const auto &localIndices = localResult.indexInPairVector;
+            const auto &localIndices = localResult.indexInEntriesVector;
             const auto &localEntries = localResult.entries;
 
             // Each search has similar search spaces so results for all threads contain similar stops with relevant
@@ -408,7 +410,7 @@ namespace karri {
                 return;
             }
 
-            const auto resultsIt = globalResults.grow_by(numLabelsPerStop, {stopId});
+            const auto resultsIt = globalResults.grow_by(numLabelsPerStop, ResultEntry(stopId));
             startOfRange[stopId] = resultsIt - globalResults.begin();
             currLock.unlock();
 
@@ -435,7 +437,7 @@ namespace karri {
         CAtomic<int> seedCounter;
 
         // Thread Local Storage for local distances calculation
-        tbb::enumerable_thread_specific<std::vector<int>> indexInPairVector;
+        tbb::enumerable_thread_specific<std::vector<int>> indexInEntriesVector;
         tbb::enumerable_thread_specific<std::vector<ResultEntry>> localResults;
 
         // Each thread generates one random permutation of thread ids. The permutation defines the order in which
