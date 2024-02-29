@@ -64,7 +64,8 @@ namespace karri {
             DistanceLabel distFromPDLocToNextStop = INFTY;
             DistanceLabel meetingVertexFromPDLocToNextStop = INVALID_VERTEX;
         };
-        using ConcurrentResultEntriesVector = ConcurrentAlignedVector<ResultEntry>;
+
+        using ConcurrentResultEntriesVector = tbb::concurrent_vector<ResultEntry>;
 
     public:
 
