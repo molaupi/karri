@@ -315,8 +315,6 @@ namespace karri {
 
                 // After thread finishes a search batch of K PDLocs, write the distances back to the global vectors
                 feasibleDistances.writeThreadLocalResultToGlobalResult(i, localFeasibleDistances);
-//                feasibleDistances.updateToDistancesInGlobalVectors(i, localFeasibleDistances);
-//                feasibleDistances.updateFromDistancesInGlobalVectors(i, localFeasibleDistances);
             });
         }
 

@@ -56,9 +56,6 @@ namespace karri {
         using LabelMask = typename LabelSetT::LabelMask;
 
         struct ResultEntry {
-
-//            explicit ResultEntry(const int stopId) : stopId(stopId) {}
-
             int stopId = INVALID_ID;
 
             DistanceLabel distFromStopToPDLoc = INFTY;
@@ -165,10 +162,6 @@ namespace karri {
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
                   startOfRange(fleetSize, INVALID_INDEX),
-//                  startOfRangeInDistToPDLocs(fleetSize, INVALID_INDEX),
-//                  startOfRangeInDistFromPDLocs(fleetSize, INVALID_INDEX),
-//                  startOfRangeInMeetingVerticesToPDLocs(fleetSize, INVALID_INDEX),
-//                  startOfRangeInMeetingVerticesFromPDLocs(fleetSize, INVALID_INDEX),
                   stopLocks(fleetSize, SpinLock()),
                   indexInPairVector(),
                   localResults(),
@@ -184,33 +177,17 @@ namespace karri {
         void init(const int newNumPDLocs, const PDLocsAtExistingStopsT &pdLocsAtExistingStops,
                   const InputGraphT &inputGraph) {
             numLabelsPerStop = newNumPDLocs / K + (newNumPDLocs % K != 0);
-
             std::fill(startOfRange.begin(), startOfRange.end(), INVALID_INDEX);
-//            std::fill(startOfRangeInDistToPDLocs.begin(), startOfRangeInDistToPDLocs.end(), INVALID_INDEX);
-//            std::fill(startOfRangeInDistFromPDLocs.begin(), startOfRangeInDistFromPDLocs.end(), INVALID_INDEX);
-//            std::fill(startOfRangeInMeetingVerticesToPDLocs.begin(), startOfRangeInMeetingVerticesToPDLocs.end(),
-//                      INVALID_INDEX);
-//            std::fill(startOfRangeInMeetingVerticesFromPDLocs.begin(), startOfRangeInMeetingVerticesFromPDLocs.end(),
-//                      INVALID_INDEX);
 
             if (maxStopId >= startOfRange.size()) {
                 stopLocks.resize(maxStopId + 1, SpinLock());
                 startOfRange.resize(maxStopId + 1, INVALID_INDEX);
-//                startOfRangeInDistToPDLocs.resize(maxStopId + 1, INVALID_INDEX);
-//                startOfRangeInDistFromPDLocs.resize(maxStopId + 1, INVALID_INDEX);
-//                startOfRangeInMeetingVerticesToPDLocs.resize(maxStopId + 1, INVALID_INDEX);
-//                startOfRangeInMeetingVerticesFromPDLocs.resize(maxStopId + 1, INVALID_INDEX);
                 minDistToPDLoc.resize(maxStopId + 1);
                 minDistFromPDLocToNextStop.resize(maxStopId + 1);
             }
 
             vehiclesWithRelevantPDLocs.clear();
             globalResults.clear();
-
-//            distToRelevantPDLocs.clear();
-//            distFromRelevantPDLocsToNextStop.clear();
-//            meetingVerticesToRelevantPDLocs.clear();
-//            meetingVerticesFromRelevantPDLocsToNextStop.clear();
 
             for (auto& min : minDistToPDLoc)
                 min.store(INFTY, std::memory_order_relaxed);
@@ -446,19 +423,12 @@ namespace karri {
         // Points from a stop id to the start of the ResultEntries for PD locs that are relevant
         // for this stop. Not used in case of static allocation
         std::vector<int> startOfRange;
-//        std::vector<int> startOfRangeInDistToPDLocs;
-//        std::vector<int> startOfRangeInDistFromPDLocs;
-//        std::vector<int> startOfRangeInMeetingVerticesToPDLocs;
-//        std::vector<int> startOfRangeInMeetingVerticesFromPDLocs;
+
         // One spinlock per stop to synchronize dynamic allocation in global result
         std::vector<SpinLock> stopLocks;
 
         // Value arrays.
         ConcurrentResultEntriesVector globalResults;
-//        ConcurrentDistsVector distToRelevantPDLocs;
-//        ConcurrentDistsVector distFromRelevantPDLocsToNextStop;
-//        ConcurrentMeetingVerticesVector meetingVerticesToRelevantPDLocs;
-//        ConcurrentMeetingVerticesVector meetingVerticesFromRelevantPDLocsToNextStop;
 
         // Counter for generating differing seeds for random permutations between threads
         CAtomic<int> seedCounter;
