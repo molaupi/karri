@@ -37,119 +37,123 @@
 #include "tbb/concurrent_vector.h"
 #include "DataStructures/Containers/ThreadSafeSubset.h"
 
-template<typename DistanceLabelT>
-class DropoffsBucketContainer {
-public:
+namespace karri::PDDistanceQueryStrategies {
 
-    using Bucket = ConstantConcurrentVectorRange<DistanceLabelT>;
+    template<typename DistanceLabelT>
+    class DropoffsBucketContainer {
+    public:
 
-    // Constructs a container that can maintain buckets for the specified number of vertices.
-    explicit DropoffsBucketContainer(const int numVertices)
-            : numSearches(0),
-              vertexLocks(numVertices, SpinLock()),
-              verticesWithEntries(numVertices),
-              offsetForVertex(numVertices, INVALID_INDEX) {
-        assert(numVertices >= 0);
-    }
+        using Bucket = ConstantConcurrentVectorRange<DistanceLabelT>;
 
-    // Returns the bucket of the specified vertex.
-    Bucket getBucketOf(const int vertex) {
-        assert(vertex >= 0);
-        assert(vertex < offsetForVertex.size());
+        // Constructs a container that can maintain buckets for the specified number of vertices.
+        explicit DropoffsBucketContainer(const int numVertices)
+                : numSearches(0),
+                  vertexLocks(numVertices, SpinLock()),
+                  verticesWithEntries(numVertices),
+                  offsetForVertex(numVertices, INVALID_INDEX) {
+            assert(numVertices >= 0);
+        }
 
-        if (offsetForVertex[vertex] == INVALID_INDEX)
-            return Bucket(distances.begin(), distances.begin());
+        // Returns the bucket of the specified vertex.
+        Bucket getBucketOf(const int vertex) {
+            assert(vertex >= 0);
+            assert(vertex < offsetForVertex.size());
 
-        return Bucket(distances.begin() + offsetForVertex[vertex],
-                      distances.begin() + offsetForVertex[vertex] + numSearches);
-    }
+            if (offsetForVertex[vertex] == INVALID_INDEX)
+                return Bucket(distances.begin(), distances.begin());
 
-    void updateDistancesInGlobalVectors(const int batchId,
-                                        const std::vector<std::pair<int, DistanceLabelT>> &localSearchSpaceWithDistances) {
+            return Bucket(distances.begin() + offsetForVertex[vertex],
+                          distances.begin() + offsetForVertex[vertex] + numSearches);
+        }
 
-        std::vector<std::pair<int, DistanceLabelT> const *> retries;
+        void updateDistancesInGlobalVectors(const int batchId,
+                                            const std::vector<std::pair<int, DistanceLabelT>> &localSearchSpaceWithDistances) {
 
-        // todo: Eliminate all but last occurrence of each vertex in search space before calling this.
+            std::vector<std::pair<int, DistanceLabelT> const *> retries;
 
-        // Attempt 1: Give up on pairs where vertex lock cannot be obtained and mark them as retry.
-        for (const auto& pair : localSearchSpaceWithDistances) {
-            const auto &vertex = pair.first;
-            const auto &dist = pair.second;
-            if (!tryAllocateEntriesFor(vertex)) {
-                retries.push_back(&pair);
-                continue;
+            // todo: Eliminate all but last occurrence of each vertex in search space before calling this.
+
+            // Attempt 1: Give up on pairs where vertex lock cannot be obtained and mark them as retry.
+            for (const auto &pair: localSearchSpaceWithDistances) {
+                const auto &vertex = pair.first;
+                const auto &dist = pair.second;
+                if (!tryAllocateEntriesFor(vertex)) {
+                    retries.push_back(&pair);
+                    continue;
+                }
+                distances[offsetForVertex[vertex] + batchId].min(dist);
             }
-            distances[offsetForVertex[vertex] + batchId].min(dist);
+
+            // Attempt 2: Wait for locks for retries from attempt 1.
+            for (const auto &pair: retries) {
+                const auto &vertex = pair->first;
+                const auto &dist = pair->second;
+                allocateEntriesFor(vertex);
+                distances[offsetForVertex[vertex] + batchId].min(dist);
+            }
         }
 
-        // Attempt 2: Wait for locks for retries from attempt 1.
-        for (const auto& pair : retries) {
-            const auto &vertex = pair->first;
-            const auto &dist = pair->second;
-            allocateEntriesFor(vertex);
-            distances[offsetForVertex[vertex] + batchId].min(dist);
+        // Removes all entries from all buckets.
+        void init(const int newNumSearches) {
+            numSearches = newNumSearches;
+            distances.clear();
+
+            for (const auto &v: verticesWithEntries)
+                offsetForVertex[v] = INVALID_INDEX;
+            verticesWithEntries.clear();
         }
-    }
 
-    // Removes all entries from all buckets.
-    void init(const int newNumSearches) {
-        numSearches = newNumSearches;
-        distances.clear();
+    private:
 
-        for (const auto &v: verticesWithEntries)
-            offsetForVertex[v] = INVALID_INDEX;
-        verticesWithEntries.clear();
-    }
+        // Checks if entry already exists for vertex, otherwise allocates one.
+        // If vertex already has entries per ThreadSafeSubset check or lock can be acquired, return true.
+        // Otherwise, if lock cannot be acquired, return false.
+        bool tryAllocateEntriesFor(const int vertex) {
+            if (verticesWithEntries.contains(vertex))
+                return true;
 
-private:
+            SpinLock &currLock = vertexLocks[vertex];
+            if (!currLock.tryLock())
+                return false;
 
-    // Checks if entry already exists for vertex, otherwise allocates one.
-    // If vertex already has entries per ThreadSafeSubset check or lock can be acquired, return true.
-    // Otherwise, if lock cannot be acquired, return false.
-    bool tryAllocateEntriesFor(const int vertex) {
-        if (verticesWithEntries.contains(vertex))
-            return true;
+            if (offsetForVertex[vertex] != INVALID_INDEX) {
+                currLock.unlock();
+                return true;
+            }
 
-        SpinLock &currLock = vertexLocks[vertex];
-        if (!currLock.tryLock())
-            return false;
+            const auto entriesIt = distances.grow_by(numSearches, DistanceLabelT(INFTY));
+            offsetForVertex[vertex] = entriesIt - distances.begin();
 
-        if (offsetForVertex[vertex] != INVALID_INDEX) {
             currLock.unlock();
+            verticesWithEntries.insert(vertex);
             return true;
         }
 
-        const auto entriesIt = distances.grow_by(numSearches, DistanceLabelT(INFTY));
-        offsetForVertex[vertex] = entriesIt - distances.begin();
+        void allocateEntriesFor(const int vertex) {
+            if (verticesWithEntries.contains(vertex))
+                return;
 
-        currLock.unlock();
-        verticesWithEntries.insert(vertex);
-        return true;
-    }
+            SpinLock &currLock = vertexLocks[vertex];
+            currLock.lock();
 
-    void allocateEntriesFor(const int vertex) {
-        if (verticesWithEntries.contains(vertex))
-            return;
+            if (offsetForVertex[vertex] != INVALID_INDEX) {
+                currLock.unlock();
+                return;
+            }
 
-        SpinLock &currLock = vertexLocks[vertex];
-        currLock.lock();
+            const auto entriesIt = distances.grow_by(numSearches, DistanceLabelT(INFTY));
+            offsetForVertex[vertex] = entriesIt - distances.begin();
 
-        if (offsetForVertex[vertex] != INVALID_INDEX) {
             currLock.unlock();
-            return;
+            verticesWithEntries.insert(vertex);
         }
 
-        const auto entriesIt = distances.grow_by(numSearches, DistanceLabelT(INFTY));
-        offsetForVertex[vertex] = entriesIt - distances.begin();
+        int numSearches;
+        std::vector<SpinLock> vertexLocks;
 
-        currLock.unlock();
-        verticesWithEntries.insert(vertex);
-    }
+        karri::ThreadSafeSubset verticesWithEntries;
+        std::vector<int> offsetForVertex;
+        tbb::concurrent_vector<DistanceLabelT> distances;
+    };
 
-    int numSearches;
-    std::vector<SpinLock> vertexLocks;
-
-    karri::ThreadSafeSubset verticesWithEntries;
-    std::vector<int> offsetForVertex;
-    tbb::concurrent_vector<DistanceLabelT> distances;
-};
+} //end namespace
