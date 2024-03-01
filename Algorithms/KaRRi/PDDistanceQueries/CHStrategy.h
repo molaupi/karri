@@ -49,7 +49,7 @@ namespace karri::PDDistanceQueryStrategies {
                   ch(chEnv.getCH()),
                   requestState(requestState),
                   distances(distances),
-                  query(chEnv.template getFullCHQuery<LabelSetT>()) {}
+                  queries([&]{return chEnv.template getFullCHQuery<LabelSetT>();}) {}
 
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
@@ -63,24 +63,33 @@ namespace karri::PDDistanceQueryStrategies {
                 return;
             }
 
-            // Run batched queries from all pickups to all dropoffs
-            std::array<int, K> pickupHeadRanks;
+            std::vector<std::pair<int, int>> jobs;
+            for (int firstPickupIdInBatch = 0; firstPickupIdInBatch < requestState.numPickups(); firstPickupIdInBatch += K)
+                for (int dropoffId = 0; dropoffId < requestState.numDropoffs(); ++dropoffId)
+                    jobs.emplace_back(firstPickupIdInBatch, dropoffId);
 
-            int pickupId = 0;
-            while (pickupId < requestState.numPickups()) {
-                pickupHeadRanks[pickupId % K] = ch.rank(inputGraph.edgeHead(requestState.pickups[pickupId].loc));
-                ++pickupId;
-                if (pickupId % K == 0) {
-                    runWithAllDropoffs(pickupHeadRanks, pickupId - K);
+            tbb::parallel_for(int(0), static_cast<int>(jobs.size()), 1, [&](int jobIdx) {
+                const int& firstPickupIdInBatch = jobs[jobIdx].first;
+                // Run query for batch of pickups and single
+                std::array<int, K> pickupHeadRanks = {};
+                for (int pickupId = firstPickupIdInBatch; pickupId < firstPickupIdInBatch + K; ++pickupId) {
+                    if (pickupId >= requestState.numPickups()) {
+                        pickupHeadRanks[pickupId] = pickupHeadRanks[0];
+                        continue;
+                    }
+                    pickupHeadRanks[pickupId % K] = ch.rank(inputGraph.edgeHead(requestState.pickups[pickupId].loc));
                 }
-            }
 
-            // Finish potential partially filled batch. Fill with copies of first element.
-            if (pickupId % K != 0) {
-                for (int i = pickupId % K; i < K; ++i)
-                    pickupHeadRanks[i] = pickupHeadRanks[0];
-                runWithAllDropoffs(pickupHeadRanks, requestState.numPickups() / K * K);
-            }
+                const auto& d = requestState.dropoffs[jobs[jobIdx].second];
+                std::array<int, K> dropoffTailRank = {};
+                dropoffTailRank.fill(ch.rank(inputGraph.edgeTail(d.loc)));
+                const int offset = inputGraph.travelTime(d.loc);
+
+                auto& query = queries.local();
+                query.run(pickupHeadRanks, dropoffTailRank);
+                const DistanceLabel dist = query.getAllDistances() + DistanceLabel(offset);
+                distances.updateDistanceBatchIfSmaller(firstPickupIdInBatch, d.id, dist);
+            });
 
 
             requestState.minDirectPDDist = distances.getMinDirectDistance();
@@ -99,26 +108,13 @@ namespace karri::PDDistanceQueryStrategies {
 
     private:
 
-        void runWithAllDropoffs(const std::array<int, K>& pickupHeadRanks, const int firstPickupIdInBatch) {
-            std::array<int, K> dropoffTailRank = {};
-
-            for (const auto& d : requestState.dropoffs) {
-                dropoffTailRank.fill(ch.rank(inputGraph.edgeTail(d.loc)));
-                const int offset = inputGraph.travelTime(d.loc);
-
-                query.run(pickupHeadRanks, dropoffTailRank);
-                const DistanceLabel dist = query.getAllDistances() + DistanceLabel(offset);
-                distances.updateDistanceBatchIfSmaller(firstPickupIdInBatch, d.id, dist);
-            }
-        }
-
         const InputGraphT &inputGraph;
         const CH &ch;
         RequestState &requestState;
 
         PDDistances<LabelSetT> &distances;
 
-        typename CHEnvT::template FullCHQuery<LabelSetT> query;
+        tbb::enumerable_thread_specific<typename CHEnvT::template FullCHQuery<LabelSetT>> queries;
     };
 
 }
