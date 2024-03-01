@@ -108,7 +108,8 @@ namespace karri {
 
                 // If no entries exist yet for this stop, perform the allocation.
                 if (indexInEntriesVector[stopId] == INVALID_INDEX) {
-                    allocateLocalEntriesFor(stopId);
+                    indexInEntriesVector[stopId] = entries.size();
+                    entries.push_back(ResultEntry(stopId));
                 }
 
                 const auto &idx = indexInEntriesVector[stopId];
@@ -145,15 +146,6 @@ namespace karri {
 
 
         private:
-
-            // Dynamic Allocation
-            void allocateLocalEntriesFor(const int stopId) {
-                assert(indexInEntriesVector[stopId] == INVALID_INDEX);
-
-                indexInEntriesVector[stopId] = entries.size();
-                entries.push_back(ResultEntry(stopId));
-            }
-
             const int &maxStopId;
 
             std::vector<int> &indexInEntriesVector;
@@ -165,6 +157,7 @@ namespace karri {
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
                   startOfRange(fleetSize, INVALID_INDEX),
+                  stopHasEntries(fleetSize),
                   stopLocks(fleetSize, SpinLock()),
                   indexInEntriesVector(),
                   localResults(),
@@ -181,10 +174,12 @@ namespace karri {
                   const InputGraphT &inputGraph) {
             numLabelsPerStop = newNumPDLocs / K + (newNumPDLocs % K != 0);
             std::fill(startOfRange.begin(), startOfRange.end(), INVALID_INDEX);
+            stopHasEntries.reset();
 
             if (maxStopId >= startOfRange.size()) {
                 stopLocks.resize(maxStopId + 1, SpinLock());
                 startOfRange.resize(maxStopId + 1, INVALID_INDEX);
+                stopHasEntries.resize(maxStopId + 1, false);
                 minDistToPDLoc.resize(maxStopId + 1);
                 minDistFromPDLocToNextStop.resize(maxStopId + 1);
             }
@@ -402,6 +397,10 @@ namespace karri {
     private:
 
         void allocateEntriesFor(const int stopId) {
+
+            if (stopHasEntries[stopId])
+                return;
+
             SpinLock &currLock = stopLocks[stopId];
             currLock.lock();
 
@@ -414,8 +413,8 @@ namespace karri {
             startOfRange[stopId] = resultsIt - globalResults.begin();
             currLock.unlock();
 
+            stopHasEntries.compare_and_set_to_true(stopId);
             vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
-
         }
 
         const RouteState &routeState;
@@ -426,6 +425,7 @@ namespace karri {
         // Points from a stop id to the start of the ResultEntries for PD locs that are relevant
         // for this stop. Not used in case of static allocation
         std::vector<int> startOfRange;
+        ThreadSafeFastResetFlagArray<> stopHasEntries;
 
         // One spinlock per stop to synchronize dynamic allocation in global result
         std::vector<SpinLock> stopLocks;
