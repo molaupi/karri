@@ -149,8 +149,6 @@ namespace karri::PickupAfterLastStopStrategies {
                 int expectedUpperBoundCost = upperBoundCostAtomic.load(std::memory_order_relaxed);
                 while (expectedUpperBoundCost > minNewCost && !upperBoundCostAtomic.compare_exchange_strong(
                         expectedUpperBoundCost, minNewCost, std::memory_order_relaxed));
-
-                // strat.upperBoundCost = std::min(strat.upperBoundCost, cost.horizontalMin());
             }
 
             bool isVehicleEligible(const int &) const {
@@ -204,12 +202,11 @@ namespace karri::PickupAfterLastStopStrategies {
             static const auto sumInts = [](const int& n1, const int& n2) {return n1 + n2;};
 
             Timer timer;
-            CAtomic<int> numAssignmentsTried;
-            numAssignmentsTried.store(0);
+            numAssignmentsTried.store(0, std::memory_order_relaxed);
             initPickupSearches();
 
             tbb::parallel_for(int(0), static_cast<int>(requestState.numPickups()), K, [&](int i) {
-                runBchSearchesAndEnumerate(i, numAssignmentsTried);
+                runBchSearchesAndEnumerate(i);
             });
 
             const auto searchAndTryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -248,13 +245,13 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Run BCH searches and enumerate assignments within a thread
-        void runBchSearchesAndEnumerate(const int firstPickupId, CAtomic<int> &numAssignmentsTried) {
+        void runBchSearchesAndEnumerate(const int firstPickupId) {
             Timer timer;
             runSearchesForPickupBatch(firstPickupId);
             localSearchTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
             timer.restart();
-            enumeratePickup(requestState.pickups[firstPickupId], numAssignmentsTried);
+            enumeratePickup(requestState.pickups[firstPickupId]);
             localTryAssignmentsTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
 
@@ -282,7 +279,6 @@ namespace karri::PickupAfterLastStopStrategies {
                 localPruner.curDistancesToDest[i] = pdDistances.getDirectDistance(pickup.id, 0);
             }
 
-            // distances.setCurBatchIdx(firstPickupId / K);
             search.run(pickupTails, travelTimes);
 
             // After a search batch of K PDLocs, write the distances back to the global vectors
@@ -294,7 +290,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         }
 
-        void enumeratePickup(const PDLoc &pickup, CAtomic<int> &numAssignmentsTried) {
+        void enumeratePickup(const PDLoc &pickup) {
             using namespace time_utils;
             Assignment asgn;
             asgn.pickup = &pickup;
@@ -382,6 +378,7 @@ namespace karri::PickupAfterLastStopStrategies {
         Assignment bestAsgnBefore;
         int bestCostBefore;
 
+        CAtomic<int> numAssignmentsTried;
         CAtomic<int> totalNumEdgeRelaxations;
         CAtomic<int> totalNumVerticesSettled;
         CAtomic<int> totalNumEntriesScanned;

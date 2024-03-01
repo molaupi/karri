@@ -165,7 +165,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                   lastStopDistances(fleet.size()),
                   localSearchTime(0),
                   localTryAssignmentsTime(0),
-                   relevantVehiclesPBNSOrder([&]{ return Permutation::getRandomPermutation(relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs().size(),
+                  relevantVehiclesPBNSOrder([&]{ return Permutation::getRandomPermutation(relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs().size(),
                                                  std::minstd_rand(seedCounter.fetch_add(1, std::memory_order_relaxed)));}) {}
 
         void tryDropoffAfterLastStop() {
@@ -173,15 +173,14 @@ namespace karri::DropoffAfterLastStopStrategies {
             static const auto sumInts = [](const int& n1, const int& n2) {return n1 + n2;};
 
             Timer timer;
-            CAtomic<int> numAssignmentsTried;
-            numAssignmentsTried.store(0);
+            numAssignmentsTried.store(0, std::memory_order_relaxed);
             initDropoffSearches();
 
             const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
                                            curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
 
             tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&](int i) {
-                runBchSearchesAndEnumerate(i, numAssignmentsTried);
+                runBchSearchesAndEnumerate(i);
             });
 
             const int64_t pbnsTime = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
@@ -212,14 +211,14 @@ namespace karri::DropoffAfterLastStopStrategies {
     private:
 
         // Run BCH searches and enumerate assignments within a thread
-        void runBchSearchesAndEnumerate(const unsigned int firstDropoffId, CAtomic<int> &numAssignmentsTried) {
+        void runBchSearchesAndEnumerate(const unsigned int firstDropoffId) {
             Timer timer;
             runSearchesForDropoffBatch(firstDropoffId);
             localSearchTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
             timer.restart();
-            enumerateDropoffWithOrdinaryPickup(requestState.dropoffs[firstDropoffId], numAssignmentsTried);
-            enumerateDropoffWithPBNS(requestState.dropoffs[firstDropoffId], numAssignmentsTried);
+            enumerateDropoffWithOrdinaryPickup(requestState.dropoffs[firstDropoffId]);
+            enumerateDropoffWithPBNS(requestState.dropoffs[firstDropoffId]);
             localTryAssignmentsTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
         }
@@ -279,7 +278,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         }
 
-        void enumerateDropoffWithOrdinaryPickup(const PDLoc &dropoff, CAtomic<int> &numAssignmentsTried) {
+        void enumerateDropoffWithOrdinaryPickup(const PDLoc &dropoff) {
             Assignment asgn;
             asgn.dropoff = &dropoff;
             int localBestCost = bestCostBefore;
@@ -358,7 +357,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
         }
 
-        void enumerateDropoffWithPBNS(const PDLoc &dropoff, CAtomic<int> &numAssignmentsTried) {
+        void enumerateDropoffWithPBNS(const PDLoc &dropoff) {
             int numAssignmentsTriedLocal = 0;
             Assignment asgn;
             asgn.pickupStopIdx = 0;
@@ -368,7 +367,6 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             const auto& relVehicles = relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs();
              for (const auto &permIdx: relevantVehiclesPBNSOrder.local()) {
-//            for (const auto &vehId: relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs()) {
 
                 const auto vehId = *(relVehicles.begin() + permIdx);
 
@@ -486,6 +484,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         Assignment bestAsgnBefore;
         int bestCostBefore;
 
+        CAtomic<int> numAssignmentsTried;
         CAtomic<int> totalNumEdgeRelaxations;
         CAtomic<int> totalNumVerticesSettled;
         CAtomic<int> totalNumEntriesScanned;

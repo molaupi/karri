@@ -108,13 +108,6 @@ namespace karri {
             return distances[idx];
         }
 
-//        bool knowsCurrentLocationOf(const int vehId) const {
-//            assert(vehId >= 0 && vehId < fleetSize);
-//
-//
-//            return vehiclesWithKnownLocation.contains(vehId) && currentVehicleLocations[vehId] != INVALID_LOC;
-//        }
-
         const VehicleLocation &getCurrentLocationOf(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
             return currentVehicleLocations[vehId];
@@ -125,9 +118,9 @@ namespace karri {
 
             assert(routeState.numStopsOf(vehicle.vehicleId) > 1);
 
-           if (!vehiclesWithKnownLocation.contains(vehicle.vehicleId)) {
-            locateVehicle(vehicle);
-           }
+            if (!vehiclesWithKnownLocation.contains(vehicle.vehicleId)) {
+                locateVehicle(vehicle);
+            }
             const auto &vehLocation = currentVehicleLocations[vehicle.vehicleId];
             assert(vehLocation != INVALID_LOC);
 
