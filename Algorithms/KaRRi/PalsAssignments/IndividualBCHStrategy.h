@@ -193,9 +193,8 @@ namespace karri::PickupAfterLastStopStrategies {
                   localTryAssignmentsTime(0),
                   distances(fleet.size()),
                   threadLocalPruners(PickupAfterLastStopPruner(*this, calculator)),
-                  search(lastStopBucketsEnv, distances, chEnv, routeState, vehiclesSeenForPickups,
-                         threadLocalPruners),
-                  vehiclesSeenForPickups(fleet.size()) {}
+                  search(lastStopBucketsEnv, distances, chEnv, routeState,
+                         threadLocalPruners) {}
 
         void tryPickupAfterLastStop() {
             // Helper lambda to get sum of stats from thread local queries
@@ -222,7 +221,7 @@ namespace karri::PickupAfterLastStopStrategies {
                     std::memory_order_relaxed);
             requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(
                     std::memory_order_relaxed);
-            requestState.stats().palsAssignmentsStats.numCandidateVehicles += vehiclesSeenForPickups.size();
+            requestState.stats().palsAssignmentsStats.numCandidateVehicles += distances.getVehiclesSeen().size();
             requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(
                     std::memory_order_relaxed);
 
@@ -241,7 +240,6 @@ namespace karri::PickupAfterLastStopStrategies {
             totalNumEntriesScanned.store(0);
 
             upperBoundCost.store(bestCostBeforeQuery);
-            vehiclesSeenForPickups.clear();
             bestAsgnBefore = requestState.getBestAssignment();
             bestCostBefore = requestState.getBestCost();
 
@@ -307,8 +305,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 const auto& pickup = requestState.pickups[pickupId];
                 asgn.pickup = &pickup;
 
-
-                for (const auto &vehId: vehiclesSeenForPickups) {
+                for (const auto &vehId: distances.getVehiclesSeen()) {
 
                     asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
                     if (asgn.distToPickup >= INFTY)
@@ -381,9 +378,6 @@ namespace karri::PickupAfterLastStopStrategies {
         TentativeLastStopDistances<LabelSetT> distances;
         tbb::enumerable_thread_specific<PickupAfterLastStopPruner> threadLocalPruners;
         PickupBCHQuery search;
-
-        // Vehicles seen by any last stop pickup search
-        ThreadSafeSubset vehiclesSeenForPickups;
 
         Assignment bestAsgnBefore;
         int bestCostBefore;

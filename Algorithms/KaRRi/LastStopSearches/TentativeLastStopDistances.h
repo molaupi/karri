@@ -118,6 +118,7 @@ namespace karri {
                   startIdxForVeh(fleetSize, INVALID_INDEX),
                   distances(),
                   stopLocks(fleetSize, SpinLock()),
+                  vehiclesSeen(fleetSize),
                   threadLocalIndexInDistanceVector(fleetSize),
                   threadLocalDistances(),
                   writeResultsToGlobalVehicleOrder([&] {
@@ -129,13 +130,14 @@ namespace karri {
             curNumBatches = numBatches;
             std::fill(startIdxForVeh.begin(), startIdxForVeh.end(), INVALID_INDEX);
             distances.clear();
+            vehiclesSeen.clear();
         }
 
         void setCurBatchIdx(const int &batchIdx) {
             curBatchIdx = batchIdx;
         }
 
-        int getDistance(const int &vehId, const int &pdLocId) {
+        int getDistance(const int &vehId, const int &pdLocId) const {
             assert(vehId < startIdxForVeh.size());
             const int startIdx = startIdxForVeh[vehId];
             if (startIdx == INVALID_INDEX)
@@ -143,6 +145,10 @@ namespace karri {
 
             const int batchIdx = pdLocId / K;
             return distances[startIdx + batchIdx][pdLocId % K];
+        }
+
+        const ThreadSafeSubset& getVehiclesSeen() const {
+            return vehiclesSeen;
         }
 
         // Each thread gets an instance of a ThreadLocalTentativeLastStopDistances at the beginning of a search. This
@@ -178,6 +184,10 @@ namespace karri {
     private:
 
         void allocateEntriesFor(const int vehId) {
+
+            if (vehiclesSeen.contains(vehId))
+                return;
+
             SpinLock &currLock = stopLocks[vehId];
             currLock.lock();
             if (startIdxForVeh[vehId] != INVALID_INDEX) {
@@ -191,6 +201,8 @@ namespace karri {
 
             currLock.unlock();
 
+            vehiclesSeen.insert(vehId);
+
         }
 
         int curNumBatches;
@@ -202,6 +214,9 @@ namespace karri {
 
         // One spinlock per vehicle to synchronize dynamic allocation in global result
         std::vector<SpinLock> stopLocks;
+
+        // All vehicles for which DALS distances have been seen.
+        ThreadSafeSubset vehiclesSeen;
 
         // Thread Local Storage for local distances calculation
         tbb::enumerable_thread_specific<std::vector<int>> threadLocalIndexInDistanceVector;

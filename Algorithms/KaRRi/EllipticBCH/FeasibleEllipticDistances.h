@@ -370,6 +370,19 @@ namespace karri {
             return PerPDLocDistancesFacade(globalResults.begin() + start);
         }
 
+
+        int getDistanceFromStopToPDLoc(const int stopId, const int pdLocId) const {
+            if (!hasPotentiallyRelevantPDLocs(stopId))
+                return INFTY;
+            return globalResults[startOfRange[stopId] + pdLocId / K].distFromStopToPDLoc[pdLocId % K];
+        }
+
+        int getDistanceFromPDLocToNextStop(const int stopId, const int pdLocId) const {
+            if (!hasPotentiallyRelevantPDLocs(stopId))
+                return INFTY;
+            return globalResults[startOfRange[stopId] + pdLocId / K].distFromPDLocToNextStop[pdLocId % K];
+        }
+
         PerPDLocMeetingVerticesFacade meetingVerticesToAndFromRelevantPDLocsFor(const int stopId) const {
             assert(stopId <= maxStopId);
             assert(startOfRange[stopId] != INVALID_INDEX);

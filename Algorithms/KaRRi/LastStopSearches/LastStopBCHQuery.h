@@ -173,7 +173,6 @@ namespace karri {
                 mask &= ~pruner.isWorseThanBestKnownVehicleDependent(vehId, distToPDLoc);
                 if (anySet(mask)) { // if any search requires updates, update the right ones according to mask
                     updateDistances(vehId, distToPDLoc, mask);
-                    search.vehiclesSeen.insert(vehId);
                     pruner.updateUpperBoundCost(vehId, distToPDLoc);
                 }
             }
@@ -209,7 +208,6 @@ namespace karri {
                 TentativeLastStopDistances<LabelSetT> &tentativeLastStopDistances,
                 const CHEnvT &chEnv,
                 const RouteState &routeState,
-                ThreadSafeSubset &vehiclesSeen,
                 tbb::enumerable_thread_specific<PrunerT> &pPruners)
                 : ch(chEnv.getCH()),
                   bucketContainer(lastStopBucketsEnv.getBuckets()),
@@ -222,7 +220,6 @@ namespace karri {
                               ScanSortedBucket(*this, pruners.local(), updateDistancesToPdLocs.local(), numVerticesSettled.local(), numEntriesVisited.local()),
                               StopLastStopBCH(pruners.local()));
                   }),
-                  vehiclesSeen(vehiclesSeen),
                   numVerticesSettled(0),
                   numEntriesVisited(0) {}
 
@@ -270,9 +267,6 @@ namespace karri {
 
         enumerable_thread_specific<UpdateDistancesToPDLocs> updateDistancesToPdLocs;
         enumerable_thread_specific<UpwardSearchType> upwardSearch;
-
-
-        ThreadSafeSubset &vehiclesSeen;
 
         enumerable_thread_specific<int> numVerticesSettled;
         enumerable_thread_specific<int> numEntriesVisited;
