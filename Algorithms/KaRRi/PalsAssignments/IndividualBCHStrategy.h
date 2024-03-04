@@ -199,7 +199,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         void tryPickupAfterLastStop() {
             // Helper lambda to get sum of stats from thread local queries
-            static const auto sumInts = [](const int& n1, const int& n2) {return n1 + n2;};
+            static const auto sumInts = [](const int &n1, const int &n2) { return n1 + n2; };
 
             Timer timer;
             numAssignmentsTried.store(0, std::memory_order_relaxed);
@@ -213,22 +213,27 @@ namespace karri::PickupAfterLastStopStrategies {
 
             requestState.stats().palsAssignmentsStats.searchAndTryAssignmentsTime += searchAndTryAssignmentsTime;
             requestState.stats().palsAssignmentsStats.searchTimeLocal += localSearchTime.combine(sumInts);
-            requestState.stats().palsAssignmentsStats.tryAssignmentsTimeLocal += localTryAssignmentsTime.combine(sumInts);
+            requestState.stats().palsAssignmentsStats.tryAssignmentsTimeLocal += localTryAssignmentsTime.combine(
+                    sumInts);
 
-            requestState.stats().palsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load(std::memory_order_relaxed);
-            requestState.stats().palsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load(std::memory_order_relaxed);
-            requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(std::memory_order_relaxed);
+            requestState.stats().palsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load(
+                    std::memory_order_relaxed);
+            requestState.stats().palsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load(
+                    std::memory_order_relaxed);
+            requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(
+                    std::memory_order_relaxed);
             requestState.stats().palsAssignmentsStats.numCandidateVehicles += vehiclesSeenForPickups.size();
-            requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(std::memory_order_relaxed);
+            requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(
+                    std::memory_order_relaxed);
 
         }
 
     private:
 
         void initPickupSearches() {
-            for (auto& local : localSearchTime)
+            for (auto &local: localSearchTime)
                 local = 0;
-            for (auto& local : localTryAssignmentsTime)
+            for (auto &local: localTryAssignmentsTime)
                 local = 0;
 
             totalNumEdgeRelaxations.store(0);
@@ -251,7 +256,7 @@ namespace karri::PickupAfterLastStopStrategies {
             localSearchTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
             timer.restart();
-            enumeratePickup(requestState.pickups[firstPickupId]);
+            enumerateForPickupBatch(firstPickupId);
             localTryAssignmentsTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
 
@@ -290,59 +295,64 @@ namespace karri::PickupAfterLastStopStrategies {
 
         }
 
-        void enumeratePickup(const PDLoc &pickup) {
+        void enumerateForPickupBatch(const int firstPickupId) {
             using namespace time_utils;
-            Assignment asgn;
-            asgn.pickup = &pickup;
             int localBestCost = bestCostBefore;
             Assignment localBestAsgn = bestAsgnBefore;
-
+            Assignment asgn;
             int numAssignmentsTriedLocal = 0;
 
-            for (const auto &vehId: vehiclesSeenForPickups) {
+            for (int pickupId = firstPickupId;
+                 pickupId < std::min(firstPickupId + K, requestState.numPickups()); ++pickupId) {
+                const auto& pickup = requestState.pickups[pickupId];
+                asgn.pickup = &pickup;
 
-                asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
-                if (asgn.distToPickup >= INFTY)
-                    continue;
 
-                const int numStops = routeState.numStopsOf(vehId);
-                if (numStops == 0)
-                    continue;
+                for (const auto &vehId: vehiclesSeenForPickups) {
 
-                asgn.vehicle = &fleet[vehId];
-                asgn.pickupStopIdx = numStops - 1;
-                asgn.dropoffStopIdx = numStops - 1;
+                    asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
+                    if (asgn.distToPickup >= INFTY)
+                        continue;
 
-                // Compute cost lower bound for this pickup specifically
-                const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState,
-                                                                            routeState, inputConfig);
-                const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
-                                                        getVehDepTimeAtStopForRequest(vehId, numStops - 1,
-                                                                                        requestState, routeState);
-                const auto psgTimeTillDepAtThisPickup =
-                        depTimeAtThisPickup - requestState.originalRequest.requestTime;
-                const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);
-                const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
-                                                                                            psgTimeTillDepAtThisPickup,
-                                                                                            minDirectDistForThisPickup,
-                                                                                            asgn.pickup->walkingDist,
-                                                                                            0,
-                                                                                            requestState);
-                if (minCost > localBestCost)
-                    continue;
+                    const int numStops = routeState.numStopsOf(vehId);
+                    if (numStops == 0)
+                        continue;
 
-                for (auto &d: requestState.dropoffs) {
-                    asgn.dropoff = &d;
+                    asgn.vehicle = &fleet[vehId];
+                    asgn.pickupStopIdx = numStops - 1;
+                    asgn.dropoffStopIdx = numStops - 1;
 
-                    // Try inserting pair with pickup after last stop:
-                    ++numAssignmentsTriedLocal;
-                    asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                    // Compute cost lower bound for this pickup specifically
+                    const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState,
+                                                                              routeState, inputConfig);
+                    const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
+                                                            getVehDepTimeAtStopForRequest(vehId, numStops - 1,
+                                                                                          requestState, routeState);
+                    const auto psgTimeTillDepAtThisPickup =
+                            depTimeAtThisPickup - requestState.originalRequest.requestTime;
+                    const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);
+                    const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
+                                                                                             psgTimeTillDepAtThisPickup,
+                                                                                             minDirectDistForThisPickup,
+                                                                                             asgn.pickup->walkingDist,
+                                                                                             0,
+                                                                                             requestState);
+                    if (minCost > localBestCost)
+                        continue;
 
-                    const auto curCost = calculator.calc(asgn, requestState);
-                    if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
-                                    breakCostTie(asgn, localBestAsgn)))) {
-                        localBestCost = curCost;
-                        localBestAsgn = asgn;
+                    for (auto &d: requestState.dropoffs) {
+                        asgn.dropoff = &d;
+
+                        // Try inserting pair with pickup after last stop:
+                        ++numAssignmentsTriedLocal;
+                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+
+                        const auto curCost = calculator.calc(asgn, requestState);
+                        if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
+                                                                            breakCostTie(asgn, localBestAsgn)))) {
+                            localBestCost = curCost;
+                            localBestAsgn = asgn;
+                        }
                     }
                 }
             }

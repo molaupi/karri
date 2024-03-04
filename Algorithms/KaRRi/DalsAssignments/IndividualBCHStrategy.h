@@ -165,12 +165,15 @@ namespace karri::DropoffAfterLastStopStrategies {
                   lastStopDistances(fleet.size()),
                   localSearchTime(0),
                   localTryAssignmentsTime(0),
-                  relevantVehiclesPBNSOrder([&]{ return Permutation::getRandomPermutation(relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs().size(),
-                                                 std::minstd_rand(seedCounter.fetch_add(1, std::memory_order_relaxed)));}) {}
+                  relevantVehiclesPBNSOrder([&] {
+                      return Permutation::getRandomPermutation(
+                              relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs().size(),
+                              std::minstd_rand(seedCounter.fetch_add(1, std::memory_order_relaxed)));
+                  }) {}
 
         void tryDropoffAfterLastStop() {
             // Helper lambda to get sum of stats from thread local queries
-            static const auto sumInts = [](const int& n1, const int& n2) {return n1 + n2;};
+            static const auto sumInts = [](const int &n1, const int &n2) { return n1 + n2; };
 
             Timer timer;
             numAssignmentsTried.store(0, std::memory_order_relaxed);
@@ -192,7 +195,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             requestState.stats().dalsAssignmentsStats.searchAndTryAssignmentsTime += searchAndTryAssignmentsTime;
             requestState.stats().dalsAssignmentsStats.searchTimeLocal += localSearchTime.combine(sumInts);
-            requestState.stats().dalsAssignmentsStats.tryAssignmentsTimeLocal += (localTryAssignmentsTime.combine(sumInts) - pbnsTime);
+            requestState.stats().dalsAssignmentsStats.tryAssignmentsTimeLocal += (
+                    localTryAssignmentsTime.combine(sumInts) - pbnsTime);
 
             // Find total number of candidate dropoffs for statistics
             int totalNumberOfCandidateDropoffs = 0;
@@ -201,11 +205,15 @@ namespace karri::DropoffAfterLastStopStrategies {
                     totalNumberOfCandidateDropoffs += (getDistanceToDropoff(vehId, dropoff.id) < INFTY);
             requestState.stats().dalsAssignmentsStats.numCandidateDropoffsAcrossAllVehicles += totalNumberOfCandidateDropoffs;
 
-            requestState.stats().dalsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load(std::memory_order_relaxed);
-            requestState.stats().dalsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load(std::memory_order_relaxed);
-            requestState.stats().dalsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(std::memory_order_relaxed);
+            requestState.stats().dalsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations.load(
+                    std::memory_order_relaxed);
+            requestState.stats().dalsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled.load(
+                    std::memory_order_relaxed);
+            requestState.stats().dalsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(
+                    std::memory_order_relaxed);
             requestState.stats().dalsAssignmentsStats.numCandidateVehicles += vehiclesSeenForDropoffs.size();
-            requestState.stats().dalsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(std::memory_order_relaxed);
+            requestState.stats().dalsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(
+                    std::memory_order_relaxed);
         }
 
     private:
@@ -217,8 +225,8 @@ namespace karri::DropoffAfterLastStopStrategies {
             localSearchTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
             timer.restart();
-            enumerateDropoffWithOrdinaryPickup(requestState.dropoffs[firstDropoffId]);
-            enumerateDropoffWithPBNS(requestState.dropoffs[firstDropoffId]);
+            enumerateForDropoffBatchWithOrdinaryPickup(firstDropoffId);
+            enumerateForDropoffBatchWithPBNS(firstDropoffId);
             localTryAssignmentsTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
         }
@@ -228,9 +236,9 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         void initDropoffSearches() {
-            for (auto& local : localSearchTime)
+            for (auto &local: localSearchTime)
                 local = 0;
-            for (auto& local : localTryAssignmentsTime)
+            for (auto &local: localTryAssignmentsTime)
                 local = 0;
 
             totalNumEdgeRelaxations.store(0);
@@ -278,76 +286,81 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         }
 
-        void enumerateDropoffWithOrdinaryPickup(const PDLoc &dropoff) {
-            Assignment asgn;
-            asgn.dropoff = &dropoff;
+        void enumerateForDropoffBatchWithOrdinaryPickup(const int firstDropoffId) {
             int localBestCost = bestCostBefore;
             Assignment localBestAsgn = bestAsgnBefore;
-            
+
+            Assignment asgn;
             int numAssignmentsTriedLocal = 0;
 
-            for (const auto &vehId: vehiclesSeenForDropoffs) {
-                if (!relevantOrdinaryPickups.hasRelevantSpotsFor(vehId)) {
-                    // vehicle may still have relevant assignment with pickup before next stop
-                    checkPBNSForVehicle.set(vehId, true);
-                    continue;
-                }
+            for (int dropoffId = 0; dropoffId < std::min(firstDropoffId + K, requestState.numDropoffs()); ++dropoffId) {
+                const auto &dropoff = requestState.dropoffs[dropoffId];
+                asgn.dropoff = &dropoff;
 
-                const auto &numStops = routeState.numStopsOf(vehId);
-                const auto &occupancies = routeState.occupanciesFor(vehId);
-                const auto relevantPickupsInRevOrder = relevantOrdinaryPickups.relevantSpotsForInReverseOrder(vehId);
-                asgn.vehicle = &fleet[vehId];
-                asgn.dropoffStopIdx = numStops - 1;
-
-
-                asgn.distToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
-                if (asgn.distToDropoff >= INFTY)
-                    continue; // no need to check pickup before next stop
-
-                assert(asgn.distToDropoff >= 0 && asgn.distToDropoff < INFTY);
-                int curPickupIndex = numStops - 1;
-                auto pickupIt = relevantPickupsInRevOrder.begin();
-                for (; pickupIt < relevantPickupsInRevOrder.end(); ++pickupIt) {
-                    const auto &entry = *pickupIt;
-
-                    if (entry.stopIndex < curPickupIndex) {
-                        // New smaller pickup index reached: Check if seating capacity and cost lower bound admit
-                        // any valid assignments at this or earlier indices.
-                        if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders >
-                            asgn.vehicle->capacity)
-                            break;
-
-                        assert(entry.stopIndex < numStops - 1);
-                        const auto minTripTimeToLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1] -
-                                                            routeState.schedArrTimesFor(vehId)[entry.stopIndex + 1];
-
-                        const auto minCostFromHere = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
-                                asgn.dropoff->walkingDist, asgn.distToDropoff, minTripTimeToLastStop, requestState);
-                        if (minCostFromHere > localBestCost)
-                            break;
-
-                        curPickupIndex = entry.stopIndex;
-                    }
-
-                    asgn.pickup = &requestState.pickups[entry.pdId];
-                    if (asgn.pickup->loc == asgn.dropoff->loc)
+                for (const auto &vehId: vehiclesSeenForDropoffs) {
+                    if (!relevantOrdinaryPickups.hasRelevantSpotsFor(vehId)) {
+                        // vehicle may still have relevant assignment with pickup before next stop
+                        checkPBNSForVehicle.set(vehId, true);
                         continue;
-                    ++numAssignmentsTriedLocal;
-                    asgn.pickupStopIdx = entry.stopIndex;
-                    asgn.distToPickup = entry.distToPDLoc;
-                    asgn.distFromPickup = entry.distFromPDLocToNextStop;
-                    const auto curCost = calculator.calc(asgn, requestState);
-                    if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
-                                    breakCostTie(asgn, localBestAsgn)))) {
-                        localBestCost = curCost;
-                        localBestAsgn = asgn;
                     }
-                }
 
-                if (pickupIt == relevantPickupsInRevOrder.end()) {
-                    // If the reverse scan of the vehicle route did not break early at a later stop, then we also
-                    // need to consider the pickup before next stop case.
-                    checkPBNSForVehicle.set(vehId, true);
+                    const auto &numStops = routeState.numStopsOf(vehId);
+                    const auto &occupancies = routeState.occupanciesFor(vehId);
+                    const auto relevantPickupsInRevOrder = relevantOrdinaryPickups.relevantSpotsForInReverseOrder(
+                            vehId);
+                    asgn.vehicle = &fleet[vehId];
+                    asgn.dropoffStopIdx = numStops - 1;
+
+
+                    asgn.distToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
+                    if (asgn.distToDropoff >= INFTY)
+                        continue; // no need to check pickup before next stop
+
+                    assert(asgn.distToDropoff >= 0 && asgn.distToDropoff < INFTY);
+                    int curPickupIndex = numStops - 1;
+                    auto pickupIt = relevantPickupsInRevOrder.begin();
+                    for (; pickupIt < relevantPickupsInRevOrder.end(); ++pickupIt) {
+                        const auto &entry = *pickupIt;
+
+                        if (entry.stopIndex < curPickupIndex) {
+                            // New smaller pickup index reached: Check if seating capacity and cost lower bound admit
+                            // any valid assignments at this or earlier indices.
+                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders >
+                                asgn.vehicle->capacity)
+                                break;
+
+                            assert(entry.stopIndex < numStops - 1);
+                            const auto minTripTimeToLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1] -
+                                                               routeState.schedArrTimesFor(vehId)[entry.stopIndex + 1];
+
+                            const auto minCostFromHere = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
+                                    asgn.dropoff->walkingDist, asgn.distToDropoff, minTripTimeToLastStop, requestState);
+                            if (minCostFromHere > localBestCost)
+                                break;
+
+                            curPickupIndex = entry.stopIndex;
+                        }
+
+                        asgn.pickup = &requestState.pickups[entry.pdId];
+                        if (asgn.pickup->loc == asgn.dropoff->loc)
+                            continue;
+                        ++numAssignmentsTriedLocal;
+                        asgn.pickupStopIdx = entry.stopIndex;
+                        asgn.distToPickup = entry.distToPDLoc;
+                        asgn.distFromPickup = entry.distFromPDLocToNextStop;
+                        const auto curCost = calculator.calc(asgn, requestState);
+                        if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
+                                                                            breakCostTie(asgn, localBestAsgn)))) {
+                            localBestCost = curCost;
+                            localBestAsgn = asgn;
+                        }
+                    }
+
+                    if (pickupIt == relevantPickupsInRevOrder.end()) {
+                        // If the reverse scan of the vehicle route did not break early at a later stop, then we also
+                        // need to consider the pickup before next stop case.
+                        checkPBNSForVehicle.set(vehId, true);
+                    }
                 }
             }
 
@@ -357,72 +370,80 @@ namespace karri::DropoffAfterLastStopStrategies {
             numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
         }
 
-        void enumerateDropoffWithPBNS(const PDLoc &dropoff) {
-            int numAssignmentsTriedLocal = 0;
-            Assignment asgn;
-            asgn.pickupStopIdx = 0;
-            asgn.dropoff = &dropoff;
+        void enumerateForDropoffBatchWithPBNS(const int firstDropoffId) {
+
             int localBestCost = bestCostBefore;
             Assignment localBestAsgn = bestAsgnBefore;
 
-            const auto& relVehicles = relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs();
-             for (const auto &permIdx: relevantVehiclesPBNSOrder.local()) {
+            int numAssignmentsTriedLocal = 0;
+            Assignment asgn;
+            asgn.pickupStopIdx = 0;
 
-                const auto vehId = *(relVehicles.begin() + permIdx);
+            for (int dropoffId = 0; dropoffId < std::min(firstDropoffId + K, requestState.numDropoffs()); ++dropoffId) {
+                const auto &dropoff = requestState.dropoffs[dropoffId];
+                asgn.dropoff = &dropoff;
 
-                if (!vehiclesSeenForDropoffs.contains(vehId))
-                    continue;
+                const auto &relVehicles = relevantPickupsBeforeNextStop.getVehiclesWithRelevantPDLocs();
+                for (const auto &permIdx: relevantVehiclesPBNSOrder.local()) {
 
-                if (!checkPBNSForVehicle[vehId])
-                    continue;
+                    const auto vehId = *(relVehicles.begin() + permIdx);
 
-                if (routeState.numStopsOf(vehId) == 0 ||
-                    routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders >
-                    fleet[vehId].capacity)
-                    continue;
-
-                const auto numStops = routeState.numStopsOf(vehId);
-                asgn.vehicle = &fleet[vehId];
-                asgn.dropoffStopIdx = numStops - 1;
-
-
-                for (auto &entry: relevantPickupsBeforeNextStop.relevantSpotsFor(vehId)) {
-
-                    asgn.pickup = &requestState.pickups[entry.pdId];
-                    asgn.distFromPickup = entry.distFromPDLocToNextStop;
-                    if (asgn.pickup->loc == asgn.dropoff->loc)
+                    if (!vehiclesSeenForDropoffs.contains(vehId))
                         continue;
 
-                    asgn.distToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
-                    if (asgn.distToDropoff >= INFTY)
+                    if (!checkPBNSForVehicle[vehId])
                         continue;
 
-                    if (curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id)) {
-                        asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
-                        const auto curCost = calculator.calc(asgn, requestState);
-                        if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
-                                        breakCostTie(asgn, localBestAsgn)))) {
-                            localBestCost = curCost;
-                            localBestAsgn = asgn;
+                    if (routeState.numStopsOf(vehId) == 0 ||
+                        routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders >
+                        fleet[vehId].capacity)
+                        continue;
+
+                    const auto numStops = routeState.numStopsOf(vehId);
+                    asgn.vehicle = &fleet[vehId];
+                    asgn.dropoffStopIdx = numStops - 1;
+
+
+                    for (auto &entry: relevantPickupsBeforeNextStop.relevantSpotsFor(vehId)) {
+
+                        asgn.pickup = &requestState.pickups[entry.pdId];
+                        asgn.distFromPickup = entry.distFromPDLocToNextStop;
+                        if (asgn.pickup->loc == asgn.dropoff->loc)
+                            continue;
+
+                        asgn.distToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
+                        if (asgn.distToDropoff >= INFTY)
+                            continue;
+
+                        if (curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id)) {
+                            asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
+                            const auto curCost = calculator.calc(asgn, requestState);
+                            if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
+                                                                                breakCostTie(asgn, localBestAsgn)))) {
+                                localBestCost = curCost;
+                                localBestAsgn = asgn;
+                            }
+                            ++numAssignmentsTriedLocal;
+                            continue;
                         }
-                        ++numAssignmentsTriedLocal;
-                    } else {
+
                         asgn.distToPickup = entry.distToPDLoc;
                         const auto lowerBoundCost = calculator.calc(asgn, requestState);
                         if (lowerBoundCost < localBestCost || (lowerBoundCost == localBestCost &&
-                                breakCostTie(asgn, localBestAsgn))) {
+                                                               breakCostTie(asgn, localBestAsgn))) {
                             // In this case, we need the exact distance to the pickup via the current location of the
-                            // vehicle. 
-                            curVehLocToPickupSearches.computeExactDistancesVia(fleet[asgn.vehicle->vehicleId], asgn.pickup->id, asgn.distToPickup);
+                            // vehicle.
+                            curVehLocToPickupSearches.computeExactDistancesVia(fleet[asgn.vehicle->vehicleId],
+                                                                               asgn.pickup->id, asgn.distToPickup);
 
                             assert(asgn.pickup->id >= 0 && asgn.pickup->id < requestState.numPickups());
                             assert(asgn.dropoff->id >= 0 && asgn.dropoff->id < requestState.numDropoffs());
 
                             asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId,
-                                                                                    asgn.pickup->id);
+                                                                                      asgn.pickup->id);
                             if (asgn.distToPickup >= INFTY)
                                 continue;
-                            
+
                             if (asgn.pickup->loc == asgn.dropoff->loc)
                                 continue;
 
@@ -435,7 +456,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                             const auto curCost = calculator.calc(asgn, requestState);
                             if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
-                                        breakCostTie(asgn, localBestAsgn)))) {
+                                                                                breakCostTie(asgn,
+                                                                                             localBestAsgn)))) {
                                 localBestCost = curCost;
                                 localBestAsgn = asgn;
                             }
@@ -443,7 +465,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     }
                 }
             }
-            
+
             if (localBestAsgn.vehicle && localBestAsgn.pickup && localBestAsgn.dropoff)
                 requestState.tryAssignment(localBestAsgn);
 
@@ -475,11 +497,11 @@ namespace karri::DropoffAfterLastStopStrategies {
         tbb::enumerable_thread_specific<int64_t> localTryAssignmentsTime;
 
         // Counter for generating differing seeds for random permutations between threads
-         std::atomic_int seedCounter;
+        std::atomic_int seedCounter;
         // Each thread generates one random permutation of thread ids. The permutation defines the order in which
         // a threads local results are written to the global result. This helps to alleviate contention on the
         // spin locks (separate per stop id) used to synchronize global writes.
-         tbb::enumerable_thread_specific<Permutation> relevantVehiclesPBNSOrder;
+        tbb::enumerable_thread_specific<Permutation> relevantVehiclesPBNSOrder;
 
         Assignment bestAsgnBefore;
         int bestCostBefore;
