@@ -154,6 +154,7 @@ namespace karri {
         }
 
         void updateDistancesInGlobalVectors(const int firstPDLocId) {
+            const int batchIdx = firstPDLocId / K;
 
             const auto &localIndices = threadLocalIndexInDistanceVector.local();
             const auto &localDistances = threadLocalDistances.local();
@@ -166,9 +167,9 @@ namespace karri {
 
                     const auto &dist = localDistances[idx];
                     const LabelMask improved =
-                            dist < distances[startIdxForVeh[vehId] + firstPDLocId / K];
+                            dist < distances[startIdxForVeh[vehId] + batchIdx];
 
-                    distances[startIdxForVeh[vehId] + firstPDLocId / K].setIf(dist, improved);
+                    distances[startIdxForVeh[vehId] + batchIdx].setIf(dist, improved);
 
                 }
             }

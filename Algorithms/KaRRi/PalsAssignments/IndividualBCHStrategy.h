@@ -256,10 +256,8 @@ namespace karri::PickupAfterLastStopStrategies {
             localSearchTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
             timer.restart();
-            enumerateForPickupBatch(firstPickupId);
+            enumeratePickupBatch(firstPickupId);
             localTryAssignmentsTime.local() += timer.elapsed<std::chrono::nanoseconds>();
-
-
         }
 
         inline int getDistanceToPickup(const int vehId, const unsigned int pickupId) {
@@ -295,18 +293,31 @@ namespace karri::PickupAfterLastStopStrategies {
 
         }
 
-        void enumerateForPickupBatch(const int firstPickupId) {
-            using namespace time_utils;
+        void enumeratePickupBatch(const int firstPickupId) {
             int localBestCost = bestCostBefore;
             Assignment localBestAsgn = bestAsgnBefore;
             Assignment asgn;
             int numAssignmentsTriedLocal = 0;
 
-            for (int pickupId = firstPickupId;
-                 pickupId < std::min(firstPickupId + K, requestState.numPickups()); ++pickupId) {
-                const auto& pickup = requestState.pickups[pickupId];
-                asgn.pickup = &pickup;
+            for (int i = 0; i < K; ++i) {
+                const auto &pickup =
+                        firstPickupId + i < requestState.numPickups() ? requestState.pickups[firstPickupId + i]
+                                                                      : requestState.pickups[firstPickupId];
 
+                enumeratePickup(pickup, localBestCost, localBestAsgn, numAssignmentsTriedLocal);
+            }
+            
+            // Try assignment once for best assignment calculated by current thread
+            if (localBestAsgn.vehicle && localBestAsgn.pickup && localBestAsgn.dropoff)
+                requestState.tryAssignment(localBestAsgn);
+
+            numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
+        }
+
+        void enumeratePickup(const PDLoc &pickup, int &localBestCost, Assignment &localBestAsgn, int &numAssignmentsTriedLocal) {
+            using namespace time_utils;
+            Assignment asgn;
+            asgn.pickup = &pickup;
 
                 for (const auto &vehId: vehiclesSeenForPickups) {
 
@@ -347,21 +358,14 @@ namespace karri::PickupAfterLastStopStrategies {
                         ++numAssignmentsTriedLocal;
                         asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
 
-                        const auto curCost = calculator.calc(asgn, requestState);
-                        if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
-                                                                            breakCostTie(asgn, localBestAsgn)))) {
-                            localBestCost = curCost;
-                            localBestAsgn = asgn;
-                        }
+                    const auto curCost = calculator.calc(asgn, requestState);
+                    if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
+                                    breakCostTie(asgn, localBestAsgn)))) {
+                        localBestCost = curCost;
+                        localBestAsgn = asgn;
                     }
                 }
             }
-
-            // Try assignment once for best assignment calculated by current thread
-            if (localBestAsgn.vehicle && localBestAsgn.pickup && localBestAsgn.dropoff)
-                requestState.tryAssignment(localBestAsgn);
-
-            numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
         }
 
         const InputGraphT &inputGraph;
