@@ -120,7 +120,7 @@ namespace karri::PickupAfterLastStopStrategies {
             minCostSearch.run(promisingDropoffIds, requestState.getBestCost());
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
-            stats.searchTime += searchTime;
+            stats.collective_searchTime += searchTime;
 
             stats.collective_numInitialLabelsGenerated += minCostSearch.getNumInitialLabelsGenerated();
             stats.collective_numInitialLabelsNotPruned += minCostSearch.getNumInitialLabelsNotPruned();
@@ -148,13 +148,13 @@ namespace karri::PickupAfterLastStopStrategies {
                 requestState.tryAssignmentWithKnownCost(asgn, minCost);
 
                 const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
-                stats.tryAssignmentsTime += tryAssignmentsTime;
+                stats.collective_tryAssignmentTime += tryAssignmentsTime;
                 stats.numAssignmentsTried += 1;
                 return;
             }
 
             const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
-            stats.tryAssignmentsTime += tryAssignmentsTime;
+            stats.collective_tryAssignmentTime += tryAssignmentsTime;
             stats.collective_usedFallback = true;
 
             // Otherwise fall back to computing distances explicitly:

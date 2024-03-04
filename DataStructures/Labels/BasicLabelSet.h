@@ -112,16 +112,19 @@ public:
             return isMarked[i];
         }
 
-        // Returns true if this mask marks at least one component.
-        operator bool() const {
-            bool res = isMarked[0];
-            for (int i = 1; i < K; ++i)
-                res |= isMarked[i];
-            return res;
-        }
+//        // Returns true if this mask marks at least one component.
+//        operator bool() const {
+//            bool res = isMarked[0];
+//            for (int i = 1; i < K; ++i)
+//                res |= isMarked[i];
+//            return res;
+//        }
 
         friend bool anySet(const LabelMask &mask) {
-            return (bool) mask;
+            bool res = mask.isMarked[0];
+            for (int i = 1; i < K; ++i)
+                res |= mask.isMarked[i];
+            return res;
         }
 
         friend bool allSet(const LabelMask &mask) {

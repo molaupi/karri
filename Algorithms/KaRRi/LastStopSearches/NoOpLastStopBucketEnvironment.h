@@ -25,38 +25,16 @@
 
 #pragma once
 
-#include "Tools/Constants.h"
+#include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 
 namespace karri {
 
-    // Models a request with an ID, an origin location, a destination location and the earliest possible departure time.
-    struct Request {
-        int requestId = INVALID_ID;
-        int origin = INVALID_EDGE;
-        int destination = INVALID_EDGE;
-        int requestTime = INFTY;
-        int numRiders = INFTY;
+    struct NoOpLastStopBucketsEnvironment {
+
+        inline void generateBucketEntries(const Vehicle &, const int) {/* no op */}
+
+        inline void updateBucketEntries(const Vehicle &veh, const int stopIndex) {/* no op*/}
+
+        inline void removeBucketEntries(const Vehicle &, const int) {/* no op */}
     };
-
-    // Models a location used for a pickup or dropoff with an ID (should be counted separately for pickups and dropoffs), a
-    // location, a walking distance, and optional driving distances to and from the associated origin or destination
-    // location.
-    struct PDLoc {
-
-        int id = INVALID_ID; // Should be counted separately for pickups and dropoffs
-        int loc = INVALID_EDGE; // Location in road network
-        int psgLoc = INVALID_EDGE; // Location in passenger road network
-        int walkingDist = INFTY; // Walking time from origin to this pickup or from this dropoff to destination.
-
-        int vehDistToCenter = INFTY; // Vehicle driving time from this pickup/dropoff to the origin/destination.
-        int vehDistFromCenter = INFTY; // Vehicle driving time from origin/destination to this pickup/dropoff.
-    };
-
-
-    enum PDLocType : std::int8_t {
-        PICKUP,
-        DROPOFF,
-        INVALID_PD_LOC_TYPE
-    };
-
 }

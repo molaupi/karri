@@ -101,12 +101,15 @@ namespace karri::DropoffAfterLastStopStrategies {
     private:
 
         void runCollectiveSearch() {
+            auto &stats = requestState.stats().dalsAssignmentsStats;
             Timer timer;
-
+            curVehLocToPickupSearches.initialize(requestState.originalRequest.requestTime);
+            stats.collective_initializationTime += timer.elapsed<std::chrono::nanoseconds>();
+            timer.restart();
+            
             minCostSearch.run();
 
-            auto& stats = requestState.stats().dalsAssignmentsStats;
-            stats.searchTime +=  minCostSearch.getRunTime();
+            stats.collective_searchTime += minCostSearch.getRunTime();
             stats.numEdgeRelaxationsInSearchGraph += minCostSearch.getNumEdgeRelaxations();
             stats.numVerticesOrLabelsSettled += minCostSearch.getNumLabelsRelaxed();
             stats.numEntriesOrLastStopsScanned += minCostSearch.getNumEntriesScanned();
@@ -151,7 +154,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             auto &stats = requestState.stats().dalsAssignmentsStats;
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>() - pbnsTime;
-            stats.tryAssignmentsTime = time;
+            stats.collective_tryAssignmentTime = time;
             stats.numAssignmentsTried += numAssignmentsTried;
             stats.numCandidateDropoffsAcrossAllVehicles += numParetoBestLabels;
             stats.collective_ranClosestDropoffSearch = ranClosestDropoffSearch;
@@ -187,7 +190,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     // side of this assignment, then skip this assignment. The pareto best labels for the same vehicle are
                     // additionally sorted by increasing dropoff side cost, so if one is worse than the best known assignment
                     // all other labels for this vehicle can also be skipped.
-                    if (calculator.calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(
+                    if (calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
                             distFromLastStopToDropoff, *asgn.dropoff, requestState) > requestState.getBestCost())
                         break;  // no need to check pickup before next stop
 
@@ -210,14 +213,15 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (entry.stopIndex < curPickupIndex) {
                             // New smaller pickup index reached: Check if seating capacity and cost lower bound admit
                             // any valid assignments at this or earlier indices.
-                            if (occupancies[entry.stopIndex] >= asgn.vehicle->capacity)
+                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders >
+                                asgn.vehicle->capacity)
                                 break;
 
                             assert(entry.stopIndex < numStops - 1);
                             const auto minTripTimeToLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1] -
                                                                routeState.schedArrTimesFor(vehId)[entry.stopIndex + 1];
 
-                            const auto minCostFromHere = calculator.calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(
+                            const auto minCostFromHere = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
                                     asgn.dropoff->walkingDist, distFromLastStopToDropoff, minTripTimeToLastStop,
                                     requestState);
                             if (minCostFromHere > requestState.getBestCost())
@@ -237,7 +241,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                         const int initialPickupDetour = calcInitialPickupDetour(asgn, requestState, routeState,
                                                                                 inputConfig);
-                        const int residualDetourAtEnd = calcResidualPickupDetour(vehId, asgn.pickupStopIdx, numStops - 1,
+                        const int residualDetourAtEnd = calcResidualPickupDetour(vehId, asgn.pickupStopIdx,
+                                                                                 numStops - 1,
                                                                                  initialPickupDetour, routeState);
                         if (!isServiceTimeConstraintViolated(fleet[vehId], requestState, residualDetourAtEnd,
                                                              routeState)) {
@@ -298,7 +303,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                     continue;
 
                 if (!relevantPickupsBeforeNextStop.hasRelevantSpotsFor(vehId)
-                    || routeState.occupanciesFor(vehId)[0] >= fleet[vehId].capacity) {
+                    || routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders >
+                       fleet[vehId].capacity) {
                     continue;
                 }
 
@@ -318,7 +324,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     // Labels are ordered by their dropoff side cost so if dropoff side cost is worse than best known
                     // cost for this vehicle, then cost of any PBNS assignment will be worse for this and all remaining
                     // labels.
-                    if (calculator.calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(
+                    if (calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
                             distFromLastStopToDropoff, *asgn.dropoff, requestState) > requestState.getBestCost())
                         break;  // no need to check pickup before next stop
 
@@ -330,7 +336,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     assert(numStops > 1);
                     const auto minTripTimeToLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1] -
                                                        routeState.schedArrTimesFor(vehId)[1];
-                    const auto minCostFromHere = calculator.calcCostLowerBoundForDropoffAfterLastStopIndependentOfVehicle(
+                    const auto minCostFromHere = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
                             asgn.dropoff->walkingDist, distFromLastStopToDropoff, minTripTimeToLastStop, requestState);
 
                     if (minCostFromHere > requestState.getBestCost()) {

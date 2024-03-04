@@ -64,6 +64,10 @@ public:
         return Bucket(entries.begin() + pos.start, entries.begin() + pos.end);
     }
 
+    Bucket getUnsortedBucketOf(const int vertex) const {
+        return getBucketOf(vertex);
+    }
+
     // Inserts the given entry into the bucket of the specified vertex.
     bool insert(const int vertex, const BucketEntryT &entry) {
         insertion(vertex, entry, bucketPositions, entries);

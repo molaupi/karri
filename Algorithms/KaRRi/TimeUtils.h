@@ -56,6 +56,26 @@ namespace karri::time_utils {
                pickup.loc == routeState.stopLocationsFor(vehId)[stopIndex];
     }
 
+    template<typename LabelSet>
+    static INLINE typename LabelSet::LabelMask
+    isPickupAtExistingStop(const typename LabelSet::DistanceLabel &pickupLocs, const int vehId, const int now,
+                           const int stopIndex, const RouteState &routeState) {
+        if (!(stopIndex > 0 || isMakingStop(vehId, now, routeState))) return false;
+
+        return pickupLocs == typename LabelSet::DistanceLabel(routeState.stopLocationsFor(vehId)[stopIndex]);
+    }
+
+    template<typename LabelSet>
+    static INLINE typename LabelSet::LabelMask
+    isPickupAtExistingStop(const std::array<PDLoc, LabelSet::K> &pickups, const int vehId, const int now,
+                           const int stopIndex, const RouteState &routeState) {
+        typename LabelSet::DistanceLabel pickupLocations;
+        for (int i = 0; i < LabelSet::K; ++i) {
+            pickupLocations[i] = pickups[i].location;
+        }
+        return isPickupAtExistingStop(pickupLocations, vehId, now, stopIndex, routeState);
+    }
+
     template<typename RequestContext>
     static INLINE int getActualDepTimeAtPickup(const int vehId, const int stopIndexBeforePickup, const int distToPickup,
                                                const PDLoc &pickup, const RequestContext &context,
@@ -69,7 +89,7 @@ namespace karri::time_utils {
         // We assume a pickup at an existing stop takes no additional counting of stopTime, irrespective of when the
         // passenger arrives there. The vehicle can depart as soon as both the vehicle and the passenger are at the
         // location. This is how LOUD originally did it, so we adhere to it.
-        return std::max(minVehicleDepTimeAtPickup, context.getPassengerArrAtPickup(pickup.id) /*+ context.stopTime*/);
+        return std::max(minVehicleDepTimeAtPickup, context.getPassengerArrAtPickup(pickup.id));
     }
 
     template<typename RequestContext>
@@ -81,6 +101,29 @@ namespace karri::time_utils {
     }
 
 
+    template<typename LabelSet, typename RequestContext>
+    static INLINE typename LabelSet::DistanceLabel
+    getActualDepTimeAtPickup(const int vehId, const int stopIndexBeforePickup,
+                             const typename LabelSet::DistanceLabel &distToPickup,
+                             const typename LabelSet::DistanceLabel &pickupLocs,
+                             const typename LabelSet::DistanceLabel &passengerArrTimesAtPickups,
+                             const RequestContext &context,
+                             const RouteState &routeState,
+                             const InputConfig &inputConfig) {
+        using LabelMask = typename LabelSet::LabelMask;
+
+        const LabelMask atStop = isPickupAtExistingStop<LabelSet>(pickupLocs, vehId, context.now(),
+                                                                  stopIndexBeforePickup, routeState);
+
+        // We assume a pickup at an existing stop takes no additional counting of stopTime, irrespective of when the
+        // passenger arrives there. The vehicle can depart as soon as both the vehicle and the passenger are at the
+        // location. This is how LOUD originally did it, so we adhere to it.
+        auto minDepTimeAtPickup = getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, context, routeState) +
+                                  select(atStop, 0, distToPickup + inputConfig.stopTime);
+        minDepTimeAtPickup.max(passengerArrTimesAtPickups);
+        return minDepTimeAtPickup;
+    }
+
     static INLINE int
     calcLengthOfLegStartingAt(const int stopIndex, const int vehicleId, const RouteState &routeState) {
         if (stopIndex + 1 == routeState.numStopsOf(vehicleId))
@@ -88,18 +131,6 @@ namespace karri::time_utils {
         const auto &minDepTimes = routeState.schedDepTimesFor(vehicleId);
         const auto &minArrTimes = routeState.schedArrTimesFor(vehicleId);
         return minArrTimes[stopIndex + 1] - minDepTimes[stopIndex];
-    }
-
-    template<typename LabelSet>
-    static INLINE typename LabelSet::LabelMask
-    isPickupAtExistingStop(const std::array<PDLoc, LabelSet::K> &pickups, const int vehId,
-                           const int stopIndex, const bool isMakingStop, const RouteState &routeState) {
-        if (!(stopIndex > 0 || isMakingStop)) return false;
-        typename LabelSet::DistanceLabel pickupLocations;
-        for (int i = 0; i < LabelSet::K; ++i) {
-            pickupLocations[i] = pickups[i].location;
-        }
-        return isPickupAtExistingStop(pickupLocations, vehId, stopIndex, isMakingStop, routeState);
     }
 
     static INLINE bool isDropoffAtExistingStop(const Assignment &asgn, const RouteState &routeState) {
@@ -369,9 +400,9 @@ namespace karri::time_utils {
 
         // If somewhere between pickup and dropoff the vehicle is already full, we cannot insert another passenger.
         for (int i = pickupIndex; i < dropoffIndex; ++i)
-            if (occupancies[i] >= veh.capacity)
+            if (occupancies[i] + context.originalRequest.numRiders > veh.capacity)
                 return true;
-        if (!dropoffAtExistingStop && occupancies[dropoffIndex] >= veh.capacity)
+        if (!dropoffAtExistingStop && occupancies[dropoffIndex] + context.originalRequest.numRiders > veh.capacity)
             return true;
 
         // If the dropoff is inserted at/after the last stop, the service time constraint is kept and the pickup does

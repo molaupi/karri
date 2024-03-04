@@ -6,14 +6,9 @@
 /Inputs/
 /Publications/KaRRi/Inputs/
 
-# Generated output files
-/Outputs*/
-/Publications/KaRRi/Outputs*/
-
 # Various config files.
 /.settings/
 /.cproject
 /.project
 /.pydevproject
 /.idea/
-/.vscode/

@@ -38,10 +38,20 @@ using namespace tbb;
 class ThreadSafeSubset {
  public:
   // Constructs an empty subset of a finite set of the specified size.
-  explicit ThreadSafeSubset(const int size) 
+  ThreadSafeSubset(const int size) 
             : flags(size)
         {
             elements.reserve(size);
+        }
+
+  // Copy constructor of a thread safe subset
+  ThreadSafeSubset(ThreadSafeSubset& t) 
+            : flags(t.size())
+        {
+            elements.reserve(t.size());
+            for (auto it = t.begin(); it != t.end(); ++it) {
+              t.insert(*it);
+            }
         }
 
   // Returns an iterator referring to the first element in the subset.

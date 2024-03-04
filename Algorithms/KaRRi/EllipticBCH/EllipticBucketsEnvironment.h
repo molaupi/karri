@@ -56,7 +56,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int, const DistLabelT &distToV, const DistLabelContT &) const noexcept {
-                return currentLeeway < distToV;
+                return allSet(distToV > currentLeeway);
             }
 
             const int &currentLeeway;
@@ -118,6 +118,10 @@ namespace karri {
             const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex + 1],
                                         routeState.schedDepTimesFor(veh.vehicleId)[stopIndex + 1]) -
                                routeState.schedDepTimesFor(veh.vehicleId)[stopIndex] - inputConfig.stopTime;
+
+            if (leeway <= 0)
+                return;
+
             currentLeeway = leeway;
 
             const int newStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
@@ -140,6 +144,9 @@ namespace karri {
             const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex],
                                         routeState.schedDepTimesFor(veh.vehicleId)[stopIndex]) -
                                routeState.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] - inputConfig.stopTime;
+            if (leeway <= 0)
+                return;
+
             currentLeeway = leeway;
 
             const int newStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];

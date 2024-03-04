@@ -220,6 +220,7 @@ namespace karri {
             const auto &pickup = *asgn.pickup;
             const auto &dropoff = *asgn.dropoff;
             const int now = requestState.originalRequest.requestTime;
+            const int numRiders = requestState.originalRequest.numRiders;
             const auto &start = pos[vehId].start;
             const auto &end = pos[vehId].end;
             auto pickupIndex = asgn.pickupStopIdx;
@@ -312,7 +313,7 @@ namespace karri {
 
             // Update occupancies and prefix sums
             for (int idx = start + pickupIndex; idx < start + dropoffIndex; ++idx) {
-                ++occupancies[idx];
+                occupancies[idx] += numRiders;
                 assert(occupancies[idx] <= asgn.vehicle->capacity);
             }
 

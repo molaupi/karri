@@ -44,6 +44,11 @@ if (TBB_FOUND)
     target_link_libraries(karri TBB::tbb)
 endif()
 
+if (TBB_FOUND)
+    message("TBB found")
+    target_link_libraries(karri TBB::tbb)
+endif()
+
 # KaRRi compile time parameters
 
 ## Output vehicle paths?

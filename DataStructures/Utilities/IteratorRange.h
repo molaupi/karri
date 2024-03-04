@@ -27,6 +27,7 @@
 
 #include <iterator>
 #include <cassert>
+#include "tbb/concurrent_vector.h"
 
 // Range of iterators that satisfies iterability and allows random access.
 // User needs to make sure that begin and end are well-defined.
@@ -66,4 +67,9 @@ private:
 template<typename T>
 class ConstantVectorRange : public IteratorRange<typename std::vector<T>::const_iterator> {
     using IteratorRange<typename std::vector<T>::const_iterator>::IteratorRange;
+};
+
+template<typename T>
+class ConstantConcurrentVectorRange : public IteratorRange<typename tbb::concurrent_vector<T>::const_iterator> {
+    using IteratorRange<typename tbb::concurrent_vector<T>::const_iterator>::IteratorRange;
 };
