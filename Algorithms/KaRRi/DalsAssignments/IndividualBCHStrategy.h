@@ -27,7 +27,6 @@
 
 #include "Algorithms/KaRRi/LastStopSearches/LastStopBCHQuery.h"
 #include "Algorithms/KaRRi/LastStopSearches/TentativeLastStopDistances.h"
-#include "Algorithms/KaRRi/PbnsAssignments/CurVehLocationToPickupSearches.h"
 #include "DataStructures/Utilities/Permutation.h"
 
 #include "Parallel/thread_safe_fast_reset_flag_array.h"
@@ -143,7 +142,6 @@ namespace karri::DropoffAfterLastStopStrategies {
                               const CostCalculator &calculator,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const RouteState &routeState,
-                              TentativeLastStopDistances<LabelSet>& lastStopDistances,
                               RequestState &requestState,
                               const RelevantPDLocs &relevantOrdinaryPickups,
                               const RelevantPDLocs &relevantPickupsBeforeNextStop)
@@ -158,7 +156,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                   localPruners(DropoffAfterLastStopPruner(*this, calculator)),
                   search(lastStopBucketsEnv, lastStopDistances, chEnv, routeState,
                          localPruners),
-                  lastStopDistances(lastStopDistances),
+                  lastStopDistances(fleet.size()),
                   localSearchTime(0),
                   localTryAssignmentsTime(0),
                   relevantVehiclesPBNSOrder([&] {
@@ -203,6 +201,15 @@ namespace karri::DropoffAfterLastStopStrategies {
             requestState.stats().dalsAssignmentsStats.numCandidateVehicles += lastStopDistances.getVehiclesSeen().size();
             requestState.stats().dalsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(
                     std::memory_order_relaxed);
+        }
+
+
+        // Interface for DALS+PBNS enumeration in PBNSAssignmentFinder
+        using DalsDistancesForPbnsEnumeration = TentativeLastStopDistances<LabelSet>;
+
+        // Retrieve results for DALS+PBNS enumeration in PBNSAssignmentFinder
+        const DalsDistancesForPbnsEnumeration& getDalsDistancesForPbnsEnumeration() const {
+            return lastStopDistances;
         }
 
     private:
@@ -373,7 +380,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         tbb::enumerable_thread_specific<DropoffAfterLastStopPruner> localPruners;
         DropoffBCHQuery search;
-        TentativeLastStopDistances<LabelSet>& lastStopDistances;
+        TentativeLastStopDistances<LabelSet> lastStopDistances;
 
         tbb::enumerable_thread_specific<int64_t> localSearchTime;
         tbb::enumerable_thread_specific<int64_t> localTryAssignmentsTime;

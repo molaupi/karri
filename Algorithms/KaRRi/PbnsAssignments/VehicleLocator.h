@@ -45,7 +45,7 @@ namespace karri {
         VehicleLocator(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
-                  chQuery([&]() { return chEnv.template getFullCHQuery<>(); }),
+                  chQuery(chEnv.template getFullCHQuery<>()),
                   unpacker(ch),
                   routeState(routeState),
                   path() {}
@@ -92,17 +92,15 @@ namespace karri {
             // the other shortest path leading to the first vehicle location potentially making a much larger detour
             // to the pickup.
             // (This sounds like a pathologically rare case, but it actually happens on the Berlin-1pct input.)
-            FullQuery &localCHQuery = chQuery.local();
-            localCHQuery.run(ch.rank(inputGraph.edgeHead(prevOrCurLoc)), ch.rank(inputGraph.edgeTail(nextLoc)));
-            assert(schedDepTimes[0] + localCHQuery.getDistance() + inputGraph.travelTime(nextLoc) == schedArrTimes[1]);
+            chQuery.run(ch.rank(inputGraph.edgeHead(prevOrCurLoc)), ch.rank(inputGraph.edgeTail(nextLoc)));
+            assert(schedDepTimes[0] + chQuery.getDistance() + inputGraph.travelTime(nextLoc) == schedArrTimes[1]);
 
-            std::vector<int> &localPath = path.local();
-            localPath.clear();
-            unpacker.local().unpackUpDownPath(localCHQuery.getUpEdgePath(), localCHQuery.getDownEdgePath(), localPath);
+            path.clear();
+            unpacker.unpackUpDownPath(chQuery.getUpEdgePath(), chQuery.getDownEdgePath(), path);
 
 
             int depTimeAtCurEdge = schedDepTimes[0];
-            for (const auto &curEdge: localPath) {
+            for (const auto &curEdge: path) {
                 depTimeAtCurEdge += inputGraph.travelTime(curEdge);
                 if (depTimeAtCurEdge >= now) {
                     return {curEdge, depTimeAtCurEdge};
@@ -118,11 +116,11 @@ namespace karri {
         using FullQuery = typename CHEnvT::template FullCHQuery<>;
         const InputGraphT &inputGraph;
         const CH &ch;
-        tbb::enumerable_thread_specific<FullQuery> chQuery;
-        tbb::enumerable_thread_specific<CHPathUnpacker> unpacker;
+        FullQuery chQuery;
+        CHPathUnpacker unpacker;
         const RouteState &routeState;
 
-        tbb::enumerable_thread_specific<std::vector<int>> path;
+        std::vector<int> path;
 
 
     };

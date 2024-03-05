@@ -95,13 +95,13 @@ namespace karri::DropoffAfterLastStopStrategies {
             runTime = timer.elapsed<std::chrono::nanoseconds>() + initializationTime;
         }
 
-        ConstantVectorRange<DropoffLabel> getParetoBestDropoffLabelsFor(const int vehId) {
+        ConstantVectorRange<DropoffLabel> getParetoBestDropoffLabelsFor(const int vehId) const {
             assert(vehId >= 0 && vehId < fleet.size());
             return vehicleLabelBuckets.getBucketOf(vehId);
         }
 
         // Returns the vehicles that have at least one pareto best label.
-        Subset &getVehiclesSeen() {
+        const Subset &getVehiclesSeen() const {
             return vehiclesSeen;
         }
 

@@ -307,7 +307,7 @@ namespace karri::stats {
         bool collective_usedFallback;
 
         int64_t getTotalTime() const {
-            return initializationTime + searchAndTryAssignmentsTime + pickupAtLastStop_tryAssignmentsTime + collective_searchTime + collective_tryAssignmentTime;
+            return initializationTime + searchAndTryAssignmentsTime + pickupAtLastStop_tryAssignmentsTime;
         }
 
         void clear() {
@@ -415,7 +415,7 @@ namespace karri::stats {
         int64_t collective_initializationTime;
 
         int64_t getTotalTime() const {
-            return initializationTime + searchAndTryAssignmentsTime + collective_searchTime + collective_tryAssignmentTime;
+            return initializationTime + searchAndTryAssignmentsTime;
         }
 
         void clear() {
