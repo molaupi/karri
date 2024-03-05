@@ -149,12 +149,6 @@ namespace karri {
                 calculateNecessaryExactDistancesForPickup(jobs[i].first, fleet[jobs[i].second]);
             });
 
-            for (const auto &cont: continuationJobs) {
-                unused(cont);
-                assert(cont.pickupId >= 0 && cont.pickupId < requestState.numPickups());
-            }
-//            assert(std::all_of(continuationJobs.begin(), continuationJobs.end(), [&](const auto& c) { return c.pickupId >= 0 && c.pickupId < requestState.numPickups();}));
-
             requestState.stats().pbnsAssignmentsStats.numCandidateVehicles += numCandidateVehicles;
         }
 
@@ -174,10 +168,6 @@ namespace karri {
             // vehicle's current location to the pickup => we get lower bound costs.
             asgn.distToPickup = entry.distToPDLoc;
             const int distFromPickup = entry.distFromPDLocToNextStop;
-
-            if (requestState.originalRequest.requestId == 696 && vehId == 142 && asgn.pickup->id == 0) {
-                std::cout << "";
-            }
 
             // For paired assignments before next stop, first try a lower bound with the smallest direct PD distance
             const auto lowerBoundCostPairedAssignment = calculator.calcCostLowerBoundForPairedAssignmentBeforeNextStop(
@@ -199,7 +189,8 @@ namespace karri {
                     continuationJobs.push_back({vehId, asgn.pickup->id, distFromPickup, 0, ORDINARY});
                     continuationJobs.push_back({vehId, asgn.pickup->id, distFromPickup, 0, DALS});
                     numAssignmentsTriedLocal += 2; // Count first ordinary and DALS continuations
-                    numAssignmentsTriedWithPickupBeforeNextStop.fetch_add(numAssignmentsTriedLocal, std::memory_order_relaxed);
+                    numAssignmentsTriedWithPickupBeforeNextStop.fetch_add(numAssignmentsTriedLocal,
+                                                                          std::memory_order_relaxed);
                     return; // Continue with next pickup, rest of assignments for this pickup later with exact distance
                 }
             }
@@ -219,7 +210,8 @@ namespace karri {
                 continuationJobs.push_back({vehId, asgn.pickup->id, distFromPickup, offsetInDropoffs, ORDINARY});
                 continuationJobs.push_back({vehId, asgn.pickup->id, distFromPickup, 0, DALS});
                 numAssignmentsTriedLocal += 1; // Count first DALS continuation
-                numAssignmentsTriedWithPickupBeforeNextStop.fetch_add(numAssignmentsTriedLocal, std::memory_order_relaxed);
+                numAssignmentsTriedWithPickupBeforeNextStop.fetch_add(numAssignmentsTriedLocal,
+                                                                      std::memory_order_relaxed);
                 return;
             }
 
@@ -234,7 +226,8 @@ namespace karri {
                 pickupsForExactDistancesSearches.insert(asgn.pickup->id);
                 assert(asgn.pickup->id >= 0 && asgn.pickup->id < requestState.numPickups());
                 continuationJobs.push_back({vehId, asgn.pickup->id, distFromPickup, scannedUntilDalsId, DALS});
-                numAssignmentsTriedWithPickupBeforeNextStop.fetch_add(numAssignmentsTriedLocal, std::memory_order_relaxed);
+                numAssignmentsTriedWithPickupBeforeNextStop.fetch_add(numAssignmentsTriedLocal,
+                                                                      std::memory_order_relaxed);
             }
 
         }
@@ -426,11 +419,6 @@ namespace karri {
                 // Continuation is for dropoffs after last stop
                 for (auto dropoffId = cont.offsetInDropoffs; dropoffId < requestState.numDropoffs(); ++dropoffId) {
                     asgn.dropoff = &requestState.dropoffs[dropoffId];
-
-                    if (requestState.originalRequest.requestId == 696 && veh.vehicleId == 142 && pickup.id == 0 &&
-                        dropoffId == 0) {
-                        std::cout << "";
-                    }
 
                     if (asgn.pickup->loc == asgn.dropoff->loc)
                         continue;
