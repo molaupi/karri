@@ -26,7 +26,6 @@
 #pragma once
 
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
-#include "Algorithms/KaRRi/PbnsAssignments/CurVehLocToPickupSearches.h"
 #include <tbb/parallel_for.h>
 
 namespace karri {
