@@ -81,6 +81,7 @@ namespace karri {
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, const DistLabelT &distToV, const DistLabelContT &) {
                 searches.vehicleBuckets.insert(v, BucketEntry(searches.curVehId, distToV[0]));
+                searches.vehicleBucketsSearchSpace.push_back(v);
                 return false;
             }
 
@@ -292,7 +293,9 @@ namespace karri {
             assert(std::all_of(currentVehicleLocations.begin(), currentVehicleLocations.end(),
                                [&](const auto &l) { return l == INVALID_LOC; }));
             vehiclesWithKnownLocation.clear();
-            vehicleBuckets.clear();
+            for (const auto& v : vehicleBucketsSearchSpace)
+                vehicleBuckets.clearBucket(v);
+            vehicleBucketsSearchSpace.clear();
 
             const int numDistances = requestState.numPickups() * fleet.size();
             if (numDistances > distances.size()) {
@@ -336,6 +339,7 @@ namespace karri {
         std::vector<VehicleLocation> currentVehicleLocations;
         int prevNumPickups;
         std::vector<int> vehiclesWithKnownLocation;
+        std::vector<int> vehicleBucketsSearchSpace;
 
         WriteVehLabelsSearch writeVehLabelsSearch;
         int curVehId;
