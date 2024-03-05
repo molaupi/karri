@@ -270,7 +270,7 @@ namespace karri {
 
             //assert(variableData.schedDepTimesFor(vehId)[0] == fixedData.schedDepTimesFor(vehId)[0]);
             // Update LastStopBuckets and exchange actual routes
-            lastStopBucketsEnv.removeBucketEntries(veh, variableData.numStopsOf(vehId) - 1, variableData); // TODO: Kann man darauf verzichten wenn letzter Stop gleich?
+            lastStopBucketsEnv.removeBucketEntries(veh, variableData.numStopsOf(vehId) - 1, variableData);
             for (const int stopId: variableUpdater.exchangeRouteFor(vehId, fixedData)) {
                 stopInfos[stopId] = StopInfo();
             }

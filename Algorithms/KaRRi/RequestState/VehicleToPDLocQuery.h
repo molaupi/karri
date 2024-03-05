@@ -83,7 +83,6 @@ namespace karri {
             Timer timer;
 
             const auto center = forwardGraph.edgeHead(origin);
-            //pdLocs[0].vehDistFromCenter = 0; TODO: So richtig?
 
             vertexHasPDLoc.reset();
             numVerticesToFind = 0;
@@ -119,7 +118,6 @@ namespace karri {
 
             const auto center = forwardGraph.edgeTail(origin);
             const auto offset = forwardGraph.travelTime(origin);
-            //pdLocs[0].vehDistToCenter = 0; TODO: So richtig?
 
             vertexHasPDLoc.reset();
             numVerticesToFind = 0;

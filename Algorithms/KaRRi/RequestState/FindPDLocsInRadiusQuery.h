@@ -179,7 +179,6 @@ namespace karri {
                 pdLocs[i].id = i;
             }
 
-            //TODO: So dann richtig?
             pdLocs[0].vehDistToCenter = 0;
             pdLocs[0].vehDistFromCenter = 0;
 
