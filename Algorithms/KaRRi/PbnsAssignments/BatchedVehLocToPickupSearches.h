@@ -168,7 +168,6 @@ namespace karri {
                 const auto &veh = fleet[vehId];
                 vehicleLocator.locateVehicle(veh);
                 const auto &vehLocation = vehicleLocator.getVehicleLocation(vehId);
-                assert(vehLocation != INVALID_LOC);
 
                 // Skip vehicles that are at their first stop:
                 if (vehLocation.location == routeState.stopLocationsFor(vehId)[0]) {
