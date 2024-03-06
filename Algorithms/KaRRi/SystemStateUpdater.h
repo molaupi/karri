@@ -262,7 +262,7 @@ namespace karri {
         // Update the stop location in the routeState and the bucket entries in the elliptic buckets.
         void movePreviousStopToCurrentLocationForReroute(const Vehicle &veh) {
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
-            auto loc = curVehLocations.getCurrentLocationOf(veh.vehicleId);
+            auto loc = curVehLocations.getVehicleLocation(veh.vehicleId);
             routeState.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
             ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
         }

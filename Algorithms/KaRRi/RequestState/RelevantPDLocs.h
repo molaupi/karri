@@ -43,7 +43,7 @@ namespace karri {
 
         struct RelevantPDLoc {
             int stopIndex;
-            unsigned int pdId;
+            int pdId;
             int distToPDLoc;
             int distFromPDLocToNextStop;
         };

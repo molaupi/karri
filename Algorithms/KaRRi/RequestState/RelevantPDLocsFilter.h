@@ -163,7 +163,7 @@ namespace karri {
                             ++numStopsRelevant;
                             // Check each PD loc
                             const auto& distancesForStop = feasible.distancesToAndFromRelevantPDLocsFor(stopId);
-                            for (unsigned int id = 0; id < numPDLocs; ++id) {
+                            for (int id = 0; id < numPDLocs; ++id) {
                                 const auto& [distToPDLoc, distFromPDLoc] = distancesForStop[id];
 
                                 bool isRelevant;
