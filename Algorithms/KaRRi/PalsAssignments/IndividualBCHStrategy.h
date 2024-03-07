@@ -189,6 +189,8 @@ namespace karri::PickupAfterLastStopStrategies {
                   requestState(requestState),
                   bestCostBeforeQuery(bestCostBeforeQuery),
                   inputConfig(inputConfig),
+                  localBestCosts([&] { return requestState.getBestCost(); }),
+                  localBestAssignments([&] { return requestState.getBestAssignment(); }),
                   localSearchTime(0),
                   localTryAssignmentsTime(0),
                   distances(fleet.size()),
@@ -208,6 +210,10 @@ namespace karri::PickupAfterLastStopStrategies {
             tbb::parallel_for(int(0), static_cast<int>(requestState.numPickups()), K, [&](int i) {
                 runBchSearchesAndEnumerate(i);
             });
+
+            // Try assignment sequentially for local best assignment calculated by the individual thread
+            for (auto &local : localBestAssignments)
+                requestState.tryAssignment(local);
 
             const auto searchAndTryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
 
@@ -236,14 +242,17 @@ namespace karri::PickupAfterLastStopStrategies {
             for (auto &local: localTryAssignmentsTime)
                 local = 0;
 
+            for (auto &local: localBestCosts)
+                local = requestState.getBestCost();
+            for (auto &local: localBestAssignments)
+                local = requestState.getBestAssignment();
+                
             totalNumEdgeRelaxations.store(0);
             totalNumVerticesSettled.store(0);
             totalNumEntriesScanned.store(0);
 
             upperBoundCost.store(bestCostBeforeQuery);
             vehiclesSeenForPickups.clear();
-            bestAsgnBefore = requestState.getBestAssignment();
-            bestCostBefore = requestState.getBestCost();
 
             const int numPickupBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
             distances.init(numPickupBatches);
@@ -294,8 +303,11 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         void enumeratePickupBatch(const int firstPickupId) {
-            int localBestCost = bestCostBefore;
-            Assignment localBestAsgn = bestAsgnBefore;
+            using namespace time_utils;
+
+            int &localBestCost = localBestCosts.local();
+            Assignment &localBestAssignment = localBestAssignments.local();
+            
             Assignment asgn;
             int numAssignmentsTriedLocal = 0;
 
@@ -304,67 +316,70 @@ namespace karri::PickupAfterLastStopStrategies {
                         firstPickupId + i < requestState.numPickups() ? requestState.pickups[firstPickupId + i]
                                                                       : requestState.pickups[firstPickupId];
 
-                enumeratePickup(pickup, localBestCost, localBestAsgn, numAssignmentsTriedLocal);
+                enumeratePickup(pickup, localBestCost, localBestAssignment, numAssignmentsTriedLocal);
             }
             
             // Try assignment once for best assignment calculated by current thread
-            if (localBestAsgn.vehicle && localBestAsgn.pickup && localBestAsgn.dropoff)
-                requestState.tryAssignment(localBestAsgn);
+            // requestState.tryAssignment(localBestAssignment);
 
             numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
         }
 
-        void enumeratePickup(const PDLoc &pickup, int &localBestCost, Assignment &localBestAsgn, int &numAssignmentsTriedLocal) {
+        void enumeratePickup(const PDLoc &pickup, int &localBestCost, Assignment &localBestAssignment, int &numAssignmentsTriedLocal) {
             using namespace time_utils;
             Assignment asgn;
             asgn.pickup = &pickup;
 
-                for (const auto &vehId: vehiclesSeenForPickups) {
+            for (const auto &vehId: vehiclesSeenForPickups) {
 
-                    asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
-                    if (asgn.distToPickup >= INFTY)
-                        continue;
+                asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
+                if (asgn.distToPickup >= INFTY)
+                    continue;
 
-                    const int numStops = routeState.numStopsOf(vehId);
-                    if (numStops == 0)
-                        continue;
+                const int numStops = routeState.numStopsOf(vehId);
+                if (numStops == 0)
+                    continue;
 
-                    asgn.vehicle = &fleet[vehId];
-                    asgn.pickupStopIdx = numStops - 1;
-                    asgn.dropoffStopIdx = numStops - 1;
+                asgn.vehicle = &fleet[vehId];
+                asgn.pickupStopIdx = numStops - 1;
+                asgn.dropoffStopIdx = numStops - 1;
 
-                    // Compute cost lower bound for this pickup specifically
-                    const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState,
-                                                                              routeState, inputConfig);
-                    const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
-                                                            getVehDepTimeAtStopForRequest(vehId, numStops - 1,
-                                                                                          requestState, routeState);
-                    const auto psgTimeTillDepAtThisPickup =
-                            depTimeAtThisPickup - requestState.originalRequest.requestTime;
-                    const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);
-                    const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
-                                                                                             psgTimeTillDepAtThisPickup,
-                                                                                             minDirectDistForThisPickup,
-                                                                                             asgn.pickup->walkingDist,
-                                                                                             0,
-                                                                                             requestState);
-                    if (minCost > localBestCost)
-                        continue;
+                // Compute cost lower bound for this pickup specifically
+                const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState,
+                                                                            routeState, inputConfig);
+                const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
+                                                        getVehDepTimeAtStopForRequest(vehId, numStops - 1,
+                                                                                        requestState, routeState);
+                const auto psgTimeTillDepAtThisPickup =
+                        depTimeAtThisPickup - requestState.originalRequest.requestTime;
+                const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);
+                const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
+                                                                                            psgTimeTillDepAtThisPickup,
+                                                                                            minDirectDistForThisPickup,
+                                                                                            asgn.pickup->walkingDist,
+                                                                                            0,
+                                                                                            requestState);
+                if (minCost > localBestCost)
+                    continue;
 
-                    for (auto &d: requestState.dropoffs) {
-                        asgn.dropoff = &d;
+                for (auto &d: requestState.dropoffs) {
+                    asgn.dropoff = &d;
 
-                        // Try inserting pair with pickup after last stop:
-                        ++numAssignmentsTriedLocal;
-                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
-
-                    const auto curCost = calculator.calc(asgn, requestState);
-                    if (curCost < INFTY && (curCost < localBestCost || (curCost == localBestCost &&
-                                    breakCostTie(asgn, localBestAsgn)))) {
-                        localBestCost = curCost;
-                        localBestAsgn = asgn;
-                    }
+                    // Try inserting pair with pickup after last stop:
+                    ++numAssignmentsTriedLocal;
+                    asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                    tryAssignmentLocal(asgn, localBestCost, localBestAssignment);
+                
                 }
+            }
+        }
+
+        void tryAssignmentLocal(const Assignment &asgn, int &localBestCost, Assignment &localBestAssignment) const {
+
+            const auto cost = calculator.calc(asgn, requestState);
+            if (cost < localBestCost || (cost == localBestCost && breakCostTie(asgn, localBestAssignment))) {
+                localBestCost = cost;
+                localBestAssignment = asgn;
             }
         }
 
@@ -379,6 +394,9 @@ namespace karri::PickupAfterLastStopStrategies {
 
         std::atomic_int upperBoundCost;
 
+        enumerable_thread_specific<int> localBestCosts;
+        enumerable_thread_specific<Assignment> localBestAssignments;
+
         enumerable_thread_specific<int64_t> localSearchTime;
         enumerable_thread_specific<int64_t> localTryAssignmentsTime;
 
@@ -388,9 +406,6 @@ namespace karri::PickupAfterLastStopStrategies {
 
         // Vehicles seen by any last stop pickup search
         ThreadSafeSubset vehiclesSeenForPickups;
-
-        Assignment bestAsgnBefore;
-        int bestCostBefore;
 
         CAtomic<int> numAssignmentsTried;
         CAtomic<int> totalNumEdgeRelaxations;
