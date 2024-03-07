@@ -100,33 +100,6 @@ namespace karri::DropoffAfterLastStopStrategies {
             requestState.stats().dalsAssignmentsStats.searchAndTryAssignmentsTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
-
-        // Interface for DALS+PBNS enumeration in PBNSAssignmentFinder
-        struct DalsDistancesForPbnsEnumeration {
-
-            DalsDistancesForPbnsEnumeration(const MinCostLabelSearch &minCostSearch) : minCostSearch(minCostSearch) {}
-
-            const Subset &getVehiclesSeen() const {
-                return minCostSearch.getVehiclesSeen();
-            }
-
-            int getDistance(const int vehId, const int dropoffId) const {
-                for (const auto &label: minCostSearch.getParetoBestDropoffLabelsFor(vehId))
-                    if (label.dropoffId == dropoffId)
-                        return label.distToDropoff;
-                return INFTY;
-            }
-
-        private:
-            const MinCostLabelSearch &minCostSearch;
-        };
-
-        // Retrieve results for DALS+PBNS enumeration in PBNSAssignmentFinder
-        DalsDistancesForPbnsEnumeration getDalsDistancesForPbnsEnumeration() const {
-            return DalsDistancesForPbnsEnumeration(minCostSearch);
-        }
-
-
     private:
 
         void runCollectiveSearch() {
