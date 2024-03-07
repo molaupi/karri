@@ -80,6 +80,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
 
             auto &stats = requestState.stats().palsAssignmentsStats;
+            Timer fullTimer;
             Timer timer;
 
 
@@ -136,8 +137,10 @@ namespace karri::PickupAfterLastStopStrategies {
 
             const int &minCost = minCostSearch.getBestCostWithoutConstraints();
             const auto &asgn = minCostSearch.getBestAssignment();
-            if (!asgn.vehicle)
+            if (!asgn.vehicle) {
+                stats.searchAndTryAssignmentsTime += fullTimer.elapsed<std::chrono::nanoseconds>();
                 return;
+            }
 
             const auto totalDetour = asgn.distToPickup + inputConfig.stopTime + asgn.distToDropoff + inputConfig.stopTime;
             using time_utils::isServiceTimeConstraintViolated;
@@ -150,6 +153,8 @@ namespace karri::PickupAfterLastStopStrategies {
                 const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
                 stats.collective_tryAssignmentTime += tryAssignmentsTime;
                 stats.numAssignmentsTried += 1;
+
+                stats.searchAndTryAssignmentsTime += fullTimer.elapsed<std::chrono::nanoseconds>();
                 return;
             }
 
@@ -159,6 +164,8 @@ namespace karri::PickupAfterLastStopStrategies {
 
             // Otherwise fall back to computing distances explicitly:
             fallbackStrategy.tryPickupAfterLastStop();
+
+            stats.searchAndTryAssignmentsTime += fullTimer.elapsed<std::chrono::nanoseconds>();
         }
 
     private:

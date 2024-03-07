@@ -50,8 +50,7 @@ namespace karri {
                   pickups(),
                   dropoffs(),
                   calculator(calculator),
-                  inputConfig(inputConfig),
-                  lock() {}
+                  inputConfig(inputConfig) {}
 
 
         ~RequestState() {
@@ -135,11 +134,9 @@ namespace karri {
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
             assert(calculator.calc(asgn, *this) == cost);
-            lock.lock();
 
             if (!(cost < INFTY) || !(cost < bestCost || (cost == bestCost &&
                                     breakCostTie(asgn, bestAssignment)))) {
-                lock.unlock();
                 return false;
                 
             }
@@ -149,7 +146,6 @@ namespace karri {
             notUsingVehicleIsBest = false;
             notUsingVehicleDist = INFTY;
 
-            lock.unlock();
             return true;
         }
 
@@ -203,9 +199,6 @@ namespace karri {
 
         const CostCalculator &calculator;
         const InputConfig &inputConfig;
-
-        // Spin lock for try assignment
-        SpinLock lock;
 
         // Information about best known assignment for current request
         Assignment bestAssignment;

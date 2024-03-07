@@ -195,9 +195,8 @@ namespace karri::PickupAfterLastStopStrategies {
                   localTryAssignmentsTime(0),
                   distances(fleet.size()),
                   threadLocalPruners(PickupAfterLastStopPruner(*this, calculator)),
-                  search(lastStopBucketsEnv, distances, chEnv, routeState, vehiclesSeenForPickups,
-                         threadLocalPruners),
-                  vehiclesSeenForPickups(fleet.size()) {}
+                  search(lastStopBucketsEnv, distances, chEnv, routeState,
+                         threadLocalPruners) {}
 
         void tryPickupAfterLastStop() {
             // Helper lambda to get sum of stats from thread local queries
@@ -212,8 +211,8 @@ namespace karri::PickupAfterLastStopStrategies {
             });
 
             // Try assignment sequentially for local best assignment calculated by the individual thread
-            for (auto &local : localBestAssignments)
-                requestState.tryAssignment(local);
+            for (const auto &asgn: localBestAssignments)
+                requestState.tryAssignment(asgn);
 
             const auto searchAndTryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
 
@@ -228,7 +227,7 @@ namespace karri::PickupAfterLastStopStrategies {
                     std::memory_order_relaxed);
             requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned.load(
                     std::memory_order_relaxed);
-            requestState.stats().palsAssignmentsStats.numCandidateVehicles += vehiclesSeenForPickups.size();
+            requestState.stats().palsAssignmentsStats.numCandidateVehicles += distances.getVehiclesSeen().size();
             requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(
                     std::memory_order_relaxed);
 
@@ -252,7 +251,6 @@ namespace karri::PickupAfterLastStopStrategies {
             totalNumEntriesScanned.store(0);
 
             upperBoundCost.store(bestCostBeforeQuery);
-            vehiclesSeenForPickups.clear();
 
             const int numPickupBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
             distances.init(numPickupBatches);
@@ -319,9 +317,6 @@ namespace karri::PickupAfterLastStopStrategies {
                 enumeratePickup(pickup, localBestCost, localBestAssignment, numAssignmentsTriedLocal);
             }
             
-            // Try assignment once for best assignment calculated by current thread
-            // requestState.tryAssignment(localBestAssignment);
-
             numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
         }
 
@@ -330,7 +325,7 @@ namespace karri::PickupAfterLastStopStrategies {
             Assignment asgn;
             asgn.pickup = &pickup;
 
-            for (const auto &vehId: vehiclesSeenForPickups) {
+            for (const auto &vehId: distances.getVehiclesSeen()) {
 
                 asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
                 if (asgn.distToPickup >= INFTY)
@@ -403,9 +398,6 @@ namespace karri::PickupAfterLastStopStrategies {
         TentativeLastStopDistances<LabelSetT> distances;
         tbb::enumerable_thread_specific<PickupAfterLastStopPruner> threadLocalPruners;
         PickupBCHQuery search;
-
-        // Vehicles seen by any last stop pickup search
-        ThreadSafeSubset vehiclesSeenForPickups;
 
         CAtomic<int> numAssignmentsTried;
         CAtomic<int> totalNumEdgeRelaxations;

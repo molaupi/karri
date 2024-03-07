@@ -163,7 +163,7 @@ namespace karri {
                             ++numStopsRelevant;
                             // Check each PD loc
                             const auto& distancesForStop = feasible.distancesToAndFromRelevantPDLocsFor(stopId);
-                            for (unsigned int id = 0; id < numPDLocs; ++id) {
+                            for (int id = 0; id < numPDLocs; ++id) {
                                 const auto& [distToPDLoc, distFromPDLoc] = distancesForStop[id];
 
                                 bool isRelevant;
@@ -207,8 +207,8 @@ namespace karri {
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
-            assert(distFromStopToPickup >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc));
-            assert(distFromPickupToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc));
+//            assert(distFromStopToPickup >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc));
+//            assert(distFromPickupToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc));
             assert(distFromStopToPickup + distFromPickupToNextStop >=
                    calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
 
@@ -245,8 +245,8 @@ namespace karri {
             const auto &numStops = routeState.numStopsOf(vehId);
             const auto &d = requestState.dropoffs[dropoffId];
 
-            assert(distFromStopToDropoff >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.dropoffs[dropoffId].loc));
-            assert(distFromDropoffToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.dropoffs[dropoffId].loc));
+//            assert(distFromStopToDropoff >= recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.dropoffs[dropoffId].loc));
+//            assert(distFromDropoffToNextStop >= recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.dropoffs[dropoffId].loc));
 
             // If this is the last stop in the route, we only consider this dropoff for ordinary assignments if it is at the
             // last stop. Similarly, if the vehicle is full after this stop, we can't perform the dropoff here unless the

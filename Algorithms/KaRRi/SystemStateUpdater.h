@@ -36,7 +36,6 @@ namespace karri {
     template<typename InputGraphT,
             typename EllipticBucketsEnvT,
             typename LastStopBucketsEnvT,
-            typename CurVehLocsT,
             typename CurVehLocationsT,
             typename PathTrackerT,
             typename LoggerT = NullLogger>
@@ -45,7 +44,7 @@ namespace karri {
     public:
 
         SystemStateUpdater(const InputGraphT &inputGraph, RequestState &requestState,
-                           const InputConfig &inputConfig, const CurVehLocsT &curVehLocs,
+                           const InputConfig &inputConfig,
                            const CurVehLocationsT &curVehLocations,
                            PathTrackerT &pathTracker,
                            RouteState &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
@@ -54,7 +53,6 @@ namespace karri {
                 : inputGraph(inputGraph),
                   requestState(requestState),
                   inputConfig(inputConfig),
-                  curVehLocs(curVehLocs),
                   curVehLocations(curVehLocations),
                   pathTracker(pathTracker),
                   routeState(routeState),
@@ -264,10 +262,7 @@ namespace karri {
         // Update the stop location in the routeState and the bucket entries in the elliptic buckets.
         void movePreviousStopToCurrentLocationForReroute(const Vehicle &veh) {
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
-//            assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
-            auto loc1 = curVehLocs.getCurrentLocationOf(veh.vehicleId);
-            auto loc2 = curVehLocations.getCurrentLocationOf(veh.vehicleId);
-            auto loc = loc1.location == INVALID_EDGE ? loc2 : loc1;
+            auto loc = curVehLocations.getVehicleLocation(veh.vehicleId);
             routeState.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
             ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
         }
@@ -353,7 +348,6 @@ namespace karri {
         const InputGraphT &inputGraph;
         RequestState &requestState;
         const InputConfig &inputConfig;
-        const CurVehLocsT &curVehLocs;
         const CurVehLocationsT &curVehLocations;
         PathTrackerT &pathTracker;
 

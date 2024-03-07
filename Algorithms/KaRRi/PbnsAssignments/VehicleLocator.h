@@ -30,6 +30,9 @@
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
 #include "Algorithms/KaRRi/RouteState.h"
+#include "Parallel/atomic_wrapper.h"
+#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "Tools/Timer.h"
 
 #include <tbb/enumerable_thread_specific.h>
 
@@ -42,14 +45,82 @@ namespace karri {
     class VehicleLocator {
 
     public:
-        VehicleLocator(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState)
+
+        static constexpr VehicleLocation INVALID_LOC = {INVALID_EDGE, -1};
+
+        VehicleLocator(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState,
+                       const int fleetSize)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   chQuery([&]() { return chEnv.template getFullCHQuery<>(); }),
                   unpacker(ch),
                   routeState(routeState),
-                  path() {}
+                  fleetSize(fleetSize),
+                  path(),
+                  currentTime(-1),
+                  currentVehicleLocations(fleetSize, INVALID_LOC),
+                  vehLocks(fleetSize, SpinLock()),
+                  vehiclesWithKnownLocation(fleetSize),
+                  totalLocatingVehiclesTimeForRequest(0) {}
 
+        void locateVehicle(const Vehicle &vehicle) {
+            const auto &vehId = vehicle.vehicleId;
+            assert(vehId >= 0 && vehId < fleetSize);
+
+            if (vehiclesWithKnownLocation.contains(vehId))
+                return;
+
+            SpinLock &curVehLock = vehLocks[vehId];
+            curVehLock.lock();
+
+            if (currentVehicleLocations[vehId] != INVALID_LOC) {
+                curVehLock.unlock();
+                return;
+            }
+
+            assert(currentVehicleLocations[vehId] == INVALID_LOC);
+
+            Timer timer;
+            const auto curLoc = computeCurrentLocation(vehicle, currentTime);
+            totalLocatingVehiclesTimeForRequest.add_fetch(timer.elapsed<std::chrono::nanoseconds>(),
+                                                          std::memory_order_relaxed);
+
+            currentVehicleLocations[vehId] = curLoc;
+            curVehLock.unlock();
+
+            vehiclesWithKnownLocation.insert(vehId);
+        }
+
+        void init(const int time) {
+
+
+            // Already initialized for current time
+            if (currentTime == time)
+                return;
+
+            currentTime = time;
+            for (const auto &vehId: vehiclesWithKnownLocation) {
+                currentVehicleLocations[vehId] = INVALID_LOC;
+            }
+            vehiclesWithKnownLocation.clear();
+
+            totalLocatingVehiclesTimeForRequest.store(0, std::memory_order_relaxed);
+        }
+
+        const ThreadSafeSubset& getVehiclesWithKnownLocation() const {
+            return vehiclesWithKnownLocation;
+        }
+
+        const VehicleLocation& getVehicleLocation(const int vehId) const {
+            assert(vehiclesWithKnownLocation.contains(vehId));
+            return currentVehicleLocations[vehId];
+        }
+
+        int64_t getTotalLocatingVehiclesTimeForRequest() const {
+            return totalLocatingVehiclesTimeForRequest;
+        }
+
+    private:
 
         VehicleLocation computeCurrentLocation(const Vehicle &veh, const int now) {
             const auto &vehId = veh.vehicleId;
@@ -121,9 +192,18 @@ namespace karri {
         tbb::enumerable_thread_specific<FullQuery> chQuery;
         tbb::enumerable_thread_specific<CHPathUnpacker> unpacker;
         const RouteState &routeState;
+        const int fleetSize;
 
         tbb::enumerable_thread_specific<std::vector<int>> path;
 
+        int currentTime;
+
+        std::vector<VehicleLocation> currentVehicleLocations;
+        std::vector<SpinLock> vehLocks;
+        ThreadSafeSubset vehiclesWithKnownLocation;
+
+
+        CAtomic<int64_t> totalLocatingVehiclesTimeForRequest;
 
     };
 }
