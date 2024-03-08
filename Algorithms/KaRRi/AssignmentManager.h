@@ -59,8 +59,6 @@ namespace karri {
 
             int costBarrier = varReqState->getBestCost() - fixedReqState->getBestCost();
             if (costBarrier > 0) {
-                systemStateUpdater.exchangeRoutesFor(*fixedReqState->getBestAssignment().vehicle);
-                systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *fixedReqState);
 
                 currentResult.push_back(fixedReqState);
 
@@ -69,11 +67,13 @@ namespace karri {
                 std::vector<int> movedReqDepTimes;
                 getMovedRequestsAndDepTime(fixedAssignment.vehicle->vehicleId, req.requestId, movedReqIds, movedReqDepTimes); // TODO: Muss vor exchange routes aufegrufen werden. Sonst immer leer
 
+                systemStateUpdater.exchangeRoutesFor(*fixedReqState->getBestAssignment().vehicle);
+                systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *fixedReqState);
+
                 for (const auto reqId: movedReqIds) {
                     const auto oldData = oldReqData[reqId];
                     auto *newReqState = createAndInitializeRequestState(std::get<0>(oldData),
                             RouteStateDataType::VARIABLE, &std::get<2>(oldData));
-                    newReqState->blockedVehId = fixedAssignment.vehicle->vehicleId;
                     searchBestAssignmentOn(variableRouteStateData, variableBuckets, *newReqState);
 
                     systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *newReqState);
@@ -159,12 +159,14 @@ namespace karri {
 
         void updateOldRequestData() {
             const auto mainReqState = currentResult[0];
-            PDLoc loc = mainReqState->isNotUsingVehicleBest() ? PDLoc() :  *mainReqState->getBestAssignment().pickup;
-            loc.id = 0;
+            PDLoc pickup = mainReqState->isNotUsingVehicleBest() ? PDLoc() :  *mainReqState->getBestAssignment().pickup;
+            PDLoc dropoff = mainReqState->isNotUsingVehicleBest() ? PDLoc() : *mainReqState->getBestAssignment().dropoff;
+            pickup.id = 0;
+            dropoff.id = 1;
             if (oldReqData.size() < mainReqState->originalRequest.requestId + 1) {
                 oldReqData.resize(mainReqState->originalRequest.requestId + 1);
             }
-            oldReqData[mainReqState->originalRequest.requestId] = std::tuple(mainReqState->originalRequest, mainReqState->getBestCost(), loc);
+            oldReqData[mainReqState->originalRequest.requestId] = std::tuple(mainReqState->originalRequest, mainReqState->getBestCost(), pickup, dropoff);
             for (int i = 1; i < currentResult.size(); i++) {
                 const auto *currReqState = currentResult[i];
                 std::get<1>(oldReqData[currReqState->originalRequest.requestId]) = currReqState->getBestCost();
@@ -172,7 +174,7 @@ namespace karri {
         }
 
         // Puts all requests picked up after the 0-th stop into a list
-        void getMovedRequestsAndDepTime(const int vehId, const int initiatorRequestId, std::vector<int> reqIds, std::vector<int> depTimes) {
+        void getMovedRequestsAndDepTime(const int vehId, const int initiatorRequestId, std::vector<int> &reqIds, std::vector<int> &depTimes) {
             const auto stopIds = variableRouteStateData.stopIdsFor(vehId);
             for (int i = 1; i < variableRouteStateData.numStopsOf(vehId); i++) {
                 for (const auto req:  variableRouteStateData.getRequestsPickedUpAt(stopIds[i])) {
