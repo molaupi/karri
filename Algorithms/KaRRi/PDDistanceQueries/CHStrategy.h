@@ -64,31 +64,12 @@ namespace karri::PDDistanceQueryStrategies {
             }
 
             std::vector<std::pair<int, int>> jobs;
-            for (int firstPickupIdInBatch = 0; firstPickupIdInBatch < requestState.numPickups(); firstPickupIdInBatch += K)
-                for (int dropoffId = 0; dropoffId < requestState.numDropoffs(); ++dropoffId)
+            for (int firstPickupIdInBatch = 0; firstPickupIdInBatch < requestState.numPickups(); firstPickupIdInBatch += K) 
+                for (int dropoffId = 0; dropoffId < requestState.numDropoffs(); ++dropoffId) 
                     jobs.emplace_back(firstPickupIdInBatch, dropoffId);
 
             tbb::parallel_for(int(0), static_cast<int>(jobs.size()), 1, [&](int jobIdx) {
-                const int& firstPickupIdInBatch = jobs[jobIdx].first;
-                // Run query for batch of pickups and single
-                std::array<int, K> pickupHeadRanks = {};
-                for (int pickupId = firstPickupIdInBatch; pickupId < firstPickupIdInBatch + K; ++pickupId) {
-                    if (pickupId >= requestState.numPickups()) {
-                        pickupHeadRanks[pickupId] = pickupHeadRanks[0];
-                        continue;
-                    }
-                    pickupHeadRanks[pickupId % K] = ch.rank(inputGraph.edgeHead(requestState.pickups[pickupId].loc));
-                }
-
-                const auto& d = requestState.dropoffs[jobs[jobIdx].second];
-                std::array<int, K> dropoffTailRank = {};
-                dropoffTailRank.fill(ch.rank(inputGraph.edgeTail(d.loc)));
-                const int offset = inputGraph.travelTime(d.loc);
-
-                auto& query = queries.local();
-                query.run(pickupHeadRanks, dropoffTailRank);
-                const DistanceLabel dist = query.getAllDistances() + DistanceLabel(offset);
-                distances.updateDistanceBatchIfSmaller(firstPickupIdInBatch, d.id, dist);
+                runQueryForPickupBatchAndDropoff(jobs[jobIdx].first, jobs[jobIdx].second);
             });
 
 
@@ -107,6 +88,28 @@ namespace karri::PDDistanceQueryStrategies {
         }
 
     private:
+
+        void runQueryForPickupBatchAndDropoff(const int firstPickupIdInBatch, const int dropoffId) {
+            // Run query for batch of pickups and single
+            std::array<int, K> pickupHeadRanks = {};
+            for (int i = 0; i < K; ++i) {
+                if (firstPickupIdInBatch + i >= requestState.numPickups()) {
+                    pickupHeadRanks[i] = pickupHeadRanks[0];
+                } else {
+                    pickupHeadRanks[i] = ch.rank(inputGraph.edgeHead(requestState.pickups[firstPickupIdInBatch + i].loc));
+                }
+            }
+
+            const auto& d = requestState.dropoffs[dropoffId];
+            std::array<int, K> dropoffTailRank = {};
+            dropoffTailRank.fill(ch.rank(inputGraph.edgeTail(d.loc)));
+            const int offset = inputGraph.travelTime(d.loc);
+
+            auto& query = queries.local();
+            query.run(pickupHeadRanks, dropoffTailRank);
+            const DistanceLabel dist = query.getAllDistances() + DistanceLabel(offset);
+            distances.updateDistanceBatchIfSmaller(firstPickupIdInBatch, d.id, dist);
+        }
 
         const InputGraphT &inputGraph;
         const CH &ch;

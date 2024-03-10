@@ -367,7 +367,8 @@ namespace karri {
 
             // Apply local best assignments to global result
             for (const auto &asgn: localBestAssignments) {
-                requestState.tryAssignment(asgn);
+                if (asgn.vehicle && asgn.pickup && asgn.dropoff)
+                    requestState.tryAssignment(asgn);
             }
         }
 

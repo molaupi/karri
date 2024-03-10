@@ -186,8 +186,10 @@ namespace karri::DropoffAfterLastStopStrategies {
             });
             
             // Try assignment sequentially for local best assignment calculated by the individual thread
-            for (const auto &asgn: localBestAssignments) 
-                requestState.tryAssignment(asgn);
+            for (const auto &asgn: localBestAssignments) {
+                if (asgn.vehicle && asgn.pickup && asgn.dropoff)
+                    requestState.tryAssignment(asgn);
+            }
 
             const int64_t pbnsTime = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
                                      curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest() -
