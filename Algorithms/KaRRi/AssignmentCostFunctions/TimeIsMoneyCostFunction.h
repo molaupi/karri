@@ -78,6 +78,20 @@ namespace karri {
             return regularCost + violationPenalty;
         }
 
+        static inline int calcTripCostOnly(const int tripTime) {
+            return PASSENGER_COST_SCALE * tripTime;;
+        }
+
+        static inline int calcTripViolationCost(const int tripTime, const int originalReqMaxTripTime) {
+
+            const auto maxTripTime = originalReqMaxTripTime;
+            const auto violationPenalty = TRIP_TIME_VIOLATION_WEIGHT * std::max(tripTime - maxTripTime, 0);
+
+            return violationPenalty;
+        }
+
+
+
         template<typename DistanceLabel, typename RequestContext>
         static inline DistanceLabel calcKTripCosts(const DistanceLabel &tripTime, const RequestContext &context) {
 
@@ -109,6 +123,10 @@ namespace karri {
         template<typename RequestContext>
         static inline int calcWaitViolationCost(const int actualDepTimeAtPickup, const RequestContext &context) {
             return WAIT_TIME_VIOLATION_WEIGHT * std::max(actualDepTimeAtPickup - context.getMaxDepTimeAtPickup(), 0);
+        }
+
+        static inline int calcWaitViolationCost(const int actualDepTimeAtPickup, const int reqTime, const int maxWaitTime) {
+            return WAIT_TIME_VIOLATION_WEIGHT * std::max(actualDepTimeAtPickup - (reqTime + maxWaitTime), 0);
         }
 
         template<typename DistanceLabel, typename RequestContext>

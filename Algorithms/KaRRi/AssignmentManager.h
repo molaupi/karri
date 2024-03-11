@@ -21,6 +21,8 @@ namespace karri {
             typename CurVehLocT>
     class AssignmentManager {
 
+        using CostFunction = typename CostCalculatorT::CostFunction;
+
     public:
         AssignmentManager(SystemStateUpdaterT &systemStateUpdater, AssignmentFinderT &asgnFinder, CostCalculatorT &calc,
                           InputConfig &config, RequestStateInitializerT &requestStateInitializer,
@@ -42,8 +44,6 @@ namespace karri {
         //TODO: Wenn Einfügen auf selbem Fahrzeug der losgelösten Requests möglich sein soll, muss man
         // es möglich sein Route (und Bucket) exchanges rückgängig zu machen (falls Kosten doch größer sind)
 
-        //TODO: Inserts müssen rückgängig gemacht werden können, falls Kosten doch zu hoch sind
-
         //TODO: Hier wird jetzt nicht beachtete, ob das assignmenht ein Fahrzeug verwendet oder nicht. Da muss dann noch im EventSimulator angepasst werden
         std::vector<RequestState<CostCalculatorT>*> &calculateChanges(const Request &req) {
             for (int i = 0; i < currentResult.size(); i++) delete currentResult[i];
@@ -57,15 +57,16 @@ namespace karri {
 
             int pickupId, dropoffId;
 
-            int costBarrier = varReqState->getBestCost() - fixedReqState->getBestCost();
-            if (costBarrier > 0) {
+            int costsSaved = varReqState->getBestCost() - fixedReqState->getBestCost();
+            if (costsSaved > 0) {
 
                 currentResult.push_back(fixedReqState);
 
                 const auto &fixedAssignment = fixedReqState->getBestAssignment();
                 std::vector<int> movedReqIds;
                 std::vector<int> movedReqDepTimes;
-                getMovedRequestsAndDepTime(fixedAssignment.vehicle->vehicleId, req.requestId, movedReqIds, movedReqDepTimes); // TODO: Muss vor exchange routes aufegrufen werden. Sonst immer leer
+                getMovedRequestsAndDepTime(fixedAssignment.vehicle->vehicleId, movedReqIds, movedReqDepTimes);
+                costsSaved += calcCostSavings(fixedAssignment.vehicle->vehicleId, movedReqIds, movedReqDepTimes);
 
                 systemStateUpdater.exchangeRoutesFor(*fixedReqState->getBestAssignment().vehicle);
                 systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *fixedReqState);
@@ -76,11 +77,16 @@ namespace karri {
                             RouteStateDataType::VARIABLE, &std::get<2>(oldData));
                     searchBestAssignmentOn(variableRouteStateData, variableBuckets, *newReqState);
 
+                    costsSaved -= newReqState->getBestCost();
+
                     systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *newReqState);
 
                     currentResult.push_back(newReqState);
                 }
 
+                if (costsSaved > 0) {
+                    better++;
+                }
                 updateOldRequestData();
                 return currentResult;
             }
@@ -102,30 +108,36 @@ namespace karri {
             int savings = 0;
 
             // Detour savings
-            savings += variableRouteStateData.schedDepTimesFor(vehId)[numVariableStops - 1] - fixedRouteStateData.schedDepTimesFor(vehId)[numFixedStops - 1];
+            savings += CostFunction::
+                    calcVehicleCost(variableRouteStateData.schedDepTimesFor(vehId)[numVariableStops - 1] - fixedRouteStateData.schedDepTimesFor(vehId)[numFixedStops - 1]);
+            assert(savings >= 0);
 
             // Trip time savings for occupancies of vehicle
             savings += calcTripTimeSavings(vehId);
 
             // Old walking time of moved requests
             for (const int reqId: movedReqIds) {
-                savings += std::get<2>(oldReqData[reqId]).walkingDist + std::get<3>(oldReqData[reqId]).walkingDist;
+                savings += CostFunction::calcWalkingCost(std::get<2>(oldReqData[reqId]).walkingDist + std::get<3>(oldReqData[reqId]).walkingDist, -1);
             }
 
+            // Old trip time of moved requests (with penalty)
             for (int i = 2; i < numVariableStops; i++) {
                 for (const int dropoffReqId: variableRouteStateData.getRequestsDroppedOffAt(varStopIds[i])) {
                     const auto it = std::find(movedReqIds.begin(), movedReqIds.end(), dropoffReqId);
                     if (it != movedReqIds.end()) {
                         const int reqIdIndex = it - movedReqIds.begin();
                         const int tripTime = variableRouteStateData.schedArrTimesFor(vehId)[i]- movedReqDepTimes[reqIdIndex];
-                        savings += tripTime; // Old trip time of moved requests
-                        //TODO: Trip time penalty (originalReqMaxTripTime zwischen speichern und in costfunction alternative methode, die wert direkt annimmt)
+                        savings += CostFunction::calcTripCostOnly(tripTime);
+                        savings += CostFunction::calcTripViolationCost(tripTime, std::get<4>(oldReqData[dropoffReqId]));
                     }
                 }
             }
 
-            // Saved wait time penalties
-            // TODO: Berechnung in CostFunction separieren sodass man werte einfach übergebn kann
+            // Saved wait time penalties of moved requests
+            for (int i = 0; i < movedReqIds.size(); i++) {
+                const int reqTime = std::get<0>(oldReqData[movedReqIds[i]]).requestTime;
+                savings += CostFunction::calcWaitViolationCost(movedReqDepTimes[i], reqTime, config.maxWaitTime);
+            }
 
             return savings;
         }
@@ -133,27 +145,38 @@ namespace karri {
         int calcTripTimeSavings(const int vehId) {
             int savings = 0;
             std::vector<int> occupancies;
-            const int depFromStart = fixedRouteStateData.schedDepTimesFor(vehId)[0];
+            std::vector<int> dropOffStopIds;
+
+            const int depFromCurrStart = fixedRouteStateData.schedDepTimesFor(vehId)[0];
 
             for (int i = 1; i < fixedRouteStateData.numStopsOf(vehId); i++) {
-                const auto &dropoffs = fixedRouteStateData.getRequestsDroppedOffAt(fixedRouteStateData.stopIdsFor(vehId)[i]);
-                const int newTripTime = fixedRouteStateData.schedArrTimesFor(vehId)[i] - depFromStart;
-                savings -= dropoffs.size() * newTripTime;
-                //TODO: Penalties abziehen:    savings -= dropoffs.size() * penalty(newTripTime)
-                occupancies.insert(occupancies.end(), dropoffs.begin(), dropoffs.end());
-            }
+                const int currStopId = fixedRouteStateData.stopIdsFor(vehId)[i];
+                const auto &dropoffs = fixedRouteStateData.getRequestsDroppedOffAt(currStopId);
+                const int newRestTripTime = fixedRouteStateData.schedArrTimesFor(vehId)[i] - depFromCurrStart;
 
-            for (int i = 1; i < variableRouteStateData.numStopsOf(vehId); i++) {
-                const int currStopId = variableRouteStateData.stopIdsFor(vehId)[i];
-                const auto &dropoffs = variableRouteStateData.getRequestsDroppedOffAt(currStopId);
-                while (!occupancies.empty() && std::find(dropoffs.begin(), dropoffs.end(), occupancies[0]) != dropoffs.end()) {
-                    const int oldTripTime = variableRouteStateData.schedArrTimesFor(vehId)[i] - depFromStart;
-                    savings += oldTripTime;
-                    // TODO: Analog tripTime penalty oben drauf rechnen
-                    occupancies.erase(occupancies.begin());
+                //TODO: Die currTripTime Estimation stimmt hier nicht. Man müsste die depTimes von jedem Request speichern
+                for (int reqId: dropoffs) {
+                    //const int currTripTimeEstimation = depFromCurrStart - std::get<0>(oldReqData[reqId]).requestTime;
+                    savings -= CostFunction::calcTripCostOnly(newRestTripTime);
+                    //savings -= CostFunction::calcTripViolationCost(newRestTripTime + currTripTimeEstimation, std::get<4>(oldReqData[reqId]));
+                    occupancies.push_back(reqId);
+                    dropOffStopIds.push_back(currStopId);
                 }
             }
-            assert(occupancies.empty() && savings >= 0);
+
+            assert(savings <= 0);
+
+            const auto &variableStopIds = variableRouteStateData.stopIdsFor(vehId);
+            int currVarIndex = 1;
+            for (int i = 0; i < occupancies.size(); i++) {
+                while (variableStopIds[currVarIndex] != dropOffStopIds[i]) currVarIndex++;
+                const int oldRestTripTIme = variableRouteStateData.schedArrTimesFor(vehId)[currVarIndex] - depFromCurrStart;
+                //const int currTripTimeEstimation = depFromCurrStart - std::get<0>(oldReqData[occupancies[i]]).requestTime;
+                savings += CostFunction::calcTripCostOnly(oldRestTripTIme);
+                //savings += CostFunction::calcTripViolationCost(oldRestTripTIme + currTripTimeEstimation, std::get<4>(oldReqData[occupancies[i]]));
+            }
+
+            assert(savings >= 0);
             return savings;
         }
 
@@ -166,7 +189,7 @@ namespace karri {
             if (oldReqData.size() < mainReqState->originalRequest.requestId + 1) {
                 oldReqData.resize(mainReqState->originalRequest.requestId + 1);
             }
-            oldReqData[mainReqState->originalRequest.requestId] = std::tuple(mainReqState->originalRequest, mainReqState->getBestCost(), pickup, dropoff);
+            oldReqData[mainReqState->originalRequest.requestId] = std::tuple(mainReqState->originalRequest, mainReqState->getBestCost(), pickup, dropoff, mainReqState->getOriginalReqMaxTripTime());
             for (int i = 1; i < currentResult.size(); i++) {
                 const auto *currReqState = currentResult[i];
                 std::get<1>(oldReqData[currReqState->originalRequest.requestId]) = currReqState->getBestCost();
@@ -174,14 +197,12 @@ namespace karri {
         }
 
         // Puts all requests picked up after the 0-th stop into a list
-        void getMovedRequestsAndDepTime(const int vehId, const int initiatorRequestId, std::vector<int> &reqIds, std::vector<int> &depTimes) {
+        void getMovedRequestsAndDepTime(const int vehId, std::vector<int> &reqIds, std::vector<int> &depTimes) {
             const auto stopIds = variableRouteStateData.stopIdsFor(vehId);
             for (int i = 1; i < variableRouteStateData.numStopsOf(vehId); i++) {
                 for (const auto req:  variableRouteStateData.getRequestsPickedUpAt(stopIds[i])) {
-                    if (initiatorRequestId != req) {
-                        reqIds.push_back(req);
-                        depTimes.push_back(variableRouteStateData.schedDepTimesFor(vehId)[i]);
-                    }
+                    reqIds.push_back(req);
+                    depTimes.push_back(variableRouteStateData.schedDepTimesFor(vehId)[i]);
                 }
             }
         }
@@ -203,8 +224,8 @@ namespace karri {
 
         AssignmentFinderT &asgnFinder;
 
-        // Old Requests, their cost and location: oldReqData[req.requestId] = (Request, cost, pickup, dropoff)
-        std::vector<std::tuple<Request, int, PDLoc, PDLoc>> oldReqData;
+        // Old Requests, their cost and location: oldReqData[req.requestId] = (Request, cost, pickup, dropoff, maxTripTime)
+        std::vector<std::tuple<Request, int, PDLoc, PDLoc, int>> oldReqData;
 
         // Data needed for RequestStates
         CostCalculatorT &calc;
@@ -221,6 +242,9 @@ namespace karri {
         BucketsWrapperT &fixedBuckets;
 
         CurVehLocT &vehLocator;
+
+
+        int better = 0;
     };
 
 }

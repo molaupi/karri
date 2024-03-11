@@ -309,7 +309,7 @@ namespace karri {
             for (int i = 0; i < asgnBatch.size(); i++) {
                 const AssignmentFinderResponseT &resp = *asgnBatch[i];
                 if (resp.isNotUsingVehicleBest()) {
-                    delete asgnBatch[i];
+                    //delete asgnBatch[i];
                     asgnBatch.erase(asgnBatch.begin() + i);
                 }
             }

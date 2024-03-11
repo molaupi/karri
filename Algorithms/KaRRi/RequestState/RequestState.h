@@ -72,8 +72,6 @@ template<typename CostCalculatorT>
         std::vector<PDLoc> pickups;
         std::vector<PDLoc> dropoffs;
 
-        int blockedVehId = INVALID_ID;
-
 
         int numPickups() const {
             return pickups.size();
@@ -140,8 +138,6 @@ template<typename CostCalculatorT>
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
             assert(calculator.calc(asgn, *this) == cost);
-
-            if (asgn.vehicle->vehicleId == blockedVehId) return false;
 
             if (cost < bestCost || (cost == bestCost &&
                                      breakCostTie(asgn, bestAssignment))) {
