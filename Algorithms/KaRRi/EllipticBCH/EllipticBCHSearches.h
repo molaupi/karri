@@ -258,7 +258,6 @@ namespace karri {
 
             // Run for pickups:
             Timer timer;
-            preliminarySearchForPickups();
             runBCHSearchesFromAndTo(requestState.pickups, feasibleEllipticPickups);
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.pickupTime += pickupTime;
@@ -268,7 +267,6 @@ namespace karri {
 
             // Run for dropoffs:
             timer.restart();
-            preliminarySearchForDropOffs();
             runBCHSearchesFromAndTo(requestState.dropoffs, feasibleEllipticDropoffs);
             const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
@@ -289,6 +287,9 @@ namespace karri {
             // Find dropoffs at existing stops for new request and initialize distances.
             const auto dropoffsAtExistingStops = findPDLocsAtExistingStops<DROPOFF>(requestState.dropoffs);
             feasibleEllipticDropoffs.init(requestState.numDropoffs(), dropoffsAtExistingStops, inputGraph);
+
+            preliminarySearchForPickups();
+            preliminarySearchForDropOffs();
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.initializationTime += time;
