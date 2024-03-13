@@ -260,7 +260,7 @@ namespace karri {
             requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
 
             if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 &&
-                variableData.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) { //TODO: Muss hier now hin oder reqTime?
+                variableData.schedDepTimesFor(vehId)[0] < requestState.now()) {
                 movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
             }
 

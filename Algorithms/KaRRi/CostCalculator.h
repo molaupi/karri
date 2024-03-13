@@ -370,7 +370,7 @@ namespace karri {
             const int actualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, numStops - 1, distToPickup, pickup,
                                                                        context, *routeStateData, inputConfig);
             const int vehDepTimeAtPrevStop = std::max(routeStateData->schedDepTimesFor(vehId)[numStops - 1],
-                                                      context.originalRequest.requestTime);
+                                                      context.now());
             const int detourUntilDepAtPickup = actualDepTimeAtPickup - vehDepTimeAtPrevStop;
             assert(!((bool) (detourUntilDepAtPickup < 0)));
             const int minDetour = detourUntilDepAtPickup + minDistToDropoff;

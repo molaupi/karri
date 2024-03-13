@@ -111,7 +111,7 @@ template<typename CostCalculatorT>
         }
 
         int getMaxDepTimeAtPickup() const {
-            return originalRequest.requestTime + inputConfig.maxWaitTime; //TODO: Reassignment now?
+            return originalRequest.requestTime + inputConfig.maxWaitTime;
         }
 
         // Information about best known assignment for current request

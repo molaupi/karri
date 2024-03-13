@@ -66,7 +66,7 @@ namespace karri {
             } else {
                 // If vehicle is currently idle, the vehicle can leave its current stop at the earliest when the
                 // request is made. In that case, we update the arrival time to count the idling as one stopTime.
-                data.updateSchedDepTimesFor(vehId, size - 1, std::max(schedDepTimes[size - 1], requestState.originalRequest.requestTime));
+                data.updateSchedDepTimesFor(vehId, size - 1, std::max(schedDepTimes[size - 1], requestState.now()));
                 data.updateSchedArrTimesFor(vehId, size - 1, schedDepTimes[size - 1] - stopTime);
                 ++pickupIndex;
                 ++dropoffIndex;
