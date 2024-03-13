@@ -42,15 +42,17 @@ namespace karri {
 template<typename CostCalculatorT>
     struct RequestState {
 
-        RequestState(const CostCalculatorT &calculator, const InputConfig &inputConfig, const RouteStateDataType type)
+        RequestState(const CostCalculatorT &calculator, const InputConfig &inputConfig, const RouteStateDataType type, const int currTime)
                 : type(type),
                   originalRequest(),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
+                  currTime(currTime),
                   pickups(),
                   dropoffs(),
                   calculator(calculator),
-                  inputConfig(inputConfig){}
+                  inputConfig(inputConfig)
+                  {}
 
 
         ~RequestState() {
@@ -68,6 +70,7 @@ template<typename CostCalculatorT>
         Request originalRequest;
         int originalReqDirectDist;
         int minDirectPDDist;
+        int currTime;
 
         std::vector<PDLoc> pickups;
         std::vector<PDLoc> dropoffs;
@@ -83,7 +86,7 @@ template<typename CostCalculatorT>
 
         // Shorthand for requestTime
         int now() const {
-            return originalRequest.requestTime;
+            return currTime;
         }
 
         int getOriginalReqMaxTripTime() const {
@@ -108,7 +111,7 @@ template<typename CostCalculatorT>
         }
 
         int getMaxDepTimeAtPickup() const {
-            return originalRequest.requestTime + inputConfig.maxWaitTime;
+            return originalRequest.requestTime + inputConfig.maxWaitTime; //TODO: Reassignment now?
         }
 
         // Information about best known assignment for current request

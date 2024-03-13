@@ -12,6 +12,7 @@
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
 #include "ScheduledStop.h"
 #include "RouteStateDataType.h"
+#include "Algorithms/KaRRi/BaseObjects/VehicleRouteData.h"
 
 namespace karri {
 
@@ -96,11 +97,13 @@ namespace karri {
                             numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
         }
 
-        void removeStopFor(const int vehId, const int stopId, const int index) {
+        void removeStopFor(const int vehId, const int stopId, const int index, bool stopIdIsUnused = true) {
             stableRemoval(vehId, index,
                           pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
                           maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
-            unusedStopIds.push(stopId);
+            if (stopIdIsUnused) {
+                unusedStopIds.push(stopId);
+            }
         }
 
         // Range containing the locations (= edges) of the currently scheduled stops of vehicle with given ID.
@@ -320,6 +323,47 @@ namespace karri {
 
         bool stopHasPickups(const int stopId) {
             return rangeOfRequestsPickedUpAtStop[stopId].end - rangeOfRequestsPickedUpAtStop[stopId].start != 0;
+        }
+
+        void getRouteDataForVehicle(const int vehId, VehicleRouteData &data) {
+            const int start = pos[vehId].start;
+            for (int i = 0; i < numStopsOf(vehId); i++) {
+                const int index = start + i;
+
+                data.pickUpIndex.push_back(data.pickedUpRequests.size());
+                data.dropOffIndex.push_back(data.droppedOffRequests.size());
+                data.pickedUpRequests.insert(
+                        data.pickedUpRequests.end(),
+                        requestsPickedUpAtStop.begin() + rangeOfRequestsPickedUpAtStop[stopIds[index]].start,
+                        requestsPickedUpAtStop.begin() + rangeOfRequestsPickedUpAtStop[stopIds[index]].end
+                        );
+                data.droppedOffRequests.insert(
+                        data.droppedOffRequests.end(),
+                        requestsDroppedOffAtStop.begin() + rangeOfRequestsDroppedOffAtStop[stopIds[index]].start,
+                        requestsDroppedOffAtStop.begin() + rangeOfRequestsDroppedOffAtStop[stopIds[index]].end
+                );
+
+                data.stopIds.push_back(stopIds[index]);
+                data.stopLocations.push_back(stopLocations[index]);
+                data.schedArrTimes.push_back(schedArrTimes[index]);
+                data.schedDepTimes.push_back(schedDepTimes[index]);
+                data.maxArrTimes.push_back(maxArrTimes[index]);
+                data.occupancies.push_back(occupancies[index]);
+                data.vehWaitTimesPrefixSum.push_back(vehWaitTimesPrefixSum[index]);
+                data.vehWaitTimesUntilDropoffsPrefixSum.push_back(vehWaitTimesUntilDropoffsPrefixSum[index]);
+                data.numDropoffsPrefixSum.push_back(numDropoffsPrefixSum[index]);
+                data.leeways.push_back(stopIdToLeeway[stopIds[index]]);
+            }
+        }
+
+        void invalidateStopIds(std::vector<int> &untrackedStopIds) {
+            for (const int stopId: untrackedStopIds) {
+                unusedStopIds.push(stopId);
+                stopIdToLeeway[stopId] = -1;
+                stopIdToVehicleId[stopId] = INVALID_ID;
+                stopIdToIdOfPrevStop[stopId] = INVALID_ID;
+                stopIdToPosition[stopId] = -1;
+            }
         }
 
         RouteStateDataType getTypeOfData() const {

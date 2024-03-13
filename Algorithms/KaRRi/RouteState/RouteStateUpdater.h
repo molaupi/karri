@@ -21,7 +21,7 @@ namespace karri {
             const auto vehId = asgn.vehicle->vehicleId;
             const auto &pickup = *asgn.pickup;
             const auto &dropoff = *asgn.dropoff;
-            const int now = requestState.originalRequest.requestTime; //TODO: Bei reassining stimmt das nicht. Macht es Sinn das anzupassen
+            const int now = requestState.now();
             auto pickupIndex = asgn.pickupStopIdx;
             auto dropoffIndex = asgn.dropoffStopIdx;
 
@@ -237,7 +237,7 @@ namespace karri {
                         maxLeewayChanged = true;
                     }
                     result.push_back(stopIds[index]);
-                    deleteRouteDataFor(vehId, stopIds[index], index);
+                    deleteRouteDataFor(vehId, stopIds[index], index, false);
                     stopIds = data.stopIdsFor(vehId);
                     continue;
                 }
@@ -278,19 +278,121 @@ namespace karri {
             return result;
         }
 
+        void resetVarRouteFor(const VehicleRouteData &newVehData) {
+            const int vehId = newVehData.veh.vehicleId;
+            const int numStops = newVehData.stopIds.size();
+            assert(data.numStopsOf(vehId) > numStops);
+            auto stopIds = data.stopIdsFor(vehId);
+            int index = 0;
+            bool maxLeewayChanged = false;
+
+            while(index < data.numStopsOf(vehId)) {
+                if (index >= newVehData.stopIds.size() || stopIds[index] != newVehData.stopIds[index]) {
+                    if (data.getStopIdOfMaxLeeway() == stopIds[index]) {
+                        maxLeewayChanged = true;
+                    }
+                    deleteRouteDataFor(vehId, stopIds[index], index, false);
+                    stopIds = data.stopIdsFor(vehId);
+                    continue;
+                }
+                data.updateSchedArrTimesFor(vehId, index, newVehData.schedArrTimes[index]);
+                data.updateSchedDepTimesFor(vehId, index, newVehData.schedDepTimes[index]);
+                data.updateMaxArrTimesFor(vehId, index, newVehData.maxArrTimes[index]);
+                data.updateOccupanciesFor(vehId, index, newVehData.occupancies[index]);
+                data.updateVehWaitTimesPrefixSumFor(vehId, index, newVehData.vehWaitTimesPrefixSum[index]);
+                data.updateVehWaitTimesUntilDropoffsPrefixSumFor(vehId, index, newVehData.vehWaitTimesUntilDropoffsPrefixSum[index]);
+                data.updateNumDropoffsPrefixSumFor(vehId, index, newVehData.numDropoffsPrefixSum[index]);
+                data.updateIdOfPreviousStopOf(stopIds[index], ((index == 0) ? INVALID_ID : newVehData.stopIds[index - 1]));
+                data.updateStopPositionOf(stopIds[index], index);
+
+                const int leeway = newVehData.leeways[index];
+                data.updateLeewayOfLegStartingAt(stopIds[index], leeway);
+                if (data.getMaxLeeway() < leeway) {
+                    data.updateMaxLeeway(stopIds[index], leeway);
+                } else if (data.getStopIdOfMaxLeeway() == stopIds[index]) {
+                    maxLeewayChanged = true;
+                }
+
+                data.removeDroppedOffRequests(stopIds[index]);
+                data.removePickedUpRequests(stopIds[index]);
+
+                for (int i = newVehData.pickUpIndex[index]; i < ((index == numStops - 1) ? newVehData.pickedUpRequests.size() : newVehData.pickUpIndex[index + 1]); i++) {
+                    data.addPickedUpRequest(stopIds[index], newVehData.pickedUpRequests[i]);
+                }
+                for (int i = newVehData.dropOffIndex[index]; i < ((index == numStops - 1) ? newVehData.droppedOffRequests.size() : newVehData.dropOffIndex[index + 1]); i++) {
+                    data.addDroppedOffRequest(stopIds[index], newVehData.droppedOffRequests[i]);
+                }
+
+                index++;
+            }
+
+            if (maxLeewayChanged) {
+                recomputeMaxLeeway();
+            }
+            assert(index == numStops && index == data.numStopsOf(vehId));
+        }
+
+        void resetFixedRouteFor(const VehicleRouteData &newVehData) {
+            const int vehId = newVehData.veh.vehicleId;
+            const int newNumStops = newVehData.stopIds.size();
+            const int oldNumStops = data.numStopsOf(vehId);
+            bool maxLeewayChanged = false;
+            for (int i = 0; i < oldNumStops; i++) {
+                if (data.getStopIdOfMaxLeeway() == data.stopIdsFor(vehId)[0]) {
+                    maxLeewayChanged = true;
+                }
+                deleteRouteDataFor(vehId, data.stopIdsFor(vehId)[0], 0, false);
+            }
+            for (int index = 0; index < newNumStops; index++) {
+                data.updateStopLocationFor(vehId, index, newVehData.stopLocations[index]);
+                data.addNewStopFor(vehId, index, newVehData.stopIds[index]);
+                data.updateSchedArrTimesFor(vehId, index, newVehData.schedArrTimes[index]);
+                data.updateSchedDepTimesFor(vehId, index, newVehData.schedDepTimes[index]);
+                data.updateMaxArrTimesFor(vehId, index, newVehData.maxArrTimes[index]);
+                data.updateOccupanciesFor(vehId, index, newVehData.occupancies[index]);
+                data.updateVehWaitTimesPrefixSumFor(vehId, index, newVehData.vehWaitTimesPrefixSum[index]);
+                data.updateVehWaitTimesUntilDropoffsPrefixSumFor(vehId, index, newVehData.vehWaitTimesUntilDropoffsPrefixSum[index]);
+                data.updateNumDropoffsPrefixSumFor(vehId, index, newVehData.numDropoffsPrefixSum[index]);
+                data.updateIdOfPreviousStopOf(newVehData.stopIds[index], ((index == 0) ? INVALID_ID : newVehData.stopIds[index - 1]));
+                data.updateStopPositionOf(newVehData.stopIds[index], index);
+
+                const int leeway = newVehData.leeways[index];
+                data.updateLeewayOfLegStartingAt(newVehData.stopIds[index], leeway);
+                if (data.getMaxLeeway() < leeway) {
+                    data.updateMaxLeeway(newVehData.stopIds[index], leeway);
+                } else if (data.getStopIdOfMaxLeeway() == newVehData.stopIds[index]) {
+                    maxLeewayChanged = true;
+                }
+
+                for (int i = newVehData.pickUpIndex[index]; i < ((index == newNumStops - 1) ? newVehData.pickedUpRequests.size() : newVehData.pickUpIndex[index + 1]); i++) {
+                    data.addPickedUpRequest(newVehData.stopIds[index], newVehData.pickedUpRequests[i]);
+                }
+                for (int i = newVehData.dropOffIndex[index]; i < ((index == newNumStops - 1) ? newVehData.droppedOffRequests.size() : newVehData.dropOffIndex[index + 1]); i++) {
+                    data.addDroppedOffRequest(newVehData.stopIds[index], newVehData.droppedOffRequests[i]);
+                }
+            }
+            if (maxLeewayChanged) {
+                recomputeMaxLeeway();
+            }
+        }
+
+        void invalidateStopIds(std::vector<int> &unusedStopIds) {
+            data.invalidateStopIds(unusedStopIds);
+        }
+
 
     private:
 
         // This method only removes and invalidates the data for one stopId.
         // There are value arrays inside RouteData that store codependent data which need to be updated separately.
-        void deleteRouteDataFor(const int vehId, const int stopId, const int index) {
+        void deleteRouteDataFor(const int vehId, const int stopId, const int index, const bool stopIdIsUnused = true) {
             data.removePickedUpRequests(stopId);
             data.removeDroppedOffRequests(stopId);
-            data.removeStopFor(vehId, stopId, index);
+            data.removeStopFor(vehId, stopId, index, stopIdIsUnused);
             data.updateIdOfPreviousStopOf(stopId, INVALID_ID);
             data.updateStopPositionOf(stopId, INVALID_INDEX);
             data.updateLeewayOfLegStartingAt(stopId, 0);
-            data.updateVehicleIdOf(stopId, INVALID_ID);
+            data.updateVehicleIdOf(stopId, INVALID_ID); //TODO: Manche der Datenstrukturen müssen auch beim add stop geupdatet werden
         }
 
         void rereshRouteDataDatastructures(const int vehId, ConstantVectorRange<int> &stopIds, ConstantVectorRange<int> &schedDepTimes,

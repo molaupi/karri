@@ -207,7 +207,7 @@ namespace karri {
             fixedUpdater.removeStartOfCurrentLeg(vehId);
         }
 
-        void insertBestAssignment(int &pickupStopId, int &dropoffStopId, RequestState<CostCalculatorT> &requestState) {
+        void insertBestAssignment(int &pickupStopId, int &dropoffStopId, RequestState<CostCalculatorT> &requestState, const bool reoptRun = false) {
             Timer timer;
 
             if (requestState.isNotUsingVehicleBest()) {
@@ -227,32 +227,51 @@ namespace karri {
             timer.restart();
             const auto [pickupIndex, dropoffIndex] = variableUpdater.insert(asgn, requestState);
 
+            pickupStopId = variableData.stopIdsFor(vehId)[pickupIndex];
+            dropoffStopId = variableData.stopIdsFor(vehId)[dropoffIndex];
+
+            // Cash changed stopInfo
+            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
+            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
+            if (reoptRun && !pickupAtExistingStop) {
+                newCreatedStopIds.push_back(pickupStopId);
+            } else if (reoptRun && std::find(modifiedStopIds.begin(), modifiedStopIds.end(), pickupStopId) == modifiedStopIds.end()
+                       && std::find(newCreatedStopIds.begin(), newCreatedStopIds.end(), pickupIndex) == newCreatedStopIds.end()) {
+                modifiedStopIds.push_back(pickupStopId);
+                unmodifiedStopInfos.push_back(stopInfos[pickupStopId]);
+            }
+            if (reoptRun && !dropoffAtExistingStop) {
+                newCreatedStopIds.push_back(dropoffStopId);
+            } else if (reoptRun && std::find(modifiedStopIds.begin(), modifiedStopIds.end(), dropoffStopId) == modifiedStopIds.end()
+                       && std::find(newCreatedStopIds.begin(), newCreatedStopIds.end(), dropoffStopId) == newCreatedStopIds.end()) {
+                modifiedStopIds.push_back(pickupStopId);
+                unmodifiedStopInfos.push_back(stopInfos[dropoffStopId]);
+            }
+
 
             updateStopInfos(asgn, pickupIndex, dropoffIndex, requestState);
 
-            if (pickupIndex == 0)
+            if (pickupIndex == 0 && !reoptRun)
                 lastMinutePickup(vehId);
+            else if (pickupIndex == 0 && reoptRun && std::find(vehiclesWithLastMinutePickup.begin(), vehiclesWithLastMinutePickup.end(), vehId) == vehiclesWithLastMinutePickup.end())
+                vehiclesWithLastMinutePickup.push_back(vehId);
 
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
 
             if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 &&
-                variableData.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) {
+                variableData.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) { //TODO: Muss hier now hin oder reqTime?
                 movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
             }
 
             updateBucketState(asgn, pickupIndex, dropoffIndex, requestState);
 
-            pickupStopId = variableData.stopIdsFor(vehId)[pickupIndex];
-            dropoffStopId = variableData.stopIdsFor(vehId)[dropoffIndex];
 
-            // Register the inserted pickup and dropoff with the path data
-            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
-            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
             pathTracker.updateForBestAssignment(pickupIndex, dropoffIndex, numStopsBefore, dropoffAtExistingStop);
 
         }
 
+        // Replaces variable route of vehicle with route in the fixed route state
         void exchangeRoutesFor(const Vehicle &veh) {
             const int vehId = veh.vehicleId;
             bool lastStopIdentical = variableData.stopIdsFor(vehId)[variableData.numStopsOf(vehId) - 1] ==
@@ -272,17 +291,54 @@ namespace karri {
             // Update LastStopBuckets and exchange actual routes
             lastStopBucketsEnv.removeBucketEntries(veh, variableData.numStopsOf(vehId) - 1, variableData);
             for (const int stopId: variableUpdater.exchangeRouteFor(vehId, fixedData)) {
+                modifiedStopIds.push_back(stopId);
+                deletedStopIds.push_back(stopId);
+                unmodifiedStopInfos.push_back(stopInfos[stopId]);
                 stopInfos[stopId] = StopInfo();
             }
 
             for (const int stopId: variableData.stopIdsFor(vehId)) {
                 assert(stopInfos[stopId].isFixed || stopId == vehId);
+                modifiedStopIds.push_back(stopId);
+                unmodifiedStopInfos.push_back(stopInfos[stopId]);
                 stopInfos[stopId].isFixed = true;
                 stopInfos[stopId].pickedupReqAndDropoff.clear();
             }
-
-
             lastStopBucketsEnv.generateBucketEntries(veh, variableData.numStopsOf(vehId) - 1, variableData);
+        }
+
+        void setChangesOfReoptimizationRun() {
+            for (const int vehId: vehiclesWithLastMinutePickup) {
+                lastMinutePickup(vehId);
+            }
+            variableUpdater.invalidateStopIds(deletedStopIds);
+            vehiclesWithLastMinutePickup.clear();
+            modifiedStopIds.clear();
+            unmodifiedStopInfos.clear();
+            newCreatedStopIds.clear();
+            deletedStopIds.clear();
+        }
+
+        void revertChangesOfReoptimizationRun(std::vector<VehicleRouteData> &oldRoutes) {
+            assert(oldRoutes.size() >= 1);
+            for (int i = 0; i < modifiedStopIds.size(); i++) {
+                stopInfos[modifiedStopIds[i]] = unmodifiedStopInfos[i];
+            }
+            for (const int stopId: newCreatedStopIds) {
+                stopInfos[stopId] = StopInfo();
+            }
+
+            revertRouteStateFor(oldRoutes[0], false);
+            for (int i = 1; i < oldRoutes.size(); i++) {
+                revertRouteStateFor(oldRoutes[i], true);
+            }
+
+            variableUpdater.invalidateStopIds(newCreatedStopIds);
+            vehiclesWithLastMinutePickup.clear();
+            modifiedStopIds.clear();
+            unmodifiedStopInfos.clear();
+            newCreatedStopIds.clear();
+            deletedStopIds.clear();
         }
 
 
@@ -353,6 +409,33 @@ namespace karri {
         }
 
     private:
+
+        // Replaces variable route with the route stored in data
+        void revertRouteStateFor(const VehicleRouteData &data, const bool resetVarRoute) {
+            assert(!data.stopIds.empty());
+            const int numStops = data.stopIds.size();
+            const int vehId = data.veh.vehicleId;
+            bool lastStopIdentical = variableData.stopIdsFor(vehId)[variableData.numStopsOf(vehId) - 1] == data.stopIds.back();
+
+            // Exchange elliptic buckets
+            ellipticBucketsEnv.exchangeBucketEntries(data.veh, variableData, data, variableBuckets);
+
+            // Update last stop vertice
+            if (!lastStopIdentical) {
+                const auto oldLocHead = inputGraph.edgeHead(variableData.stopLocationsFor(vehId)[variableData.numStopsOf(vehId) - 1]);
+                const auto newLocHead = inputGraph.edgeHead(data.stopLocations[numStops - 1]);
+                variableLastStopsAtVertices.removeLastStopAt(oldLocHead, vehId);
+                variableLastStopsAtVertices.insertLastStopAt(newLocHead, vehId);
+            }
+
+            lastStopBucketsEnv.removeBucketEntries(data.veh, variableData.numStopsOf(vehId) - 1, variableData);
+            if (resetVarRoute) {
+                variableUpdater.resetVarRouteFor(data);
+            } else {
+                variableUpdater.resetFixedRouteFor(data);
+            }
+            lastStopBucketsEnv.generateBucketEntries(data.veh, variableData.numStopsOf(vehId) - 1, variableData);
+        }
 
         void lastMinutePickup(const int vehId) {
             auto stopIds = variableData.stopIdsFor(vehId);
@@ -560,6 +643,13 @@ namespace karri {
             dropoffInfo.location = assignment.dropoff->loc;
             dropoffInfo.vehicleId = assignment.vehicle->vehicleId;
         }
+
+        // Data to make changes revertible
+        std::vector<int> deletedStopIds;
+        std::vector<int> vehiclesWithLastMinutePickup;
+        std::vector<int> newCreatedStopIds;
+        std::vector<int> modifiedStopIds; //Stopids that were removed/ modified
+        std::vector<StopInfo> unmodifiedStopInfos; // modifiedStopIds[i] corresponds to stopInfo at unmodifiedStopInfos[i]
 
         const InputGraphT &inputGraph;
         const InputConfig &inputConfig;

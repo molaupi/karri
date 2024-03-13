@@ -222,6 +222,25 @@ namespace karri {
             generateTargetBucketEntries(veh, newData.numStopsOf(veh.vehicleId) - 1, newData, currBuckets);
         }
 
+        void exchangeBucketEntries(const Vehicle &veh, RouteStateData &currData, const VehicleRouteData &newData, BucketsWrapperT &currBuckets) {
+            assert(!newData.stopIds.empty() && !newData.stopIds.empty());
+            const int numStops = newData.stopIds.size();
+
+            for (int stopIndex = 0; stopIndex < currData.numStopsOf(veh.vehicleId); stopIndex++) {
+                deleteSourceBucketEntries(veh, stopIndex, currData, currBuckets);
+                deleteTargetBucketEntries(veh, stopIndex, currData, currBuckets);
+            }
+
+            // Refilling relevant buckets with new data
+            if (numStops == 1) return;
+            generateSourceBucketEntries(0, newData, currBuckets);
+            for (int stopIndex = 1; stopIndex < numStops - 1; stopIndex++) {
+                generateSourceBucketEntries(stopIndex, newData, currBuckets);
+                generateTargetBucketEntries(stopIndex, newData, currBuckets);
+            }
+            generateTargetBucketEntries(numStops - 1, newData, currBuckets);
+        }
+
     private:
 
 
@@ -230,6 +249,52 @@ namespace karri {
                 StoreSearchSpace, StopWhenLeewayExceeded>;
         using SearchFromNeighbor = typename CHEnvT::template UpwardSearch<
                 dij::NoCriterion, StopWhenLeewayExceeded>;
+
+        void generateSourceBucketEntries(const int stopIndex, const VehicleRouteData &vehData, BucketsWrapperT &buckets) {
+            assert(!vehData.stopIds.empty());
+            const int numStops = vehData.stopIds.size();
+            assert(numStops > stopIndex + 1);
+
+            const int stopId = vehData.stopIds[stopIndex];
+            const int leeway = std::max(vehData.maxArrTimes[stopIndex + 1],
+                                        vehData.schedDepTimes[stopIndex + 1]) -
+                               vehData.schedDepTimes[stopIndex] - inputConfig.stopTime;
+            currentLeeway = leeway;
+
+            const int newStopLoc = vehData.stopLocations[stopIndex];
+            const int newStopRoot = ch.rank(inputGraph.edgeHead(newStopLoc));
+
+            const int nextStopLoc = vehData.stopLocations[stopIndex + 1];
+            const int nextStopRoot = ch.rank(inputGraph.edgeTail(nextStopLoc));
+            const int nextStopOffset = inputGraph.travelTime(nextStopLoc);
+
+            generateBucketEntries(stopId, leeway,
+                                  newStopRoot, 0, forwardSearchFromNewStop, ch.upwardGraph(),
+                                  nextStopRoot, nextStopOffset, reverseSearchFromNextStop, ch.downwardGraph(),
+                                  buckets.getSourceBuckets());
+
+        }
+
+        void generateTargetBucketEntries(const int stopIndex, const VehicleRouteData &vehData, BucketsWrapperT &buckets) {
+            assert(stopIndex > 0 && !vehData.stopIds.empty());
+
+            const int stopId = vehData.stopIds[stopIndex];
+            const int leeway = std::max(vehData.maxArrTimes[stopIndex],
+                                        vehData.schedDepTimes[stopIndex]) - vehData.schedDepTimes[stopIndex - 1] - inputConfig.stopTime;
+            currentLeeway = leeway;
+
+            const int newStopLoc = vehData.stopLocations[stopIndex];
+            const int newStopRoot = ch.rank(inputGraph.edgeTail(newStopLoc));
+            const int newStopOffset = inputGraph.travelTime(newStopLoc);
+
+            const int prevStopLoc = vehData.stopLocations[stopIndex - 1];
+            const int prevStopRoot = ch.rank(inputGraph.edgeHead(prevStopLoc));
+
+            generateBucketEntries(stopId, leeway,
+                                  newStopRoot, newStopOffset, reverseSearchFromNewStop, ch.downwardGraph(),
+                                  prevStopRoot, 0, forwardSearchFromPrevStop, ch.upwardGraph(),
+                                  buckets.getTargetBuckets());
+        }
 
         void generateBucketEntries(const int stopId, const int leeway,
                                    const int newStopRoot, const int newStopOffSet, SearchFromNewStop &searchFromNewStop,

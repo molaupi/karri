@@ -106,7 +106,7 @@ namespace karri {
         void init(RequestState<CostCalculatorT> &reqState) {
             Timer timer;
             requestState = &reqState;
-            curVehLocToPickupSearches.initialize(requestState->originalRequest.requestTime, reqState); //TODO: Auch hier kann requestTime zu fehler führen, da dass ja nicht jetzt ist
+            curVehLocToPickupSearches.initialize(requestState->now(), reqState); //TODO: Changed reqTime -> now
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             requestState->stats().pbnsAssignmentsStats.initializationTime += time;
         }
