@@ -429,12 +429,42 @@ namespace karri {
             }
 
             lastStopBucketsEnv.removeBucketEntries(data.veh, variableData.numStopsOf(vehId) - 1, variableData);
+
+            assert(variableData.stopIdsFor(vehId)[0] == data.stopIds[0]);
+            if (variableData.stopLocationsFor(vehId)[0] != data.stopLocations[0]) {
+                revertReroute(data); // In case the start of the current leg has been changed in the reoptimization run
+            }
+
             if (resetVarRoute) {
                 variableUpdater.resetVarRouteFor(data);
             } else {
                 variableUpdater.resetFixedRouteFor(data);
             }
             lastStopBucketsEnv.generateBucketEntries(data.veh, variableData.numStopsOf(vehId) - 1, variableData);
+        }
+
+        void revertReroute(const VehicleRouteData &data) {
+            const Vehicle &veh = data.veh;
+            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, variableData, variableBuckets);
+            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, fixedData, fixedBuckets);
+            variableData.updateStopLocationFor(veh.vehicleId, 0 , data.stopLocations[0]);
+            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, variableData, variableBuckets);
+
+            if (fixedData.numStopsOf(veh.vehicleId) > 1) {
+                fixedUpdater.updateStartOfCurrentLeg(veh.vehicleId, data.stopLocations[0], data.schedDepTimes[0]);
+                ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, fixedData, fixedBuckets);
+                return;
+            }
+            const auto oldLocHead = inputGraph.edgeHead(fixedData.stopLocationsFor(veh.vehicleId)[0]);
+            const auto newLocHead = inputGraph.edgeHead(data.stopLocations[0]);
+
+            lastStopBucketsEnv.removeBucketEntries(veh, 0, fixedData);
+            fixedLastStopsAtVertices.removeLastStopAt(oldLocHead, veh.vehicleId);
+
+            fixedUpdater.updateStartOfCurrentLeg(veh.vehicleId, data.stopLocations[0], data.schedDepTimes[0]);
+
+            lastStopBucketsEnv.generateBucketEntries(veh, 0, fixedData);
+            fixedLastStopsAtVertices.insertLastStopAt(newLocHead, veh.vehicleId);
         }
 
         void lastMinutePickup(const int vehId) {

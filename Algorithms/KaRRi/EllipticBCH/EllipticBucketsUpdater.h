@@ -231,6 +231,7 @@ namespace karri {
                 deleteTargetBucketEntries(veh, stopIndex, currData, currBuckets);
             }
 
+
             // Refilling relevant buckets with new data
             if (numStops == 1) return;
             generateSourceBucketEntries(0, newData, currBuckets);

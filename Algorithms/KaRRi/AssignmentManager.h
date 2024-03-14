@@ -81,6 +81,7 @@ namespace karri {
 
                 for (const auto reqId: movedReqIds) {
                     const auto oldData = oldReqData[reqId];
+                    assert(std::get<0>(oldData).requestId == reqId);
                     auto *newReqState = createAndInitializeRequestState(std::get<0>(oldData),
                             RouteStateDataType::VARIABLE, std::get<0>(oldData).requestTime, &std::get<2>(oldData));
                     searchBestAssignmentOn(variableRouteStateData, variableBuckets, *newReqState);
@@ -89,6 +90,7 @@ namespace karri {
 
                     if (costsSaved < 0) {
                         systemStateUpdater.revertChangesOfReoptimizationRun(prevRouteData);
+                        testReset(prevRouteData);
                         for (int i = 0; i < currentResult.size(); i++) delete currentResult[i];
                         currentResult.clear();
 
@@ -123,6 +125,38 @@ namespace karri {
         }
 
     private:
+
+        void testReset(std::vector<VehicleRouteData> &data) {
+            for (const auto &route: data) {
+                const int vehId = route.veh.vehicleId;
+                const int numStops = route.stopIds.size();
+
+                assert(numStops == variableRouteStateData.numStopsOf(vehId));
+
+                for (int i = 0; i < numStops; i++) {
+                    assert(variableRouteStateData.stopIdsFor(vehId)[i] == route.stopIds[i]);
+                    assert(variableRouteStateData.stopLocationsFor(vehId)[i] == route.stopLocations[i]);
+                    assert(variableRouteStateData.schedArrTimesFor(vehId)[i] == route.schedArrTimes[i]);
+                    assert(variableRouteStateData.schedDepTimesFor(vehId)[i] == route.schedDepTimes[i]);
+                    assert(variableRouteStateData.maxArrTimesFor(vehId)[i] == route.maxArrTimes[i]);
+                    assert(variableRouteStateData.occupanciesFor(vehId)[i] == route.occupancies[i]);
+                    assert(variableRouteStateData.vehWaitTimesPrefixSumFor(vehId)[i] == route.vehWaitTimesPrefixSum[i]);
+                    assert(variableRouteStateData.vehWaitTimesUntilDropoffsPrefixSumsFor(vehId)[i] == route.vehWaitTimesUntilDropoffsPrefixSum[i]);
+                    assert(variableRouteStateData.numDropoffsPrefixSumFor(vehId)[i] == route.numDropoffsPrefixSum[i]);
+                    // Pickup and dropoffs are not checked
+
+                    // Data concerning stopIds
+                    if (i == 0) {
+                        assert(variableRouteStateData.idOfPreviousStopOf(route.stopIds[i]) == INVALID_ID);
+                    } else {
+                        assert(variableRouteStateData.idOfPreviousStopOf(route.stopIds[i]) == route.stopIds[i - 1]);
+                    }
+                    assert(variableRouteStateData.stopPositionOf(route.stopIds[i]) == i);
+                    assert(variableRouteStateData.leewayOfLegStartingAt(route.stopIds[i]) == route.leeways[i]);
+                    assert(variableRouteStateData.vehicleIdOf(route.stopIds[i]) == vehId);
+                }
+            }
+        }
 
         int calcCostSavings(const int vehId, const std::vector<int> &movedReqIds, const std::vector<int> &movedReqDepTimes) {
             const int numFixedStops = fixedRouteStateData.numStopsOf(vehId);
@@ -206,17 +240,21 @@ namespace karri {
 
         void updateOldRequestData() {
             const auto mainReqState = currentResult[0];
-            PDLoc pickup = mainReqState->isNotUsingVehicleBest() ? PDLoc() :  *mainReqState->getBestAssignment().pickup;
-            PDLoc dropoff = mainReqState->isNotUsingVehicleBest() ? PDLoc() : *mainReqState->getBestAssignment().dropoff;
+            int reqId = mainReqState->originalRequest.requestId;
+            PDLoc pickup = (mainReqState->isNotUsingVehicleBest() ? PDLoc() :  *mainReqState->getBestAssignment().pickup);
+            PDLoc dropoff = (mainReqState->isNotUsingVehicleBest() ? PDLoc() : *mainReqState->getBestAssignment().dropoff);
             pickup.id = 0;
             dropoff.id = 1;
             if (oldReqData.size() < mainReqState->originalRequest.requestId + 1) {
                 oldReqData.resize(mainReqState->originalRequest.requestId + 1);
             }
-            oldReqData[mainReqState->originalRequest.requestId] = std::tuple(mainReqState->originalRequest, mainReqState->getBestCost(), pickup, dropoff, mainReqState->getOriginalReqMaxTripTime());
+            oldReqData[reqId] = std::tuple(mainReqState->originalRequest, mainReqState->getBestCost(), pickup, dropoff, mainReqState->getOriginalReqMaxTripTime());
+            assert(std::get<0>(oldReqData[reqId]).requestId == reqId);
             for (int i = 1; i < currentResult.size(); i++) {
                 const auto *currReqState = currentResult[i];
-                std::get<1>(oldReqData[currReqState->originalRequest.requestId]) = currReqState->getBestCost();
+                reqId = currReqState->originalRequest.requestId;
+                std::get<1>(oldReqData[reqId]) = currReqState->getBestCost();
+                assert(std::get<0>(oldReqData[reqId]).requestId == reqId);
             }
         }
 

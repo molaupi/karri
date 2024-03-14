@@ -344,8 +344,8 @@ namespace karri {
                 deleteRouteDataFor(vehId, data.stopIdsFor(vehId)[0], 0, false);
             }
             for (int index = 0; index < newNumStops; index++) {
-                data.updateStopLocationFor(vehId, index, newVehData.stopLocations[index]);
                 data.addNewStopFor(vehId, index, newVehData.stopIds[index]);
+                data.updateStopLocationFor(vehId, index, newVehData.stopLocations[index]);
                 data.updateSchedArrTimesFor(vehId, index, newVehData.schedArrTimes[index]);
                 data.updateSchedDepTimesFor(vehId, index, newVehData.schedDepTimes[index]);
                 data.updateMaxArrTimesFor(vehId, index, newVehData.maxArrTimes[index]);
@@ -355,6 +355,7 @@ namespace karri {
                 data.updateNumDropoffsPrefixSumFor(vehId, index, newVehData.numDropoffsPrefixSum[index]);
                 data.updateIdOfPreviousStopOf(newVehData.stopIds[index], ((index == 0) ? INVALID_ID : newVehData.stopIds[index - 1]));
                 data.updateStopPositionOf(newVehData.stopIds[index], index);
+                data.updateVehicleIdOf(newVehData.stopIds[index], newVehData.veh.vehicleId);
 
                 const int leeway = newVehData.leeways[index];
                 data.updateLeewayOfLegStartingAt(newVehData.stopIds[index], leeway);
