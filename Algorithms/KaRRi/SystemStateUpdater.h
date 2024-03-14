@@ -448,11 +448,13 @@ namespace karri {
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, variableData, variableBuckets);
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, fixedData, fixedBuckets);
             variableData.updateStopLocationFor(veh.vehicleId, 0 , data.stopLocations[0]);
-            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, variableData, variableBuckets);
+            //ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, variableData, variableBuckets);
+            //ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, variableData, variableBuckets);
 
             if (fixedData.numStopsOf(veh.vehicleId) > 1) {
                 fixedUpdater.updateStartOfCurrentLeg(veh.vehicleId, data.stopLocations[0], data.schedDepTimes[0]);
-                ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, fixedData, fixedBuckets);
+                //ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0, fixedData, fixedBuckets);
+                //ellipticBucketsEnv.generateSourceBucketEntries(veh, 0, fixedData, fixedBuckets);
                 return;
             }
             const auto oldLocHead = inputGraph.edgeHead(fixedData.stopLocationsFor(veh.vehicleId)[0]);
