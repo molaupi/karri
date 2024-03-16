@@ -9,6 +9,7 @@
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Algorithms/KaRRi/RouteState/RouteStateData.h"
 #include "Algorithms/KaRRi/BaseObjects/VehicleRouteData.h"
+#include "Algorithms/KaRRi/BaseObjects/ChangesWrapper.h"
 
 namespace karri {
 
@@ -42,15 +43,12 @@ namespace karri {
                           fixedBuckets(fixedBuckets),
                           vehLocator(vehLocator) {}
 
-        //TODO: Wenn Einfügen auf selbem Fahrzeug der losgelösten Requests möglich sein soll, muss man
-        // es möglich sein Route (und Bucket) exchanges rückgängig zu machen (falls Kosten doch größer sind)
-
         //TODO: Hier wird jetzt nicht beachtete, ob das assignmenht ein Fahrzeug verwendet oder nicht. Da muss dann noch im EventSimulator angepasst werden
-        std::vector<RequestState<CostCalculatorT>*> &calculateChanges(Request &req) {
-            for (int i = 0; i < currentResult.size(); i++) delete currentResult[i];
-            currentResult.clear();
+        void calculateChanges(Request &req, ChangesWrapper &changes) {
             vehLocator.resetDistances();
+            std::vector<RequestState<CostCalculatorT>*> reqStates;
 
+            // Initial search on fixed and variable routeState
             auto *varReqState = createAndInitializeRequestState(req, RouteStateDataType::VARIABLE, req.requestTime);
             auto *fixedReqState = createAndInitializeRequestState(req, RouteStateDataType::FIXED, req.requestTime);
             searchBestAssignmentOn(variableRouteStateData, variableBuckets, *varReqState);
@@ -58,73 +56,98 @@ namespace karri {
 
             int pickupId, dropoffId;
 
+            // If there are no costs to save the normal assignment is used
             int costsSaved = varReqState->getBestCost() - fixedReqState->getBestCost();
-            if (costsSaved > 0) {
-                const auto fixedAssignment = fixedReqState->getBestAssignment();
-                std::vector<VehicleRouteData> prevRouteData;
-                std::vector<int> affectedVehicles;
-                prevRouteData.push_back(VehicleRouteData(*fixedAssignment.vehicle));
-                affectedVehicles.push_back(fixedAssignment.vehicle->vehicleId);
-
-                variableRouteStateData.getRouteDataForVehicle(fixedAssignment.vehicle->vehicleId, prevRouteData[0]);
-                currentResult.push_back(fixedReqState);
-
-                std::vector<int> movedReqIds;
-                std::vector<int> movedReqDepTimes;
-                getMovedRequestsAndDepTime(fixedAssignment.vehicle->vehicleId, movedReqIds, movedReqDepTimes);
-                costsSaved += calcCostSavings(fixedAssignment.vehicle->vehicleId, movedReqIds, movedReqDepTimes);
-
-
-
-                systemStateUpdater.exchangeRoutesFor(*fixedReqState->getBestAssignment().vehicle);
-                systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *fixedReqState, true);
-
-                for (const auto reqId: movedReqIds) {
-                    auto oldData = oldReqData[reqId];
-                    assert(std::get<0>(oldData).requestId == reqId);
-                    auto *newReqState = createAndInitializeRequestState(std::get<0>(oldData),
-                            RouteStateDataType::VARIABLE, std::get<0>(oldData).requestTime, &std::get<2>(oldData));
-                    searchBestAssignmentOn(variableRouteStateData, variableBuckets, *newReqState);
-
-                    costsSaved -= newReqState->getBestCost();
-
-                    if (costsSaved < 0) {
-                        systemStateUpdater.revertChangesOfReoptimizationRun(prevRouteData);
-                        testReset(prevRouteData);
-                        for (int i = 0; i < currentResult.size(); i++) delete currentResult[i];
-                        currentResult.clear();
-
-                        systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *varReqState);
-                        currentResult.push_back(varReqState);
-                        updateOldRequestData();
-                        return currentResult;
-                    }
-
-                    if (!newReqState->isNotUsingVehicleBest() && (std::find(affectedVehicles.begin(), affectedVehicles.end(), newReqState->getBestAssignment().vehicle->vehicleId) == affectedVehicles.end())) {
-                        prevRouteData.push_back(VehicleRouteData(*newReqState->getBestAssignment().vehicle));
-                        affectedVehicles.push_back(newReqState->getBestAssignment().vehicle->vehicleId);
-                        variableRouteStateData.getRouteDataForVehicle(newReqState->getBestAssignment().vehicle->vehicleId, prevRouteData.back());
-                    }
-
-                    systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *newReqState, true);
-
-                    currentResult.push_back(newReqState);
-                }
-
-                systemStateUpdater.setChangesOfReoptimizationRun();
-
-                updateOldRequestData();
-                return currentResult;
+            if (costsSaved <= 0) {
+                systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *varReqState);
+                addAssignmentData(changes, *varReqState, false);
+                reqStates.push_back(varReqState);
+                updateOldRequestData(reqStates);
+                return;
             }
 
-            systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *varReqState);
+            // Data needed for the reassignments (current routes of vehicles that are affected by reassignments)
+            const auto fixedAssignment = fixedReqState->getBestAssignment();
+            std::vector<VehicleRouteData> prevRouteData;
+            std::vector<int> affectedVehicles;
+            prevRouteData.push_back(VehicleRouteData(*fixedAssignment.vehicle));
+            affectedVehicles.push_back(fixedAssignment.vehicle->vehicleId);
+            variableRouteStateData.getRouteDataForVehicle(fixedAssignment.vehicle->vehicleId, prevRouteData[0]);
 
-            currentResult.push_back(varReqState);
-            updateOldRequestData();
-            return currentResult;
+            // Get request data of requests that need to be moved and calculate total cost savings
+            std::vector<int> movedReqIds;
+            std::vector<int> movedReqDepTimes;
+            getMovedRequestsAndDepTime(fixedAssignment.vehicle->vehicleId, movedReqIds, movedReqDepTimes);
+            costsSaved += calcCostSavings(fixedAssignment.vehicle->vehicleId, movedReqIds, movedReqDepTimes);
+
+            // Exchange routes of variable routeState with route of fixed routeState and insert best fixed assignment
+            systemStateUpdater.exchangeRoutesFor(*fixedReqState->getBestAssignment().vehicle);
+            systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *fixedReqState, true);
+            addAssignmentData(changes, *fixedReqState, false);
+            reqStates.push_back(fixedReqState);
+
+            // Reassignment procedure
+            for (const auto reqId: movedReqIds) {
+                // Find new assignment for moved request
+                auto oldData = oldReqData[reqId];
+                assert(std::get<0>(oldData).requestId == reqId);
+                auto *newReqState = createAndInitializeRequestState(std::get<0>(oldData),
+                                                                    RouteStateDataType::VARIABLE, std::get<0>(oldData).requestTime, &std::get<2>(oldData));
+                searchBestAssignmentOn(variableRouteStateData, variableBuckets, *newReqState);
+                costsSaved -= newReqState->getBestCost();
+
+                // If no costs are saved, changes are reverted and the initial normal assignment is used
+                if (costsSaved < 0) {
+                    systemStateUpdater.revertChangesOfReoptimizationRun(prevRouteData);
+                    testReset(prevRouteData);
+                    systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *varReqState);
+                    changes.reassignments.clear();
+                    changes.affectedVehicles.clear();
+                    addAssignmentData(changes, *varReqState, false);
+                    for (auto state: reqStates) delete state;
+                    reqStates.clear();
+                    reqStates.push_back(varReqState);
+                    updateOldRequestData(reqStates);
+                    return;
+                }
+
+                // Store current route of vehicle that is going to be affected by a reassignment
+                if (!newReqState->isNotUsingVehicleBest() && (std::find(affectedVehicles.begin(), affectedVehicles.end(), newReqState->getBestAssignment().vehicle->vehicleId) == affectedVehicles.end())) {
+                    prevRouteData.push_back(VehicleRouteData(*newReqState->getBestAssignment().vehicle));
+                    affectedVehicles.push_back(newReqState->getBestAssignment().vehicle->vehicleId);
+                    variableRouteStateData.getRouteDataForVehicle(newReqState->getBestAssignment().vehicle->vehicleId, prevRouteData.back());
+                }
+
+                systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *newReqState, true);
+                addAssignmentData(changes, *newReqState, true);
+                reqStates.push_back(newReqState);
+            }
+
+            // Reoptimization has been successful
+            systemStateUpdater.setChangesOfReoptimizationRun();
+            changes.affectedVehicles = affectedVehicles;
+            changes.costsSaved = costsSaved;
+            updateOldRequestData(reqStates);
         }
 
     private:
+
+        void addAssignmentData(ChangesWrapper &changes, const RequestState<CostCalculatorT> &reqState, const bool reassignment) {
+            AssignmentData data{};
+
+            data.requestId = reqState.originalRequest.requestTime;
+            data.cost = reqState.getBestCost();
+            data.isUsingVehicle = !reqState.isNotUsingVehicleBest();
+            data.assignedVehicleId = (data.isUsingVehicle ? reqState.getBestAssignment().vehicle->vehicleId : -1);
+            data.walkingTimeFromDropoff = (data.isUsingVehicle ? reqState.getBestAssignment().dropoff->walkingDist : reqState.getNotUsingVehicleDist());
+            data.walkingTimeToPickup = (data.isUsingVehicle ? reqState.getBestAssignment().pickup->walkingDist : -1);
+
+            if (reassignment) {
+                changes.reassignments.push_back(data);
+                return;
+            }
+            changes.initialAssignment = data;
+        }
 
         void testReset(std::vector<VehicleRouteData> &data) {
             for (const auto &route: data) {
@@ -212,11 +235,10 @@ namespace karri {
                 const auto &dropoffs = fixedRouteStateData.getRequestsDroppedOffAt(currStopId);
                 const int newRestTripTime = fixedRouteStateData.schedArrTimesFor(vehId)[i] - depFromCurrStart;
 
-                //TODO: Die currTripTime Estimation stimmt hier nicht. Man müsste die depTimes von jedem Request speichern
                 for (int reqId: dropoffs) {
-                    //const int currTripTimeEstimation = depFromCurrStart - std::get<0>(oldReqData[reqId]).requestTime;
+                    const int currTripTimeEstimation = depFromCurrStart - std::get<0>(oldReqData[reqId]).requestTime;
                     savings -= CostFunction::calcTripCostOnly(newRestTripTime);
-                    //savings -= CostFunction::calcTripViolationCost(newRestTripTime + currTripTimeEstimation, std::get<4>(oldReqData[reqId]));
+                    savings -= CostFunction::calcTripViolationCost(newRestTripTime + currTripTimeEstimation, std::get<4>(oldReqData[reqId]));
                     occupancies.push_back(reqId);
                     dropOffStopIds.push_back(currStopId);
                 }
@@ -229,16 +251,16 @@ namespace karri {
             for (int i = 0; i < occupancies.size(); i++) {
                 while (variableStopIds[currVarIndex] != dropOffStopIds[i]) currVarIndex++;
                 const int oldRestTripTIme = variableRouteStateData.schedArrTimesFor(vehId)[currVarIndex] - depFromCurrStart;
-                //const int currTripTimeEstimation = depFromCurrStart - std::get<0>(oldReqData[occupancies[i]]).requestTime;
+                const int currTripTimeEstimation = depFromCurrStart - std::get<0>(oldReqData[occupancies[i]]).requestTime;
                 savings += CostFunction::calcTripCostOnly(oldRestTripTIme);
-                //savings += CostFunction::calcTripViolationCost(oldRestTripTIme + currTripTimeEstimation, std::get<4>(oldReqData[occupancies[i]]));
+                savings += CostFunction::calcTripViolationCost(oldRestTripTIme + currTripTimeEstimation, std::get<4>(oldReqData[occupancies[i]]));
             }
 
             assert(savings >= 0);
             return savings;
         }
 
-        void updateOldRequestData() {
+        void updateOldRequestData(std::vector<RequestState<CostCalculatorT>*> &currentResult) {
             const auto mainReqState = currentResult[0];
             int reqId = mainReqState->originalRequest.requestId;
             PDLoc pickup = (mainReqState->isNotUsingVehicleBest() ? PDLoc() :  *mainReqState->getBestAssignment().pickup);
@@ -256,6 +278,8 @@ namespace karri {
                 std::get<1>(oldReqData[reqId]) = currReqState->getBestCost();
                 assert(std::get<0>(oldReqData[reqId]).requestId == reqId);
             }
+            for (auto state: currentResult) delete state;
+            currentResult.clear();
         }
 
         // Puts all requests picked up after the 0-th stop into a list
@@ -279,8 +303,6 @@ namespace karri {
             requestStateInitializer.initializeRequestState(req, *newRequestState, setLoc);
             return newRequestState;
         }
-
-        std::vector<RequestState<CostCalculatorT>*> currentResult = {};
 
         SystemStateUpdaterT &systemStateUpdater;
 

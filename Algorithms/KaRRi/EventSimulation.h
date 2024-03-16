@@ -279,60 +279,53 @@ namespace karri {
             assert(requests[reqId].requestTime == occTime);
             Timer timer;
 
+            ChangesWrapper changes;
             auto &request = requests[reqId];
-            auto asgnFinderResponse = assignmentManager.calculateChanges(request);
+            assignmentManager.calculateChanges(request, changes);
             //systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse); TODO: Logging off
 
-            applyAssignments(asgnFinderResponse, reqId, occTime);
+            applyAssignments(changes, reqId, occTime);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",RequestReceipt," << time << '\n';
         }
 
-        template<typename AssignmentFinderResponseT>
-        void applyAssignments(std::vector<AssignmentFinderResponseT*> &asgnBatch, const int reqId, const int occTime) {
-            assert(asgnBatch.size() >= 1);
-            const auto &mainAssignment = *asgnBatch[0];
+        void applyAssignments(ChangesWrapper &changes, const int reqId, const int occTime) {
 
-            if (mainAssignment.isNotUsingVehicleBest()) {
-                assert(asgnBatch.size() == 1);
+            if (!changes.initialAssignment.isUsingVehicle) {
+                assert(changes.reassignments.empty());
                 requestState[reqId] = WALKING_TO_DEST;
-                requestData[reqId].assignmentCost = mainAssignment.getBestCost();
+                requestData[reqId].assignmentCost = changes.initialAssignment.cost;
                 requestData[reqId].depTime = occTime;
                 requestData[reqId].walkingTimeToPickup = 0;
-                requestData[reqId].walkingTimeFromDropoff = mainAssignment.getNotUsingVehicleDist();
+                requestData[reqId].walkingTimeFromDropoff = changes.initialAssignment.walkingTimeFromDropoff;
                 //requestEvents.increaseKey(reqId, occTime + mainAssignment.getNotUsingVehicleDist());
                 return;
-            }
-
-            //TODO: Anders machen!
-            for (int i = 0; i < asgnBatch.size(); i++) {
-                const AssignmentFinderResponseT &resp = *asgnBatch[i];
-                if (resp.isNotUsingVehicleBest()) {
-                    //delete asgnBatch[i];
-                    asgnBatch.erase(asgnBatch.begin() + i);
-                }
             }
 
             int id, key;
             requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dropoff
             assert(id == reqId && key == occTime);
 
-            const auto &bestAsgn = mainAssignment.getBestAssignment();
-            if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
-                requestState[reqId] = FINISHED;
-                return;
-            }
+            // TODO: In welchem Fall tritt das ein?
+            //if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
+            //    requestState[reqId] = FINISHED;
+            //    systemStateUpdater.writePerformanceLogs();
+            //    return;
+            //}
+
 
             requestState[reqId] = ASSIGNED_TO_VEH;
-            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
-            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
-            requestData[reqId].assignmentCost = mainAssignment.getBestCost();
+            requestData[reqId].walkingTimeToPickup = changes.initialAssignment.walkingTimeToPickup;
+            requestData[reqId].walkingTimeFromDropoff = changes.initialAssignment.walkingTimeFromDropoff;
+            requestData[reqId].assignmentCost = changes.initialAssignment.cost;
 
-            //systemStateUpdater.applyChanges(asgnBatch);
+            const int mainVehId = changes.initialAssignment.assignedVehicleId;
+            if (std::find(changes.affectedVehicles.begin(), changes.affectedVehicles.end(), mainVehId) == changes.affectedVehicles.end()) {
+                changes.affectedVehicles.push_back(mainVehId);
+            }
 
-            for (const auto reqState: asgnBatch) {
-                const auto vehId = reqState->getBestAssignment().vehicle->vehicleId;
+            for (const int vehId: changes.affectedVehicles) {
                 switch (vehicleState[vehId]) {
                     case STOPPING:
                         // Update event time to departure time at current stop since it may have changed
