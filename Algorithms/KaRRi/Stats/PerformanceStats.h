@@ -218,7 +218,9 @@ namespace karri::stats {
 
         int64_t locatingVehiclesTimeLocal;
         int64_t numCHSearches;
-        int64_t directCHSearchTime;
+        int64_t directCHSearchTimeLocal;
+        int64_t bchSearchTimeLocal;
+
 
         int64_t numCandidateVehicles;
         int64_t numAssignmentsTried;
@@ -236,7 +238,8 @@ namespace karri::stats {
 
             locatingVehiclesTimeLocal = 0;
             numCHSearches = 0;
-            directCHSearchTime = 0;
+            directCHSearchTimeLocal = 0;
+            bchSearchTimeLocal = 0;
 
             numCandidateVehicles = 0;
             numAssignmentsTried = 0;
@@ -251,7 +254,8 @@ namespace karri::stats {
                 "filter_relevant_pd_locs_time,"
                 "locating_vehicles_time_local,"
                 "num_ch_searches,"
-                "direct_ch_search_time,"
+                "direct_ch_search_time_local,"
+                "bch_search_time_local,"
                 "num_candidate_vehicles,"
                 "num_assignments_tried,"
                 "try_assignments_and_locating_vehicles_time,"
@@ -266,7 +270,8 @@ namespace karri::stats {
                << filterRelevantPDLocsTime << ", "
                << locatingVehiclesTimeLocal << ", "
                << numCHSearches << ", "
-               << directCHSearchTime << ", "
+               << directCHSearchTimeLocal << ", "
+               << bchSearchTimeLocal << ", "
                << numCandidateVehicles << ", "
                << numAssignmentsTried << ", "
                << tryAssignmentsAndLocatingVehiclesTime << ", "

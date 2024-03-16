@@ -202,6 +202,9 @@ namespace karri::DropoffAfterLastStopStrategies {
             requestState.stats().dalsAssignmentsStats.searchTimeLocal += localSearchTime.combine(sumInts);
             requestState.stats().dalsAssignmentsStats.tryAssignmentsTimeLocal += (
                     localTryAssignmentsTime.combine(sumInts) - pbnsTime);
+            requestState.stats().pbnsAssignmentsStats.numCHSearches += curVehLocToPickupSearches.getTotalNumCHSearchesRunForRequest();
+            requestState.stats().pbnsAssignmentsStats.directCHSearchTimeLocal += curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
+
 
             // Find total number of candidate dropoffs for statistics
             int totalNumberOfCandidateDropoffs = 0;

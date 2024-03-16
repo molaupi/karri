@@ -236,7 +236,7 @@ namespace karri {
         }
 
         int64_t getTotalLocatingVehiclesTimeForRequest() const {
-            return totalLocatingVehiclesTimeForRequest;
+            return vehicleLocator.getTotalLocatingVehiclesTimeForRequest();
         }
 
         int64_t getTotalVehicleToPickupSearchTimeForRequest() const {
