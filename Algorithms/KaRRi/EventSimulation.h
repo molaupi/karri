@@ -67,7 +67,7 @@ namespace karri {
 
 
         EventSimulation(
-                const Fleet &fleet, const std::vector<Request> &requests, const int stopTime,
+                const Fleet &fleet, std::vector<Request> &requests, const int stopTime,
                 AssignmentManagerT &assignmentManager, SystemStateUpdaterT &systemStateUpdater,
                 const RouteStateData &scheduledStops,
                 const bool verbose = false)
@@ -279,7 +279,7 @@ namespace karri {
             assert(requests[reqId].requestTime == occTime);
             Timer timer;
 
-            const auto &request = requests[reqId];
+            auto &request = requests[reqId];
             auto asgnFinderResponse = assignmentManager.calculateChanges(request);
             //systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse); TODO: Logging off
 
@@ -382,7 +382,7 @@ namespace karri {
 
 
         const Fleet &fleet;
-        const std::vector<Request> &requests;
+        std::vector<Request> &requests;
         const int stopTime;
         AssignmentManagerT &assignmentManager;
         SystemStateUpdaterT &systemStateUpdater;

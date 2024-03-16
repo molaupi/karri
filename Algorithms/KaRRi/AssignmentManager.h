@@ -46,7 +46,7 @@ namespace karri {
         // es möglich sein Route (und Bucket) exchanges rückgängig zu machen (falls Kosten doch größer sind)
 
         //TODO: Hier wird jetzt nicht beachtete, ob das assignmenht ein Fahrzeug verwendet oder nicht. Da muss dann noch im EventSimulator angepasst werden
-        std::vector<RequestState<CostCalculatorT>*> &calculateChanges(const Request &req) {
+        std::vector<RequestState<CostCalculatorT>*> &calculateChanges(Request &req) {
             for (int i = 0; i < currentResult.size(); i++) delete currentResult[i];
             currentResult.clear();
             vehLocator.resetDistances();
@@ -80,7 +80,7 @@ namespace karri {
                 systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *fixedReqState, true);
 
                 for (const auto reqId: movedReqIds) {
-                    const auto oldData = oldReqData[reqId];
+                    auto oldData = oldReqData[reqId];
                     assert(std::get<0>(oldData).requestId == reqId);
                     auto *newReqState = createAndInitializeRequestState(std::get<0>(oldData),
                             RouteStateDataType::VARIABLE, std::get<0>(oldData).requestTime, &std::get<2>(oldData));
@@ -274,7 +274,7 @@ namespace karri {
             asgnFinder.findBestAssignment(reqState, data, buckets);
         }
 
-        RequestState<CostCalculatorT> *createAndInitializeRequestState(const Request &req, const RouteStateDataType type, const int now, const PDLoc *setLoc = nullptr) {
+        RequestState<CostCalculatorT> *createAndInitializeRequestState(Request &req, const RouteStateDataType type, const int now, const PDLoc *setLoc = nullptr) {
             auto *newRequestState = new RequestState<CostCalculatorT>(calc, config, type, now);
             requestStateInitializer.initializeRequestState(req, *newRequestState, setLoc);
             return newRequestState;

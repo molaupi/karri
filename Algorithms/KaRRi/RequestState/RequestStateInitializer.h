@@ -43,16 +43,21 @@ namespace karri {
                   revPsgGraph(psgInputGraph.getReverseGraph()),
                   vehCh(vehChEnv.getCH()), psgCh(psgChEnv.getCH()),
                   vehChQuery(vehChEnv.template getFullCHQuery<>()), psgChQuery(psgChEnv.template getFullCHQuery<>()),
+                  unpacker(psgChEnv.getCH()),
                   inputConfig(inputConfig),
                   findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph, inputConfig),
                   vehicleToPdLocQuery(vehicleToPdLocQuery) {}
 
 
-        void initializeRequestState(const Request &req, RequestState<CostCalculatorT> &requestState, const PDLoc *setPickup = nullptr) {
+        void initializeRequestState(Request &req, RequestState<CostCalculatorT> &requestState, const PDLoc *setPickup = nullptr) {
             Timer timer;
 
             requestState.reset();
             requestState.originalRequest = req;
+
+            if (setPickup != nullptr) {
+                //updateCurrentRequestOrigin(req, setPickup->loc, requestState.now());
+            }
 
             assert(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.origin)) == req.origin);
             const auto originInPsgGraph = vehInputGraph.toPsgEdge(req.origin);
@@ -89,7 +94,6 @@ namespace karri {
             requestState.stats().initializationStats.computeODDistanceTime = directSearchTime;
 
 
-            // TODO: Reassignment fix
             if (!inputConfig.alwaysUseVehicle) {
                 // Try pseudo-assignment for passenger walking to destination without using vehicle
                 timer.restart();
@@ -106,6 +110,28 @@ namespace karri {
             }
         }
 
+        void updateCurrentRequestOrigin(Request &request, const int pickupLoc, const int now) {
+            const auto originInPsgGraph = vehInputGraph.toPsgEdge(request.origin);
+            const auto pickupInPsgGraph = vehInputGraph.toPsgEdge(pickupLoc);
+            const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
+            const int pickupHeadRank = psgCh.rank(psgInputGraph.edgeTail(pickupInPsgGraph));
+
+            psgChQuery.run(originHeadRank, pickupHeadRank);
+
+            std::vector<int> path;
+            unpacker.unpackUpDownPath(psgChQuery.getUpEdgePath(), psgChQuery.getDownEdgePath(), path);
+
+            int depTimeAtCurrEdge = request.requestTime;
+            for (const auto &curEdge: path) {
+                depTimeAtCurrEdge += psgInputGraph.travelTime(curEdge);
+                if (depTimeAtCurrEdge >= now) {
+                    request.origin = psgInputGraph.toCarEdge(curEdge);
+                    return;
+                }
+            }
+            request.origin = pickupLoc;
+        }
+
 
     private:
 
@@ -119,6 +145,8 @@ namespace karri {
         const CH &psgCh;
         VehCHQuery vehChQuery;
         PsgCHQuery psgChQuery;
+
+        CHPathUnpacker unpacker;
 
         const InputConfig &inputConfig;
 
