@@ -162,11 +162,9 @@ namespace karri {
 
                             ++numStopsRelevant;
                             // Check each PD loc
-                            const auto &distsToPDLocs = feasible.distancesToRelevantPDLocsFor(stopId);
-                            const auto &distsFromPDLocs = feasible.distancesFromRelevantPDLocsToNextStopOf(stopId);
+                            const auto& distancesForStop = feasible.distancesToAndFromRelevantPDLocsFor(stopId);
                             for (unsigned int id = 0; id < numPDLocs; ++id) {
-                                const auto &distToPDLoc = distsToPDLocs[id];
-                                const auto &distFromPDLoc = distsFromPDLocs[id];
+                                const auto& [distToPDLoc, distFromPDLoc] = distancesForStop[id];
 
                                 bool isRelevant;
                                 if constexpr (isDropoff) {

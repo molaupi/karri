@@ -130,14 +130,13 @@ namespace karri {
 
         struct UpdateDistancesToPDLocs {
 
-            UpdateDistancesToPDLocs() : curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
+            UpdateDistancesToPDLocs() : curFeasible(nullptr) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsToPDLocs) {
 
                 assert(curFeasible);
-                return curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, curFirstIdOfBatch,
-                                                                  distsToPDLocs, meetingVertex);
+                return curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, distsToPDLocs, meetingVertex);
             }
 
 
@@ -145,19 +144,15 @@ namespace karri {
                 curFeasible = newCurFeasible;
             }
 
-            void setCurFirstIdOfBatch(int const newCurFirstIdOfBatch) {
-                curFirstIdOfBatch = newCurFirstIdOfBatch;
-            }
 
         private:
             ThreadLocalFeasibleDistances *curFeasible;
-            int curFirstIdOfBatch;
         };
 
         struct UpdateDistancesFromPDLocs {
 
             UpdateDistancesFromPDLocs(RouteState const * const routeState)
-                    : routeState(routeState), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
+                    : routeState(routeState), curFeasible(nullptr) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsFromPDLocs) {
@@ -169,22 +164,17 @@ namespace karri {
                     return LabelMask(false);
 
                 assert(curFeasible);
-                return curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, curFirstIdOfBatch,
-                                                                      distsFromPDLocs, meetingVertex);
+                return curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, distsFromPDLocs, meetingVertex);
             }
 
             void setCurLocalFeasible(ThreadLocalFeasibleDistances *const newCurFeasible) {
                 curFeasible = newCurFeasible;
             }
 
-            void setCurFirstIdOfBatch(int const newCurFirstIdOfBatch) {
-                curFirstIdOfBatch = newCurFirstIdOfBatch;
-            }
 
         private:
             RouteState const * const routeState;
             ThreadLocalFeasibleDistances *curFeasible;
-            int curFirstIdOfBatch;
         };
 
 
@@ -321,63 +311,30 @@ namespace karri {
             distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
 
             // Process in batches of size K
+            parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [&](int i) {
+                // Get one thread local data structure for storing results of both to and from search.
+                auto localFeasibleDistances = feasibleDistances.getThreadLocalFeasibleDistances();
+                localFeasibleDistances.initForSearch();
 
-            // Parallel for with lambda function
-            parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [&] (int i)
-            {
-                runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs, feasibleDistances);
-            });
+                runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs,
+                                        localFeasibleDistances);
 
-            // Parallel for with lambda function
-            parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [&] (int i)
-            {
-                runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs, feasibleDistances);
+                runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs,
+                                          localFeasibleDistances);
+
+                // After thread finishes a search batch of K PDLocs, write the distances back to the global vectors
+                feasibleDistances.writeThreadLocalResultToGlobalResult(i, localFeasibleDistances);
             });
         }
 
-        template<typename SpotContainerT, typename FeasibleDistancesT>
-        void runRegularBCHSearchesFrom(const int startId, const int endId,
-                                       const SpotContainerT &pdLocs, FeasibleDistancesT& feasibleDistances) {
-            assert(endId > startId && endId - startId <= K);
-
-            // Get reference to thread local result structure once and have search work on it.
-            auto localFeasibleDistances = feasibleDistances.getThreadLocalFeasibleDistances();
-            localFeasibleDistances.initForSearch();
-            auto& localUpdateDistances = updateDistancesFromPdLocs.local();
-            localUpdateDistances.setCurLocalFeasible(&localFeasibleDistances);
-
-            std::array<int, K> pdLocHeads;
-
-            for (unsigned int i = 0; i < K; ++i) {
-                int location;
-                if (startId + i < endId) {
-                    location = pdLocs[startId + i].loc;
-                } else {
-                    location = pdLocs[startId].loc; // Fill rest of a partial batch with copies of the first PD loc
-                }
-                pdLocHeads[i] = ch.rank(inputGraph.edgeHead(location));
-            }
-
-            localUpdateDistances.setCurFirstIdOfBatch(startId);
-            FromQueryType& localFromQuery = fromQuery.local();
-            localFromQuery.runWithOffset(pdLocHeads, {});
-
-            totalNumEdgeRelaxations.add_fetch(localFromQuery.getNumEdgeRelaxations(), std::memory_order_relaxed);
-            totalNumVerticesVisited.add_fetch(localFromQuery.getNumVerticesSettled(), std::memory_order_relaxed);
-
-            // After a search batch of K PDLocs, write the distances back to the global vectors
-            feasibleDistances.updateFromDistancesInGlobalVectors(startId);
-        }
-
-        template<typename SpotContainerT, typename FeasibleDistancesT>
+        template<typename SpotContainerT, typename LocalFeasibleDistancesT>
         void runRegularBCHSearchesTo(const int startId, const int endId,
-                                     const SpotContainerT &pdLocs, FeasibleDistancesT& feasibleDistances) {
+                                     const SpotContainerT &pdLocs,
+                                     LocalFeasibleDistancesT &localFeasibleDistances) {
             assert(endId > startId && endId - startId <= K);
 
-            // Get reference to thread local result structure once and have search work on it.
-            auto localFeasibleDistances = feasibleDistances.getThreadLocalFeasibleDistances();
-            localFeasibleDistances.initForSearch();
-            auto& localUpdateDistances = updateDistancesToPdLocs.local();
+            // Have search store results in thread local feasible distances object.
+            auto &localUpdateDistances = updateDistancesToPdLocs.local();
             localUpdateDistances.setCurLocalFeasible(&localFeasibleDistances);
 
             std::array<int, K> travelTimes;
@@ -394,15 +351,41 @@ namespace karri {
                 pdLocTails[i] = ch.rank(inputGraph.edgeTail(location));
             }
 
-            localUpdateDistances.setCurFirstIdOfBatch(startId);
-            ToQueryType& localToQuery = toQuery.local();
+            ToQueryType &localToQuery = toQuery.local();
             localToQuery.runWithOffset(pdLocTails, travelTimes);
 
             totalNumEdgeRelaxations.add_fetch(localToQuery.getNumEdgeRelaxations(), std::memory_order_relaxed);
             totalNumVerticesVisited.add_fetch(localToQuery.getNumVerticesSettled(), std::memory_order_relaxed);
-            
-            // After a search batch of K PDLocs, write the distances back to the global vectors
-            feasibleDistances.updateToDistancesInGlobalVectors(startId);
+
+        }
+
+        template<typename SpotContainerT, typename LocalFeasibleDistancesT>
+        void runRegularBCHSearchesFrom(const int startId, const int endId,
+                                       const SpotContainerT &pdLocs,
+                                       LocalFeasibleDistancesT &localFeasibleDistances) {
+            assert(endId > startId && endId - startId <= K);
+
+            // Have search store results in thread local feasible distances object.
+            auto &localUpdateDistances = updateDistancesFromPdLocs.local();
+            localUpdateDistances.setCurLocalFeasible(&localFeasibleDistances);
+
+            std::array<int, K> pdLocHeads;
+
+            for (unsigned int i = 0; i < K; ++i) {
+                int location;
+                if (startId + i < endId) {
+                    location = pdLocs[startId + i].loc;
+                } else {
+                    location = pdLocs[startId].loc; // Fill rest of a partial batch with copies of the first PD loc
+                }
+                pdLocHeads[i] = ch.rank(inputGraph.edgeHead(location));
+            }
+
+            FromQueryType &localFromQuery = fromQuery.local();
+            localFromQuery.runWithOffset(pdLocHeads, {});
+
+            totalNumEdgeRelaxations.add_fetch(localFromQuery.getNumEdgeRelaxations(), std::memory_order_relaxed);
+            totalNumVerticesVisited.add_fetch(localFromQuery.getNumVerticesSettled(), std::memory_order_relaxed);
         }
 
         template<PDLocType type, typename PDLocsT>
