@@ -49,11 +49,9 @@ namespace karri {
 
         using CostFunction = CostFunctionT;
 
-        explicit CostCalculatorTemplate(const RouteState &routeState,
-                                        const InputConfig &inputConfig)
+        explicit CostCalculatorTemplate(const RouteState &routeState)
                 : routeState(routeState),
-                  inputConfig(inputConfig),
-                  stopTime(inputConfig.stopTime) {}
+                  stopTime(InputConfig::getInstance().stopTime) {}
 
         template<typename RequestContext>
         int calc(const Assignment &asgn, const RequestContext &context) const {
@@ -78,15 +76,14 @@ namespace karri {
                 return INFTY;
             const int vehId = asgn.vehicle->vehicleId;
             const auto numStops = routeState.numStopsOf(asgn.vehicle->vehicleId);
-            const auto actualDepTimeAtPickup = getActualDepTimeAtPickup(asgn, context, routeState, inputConfig);
+            const auto actualDepTimeAtPickup = getActualDepTimeAtPickup(asgn, context, routeState);
             const auto initialPickupDetour = calcInitialPickupDetour(asgn, actualDepTimeAtPickup, context, routeState);
 
             int addedTripTime = calcAddedTripTimeInInterval(vehId, asgn.pickupStopIdx, asgn.dropoffStopIdx,
                                                             initialPickupDetour, routeState);
 
             const bool dropoffAtExistingStop = isDropoffAtExistingStop(asgn, routeState);
-            const auto initialDropoffDetour = calcInitialDropoffDetour(asgn, dropoffAtExistingStop, routeState,
-                                                                       inputConfig);
+            const auto initialDropoffDetour = calcInitialDropoffDetour(asgn, dropoffAtExistingStop, routeState);
             const auto detourRightAfterDropoff = calcDetourRightAfterDropoff(asgn, initialPickupDetour,
                                                                              initialDropoffDetour, routeState);
             const auto residualDetourAtEnd = calcResidualTotalDetourForStopAfterDropoff(asgn.vehicle->vehicleId,
@@ -109,8 +106,9 @@ namespace karri {
         // Calculate the cost for a passenger moving to their destination independently without using a vehicle.
         template<typename RequestContext>
         static int calcCostForNotUsingVehicle(const int walkingDist, const int travelTimeOfDestEdge,
-                                              const RequestContext &context, const InputConfig &inputConfig) {
+                                              const RequestContext &context) {
             assert(walkingDist >= travelTimeOfDestEdge);
+            auto &inputConfig = InputConfig::getInstance();
 
             if (walkingDist >= INFTY)
                 return INFTY;
@@ -156,8 +154,7 @@ namespace karri {
             const bool dropoffAtExistingStop = isDropoffAtExistingStop(asgn, routeState);
             const auto initialPickupDetour = calcOnlyDrivingTimeInInitialPickupDetour(asgn, pickupAtExistingStop,
                                                                                       routeState);
-            const auto initialDropoffDetour = calcInitialDropoffDetour(asgn, dropoffAtExistingStop, routeState,
-                                                                       inputConfig);
+            const auto initialDropoffDetour = calcInitialDropoffDetour(asgn, dropoffAtExistingStop, routeState);
             const auto detourRightAfterDropoff = calcDetourRightAfterDropoff(asgn, initialPickupDetour,
                                                                              initialDropoffDetour,
                                                                              routeState);
@@ -198,7 +195,7 @@ namespace karri {
             asgn.distToDropoff = minDistToDropoff;
 
             const int minActualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, 0, distToPickup, pickup, context,
-                                                                          routeState, inputConfig);
+                                                                          routeState);
 
             const auto initialPickupDetour = calcInitialPickupDetour(asgn, minActualDepTimeAtPickup, context,
                                                                      routeState);
@@ -215,7 +212,7 @@ namespace karri {
 
 
             const int minTripTime = minActualDepTimeAtPickup - context.originalRequest.requestTime + minDistToDropoff;
-            const int walkingCost = F::calcWalkingCost(pickup.walkingDist, inputConfig.pickupRadius);
+            const int walkingCost = F::calcWalkingCost(pickup.walkingDist, InputConfig::getInstance().pickupRadius);
             const int minWaitViolationCost = F::calcWaitViolationCost(minActualDepTimeAtPickup, context);
             const int minTripCost = F::calcTripCost(minTripTime, context);
 
@@ -289,7 +286,8 @@ namespace karri {
 
             const DistanceLabel detourCost = F::calcKVehicleCosts(detourTillDepAtPickup + directDist + stopTime);
             const DistanceLabel tripCost = F::calcKTripCosts(tripTimeTillDepAtPickup + directDist, context);
-            const DistanceLabel walkingCost = F::calcKWalkingCosts(pickupWalkingDists, inputConfig.pickupRadius);
+            const DistanceLabel walkingCost = F::calcKWalkingCosts(pickupWalkingDists,
+                                                                   InputConfig::getInstance().pickupRadius);
             const DistanceLabel waitViolationCost = F::calcKWaitViolationCosts(
                     context.originalRequest.requestTime + tripTimeTillDepAtPickup, context);
             // Pickup after last stop so no added trip costs for existing passengers.
@@ -335,7 +333,8 @@ namespace karri {
 
             const DistanceLabel psgTimeTillDepAtPickup = depTimesAtPickups - context.originalRequest.requestTime;
             const DistanceLabel tripCost = F::calcKTripCosts(psgTimeTillDepAtPickup + distancesToDest, context);
-            const DistanceLabel walkingCost = F::calcKWalkingCosts(pickupWalkingDists, inputConfig.pickupRadius);
+            const DistanceLabel walkingCost = F::calcKWalkingCosts(pickupWalkingDists,
+                                                                   InputConfig::getInstance().pickupRadius);
             const DistanceLabel waitViolationCost = F::calcKWaitViolationCosts(depTimesAtPickups, context);
 
             DistanceLabel cost = detourCost + tripCost + walkingCost + waitViolationCost;
@@ -369,7 +368,7 @@ namespace karri {
 
             const int numStops = routeState.numStopsOf(vehId);
             const int actualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, numStops - 1, distToPickup, pickup,
-                                                                       context, routeState, inputConfig);
+                                                                       context, routeState);
             const int vehDepTimeAtPrevStop = std::max(routeState.schedDepTimesFor(vehId)[numStops - 1],
                                                       context.originalRequest.requestTime);
             const int detourUntilDepAtPickup = actualDepTimeAtPickup - vehDepTimeAtPrevStop;
@@ -379,7 +378,7 @@ namespace karri {
             if (time_utils::isServiceTimeConstraintViolated(veh, context, minDetour, routeState))
                 return INFTY;
 
-            const int walkingCost = F::calcWalkingCost(pickup.walkingDist, inputConfig.pickupRadius);
+            const int walkingCost = F::calcWalkingCost(pickup.walkingDist, InputConfig::getInstance().pickupRadius);
             const int waitViolationCost = F::calcWaitViolationCost(actualDepTimeAtPickup, context);
             const int waitTimeIncludingWalking = actualDepTimeAtPickup - context.originalRequest.requestTime;
             assert(waitTimeIncludingWalking >= 0);
@@ -410,7 +409,7 @@ namespace karri {
 
             const int minDetour = distToDropoff + stopTime;
 
-            const int walkingCost = F::calcWalkingCost(dropoffWalkingDist, inputConfig.dropoffRadius);
+            const int walkingCost = F::calcWalkingCost(dropoffWalkingDist, InputConfig::getInstance().dropoffRadius);
             const int minTripTime = minTripTimeToLastStop + distToDropoff + dropoffWalkingDist;
             const int minTripCost = F::calcTripCost(minTripTime, context);
 
@@ -434,7 +433,8 @@ namespace karri {
             const LabelMask inftyMask = ~(distToDropoff < INFTY);
 
             const DistanceLabel minDropoffDetours = distToDropoff + stopTime;
-            const DistanceLabel walkingCosts = F::calcKWalkingCosts(dropoffWalkingDists, inputConfig.dropoffRadius);
+            const DistanceLabel walkingCosts = F::calcKWalkingCosts(dropoffWalkingDists,
+                                                                    InputConfig::getInstance().dropoffRadius);
             DistanceLabel minTripTimes =
                     minTripTimeToLastStop + distToDropoff + dropoffWalkingDists;
             const DistanceLabel minTripCosts = F::calcKTripCosts(minTripTimes, context);
@@ -459,7 +459,7 @@ namespace karri {
                 return INFTY;
 
             const int minDetour = minDistToDropoff + stopTime;
-            const int walkingCost = F::calcWalkingCost(dropoffWalkingDist, inputConfig.dropoffRadius);
+            const int walkingCost = F::calcWalkingCost(dropoffWalkingDist, InputConfig::getInstance().dropoffRadius);
             const int minTripTime = minArrTimeAtDropoff - context.originalRequest.requestTime + dropoffWalkingDist;
             const int minTripCost = F::calcTripCost(minTripTime, context);
 
@@ -480,7 +480,8 @@ namespace karri {
             const LabelMask inftyMask = ~((minDistToDropoff < INFTY) & (minArrTimeAtDropoff < INFTY));
 
             const DistanceLabel minDropoffDetours = minDistToDropoff + stopTime;
-            const DistanceLabel walkingCosts = F::calcKWalkingCosts(dropoffWalkingDists, inputConfig.dropoffRadius);
+            const DistanceLabel walkingCosts = F::calcKWalkingCosts(dropoffWalkingDists,
+                                                                    InputConfig::getInstance().dropoffRadius);
             DistanceLabel minTripTimes =
                     minArrTimeAtDropoff + dropoffWalkingDists - DistanceLabel(context.originalRequest.requestTime);
             const DistanceLabel minTripCosts = F::calcKTripCosts(minTripTimes, context);
@@ -509,7 +510,8 @@ namespace karri {
             const LabelMask inftyMask = ~(distToDropoff < INFTY);
 
             const DistanceLabel minDropoffDetours = distToDropoff + stopTime;
-            const DistanceLabel walkingCosts = F::calcKWalkingCosts(dropoffWalkingDists, inputConfig.dropoffRadius);
+            const DistanceLabel walkingCosts = F::calcKWalkingCosts(dropoffWalkingDists,
+                                                                    InputConfig::getInstance().dropoffRadius);
             const auto depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[routeState.numStopsOf(vehId) - 1];
             DistanceLabel minTripTimes =
                     minTripTimeToLastStop + DistanceLabel(depTimeAtLastStop - context.originalRequest.requestTime) +
@@ -534,8 +536,8 @@ namespace karri {
                                                      const RequestContext &context) const {
             const int detourCost = F::calcVehicleCost(vehTimeTillDepAtPickup + directDist + stopTime);
             const int tripCost = F::calcTripCost(psgTimeTillDepAtPickup + directDist + dropoffWalkingDist, context);
-            const int walkingCost = F::calcWalkingCost(pickupWalkingDist, inputConfig.pickupRadius) +
-                                    F::calcWalkingCost(dropoffWalkingDist, inputConfig.dropoffRadius);
+            const int walkingCost = F::calcWalkingCost(pickupWalkingDist, InputConfig::getInstance().pickupRadius) +
+                                    F::calcWalkingCost(dropoffWalkingDist, InputConfig::getInstance().dropoffRadius);
             const int waitViolationCost = F::calcWaitViolationCost(
                     context.originalRequest.requestTime + psgTimeTillDepAtPickup, context);
             // Pickup after last stop so no added trip costs for existing passengers.
@@ -556,7 +558,7 @@ namespace karri {
             if (isServiceTimeConstraintViolated(veh, context, residualDetourAtEnd, routeState))
                 return INFTY;
 
-            const int walkingCost = F::calcWalkingCost(walkingDist, inputConfig.pickupRadius);
+            const int walkingCost = F::calcWalkingCost(walkingDist, InputConfig::getInstance().pickupRadius);
             const int addedTripTimeOfOthers = calcAddedTripTimeInInterval(veh.vehicleId, pickupIndex, numStops - 1,
                                                                           initialPickupDetour, routeState);
 
@@ -585,7 +587,7 @@ namespace karri {
             if (isServiceTimeConstraintViolated(veh, context, residualDetourAtEnd, routeState))
                 return INFTY;
 
-            const int walkingCost = F::calcWalkingCost(walkingDist, inputConfig.dropoffRadius);
+            const int walkingCost = F::calcWalkingCost(walkingDist, InputConfig::getInstance().dropoffRadius);
             const int minAddedTripTimeOfOthers = calcAddedTripTimeInInterval(veh.vehicleId, dropoffIndex, numStops - 1,
                                                                              initialDropoffDetour, routeState);
             const int minChangeInTripTimeCosts = F::calcChangeInTripCostsOfExistingPassengers(minAddedTripTimeOfOthers);
@@ -601,7 +603,7 @@ namespace karri {
         isDropoffCostPromisingForAfterLastStop(const PDLoc &dropoff, const RequestContext &context) const {
             const auto walkMinCost =
                     F::calcTripCost(dropoff.walkingDist, context) +
-                    F::calcWalkingCost(dropoff.walkingDist, inputConfig.dropoffRadius);
+                    F::calcWalkingCost(dropoff.walkingDist, InputConfig::getInstance().dropoffRadius);
             const auto vehMinCost =
                     F::calcVehicleCost(dropoff.vehDistToCenter) + F::calcTripCost(dropoff.vehDistToCenter, context);
             return walkMinCost <= vehMinCost;
@@ -620,11 +622,12 @@ namespace karri {
 
             using namespace time_utils;
             const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, asgn, initialPickupDetour,
-                                                              dropoffAtExistingStop, routeState, inputConfig);
+                                                              dropoffAtExistingStop, routeState);
             const int tripTime = arrTimeAtDropoff - context.originalRequest.requestTime + asgn.dropoff->walkingDist;
 
-            const auto walkingCost = F::calcWalkingCost(asgn.pickup->walkingDist, inputConfig.pickupRadius) +
-                                     F::calcWalkingCost(asgn.dropoff->walkingDist, inputConfig.dropoffRadius);
+            const auto walkingCost =
+                    F::calcWalkingCost(asgn.pickup->walkingDist, InputConfig::getInstance().pickupRadius) +
+                    F::calcWalkingCost(asgn.dropoff->walkingDist, InputConfig::getInstance().dropoffRadius);
             const auto tripCost = F::calcTripCost(tripTime, context);
             const auto waitTimeViolationCost = F::calcWaitViolationCost(depTimeAtPickup, context);
             const auto changeInTripCostsOfOthers = F::calcChangeInTripCostsOfExistingPassengers(
@@ -636,7 +639,6 @@ namespace karri {
         }
 
         const RouteState &routeState;
-        const InputConfig &inputConfig;
         const int stopTime;
     };
 

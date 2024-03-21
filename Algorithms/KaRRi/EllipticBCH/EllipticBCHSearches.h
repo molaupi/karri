@@ -38,6 +38,7 @@
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
 #include "Algorithms/KaRRi/EllipticBCH/ClosestPDLocToStopBCHQuery.h"
+#include "Algorithms/KaRRi/EllipticBCH/LocalFeasibleDistancesFilter.h"
 
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
@@ -282,7 +283,7 @@ namespace karri {
         friend UpdateDistancesFromPDLocs;
         friend UpdateDistancesToPDLocs;
 
-        template<typename SpotContainerT, typename FeasibleDistancesT>
+        template<PDLocType type, typename SpotContainerT, typename FeasibleDistancesT>
         void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs, FeasibleDistancesT &feasibleDistances) {
 
             for (auto &local: numEntriesScanned)
@@ -313,6 +314,8 @@ namespace karri {
 
                 runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs,
                                           localFeasibleDistances);
+
+                filterLocalEllipticDistances<type>(i, localFeasibleDistances, fleet, requestState, routeState);
 
                 // After thread finishes a search batch of K PDLocs, write the distances back to the global vectors
                 feasibleDistances.writeThreadLocalResultToGlobalResult(i, localFeasibleDistances);

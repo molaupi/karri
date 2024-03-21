@@ -28,6 +28,22 @@ namespace karri {
 
     struct InputConfig {
 
+    public:
+        static InputConfig& getInstance()
+        {
+            static InputConfig instance; // Guaranteed to be destroyed.
+            // Instantiated on first use.
+            return instance;
+        }
+
+    private:
+        InputConfig() = default;
+
+    public:
+        // public deleted constructors for compiler error messages
+        InputConfig(InputConfig const&) = delete;
+        void operator=(InputConfig const&) = delete;
+
         int maxWaitTime = -1;
         int stopTime = -1;
         int pickupRadius = -1;

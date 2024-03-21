@@ -179,8 +179,7 @@ namespace karri::PickupAfterLastStopStrategies {
                               const PDDistancesT &pdDistances,
                               const RouteState &routeState,
                               RequestState &requestState,
-                              const int &bestCostBeforeQuery,
-                              const InputConfig &inputConfig)
+                              const int &bestCostBeforeQuery)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(pCalculator),
@@ -188,7 +187,6 @@ namespace karri::PickupAfterLastStopStrategies {
                   routeState(routeState),
                   requestState(requestState),
                   bestCostBeforeQuery(bestCostBeforeQuery),
-                  inputConfig(inputConfig),
                   localBestCosts([&] { return requestState.getBestCost(); }),
                   localBestAssignments([&] { return requestState.getBestAssignment(); }),
                   localSearchTime(0),
@@ -342,8 +340,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 asgn.dropoffStopIdx = numStops - 1;
 
                 // Compute cost lower bound for this pickup specifically
-                const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState,
-                                                                            routeState, inputConfig);
+                const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState, routeState);
                 const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
                                                         getVehDepTimeAtStopForRequest(vehId, numStops - 1,
                                                                                         requestState, routeState);
@@ -387,7 +384,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const RouteState &routeState;
         RequestState &requestState;
         const int &bestCostBeforeQuery;
-        const InputConfig &inputConfig;
 
         std::atomic_int upperBoundCost;
 

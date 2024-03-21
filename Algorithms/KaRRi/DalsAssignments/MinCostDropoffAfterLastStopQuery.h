@@ -58,8 +58,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                                          const LastStopBucketsEnvT &lastStopBucketsEnv,
                                          const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop,
                                          const RouteState &routeState,
-                                         const RequestState &requestState,
-                                         const InputConfig &inputConfig)
+                                         const RequestState &requestState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   ch(chEnv.getCH()),
@@ -70,7 +69,6 @@ namespace karri::DropoffAfterLastStopStrategies {
                   isVehEligibleForDropoffAfterLastStop(isVehEligibleForDropoffAfterLastStop),
                   routeState(routeState),
                   requestState(requestState),
-                  inputConfig(inputConfig),
                   vertexLabelBuckets(searchGraph.numVertices()),
                   reverseQueue(searchGraph.numVertices()),
                   vehicleLabelBuckets(fleet.size()),
@@ -368,7 +366,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId,
                                                                                    routeState.numStopsOf(vehId) - 1,
                                                                                    requestState, routeState);
-                    if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff + inputConfig.stopTime)
+                    if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff + InputConfig::getInstance().stopTime)
                         continue;
 
                     const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
@@ -400,7 +398,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                     // If full distance to dropoff leads to violation of service time constraint, an assignment with this
                     // vehicle and dropoff does not need to be regarded.
-                    if (fleet[vehId].endOfServiceTime < arrTimeAtDropoff + inputConfig.stopTime)
+                    if (fleet[vehId].endOfServiceTime < arrTimeAtDropoff + InputConfig::getInstance().stopTime)
                         continue;
 
 
@@ -467,7 +465,6 @@ namespace karri::DropoffAfterLastStopStrategies {
         const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop;
         const RouteState &routeState;
         const RequestState &requestState;
-        const InputConfig &inputConfig;
 
         VertexBucketContainer vertexLabelBuckets;
         QueueT reverseQueue;

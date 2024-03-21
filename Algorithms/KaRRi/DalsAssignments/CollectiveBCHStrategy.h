@@ -71,8 +71,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                               RequestState &requestState,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
                               const RelevantPDLocs &relevantOrdinaryPickups,
-                              const RelevantPDLocs &relevantPickupsBeforeNextStop,
-                              const InputConfig &inputConfig)
+                              const RelevantPDLocs &relevantPickupsBeforeNextStop)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   routeState(routeState),
@@ -84,11 +83,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                   requestState(requestState),
                   relevantOrdinaryPickups(relevantOrdinaryPickups),
                   relevantPickupsBeforeNextStop(relevantPickupsBeforeNextStop),
-                  inputConfig(inputConfig),
                   isVehEligibleForDropoffAfterLastStop(*this),
                   minCostSearch(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv,
-                                isVehEligibleForDropoffAfterLastStop, routeState, requestState,
-                                inputConfig),
+                                isVehEligibleForDropoffAfterLastStop, routeState, requestState),
                   distsFromLastStopToDropoffs(0, INFTY),
                   checkPBNSForVehicle(fleet.size()),
                   fullCHQuery(chEnv.template getFullCHQuery<FallBackCHLabelSet>()) {}
@@ -232,8 +229,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                         asgn.distToPickup = entry.distToPDLoc;
                         asgn.distFromPickup = entry.distFromPDLocToNextStop;
 
-                        const int initialPickupDetour = calcInitialPickupDetour(asgn, requestState, routeState,
-                                                                                inputConfig);
+                        const int initialPickupDetour = calcInitialPickupDetour(asgn, requestState, routeState);
                         const int residualDetourAtEnd = calcResidualPickupDetour(vehId, asgn.pickupStopIdx,
                                                                                  numStops - 1,
                                                                                  initialPickupDetour, routeState);
@@ -356,8 +352,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (asgn.distToPickup >= INFTY)
                             continue;
 
-                        const int initialPickupDetour = calcInitialPickupDetour(asgn, requestState, routeState,
-                                                                                inputConfig);
+                        const int initialPickupDetour = calcInitialPickupDetour(asgn, requestState, routeState);
                         const int residualDetourAtEnd = calcResidualPickupDetour(vehId, asgn.pickupStopIdx,
                                                                                  numStops - 1,
                                                                                  initialPickupDetour, routeState);
@@ -432,9 +427,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                 const auto lengthOfPickupLeg = calcLengthOfLegStartingAt(constraintBreaker.pickupStopIdx,
                                                                          vehId, routeState);
                 const auto totalDetour =
-                        constraintBreaker.distToPickup + inputConfig.stopTime + constraintBreaker.distFromPickup -
+                        constraintBreaker.distToPickup + InputConfig::getInstance().stopTime + constraintBreaker.distFromPickup -
                         lengthOfPickupLeg + closestDropoffSearch.getDistToClosestPDLocFromVeh(vehId) +
-                        inputConfig.stopTime;
+                                InputConfig::getInstance().stopTime;
 
                 if (isServiceTimeConstraintViolated(fleet[vehId], requestState, totalDetour, routeState)) {
                     // Constraint cannot be held even with minimal distance to any dropoff, so breaker is not relevant
@@ -563,7 +558,6 @@ namespace karri::DropoffAfterLastStopStrategies {
         const RelevantPDLocs &relevantOrdinaryPickups;
         const RelevantPDLocs &relevantPickupsBeforeNextStop;
 
-        const InputConfig &inputConfig;
         IsVehEligibleForDropoffAfterLastStop isVehEligibleForDropoffAfterLastStop;
         MinCostLabelSearch minCostSearch;
         TimestampedVector<int> distsFromLastStopToDropoffs;

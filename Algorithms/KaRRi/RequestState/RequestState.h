@@ -43,14 +43,13 @@ namespace karri {
 // Holds information relating to a specific request like its pickups and dropoffs and the best known assignment.
     struct RequestState {
 
-        RequestState(const CostCalculator &calculator, const InputConfig &inputConfig)
+        RequestState(const CostCalculator &calculator)
                 : originalRequest(),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
                   pickups(),
                   dropoffs(),
-                  calculator(calculator),
-                  inputConfig(inputConfig) {}
+                  calculator(calculator) {}
 
 
         ~RequestState() {
@@ -85,7 +84,7 @@ namespace karri {
 
         int getOriginalReqMaxTripTime() const {
             assert(originalReqDirectDist >= 0);
-            return static_cast<int>(inputConfig.alpha * static_cast<double>(originalReqDirectDist)) + inputConfig.beta;
+            return static_cast<int>(InputConfig::getInstance().alpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().beta;
         }
 
         int getPassengerArrAtPickup(const int pickupId) const {
@@ -105,7 +104,7 @@ namespace karri {
         }
 
         int getMaxDepTimeAtPickup() const {
-            return originalRequest.requestTime + inputConfig.maxWaitTime;
+            return originalRequest.requestTime + InputConfig::getInstance().maxWaitTime;
         }
 
         // Information about best known assignment for current request
@@ -150,8 +149,7 @@ namespace karri {
         }
 
         void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
-            const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this,
-                                                                        inputConfig);
+            const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this);
             if (cost < bestCost) {
                 bestAssignment = Assignment();
                 bestCost = cost;
@@ -198,7 +196,6 @@ namespace karri {
         stats::OsmRoadCategoryStats chosenPDLocsRoadCatStats;
 
         const CostCalculator &calculator;
-        const InputConfig &inputConfig;
 
         // Information about best known assignment for current request
         Assignment bestAssignment;
