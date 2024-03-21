@@ -43,7 +43,6 @@ namespace karri {
                           fixedBuckets(fixedBuckets),
                           vehLocator(vehLocator) {}
 
-        //TODO: Hier wird jetzt nicht beachtete, ob das assignmenht ein Fahrzeug verwendet oder nicht. Da muss dann noch im EventSimulator angepasst werden
         void calculateChanges(Request &req, ChangesWrapper &changes) {
             vehLocator.resetDistances();
             std::vector<RequestState<CostCalculatorT>*> reqStates;
@@ -276,6 +275,11 @@ namespace karri {
                 const auto *currReqState = currentResult[i];
                 reqId = currReqState->originalRequest.requestId;
                 std::get<1>(oldReqData[reqId]) = currReqState->getBestCost();
+                if (!currReqState->isNotUsingVehicleBest()) {
+                    PDLoc newPickup = *currReqState->getBestAssignment().pickup;
+                    newPickup.id = 0;
+                    std::get<2>(oldReqData[reqId]) = newPickup;
+                }
                 assert(std::get<0>(oldReqData[reqId]).requestId == reqId);
             }
             for (auto state: currentResult) delete state;

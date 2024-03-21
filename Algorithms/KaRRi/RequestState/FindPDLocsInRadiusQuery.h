@@ -88,7 +88,7 @@ namespace karri {
                   rand(seed) {}
 
         // Pickups will be collected into the given pickups vector and dropoffs will be collected into the given dropoffs vector
-        void findPDLocs(const int origin, const int destination, std::vector<PDLoc> &pickups, std::vector<PDLoc> &dropoffs, const PDLoc *setPickup = nullptr) {
+        void findPDLocs(const int origin, const int destination, std::vector<PDLoc> &pickups, std::vector<PDLoc> &dropoffs,  const int remainingRadius, const PDLoc *setPickup = nullptr) {
             assert(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
             pickups.clear();
             dropoffs.clear();
@@ -107,7 +107,14 @@ namespace karri {
             turnSearchSpaceIntoDropoffLocations(dropoffs);
             if (!setPickup) {
                 finalizePDLocs(origin, pickups, inputConfig.maxNumPickups);
+            } else if (!inputConfig.reassignWithOldPickup) {
+                searchSpace.clear();
+                auto headOfOriginEdge = forwardGraph.edgeHead(origin);
+                pickupSearch.run(headOfOriginEdge);
+                turnSearchSpaceIntoPickupLocations(pickups, remainingRadius);
+                finalizePDLocs(origin, pickups, inputConfig.maxNumPickups);
             } else {
+                assert(inputConfig.reassignWithOldPickup);
                 pickups.push_back(*setPickup);
             }
 
@@ -116,14 +123,15 @@ namespace karri {
 
     private:
 
-        void turnSearchSpaceIntoPickupLocations(std::vector<PDLoc> &pickups) {
+        void turnSearchSpaceIntoPickupLocations(std::vector<PDLoc> &pickups, const int remainingRadius = -1) {
+            const int radius = (remainingRadius >= 0) ? remainingRadius : inputConfig.pickupRadius;
             for (const auto &v: searchSpace) {
                 const auto distToV = pickupSearch.getDistance(v);
                 assert(distToV <= inputConfig.pickupRadius);
                 FORALL_INCIDENT_EDGES(forwardGraph, v, e) {
                     const int eInVehGraph = forwardGraph.toCarEdge(e);
                     if (eInVehGraph == PsgEdgeToCarEdgeAttribute::defaultValue() ||
-                        distToV + forwardGraph.travelTime(e) > inputConfig.pickupRadius)
+                        distToV + forwardGraph.travelTime(e) > radius)
                         continue;
 
                     pickups.push_back({INVALID_ID, eInVehGraph, e, distToV + forwardGraph.travelTime(e), INFTY, INFTY});
@@ -149,8 +157,14 @@ namespace karri {
             assert(maxNumber > 0);
             // Add center to PD locs
             const int nextSeqId = pdLocs.size();
-            const int centerInVehGraph = forwardGraph.toCarEdge(centerInPsgGraph);
-            pdLocs.push_back({nextSeqId, centerInVehGraph, centerInPsgGraph, 0, INFTY, INFTY});
+            int centerInVehGraph = forwardGraph.toCarEdge(centerInPsgGraph);
+            if (centerInVehGraph != PsgEdgeToCarEdgeAttribute::defaultValue()) {
+                pdLocs.push_back({nextSeqId, centerInVehGraph, centerInPsgGraph, 0, INFTY, INFTY});
+            } else {
+                assert(pdLocs.size() > 0);
+                centerInVehGraph = pdLocs[0].loc; // Hier ist (denke ich) der 0-te pickup der näheste punkt im vehicle graphen
+            }
+
 
             // Remove duplicates
             removeDuplicates(pdLocs);
@@ -200,7 +214,7 @@ namespace karri {
         static bool sanityCheckPDLocs(const std::vector<PDLoc> &pdLocs) {
             if (pdLocs.empty()) return false;
             //if (pdLocs[0].loc != centerInVehGraph) return false;
-            if (pdLocs[0].walkingDist != 0) return false;
+            //if (pdLocs[0].walkingDist != 0) return false;
             for (int i = 0; i < pdLocs.size(); ++i) {
                 if (pdLocs[i].id != i) return false;
                 //if (pdLocs[i].vehDistToCenter != INFTY) return false;

@@ -55,17 +55,22 @@ namespace karri {
             requestState.reset();
             requestState.originalRequest = req;
 
+            int remainingRadius = -1;
+            int currentRequestPos = -1; //in psg graph
+
             if (setPickup != nullptr) {
-                //updateCurrentRequestOrigin(req, setPickup->loc, requestState.now());
+                currentRequestPos = getCurrentRequestPos(req, setPickup->loc, requestState.now());
+                remainingRadius = inputConfig.pickupRadius - (requestState.now() - req.requestTime);
+                assert(remainingRadius >= 0);
             }
 
             assert(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.origin)) == req.origin);
-            const auto originInPsgGraph = vehInputGraph.toPsgEdge(req.origin);
+            const auto originInPsgGraph = (setPickup != nullptr) ? currentRequestPos : vehInputGraph.toPsgEdge(req.origin);
 
             assert(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
             const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
 
-            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph, requestState.pickups, requestState.dropoffs, setPickup);
+            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph, requestState.pickups, requestState.dropoffs, remainingRadius, setPickup);
 
             // Log road categories of PDLocs
             for (const auto &p: requestState.pickups)
@@ -75,8 +80,12 @@ namespace karri {
 
 
             // Precalculate the vehicle distances from pickups to origin and from destination to dropoffs for upper bounds on PD distances
-            vehicleToPdLocQuery.runReverse(requestState.pickups, req.origin);
-            vehicleToPdLocQuery.runForward(requestState.dropoffs, req.origin);
+            if (setPickup != nullptr && !inputConfig.reassignWithOldPickup) {
+                vehicleToPdLocQuery.runReverse(requestState.pickups, requestState.pickups[0].loc);
+            } else  {
+                vehicleToPdLocQuery.runReverse(requestState.pickups, req.origin);
+            }
+            vehicleToPdLocQuery.runForward(requestState.dropoffs, req.destination); // Hier war davor origin, aber destination ist doch hier richtig oder?
 
             const auto findHaltingSpotsTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().initializationStats.findPDLocsInRadiusTime = findHaltingSpotsTime;
@@ -110,7 +119,7 @@ namespace karri {
             }
         }
 
-        void updateCurrentRequestOrigin(Request &request, const int pickupLoc, const int now) {
+        int getCurrentRequestPos(Request &request, const int pickupLoc, const int now) {
             const auto originInPsgGraph = vehInputGraph.toPsgEdge(request.origin);
             const auto pickupInPsgGraph = vehInputGraph.toPsgEdge(pickupLoc);
             const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
@@ -125,11 +134,10 @@ namespace karri {
             for (const auto &curEdge: path) {
                 depTimeAtCurrEdge += psgInputGraph.travelTime(curEdge);
                 if (depTimeAtCurrEdge >= now) {
-                    request.origin = psgInputGraph.toCarEdge(curEdge);
-                    return;
+                    return curEdge;
                 }
             }
-            request.origin = pickupLoc;
+            return pickupInPsgGraph;
         }
 
 
