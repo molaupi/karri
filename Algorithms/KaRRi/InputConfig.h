@@ -37,7 +37,7 @@ namespace karri {
         double alpha = -1;
         int beta = -1;
         bool alwaysUseVehicle = false;
-        bool reassignWithOldPickup = false;
+        bool reassignWithOldPickup = true;
     };
 
 }

@@ -10,6 +10,7 @@ namespace karri {
 
     struct AssignmentData {
         int requestId;
+        int requestTime;
         int cost;
         int walkingTimeToPickup;
         int walkingTimeFromDropoff;

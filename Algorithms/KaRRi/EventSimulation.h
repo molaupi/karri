@@ -284,10 +284,55 @@ namespace karri {
             assignmentManager.calculateChanges(request, changes);
             //systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse); TODO: Logging off
 
-            applyAssignments(changes, reqId, occTime);
+            //applyAssignments(changes, reqId, occTime);
+
+            applyAssignment(changes.initialAssignment, occTime, true);
+            for (const auto &data: changes.reassignments) {
+                applyAssignment(data, occTime);
+            }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",RequestReceipt," << time << '\n';
+        }
+
+        void applyAssignment(const AssignmentData &data, const int occTime, bool initialRequest = false) {
+            const int reqId = data.requestId;
+            const int vehId = data.assignedVehicleId;
+
+            if (!data.isUsingVehicle) {
+                requestState[reqId] = WALKING_TO_DEST;
+                requestData[reqId].assignmentCost = data.cost;
+                requestData[reqId].depTime = data.requestTime;
+                requestData[reqId].walkingTimeToPickup = 0;
+                requestData[reqId].walkingTimeFromDropoff = data.walkingTimeFromDropoff;
+            }
+
+            if (initialRequest) {
+                int id, key;
+                requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dropoff
+                assert(id == reqId && key == occTime);
+            }
+
+            requestState[reqId] = ASSIGNED_TO_VEH;
+            requestData[reqId].walkingTimeToPickup = data.walkingTimeToPickup;
+            requestData[reqId].walkingTimeFromDropoff = data.walkingTimeFromDropoff;
+            requestData[reqId].assignmentCost = data.cost;
+
+            switch (vehicleState[vehId]) {
+                case STOPPING:
+                    // Update event time to departure time at current stop since it may have changed
+                    vehicleEvents.updateKey(vehId, scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime);
+                    break;
+                case IDLING:
+                    vehicleState[vehId] = VehicleState::DRIVING;
+                    [[fallthrough]];
+                case DRIVING:
+                    // Update event time to arrival time at next stop since it may have changed (also for case of idling).
+                    vehicleEvents.updateKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
+                    [[fallthrough]];
+                default:
+                    break;
+            }
         }
 
         void applyAssignments(ChangesWrapper &changes, const int reqId, const int occTime) {

@@ -134,7 +134,8 @@ namespace karri {
         void addAssignmentData(ChangesWrapper &changes, const RequestState<CostCalculatorT> &reqState, const bool reassignment) {
             AssignmentData data{};
 
-            data.requestId = reqState.originalRequest.requestTime;
+            data.requestId = reqState.originalRequest.requestId;
+            data.requestTime = reqState.originalRequest.requestTime;
             data.cost = reqState.getBestCost();
             data.isUsingVehicle = !reqState.isNotUsingVehicleBest();
             data.assignedVehicleId = (data.isUsingVehicle ? reqState.getBestAssignment().vehicle->vehicleId : -1);
@@ -277,8 +278,10 @@ namespace karri {
                 std::get<1>(oldReqData[reqId]) = currReqState->getBestCost();
                 if (!currReqState->isNotUsingVehicleBest()) {
                     PDLoc newPickup = *currReqState->getBestAssignment().pickup;
+                    PDLoc newDropoff = *currReqState->getBestAssignment().dropoff;
                     newPickup.id = 0;
                     std::get<2>(oldReqData[reqId]) = newPickup;
+                    std::get<3>(oldReqData[reqId]) = newDropoff;
                 }
                 assert(std::get<0>(oldReqData[reqId]).requestId == reqId);
             }
