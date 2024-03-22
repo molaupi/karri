@@ -42,6 +42,7 @@ endif()
 
 # KaRRi compile time parameters
 
+
 ## Output vehicle paths?
 option(KARRI_OUTPUT_VEHICLE_PATHS "Output vehicle paths." OFF)
 if (KARRI_OUTPUT_VEHICLE_PATHS)

@@ -66,6 +66,12 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-backtrace-limit=0")
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
+if (CMAKE_BUILD_TYPE STREQUAL "Release")
+  add_compile_options(-Wno-unused-variable)
+  add_compile_options(-Wno-unused-parameter)
+  message("Unused variables and parameters dont result in error")
+endif (CMAKE_BUILD_TYPE STREQUAL "Release")
+
 include_directories(${CMAKE_SOURCE_DIR})
 
 find_package(OpenMP)

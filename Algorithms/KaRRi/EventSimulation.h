@@ -69,7 +69,7 @@ namespace karri {
         EventSimulation(
                 const Fleet &fleet, std::vector<Request> &requests, const int stopTime,
                 AssignmentManagerT &assignmentManager, SystemStateUpdaterT &systemStateUpdater,
-                const RouteStateData &scheduledStops,
+                const RouteStateData &scheduledStops, const RouteStateData &fixedScheduledStops,
                 const bool verbose = false)
                 : fleet(fleet),
                   requests(requests),
@@ -77,11 +77,16 @@ namespace karri {
                   assignmentManager(assignmentManager),
                   systemStateUpdater(systemStateUpdater),
                   scheduledStops(scheduledStops),
+                  fixedScheduledStops(fixedScheduledStops),
                   vehicleEvents(fleet.size()),
                   requestEvents(requests.size()),
                   vehicleState(fleet.size(), OUT_OF_SERVICE),
                   requestState(requests.size(), NOT_RECEIVED),
                   requestData(requests.size(), RequestData()),
+                  fixedRouteStats(LogManager<std::ofstream>::getLogger("fixedroutestats.csv",
+                                                                       "vehicle_id,"
+                                                                       "num_stops_var,"
+                                                                       "num_stops_fixed\n")),
                   eventSimulationStatsLogger(LogManager<std::ofstream>::getLogger("eventsimulationstats.csv",
                                                                                   "occurrence_time,"
                                                                                   "type,"
@@ -240,6 +245,10 @@ namespace karri {
                 requestState[reqId] = WALKING_TO_DEST;
                 requestEvents.insert(reqId, occTime + reqData.walkingTimeFromDropoff);
             }
+
+            fixedRouteStats << vehId << ","
+                            << scheduledStops.numStopsOf(vehId) << ','
+                            << fixedScheduledStops.numStopsOf(vehId) << '\n';
 
 
             // Next event for this vehicle is the departure at this stop:
@@ -425,6 +434,7 @@ namespace karri {
         AssignmentManagerT &assignmentManager;
         SystemStateUpdaterT &systemStateUpdater;
         const RouteStateData &scheduledStops;
+        const RouteStateData &fixedScheduledStops;
 
         AddressableQuadHeap vehicleEvents;
         AddressableQuadHeap requestEvents;
@@ -434,6 +444,7 @@ namespace karri {
 
         std::vector<RequestData> requestData;
 
+        std::ofstream &fixedRouteStats;
         std::ofstream &eventSimulationStatsLogger;
         std::ofstream &assignmentQualityStats;
         std::ofstream &legStatsLogger;

@@ -618,8 +618,7 @@ int main(int argc, char *argv[]) {
         // Run simulation:
         using EventSimulationImpl = EventSimulation<AssignmentManager, SystemStateUpdaterImpl>;
         EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, asgnManager, systemStateUpdater,
-                                            variableData,
-                                            true);
+                                            variableData,fixedData, true);
         eventSimulation.run();
 
     } catch (std::exception &e) {
