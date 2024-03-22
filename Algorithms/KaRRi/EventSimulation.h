@@ -83,6 +83,18 @@ namespace karri {
                   vehicleState(fleet.size(), OUT_OF_SERVICE),
                   requestState(requests.size(), NOT_RECEIVED),
                   requestData(requests.size(), RequestData()),
+                  requestAssignmentStats(LogManager<std::ofstream>::getLogger("req_assignment_stats.csv",
+                                                                              "req_Id,"
+                                                                              "isReassignment,"
+                                                                              "occTime,"
+                                                                              "cost,"
+                                                                              "vehId,"
+                                                                              "trip_time,"
+                                                                              "wait_time\n")),
+                  reassignmentStats(LogManager<std::ofstream>::getLogger("reassignmentstats.csv",
+                                                                         "initial_reqId,"
+                                                                         "num_moved_req,"
+                                                                         "costs_saved\n")),
                   fixedRouteStats(LogManager<std::ofstream>::getLogger("fixedroutestats.csv",
                                                                        "vehicle_id,"
                                                                        "num_stops_var,"
@@ -246,10 +258,6 @@ namespace karri {
                 requestEvents.insert(reqId, occTime + reqData.walkingTimeFromDropoff);
             }
 
-            fixedRouteStats << vehId << ","
-                            << scheduledStops.numStopsOf(vehId) << ','
-                            << fixedScheduledStops.numStopsOf(vehId) << '\n';
-
 
             // Next event for this vehicle is the departure at this stop:
             vehicleEvents.increaseKey(vehId, reachedStop.depTime);
@@ -277,6 +285,9 @@ namespace karri {
                 vehicleEvents.increaseKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
             }
 
+            fixedRouteStats << vehId << ","
+                            << scheduledStops.numStopsOf(vehId) << ','
+                            << fixedScheduledStops.numStopsOf(vehId) << '\n';
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",VehicleDeparture," << time << '\n';
@@ -300,6 +311,13 @@ namespace karri {
                 applyAssignment(data, occTime);
             }
 
+            if (!changes.reassignments.empty()) {
+                reassignmentStats << changes.initialAssignment.requestId << ','
+                                    << changes.reassignments.size() << ','
+                                    << changes.costsSaved << '\n';
+
+            }
+
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",RequestReceipt," << time << '\n';
         }
@@ -308,12 +326,26 @@ namespace karri {
             const int reqId = data.requestId;
             const int vehId = data.assignedVehicleId;
 
+            requestAssignmentStats << reqId << ','
+                                    << !initialRequest << ','
+                                    << occTime << ','
+                                    << data.cost << ','
+                                    << data.assignedVehicleId << ','
+                                    << data.tripTime << ','
+                                    << data.waitTime << '\n';
+
             if (!data.isUsingVehicle) {
                 requestState[reqId] = WALKING_TO_DEST;
                 requestData[reqId].assignmentCost = data.cost;
                 requestData[reqId].depTime = data.requestTime;
                 requestData[reqId].walkingTimeToPickup = 0;
                 requestData[reqId].walkingTimeFromDropoff = data.walkingTimeFromDropoff;
+                if (!requestEvents.contains(reqId)) {
+                    requestEvents.insert(reqId, occTime + data.directDist);
+                    return;
+                }
+                requestEvents.increaseKey(reqId, occTime + data.directDist);
+                return;
             }
 
             if (initialRequest) {
@@ -444,6 +476,8 @@ namespace karri {
 
         std::vector<RequestData> requestData;
 
+        std::ofstream &requestAssignmentStats;
+        std::ofstream &reassignmentStats;
         std::ofstream &fixedRouteStats;
         std::ofstream &eventSimulationStatsLogger;
         std::ofstream &assignmentQualityStats;

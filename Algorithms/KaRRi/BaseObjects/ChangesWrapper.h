@@ -16,6 +16,9 @@ namespace karri {
         int walkingTimeFromDropoff;
         int assignedVehicleId;
         bool isUsingVehicle;
+        int tripTime;
+        int waitTime;
+        int directDist;
     };
 
     struct ChangesWrapper {

@@ -265,10 +265,12 @@ int main(int argc, char *argv[]) {
                                            "end_of_service_time", "capacity");
         }
 
-        while ((csvFilesInLoudFormat &&
+        int maxVehId = INFTY;
+
+        while (fleet.size() <= maxVehId && ((csvFilesInLoudFormat &&
                 vehiclesFileReader.read_row(location, capacity, startOfServiceTime, endOfServiceTime)) ||
                (!csvFilesInLoudFormat &&
-                vehiclesFileReader.read_row(location, startOfServiceTime, endOfServiceTime, capacity))) {
+                vehiclesFileReader.read_row(location, startOfServiceTime, endOfServiceTime, capacity)))) {
             if (location < 0 || location >= vehGraphOrigIdToSeqId.size() ||
                 vehGraphOrigIdToSeqId[location] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(location) + "'");

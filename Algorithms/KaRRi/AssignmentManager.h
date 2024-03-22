@@ -41,11 +41,20 @@ namespace karri {
                           varUpdater(varUpdater),
                           variableBuckets(variableBuckets),
                           fixedBuckets(fixedBuckets),
-                          vehLocator(vehLocator) {}
+                          vehLocator(vehLocator),
+                          noReoptLogger(LogManager<std::ofstream>::getLogger("no_costs_savable_time.csv",
+                                                                             "running_time\n")),
+                          notWorthItLogger(LogManager<std::ofstream>::getLogger("reopt_not_worth_it_time.csv",
+                                                                               "num_moved_req,"
+                                                                               "running_time\n")),
+                          reoptLogger(LogManager<std::ofstream>::getLogger("successfull_reopt_time.csv",
+                                                                           "num_moved_req,"
+                                                                           "running_time\n")){}
 
         void calculateChanges(Request &req, ChangesWrapper &changes) {
             vehLocator.resetDistances();
             std::vector<RequestState<CostCalculatorT>*> reqStates;
+            Timer timer;
 
             // Initial search on fixed and variable routeState
             auto *varReqState = createAndInitializeRequestState(req, RouteStateDataType::VARIABLE, req.requestTime);
@@ -59,9 +68,10 @@ namespace karri {
             int costsSaved = varReqState->getBestCost() - fixedReqState->getBestCost();
             if (costsSaved <= 0) {
                 systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *varReqState);
-                addAssignmentData(changes, *varReqState, false);
+                addAssignmentData(changes, *varReqState, false, pickupId, dropoffId);
                 reqStates.push_back(varReqState);
                 updateOldRequestData(reqStates);
+                noReoptLogger << timer.elapsed<std::chrono::nanoseconds>() << '\n';
                 return;
             }
 
@@ -82,7 +92,7 @@ namespace karri {
             // Exchange routes of variable routeState with route of fixed routeState and insert best fixed assignment
             systemStateUpdater.exchangeRoutesFor(*fixedReqState->getBestAssignment().vehicle);
             systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *fixedReqState, true);
-            addAssignmentData(changes, *fixedReqState, false);
+            addAssignmentData(changes, *fixedReqState, false, pickupId, dropoffId);
             reqStates.push_back(fixedReqState);
 
             // Reassignment procedure
@@ -97,16 +107,18 @@ namespace karri {
 
                 // If no costs are saved, changes are reverted and the initial normal assignment is used
                 if (costsSaved < 0) {
+                    const int numMovedReq = changes.reassignments.size();
                     systemStateUpdater.revertChangesOfReoptimizationRun(prevRouteData);
                     testReset(prevRouteData);
                     systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *varReqState);
                     changes.reassignments.clear();
                     changes.affectedVehicles.clear();
-                    addAssignmentData(changes, *varReqState, false);
+                    addAssignmentData(changes, *varReqState, false, pickupId, dropoffId);
                     for (auto state: reqStates) delete state;
                     reqStates.clear();
                     reqStates.push_back(varReqState);
                     updateOldRequestData(reqStates);
+                    notWorthItLogger << numMovedReq << ',' <<timer.elapsed<std::chrono::nanoseconds>() << '\n';
                     return;
                 }
 
@@ -118,7 +130,7 @@ namespace karri {
                 }
 
                 systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *newReqState, true);
-                addAssignmentData(changes, *newReqState, true);
+                addAssignmentData(changes, *newReqState, true, pickupId, dropoffId);
                 reqStates.push_back(newReqState);
             }
 
@@ -127,11 +139,12 @@ namespace karri {
             changes.affectedVehicles = affectedVehicles;
             changes.costsSaved = costsSaved;
             updateOldRequestData(reqStates);
+            reoptLogger << changes.reassignments.size() << ',' << timer.elapsed<std::chrono::nanoseconds>() << '\n';
         }
 
     private:
 
-        void addAssignmentData(ChangesWrapper &changes, const RequestState<CostCalculatorT> &reqState, const bool reassignment) {
+        void addAssignmentData(ChangesWrapper &changes, const RequestState<CostCalculatorT> &reqState, const bool reassignment, const int pickupStopId, const int dropoffStopId) {
             AssignmentData data{};
 
             data.requestId = reqState.originalRequest.requestId;
@@ -141,6 +154,19 @@ namespace karri {
             data.assignedVehicleId = (data.isUsingVehicle ? reqState.getBestAssignment().vehicle->vehicleId : -1);
             data.walkingTimeFromDropoff = (data.isUsingVehicle ? reqState.getBestAssignment().dropoff->walkingDist : reqState.getNotUsingVehicleDist());
             data.walkingTimeToPickup = (data.isUsingVehicle ? reqState.getBestAssignment().pickup->walkingDist : -1);
+            data.directDist = reqState.originalReqDirectDist;
+
+            if (data.isUsingVehicle) {
+                const int pickupIndex = variableRouteStateData.stopPositionOf(pickupStopId);
+                const int dropoffIndex = variableRouteStateData.stopPositionOf(dropoffStopId);
+
+                data.waitTime = variableRouteStateData.schedDepTimesFor(data.assignedVehicleId)[pickupIndex] - data.requestTime;
+                data.tripTime = variableRouteStateData.schedArrTimesFor(data.assignedVehicleId)[dropoffIndex] - data.requestTime + data.walkingTimeFromDropoff;
+            } else {
+                data.waitTime = 0;
+                data.tripTime = data.directDist;
+            }
+
 
             if (reassignment) {
                 changes.reassignments.push_back(data);
@@ -206,8 +232,7 @@ namespace karri {
                 for (const int dropoffReqId: variableRouteStateData.getRequestsDroppedOffAt(varStopIds[i])) {
                     const auto it = std::find(movedReqIds.begin(), movedReqIds.end(), dropoffReqId);
                     if (it != movedReqIds.end()) {
-                        const int reqIdIndex = it - movedReqIds.begin();
-                        const int tripTime = variableRouteStateData.schedArrTimesFor(vehId)[i]- movedReqDepTimes[reqIdIndex];
+                        const int tripTime = variableRouteStateData.schedArrTimesFor(vehId)[i] - std::get<0>(oldReqData[dropoffReqId]).requestTime + std::get<3>(oldReqData[dropoffReqId]).walkingDist;
                         savings += CostFunction::calcTripCostOnly(tripTime);
                         savings += CostFunction::calcTripViolationCost(tripTime, std::get<4>(oldReqData[dropoffReqId]));
                     }
@@ -228,17 +253,15 @@ namespace karri {
             std::vector<int> occupancies;
             std::vector<int> dropOffStopIds;
 
-            const int depFromCurrStart = fixedRouteStateData.schedDepTimesFor(vehId)[0];
 
             for (int i = 1; i < fixedRouteStateData.numStopsOf(vehId); i++) {
                 const int currStopId = fixedRouteStateData.stopIdsFor(vehId)[i];
                 const auto &dropoffs = fixedRouteStateData.getRequestsDroppedOffAt(currStopId);
-                const int newRestTripTime = fixedRouteStateData.schedArrTimesFor(vehId)[i] - depFromCurrStart;
 
                 for (int reqId: dropoffs) {
-                    const int currTripTimeEstimation = depFromCurrStart - std::get<0>(oldReqData[reqId]).requestTime;
-                    savings -= CostFunction::calcTripCostOnly(newRestTripTime);
-                    savings -= CostFunction::calcTripViolationCost(newRestTripTime + currTripTimeEstimation, std::get<4>(oldReqData[reqId]));
+                    const int fixedTripTime = fixedRouteStateData.schedArrTimesFor(vehId)[i] - std::get<0>(oldReqData[reqId]).requestTime + std::get<3>(oldReqData[reqId]).walkingDist;
+                    savings -= CostFunction::calcTripCostOnly(fixedTripTime);
+                    savings -= CostFunction::calcTripViolationCost(fixedTripTime, std::get<4>(oldReqData[reqId]));
                     occupancies.push_back(reqId);
                     dropOffStopIds.push_back(currStopId);
                 }
@@ -250,10 +273,9 @@ namespace karri {
             int currVarIndex = 1;
             for (int i = 0; i < occupancies.size(); i++) {
                 while (variableStopIds[currVarIndex] != dropOffStopIds[i]) currVarIndex++;
-                const int oldRestTripTIme = variableRouteStateData.schedArrTimesFor(vehId)[currVarIndex] - depFromCurrStart;
-                const int currTripTimeEstimation = depFromCurrStart - std::get<0>(oldReqData[occupancies[i]]).requestTime;
-                savings += CostFunction::calcTripCostOnly(oldRestTripTIme);
-                savings += CostFunction::calcTripViolationCost(oldRestTripTIme + currTripTimeEstimation, std::get<4>(oldReqData[occupancies[i]]));
+                const int varTripTime = variableRouteStateData.schedArrTimesFor(vehId)[currVarIndex] - std::get<0>(oldReqData[occupancies[i]]).requestTime + std::get<3>(oldReqData[occupancies[i]]).walkingDist;
+                savings += CostFunction::calcTripCostOnly(varTripTime);
+                savings += CostFunction::calcTripViolationCost(varTripTime, std::get<4>(oldReqData[occupancies[i]]));
             }
 
             assert(savings >= 0);
@@ -333,6 +355,11 @@ namespace karri {
         BucketsWrapperT &fixedBuckets;
 
         CurVehLocT &vehLocator;
+
+        // Time Loggers
+        std::ofstream &noReoptLogger;
+        std::ofstream  &notWorthItLogger;
+        std::ofstream &reoptLogger;
     };
 
 }
