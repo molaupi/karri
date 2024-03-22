@@ -92,16 +92,16 @@ namespace karri {
                 for (const auto &pickupEntry: relPickups.relevantSpotsFor(vehId)) {
 
                     // Find first stop position after the pickup's stop position that has relevant dropoffs.
-                    const auto &stopPos = pickupEntry.stopIndex;
+                    const auto &stopIdx = routeState.stopPositionOf(pickupEntry.stopId);
                     while (curFirstDropoffIt < relevantDropoffs.end() &&
-                           curFirstDropoffIt->stopIndex <= stopPos) {
+                            routeState.stopPositionOf(curFirstDropoffIt->stopId) <= stopIdx) {
                         ++curFirstDropoffIt;
                     }
                     if (curFirstDropoffIt == relevantDropoffs.end())
                         break; // No dropoffs later in route than current (or subsequent) pickup(s)
 
                     asgn.pickup = &requestState.pickups[pickupEntry.pdId];
-                    asgn.pickupStopIdx = pickupEntry.stopIndex;
+                    asgn.pickupStopIdx = stopIdx;
                     asgn.distToPickup = pickupEntry.distToPDLoc;
                     asgn.distFromPickup = pickupEntry.distFromPDLocToNextStop;
 
@@ -140,9 +140,10 @@ namespace karri {
             for (auto dropoffIt = startItInRegularDropoffs; dropoffIt < relevantDropoffs.end(); ++dropoffIt) {
                 const auto &dropoffEntry = *dropoffIt;
                 asgn.dropoff = &requestState.dropoffs[dropoffEntry.pdId];
+                const auto stopIdx = routeState.stopPositionOf(dropoffEntry.stopId);
 
-                if (dropoffEntry.stopIndex + 1 < numStops &&
-                    stopLocations[dropoffEntry.stopIndex + 1] == asgn.dropoff->loc) {
+                if (stopIdx + 1 < numStops &&
+                    stopLocations[stopIdx + 1] == asgn.dropoff->loc) {
                     // If the dropoff is at the location of the following stop, do not try an assignment here as it would
                     // introduce a new stop after dropoffIndex that is at the same location as dropoffIndex + 1.
                     // Instead, this will be dealt with as an assignment at dropoffIndex + 1 afterwards.
@@ -155,7 +156,7 @@ namespace karri {
                     continue;
                 }
 
-                asgn.dropoffStopIdx = dropoffEntry.stopIndex;
+                asgn.dropoffStopIdx = stopIdx;
                 asgn.distToDropoff = dropoffEntry.distToPDLoc;
                 asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                 requestState.tryAssignment(asgn);
@@ -195,19 +196,19 @@ namespace karri {
                 while (pickupIt < relevantPickups.end() && dropoffIt < relevantDropoffs.end()) {
 
                     // Alternating sweep over pickups and dropoffs which pause once they meet or pass the other sweep.
-                    while (pickupIt < relevantPickups.end() && pickupIt->stopIndex < dropoffIt->stopIndex)
+                    while (pickupIt < relevantPickups.end() && routeState.stopPositionOf(pickupIt->stopId) < routeState.stopPositionOf(dropoffIt->stopId))
                         ++pickupIt;
                     if (pickupIt == relevantPickups.end())
                         break;
-                    while (dropoffIt < relevantDropoffs.end() && dropoffIt->stopIndex < pickupIt->stopIndex)
+                    while (dropoffIt < relevantDropoffs.end() && routeState.stopPositionOf(dropoffIt->stopId) < routeState.stopPositionOf(pickupIt->stopId))
                         ++dropoffIt;
                     if (dropoffIt == relevantDropoffs.end())
                         break;
 
                     // If both sweeps paused at the same stopIndex, there are pickups and dropoffs at this stop.
                     // We attempt a paired assignment.
-                    if (pickupIt->stopIndex == dropoffIt->stopIndex) {
-                        const auto stopPos = pickupIt->stopIndex;
+                    if (routeState.stopPositionOf(pickupIt->stopId) == routeState.stopPositionOf(dropoffIt->stopId)) {
+                        const auto stopPos = routeState.stopPositionOf(pickupIt->stopId);
 
                         if (routeState.occupanciesFor(vehId)[stopPos] + requestState.originalRequest.numRiders > veh.capacity) {
                             continue;
@@ -221,7 +222,7 @@ namespace karri {
                         minDistToPickup = INFTY;
                         minDistFromDropoff = INFTY;
 
-                        while (pickupIt < relevantPickups.end() && pickupIt->stopIndex == stopPos) {
+                        while (pickupIt < relevantPickups.end() && routeState.stopPositionOf(pickupIt->stopId) == stopPos) {
                             const auto &entry = *pickupIt;
                             if (entry.distToPDLoc < minDistToPickup) {
                                 minDistToPickup = entry.distToPDLoc;
@@ -230,7 +231,7 @@ namespace karri {
                             ++pickupIt;
                         }
 
-                        while (dropoffIt < relevantDropoffs.end() && dropoffIt->stopIndex == stopPos) {
+                        while (dropoffIt < relevantDropoffs.end() && routeState.stopPositionOf(dropoffIt->stopId) == stopPos) {
                             const auto &entry = *dropoffIt;
                             if (entry.distFromPDLocToNextStop < minDistFromDropoff) {
                                 minDistFromDropoff = entry.distFromPDLocToNextStop;

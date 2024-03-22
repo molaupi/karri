@@ -38,6 +38,7 @@
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Parallel/atomic_wrapper.h"
 #include "DataStructures/Utilities/Permutation.h"
+#include "Algorithms/KaRRi/RequestState/RelevantPDLoc.h"
 
 #include <atomic>
 #include <thread>
@@ -56,15 +57,7 @@ namespace karri {
         using LabelMask = typename LabelSetT::LabelMask;
 
 
-        struct GlobalResultEntry {
-            int stopId = INVALID_INDEX;
-            int pdId = INVALID_ID;
-            int distToPdLoc = INFTY;
-            int distFromPdLocToNextStop = INFTY;
-        };
-
-
-        using ConcurrentResultEntriesVector = tbb::concurrent_vector<GlobalResultEntry>;
+        using ConcurrentResultEntriesVector = tbb::concurrent_vector<RelevantPDLoc>;
         using ResultEntryIterator = typename ConcurrentResultEntriesVector::const_iterator;
 
     public:

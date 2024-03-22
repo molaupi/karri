@@ -151,9 +151,9 @@ namespace karri {
                 const int stopPos = routeState.stopPositionOf(e.stopId);
                 const int idxInRel = nextIdxForStop[e.stopId].fetch_add(1, std::memory_order_relaxed);
                 if (stopPos == 0) {
-                    relBns.relevantSpots[idxInRel] = {stopPos, e.pdId, e.distToPdLoc, e.distFromPdLocToNextStop};
+                    relBns.relevantSpots[idxInRel] = e;
                 } else {
-                    relOrdinary.relevantSpots[idxInRel] = {stopPos, e.pdId, e.distToPdLoc, e.distFromPdLocToNextStop};
+                    relOrdinary.relevantSpots[idxInRel] = e;
                 }
             });
         }

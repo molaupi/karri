@@ -124,7 +124,7 @@ namespace karri {
         void determineVehiclesAndPickupsForSearches() {
 
             int numCandidateVehicles = 0;
-            std::vector<std::pair<RelevantPDLocs::RelevantPDLoc, int>> jobs;
+            std::vector<std::pair<RelevantPDLoc, int>> jobs;
             for (const auto &vehId: relPickupsBNS.getVehiclesWithRelevantPDLocs()) {
 
                 if (!relOrdinaryDropoffs.hasRelevantSpotsFor(vehId) && !relDropoffsBNS.hasRelevantSpotsFor(vehId))
@@ -138,8 +138,6 @@ namespace karri {
                     jobs.emplace_back(entry, vehId);
                 }
             }
-//            auto permutation = Permutation::getRandomPermutation(jobs.size(), std::minstd_rand(requestState.originalRequest.requestId));
-//            permutation.applyTo(jobs);
 
             tbb::parallel_for(int(0), static_cast<int>(jobs.size()), 1, [&](int i) {
                 determineNecessaryExactDistancesForPickup(jobs[i].first, fleet[jobs[i].second]);
@@ -148,7 +146,7 @@ namespace karri {
             requestState.stats().pbnsAssignmentsStats.numCandidateVehicles += numCandidateVehicles;
         }
 
-        void determineNecessaryExactDistancesForPickup(const RelevantPDLocs::RelevantPDLoc &entry, const Vehicle &veh) {
+        void determineNecessaryExactDistancesForPickup(const RelevantPDLoc &entry, const Vehicle &veh) {
             using namespace time_utils;
             const auto &relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(veh.vehicleId);
             const auto &relDropoffsBeforeNextStopForVeh = relDropoffsBNS.relevantSpotsFor(veh.vehicleId);
@@ -274,14 +272,14 @@ namespace karri {
             for (auto dropoffIt = relevantDropoffs.begin(); dropoffIt < relevantDropoffs.end(); ++dropoffIt) {
                 const auto &dropoffEntry = *dropoffIt;
                 asgn.dropoff = &requestState.dropoffs[dropoffEntry.pdId];
+                const auto stopIdx = routeState.stopPositionOf(dropoffEntry.stopId);
 
-                if (dropoffEntry.stopIndex + 1 < numStops &&
-                    stopLocations[dropoffEntry.stopIndex + 1] == asgn.dropoff->loc)
+                if (stopIdx + 1 < numStops && stopLocations[stopIdx + 1] == asgn.dropoff->loc)
                     continue;
                 if (asgn.dropoff->loc == asgn.pickup->loc)
                     continue;
 
-                asgn.dropoffStopIdx = dropoffEntry.stopIndex;
+                asgn.dropoffStopIdx = stopIdx;
                 asgn.distToDropoff = dropoffEntry.distToPDLoc;
                 asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                 ++numAssignmentsTried;
@@ -347,15 +345,15 @@ namespace karri {
                 for (auto dropoffIt = relOrdinaryDropoffsForVeh.begin() + cont.offsetInDropoffs;
                      dropoffIt < relOrdinaryDropoffsForVeh.end(); ++dropoffIt) {
                     const auto &dropoffEntry = *dropoffIt;
+                    const auto stopIdx = routeState.stopPositionOf(dropoffEntry.stopId);
                     asgn.dropoff = &requestState.dropoffs[dropoffEntry.pdId];
 
-                    if (dropoffEntry.stopIndex + 1 < numStops &&
-                        stopLocations[dropoffEntry.stopIndex + 1] == asgn.dropoff->loc)
+                    if (stopIdx + 1 < numStops && stopLocations[stopIdx + 1] == asgn.dropoff->loc)
                         continue;
                     if (asgn.pickup->loc == asgn.dropoff->loc)
                         continue;
 
-                    asgn.dropoffStopIdx = dropoffEntry.stopIndex;
+                    asgn.dropoffStopIdx = stopIdx;
                     asgn.distToDropoff = dropoffEntry.distToPDLoc;
                     asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                     tryAssignmentLocal(asgn, localBestCost, localBestAssignment);

@@ -199,17 +199,18 @@ namespace karri::DropoffAfterLastStopStrategies {
                     auto pickupIt = relevantPickupsInRevOrder.begin();
                     for (; pickupIt < relevantPickupsInRevOrder.end(); ++pickupIt) {
                         const auto &entry = *pickupIt;
+                        const int stopIdx = routeState.stopPositionOf(entry.stopId);
 
-                        if (entry.stopIndex < curPickupIndex) {
+                        if (stopIdx < curPickupIndex) {
                             // New smaller pickup index reached: Check if seating capacity and cost lower bound admit
                             // any valid assignments at this or earlier indices.
-                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders >
+                            if (occupancies[stopIdx] + requestState.originalRequest.numRiders >
                                 asgn.vehicle->capacity)
                                 break;
 
-                            assert(entry.stopIndex < numStops - 1);
+                            assert(stopIdx < numStops - 1);
                             const auto minTripTimeToLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1] -
-                                                               routeState.schedArrTimesFor(vehId)[entry.stopIndex + 1];
+                                                               routeState.schedArrTimesFor(vehId)[stopIdx + 1];
 
                             const auto minCostFromHere = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
                                     asgn.dropoff->walkingDist, distFromLastStopToDropoff, minTripTimeToLastStop,
@@ -217,7 +218,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                             if (minCostFromHere > requestState.getBestCost())
                                 break;
 
-                            curPickupIndex = entry.stopIndex;
+                            curPickupIndex = stopIdx;
                         }
 
 
@@ -225,7 +226,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (asgn.pickup->loc == asgn.dropoff->loc)
                             continue;
 
-                        asgn.pickupStopIdx = entry.stopIndex;
+                        asgn.pickupStopIdx = stopIdx;
                         asgn.distToPickup = entry.distToPDLoc;
                         asgn.distFromPickup = entry.distFromPDLocToNextStop;
 

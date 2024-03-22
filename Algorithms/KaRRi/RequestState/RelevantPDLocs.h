@@ -32,6 +32,7 @@
 
 #include "DataStructures/Containers/ThreadSafeSubset.h"
 #include "tbb/concurrent_vector.h"
+#include "RelevantPDLoc.h"
 
 namespace karri {
 
@@ -40,13 +41,6 @@ namespace karri {
 
         template<typename, typename, typename> friend
         class RelevantPDLocsReorderer;
-
-        struct RelevantPDLoc {
-            int stopIndex = INVALID_INDEX;
-            int pdId = INVALID_ID;
-            int distToPDLoc = INFTY;
-            int distFromPDLocToNextStop = INFTY;
-        };
 
         using RelevantPDLocVector = AlignedVector<RelevantPDLoc>;
 
