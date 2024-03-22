@@ -29,66 +29,6 @@
 
 namespace karri {
 
-    // Removes all result entries from localDistances that are certain to not be relevant for the best assignment
-    // based on existence of valid distances to and from the PDLocs as well as assignment cost bounds.
-    template<PDLocType type, typename LocalFeasibleDistancesT>
-    static void filterLocalEllipticDistances(const int firstIdInPdLocBatch, LocalFeasibleDistancesT &localDistances,
-                                             const Fleet &fleet,
-                                             const RequestState &requestState,
-                                             const RouteState &routeState) {
-
-        static constexpr int K = LocalFeasibleDistancesT::K;
-
-        auto &indices = localDistances.indexInEntriesVector;
-        auto &entries = localDistances.entries;
-
-        int numEntriesRemoved = 0;
-        for (int i = 0; i < entries.size(); ++i) {
-            auto &e = entries[i];
-
-            const auto &veh = fleet[routeState.vehicleIdOf(e.stopId)];
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
-            const auto &occupancies = routeState.occupanciesFor(veh.vehicleId);
-
-            const auto &stopIdx = routeState.stopPositionOf(e.stopId);
-
-            if ((stopIdx == numStops - 1 && type == PICKUP) || (occupancies[stopIdx] == veh.capacity && (type == PICKUP || stopIdx == 0))) {
-                indices[e.stopId] = INVALID_INDEX;
-                ++numEntriesRemoved;
-                continue;
-            }
-
-            const auto &distTo = e.distFromStopToPDLoc;
-            const auto &distFrom = e.distFromPDLocToNextStop;
-
-            bool allFiltered = true;
-            // todo SIMD-ify
-            for (int idxInBatch = 0; idxInBatch < K; ++idxInBatch) {
-                bool relevant = type == PICKUP ?
-                                isPickupRelevant(veh, stopIdx, firstIdInPdLocBatch + idxInBatch, distTo[idxInBatch],
-                                                 distFrom[idxInBatch], requestState, routeState) :
-                                isDropoffRelevant(veh, stopIdx, firstIdInPdLocBatch + idxInBatch, distTo[idxInBatch],
-                                                  distFrom[idxInBatch], requestState, routeState);
-                if (relevant) {
-                    allFiltered = false;
-                    continue;
-                }
-                distTo[idxInBatch] = INFTY;
-                distFrom[idxInBatch] = INFTY;
-            }
-
-            if (allFiltered) {
-                indices[e.stopId] = INVALID_INDEX;
-                ++numEntriesRemoved;
-                continue;
-            }
-            assert(numEntriesRemoved <= i);
-            entries[i - numEntriesRemoved] = entries[i];
-            indices[e.stopId] = i - numEntriesRemoved;
-        }
-        entries.erase(entries.end() - numEntriesRemoved, entries.end());
-
-    }
 
     namespace {
         static inline bool isPickupRelevant(const Vehicle &veh, const int stopIndex, const unsigned int pickupId,
@@ -181,5 +121,67 @@ namespace karri {
 
             return true;
         }
+    }
+
+    // Removes all result entries from localDistances that are certain to not be relevant for the best assignment
+    // based on existence of valid distances to and from the PDLocs as well as assignment cost bounds.
+    template<PDLocType type, typename LocalFeasibleDistancesT>
+    static void filterLocalEllipticDistances(const int firstIdInPdLocBatch, LocalFeasibleDistancesT &localDistances,
+                                             const Fleet &fleet,
+                                             const RequestState &requestState,
+                                             const RouteState &routeState) {
+
+        static constexpr int K = LocalFeasibleDistancesT::K;
+
+        auto &indices = localDistances.indexInEntriesVector;
+        auto &entries = localDistances.entries;
+
+        int numEntriesRemoved = 0;
+        for (int i = 0; i < entries.size(); ++i) {
+            auto &e = entries[i];
+
+            const auto &veh = fleet[routeState.vehicleIdOf(e.stopId)];
+            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto &occupancies = routeState.occupanciesFor(veh.vehicleId);
+            assert(numStops > 1);
+
+            const auto &stopIdx = routeState.stopPositionOf(e.stopId);
+
+            if ((stopIdx == numStops - 1 && type == PICKUP) || (occupancies[stopIdx] == veh.capacity && (type == PICKUP || stopIdx == 0))) {
+                indices[e.stopId] = INVALID_INDEX;
+                ++numEntriesRemoved;
+                continue;
+            }
+
+            auto &distTo = e.distFromStopToPdLoc;
+            auto &distFrom = e.distFromPdLocToNextStop;
+
+            bool allFiltered = true;
+            // todo SIMD-ify
+            for (int idxInBatch = 0; idxInBatch < K; ++idxInBatch) {
+                bool relevant = type == PICKUP ?
+                                isPickupRelevant(veh, stopIdx, firstIdInPdLocBatch + idxInBatch, distTo[idxInBatch],
+                                                 distFrom[idxInBatch], requestState, routeState) :
+                                isDropoffRelevant(veh, stopIdx, firstIdInPdLocBatch + idxInBatch, distTo[idxInBatch],
+                                                  distFrom[idxInBatch], requestState, routeState);
+                if (relevant) {
+                    allFiltered = false;
+                    continue;
+                }
+                distTo[idxInBatch] = INFTY;
+                distFrom[idxInBatch] = INFTY;
+            }
+
+            if (allFiltered) {
+                indices[e.stopId] = INVALID_INDEX;
+                ++numEntriesRemoved;
+                continue;
+            }
+            assert(numEntriesRemoved <= i);
+            entries[i - numEntriesRemoved] = entries[i];
+            indices[e.stopId] = i - numEntriesRemoved;
+        }
+        entries.erase(entries.end() - numEntriesRemoved, entries.end());
+
     }
 }

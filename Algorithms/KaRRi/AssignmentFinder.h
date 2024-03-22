@@ -46,7 +46,7 @@ namespace karri {
             typename PbnsAssignmentsT,
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
-            typename RelevantPDLocsFilterT
+            typename RelevantPDLocsReordererT
     >
     class AssignmentFinder {
 
@@ -60,7 +60,7 @@ namespace karri {
                          PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments,
                          DalsAssignmentsT &dalsAssignments,
-                         RelevantPDLocsFilterT &relevantPdLocsFilter)
+                         RelevantPDLocsReordererT &relevantPdLocsReorderer)
                 : reqState(requestState),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
@@ -69,7 +69,7 @@ namespace karri {
                   pbnsAssignments(pbnsAssignments),
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
-                  relevantPdLocsFilter(relevantPdLocsFilter) {}
+                  relevantPdLocsReorderer(relevantPdLocsReorderer) {}
 
         const RequestState &findBestAssignment(const Request &req) {
 
@@ -86,13 +86,10 @@ namespace karri {
             ellipticBchSearches.run();
 
             // Filter feasible PD-locations between ordinary stops:
-            relevantPdLocsFilter.filterOrdinary();
+            relevantPdLocsReorderer.reorderAll();
 
             // Try ordinary assignments:
             ordAssignments.findAssignments();
-
-            // Filter feasible PD-locations before next stops:
-            relevantPdLocsFilter.filterBeforeNextStop();
 
             // Try DALS assignments:
             dalsAssignments.findAssignments();
@@ -125,7 +122,7 @@ namespace karri {
         PbnsAssignmentsT &pbnsAssignments; // Tries PBNS assignments where pickup (and possibly dropoff) is inserted before the next vehicle stop.
         PalsAssignmentsT &palsAssignments; // Tries PALS assignments where pickup and dropoff are inserted after the last stop.
         DalsAssignmentsT &dalsAssignments; // Tries DALS assignments where only the dropoff is inserted after the last stop.
-        RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
+        RelevantPDLocsReordererT &relevantPdLocsReorderer; // Reorders results of elliptic BCH searches for more efficient access when enumerating assignments.
 
 
     };

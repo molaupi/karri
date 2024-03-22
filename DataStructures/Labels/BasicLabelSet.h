@@ -131,6 +131,13 @@ public:
             return !anySet(~mask);
         }
 
+        friend int countSet(const LabelMask &mask) {
+            int numSet = 0;
+            for (int i = 0; i < K; ++i)
+                numSet += mask.isMarked[i];
+            return numSet;
+        }
+
         std::array<bool, K> isMarked; // Flags indicating for each component if it is marked.
     };
 

@@ -39,13 +39,13 @@ namespace karri {
     struct RelevantPDLocs {
 
         template<typename, typename, typename> friend
-        class RelevantPDLocsFilter;
+        class RelevantPDLocsReorderer;
 
         struct RelevantPDLoc {
-            int stopIndex;
-            int pdId;
-            int distToPDLoc;
-            int distFromPDLocToNextStop;
+            int stopIndex = INVALID_INDEX;
+            int pdId = INVALID_ID;
+            int distToPDLoc = INFTY;
+            int distFromPDLocToNextStop = INFTY;
         };
 
         using RelevantPDLocVector = AlignedVector<RelevantPDLoc>;

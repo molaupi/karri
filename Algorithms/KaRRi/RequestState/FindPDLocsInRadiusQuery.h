@@ -115,7 +115,7 @@ namespace karri {
         void turnSearchSpaceIntoPickupLocations() {
             for (const auto &v: searchSpace) {
                 const auto distToV = pickupSearch.getDistance(v);
-                assert(distToV <= inputConfig.pickupRadius);
+                assert(distToV <= InputConfig::getInstance().pickupRadius);
                 FORALL_INCIDENT_EDGES(forwardGraph, v, e) {
                     const int eInVehGraph = forwardGraph.toCarEdge(e);
                     if (eInVehGraph == PsgEdgeToCarEdgeAttribute::defaultValue() ||
@@ -130,7 +130,7 @@ namespace karri {
         void turnSearchSpaceIntoDropoffLocations() {
             for (const auto &v: searchSpace) {
                 const auto distToV = dropoffSearch.getDistance(v);
-                assert(distToV <= inputConfig.dropoffRadius);
+                assert(distToV <= InputConfig::getInstance().dropoffRadius);
                 FORALL_INCIDENT_EDGES(reverseGraph, v, e) {
                     const auto eInForwGraph = reverseGraph.edgeId(e);
                     const int eInVehGraph = forwardGraph.toCarEdge(eInForwGraph);

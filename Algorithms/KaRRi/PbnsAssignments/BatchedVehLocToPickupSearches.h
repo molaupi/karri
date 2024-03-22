@@ -39,7 +39,6 @@ namespace karri {
 
     template<typename InputGraphT,
             typename VehicleLocatorT,
-            typename EllipticPickupDistancesT,
             typename CHEnvT,
             typename LabelSetT>
     class BatchedVehLocToPickupSearches {
@@ -117,7 +116,7 @@ namespace karri {
     public:
 
         BatchedVehLocToPickupSearches(const InputGraphT &graph,
-                                      const EllipticPickupDistancesT &ellipticPickupDistances,
+                                      const RelevantPDLocs &relevantPickupsBns,
                                       const CHEnvT &chEnv,
                                       const Fleet &fleet,
                                       const RouteState &routeState,
@@ -126,7 +125,7 @@ namespace karri {
                                       VehLocToPickupDistances &distances)
                 : inputGraph(graph),
                   vehicleLocator(locator),
-                  ellipticPickupDistances(ellipticPickupDistances),
+                  relevantPickupsBns(relevantPickupsBns),
                   ch(chEnv.getCH()),
                   fleet(fleet),
                   routeState(routeState),
@@ -250,13 +249,14 @@ namespace karri {
     private:
 
         void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle) {
+
+            for (const auto& e : relevantPickupsBns.relevantSpotsFor(vehicle.vehicleId)) {
+                distances.updateDistance(vehicle.vehicleId, e.pdId, e.distToPDLoc);
+            }
+
             const auto &stopLocations = routeState.stopLocationsFor(vehicle.vehicleId);
-            const auto &stopIds = routeState.stopIdsFor(vehicle.vehicleId);
             for (int pickupId = 0; pickupId < requestState.numPickups(); ++pickupId) {
-                if (stopLocations[0] != requestState.pickups[pickupId].loc) {
-                    distances.updateDistance(vehicle.vehicleId, pickupId,
-                                          ellipticPickupDistances.getDistanceFromStopToPDLoc(stopIds[0], pickupId));
-                } else {
+                if (stopLocations[0] == requestState.pickups[pickupId].loc) {
                     distances.updateDistance(vehicle.vehicleId, pickupId, 0);
                 }
             }
@@ -264,7 +264,7 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         VehicleLocatorT &vehicleLocator;
-        const EllipticPickupDistancesT &ellipticPickupDistances;
+        const RelevantPDLocs &relevantPickupsBns;
         const CH &ch;
         const Fleet &fleet;
         const RouteState &routeState;
