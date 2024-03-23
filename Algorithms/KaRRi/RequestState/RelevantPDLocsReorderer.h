@@ -144,7 +144,6 @@ namespace karri {
             // Iterate through unordered feasible elliptic distances in parallel.
             // For every RelevantPDLoc, write it into RelevantPDLocs structure at right index
             // (offsets computed in prefix sum earlier).
-            // todo: make this in-place in feasible vector
             const auto &unordered = feasible.getGlobalResults();
             parallel_for(int(0), static_cast<int>(unordered.size()), [&](int i) {
                 const auto &e = unordered[i];

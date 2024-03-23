@@ -101,6 +101,9 @@ namespace karri {
             if (distFromStopToDropoff >= INFTY || distFromDropoffToNextStop >= INFTY)
                 return false;
 
+            // todo: If stopIndex = 0 and there is not at least some relevant pickup for this stop, then the dropoffs
+            //  can't be relevant since dropoffs before next stop are only relevant in paired BNS.
+
             const bool isDropoffAtExistingStop = d.loc == stopLocations[stopIndex];
             const int initialDropoffDetour = calcInitialDropoffDetour(vehId, stopIndex, distFromStopToDropoff,
                                                                       distFromDropoffToNextStop,
