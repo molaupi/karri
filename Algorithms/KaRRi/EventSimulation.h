@@ -83,6 +83,9 @@ namespace karri {
                   vehicleState(fleet.size(), OUT_OF_SERVICE),
                   requestState(requests.size(), NOT_RECEIVED),
                   requestData(requests.size(), RequestData()),
+                  movableRequests(LogManager<std::ofstream>::getLogger("num_movable_requests.csv",
+                                                                      "req_id,"
+                                                                      "movable_requests\n")),
                   requestAssignmentStats(LogManager<std::ofstream>::getLogger("req_assignment_stats.csv",
                                                                               "req_Id,"
                                                                               "isReassignment,"
@@ -297,15 +300,20 @@ namespace karri {
             ++progressBar;
             assert(requestState[reqId] == NOT_RECEIVED);
             assert(requests[reqId].requestTime == occTime);
+
+            //TODO: Unnötige laufzeit nur fürs logging
+            int totalMovable = 0;
+            for (const Vehicle veh: fleet) {
+                totalMovable += getNumberOfMovableRequests(veh.vehicleId);
+            }
+
+            movableRequests << reqId << ',' << totalMovable << '\n';
+
             Timer timer;
 
             ChangesWrapper changes;
             auto &request = requests[reqId];
             assignmentManager.calculateChanges(request, changes);
-            //systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse); TODO: Logging off
-
-            //applyAssignments(changes, reqId, occTime);
-
             applyAssignment(changes.initialAssignment, occTime, true);
             for (const auto &data: changes.reassignments) {
                 applyAssignment(data, occTime);
@@ -376,60 +384,6 @@ namespace karri {
             }
         }
 
-        void applyAssignments(ChangesWrapper &changes, const int reqId, const int occTime) {
-
-            if (!changes.initialAssignment.isUsingVehicle) {
-                assert(changes.reassignments.empty());
-                requestState[reqId] = WALKING_TO_DEST;
-                requestData[reqId].assignmentCost = changes.initialAssignment.cost;
-                requestData[reqId].depTime = occTime;
-                requestData[reqId].walkingTimeToPickup = 0;
-                requestData[reqId].walkingTimeFromDropoff = changes.initialAssignment.walkingTimeFromDropoff;
-                //requestEvents.increaseKey(reqId, occTime + mainAssignment.getNotUsingVehicleDist());
-                return;
-            }
-
-            int id, key;
-            requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dropoff
-            assert(id == reqId && key == occTime);
-
-            // TODO: In welchem Fall tritt das ein?
-            //if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
-            //    requestState[reqId] = FINISHED;
-            //    systemStateUpdater.writePerformanceLogs();
-            //    return;
-            //}
-
-
-            requestState[reqId] = ASSIGNED_TO_VEH;
-            requestData[reqId].walkingTimeToPickup = changes.initialAssignment.walkingTimeToPickup;
-            requestData[reqId].walkingTimeFromDropoff = changes.initialAssignment.walkingTimeFromDropoff;
-            requestData[reqId].assignmentCost = changes.initialAssignment.cost;
-
-            const int mainVehId = changes.initialAssignment.assignedVehicleId;
-            if (std::find(changes.affectedVehicles.begin(), changes.affectedVehicles.end(), mainVehId) == changes.affectedVehicles.end()) {
-                changes.affectedVehicles.push_back(mainVehId);
-            }
-
-            for (const int vehId: changes.affectedVehicles) {
-                switch (vehicleState[vehId]) {
-                    case STOPPING:
-                        // Update event time to departure time at current stop since it may have changed
-                        vehicleEvents.updateKey(vehId, scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime);
-                        break;
-                    case IDLING:
-                        vehicleState[vehId] = VehicleState::DRIVING;
-                        [[fallthrough]];
-                    case DRIVING:
-                        // Update event time to arrival time at next stop since it may have changed (also for case of idling).
-                        vehicleEvents.updateKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
-                        [[fallthrough]];
-                    default:
-                        break;
-                }
-            }
-        }
-
         void handleWalkingArrivalAtDest(const int reqId, const int occTime) {
             assert(requestState[reqId] == WALKING_TO_DEST);
             Timer timer;
@@ -459,6 +413,14 @@ namespace karri {
             eventSimulationStatsLogger << occTime << ",RequestWalkingArrival," << time << '\n';
         }
 
+        int getNumberOfMovableRequests(const int vehId) {
+            int res = 0;
+            for (int i = 1; i < scheduledStops.numStopsOf(vehId); i++) {
+                res += scheduledStops.getRequestsPickedUpAt(scheduledStops.stopIdsFor(vehId)[i]).size();
+            }
+            return res;
+        }
+
 
         const Fleet &fleet;
         std::vector<Request> &requests;
@@ -476,6 +438,7 @@ namespace karri {
 
         std::vector<RequestData> requestData;
 
+        std::ofstream  &movableRequests;
         std::ofstream &requestAssignmentStats;
         std::ofstream &reassignmentStats;
         std::ofstream &fixedRouteStats;

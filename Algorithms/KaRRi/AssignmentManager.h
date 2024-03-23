@@ -42,6 +42,9 @@ namespace karri {
                           variableBuckets(variableBuckets),
                           fixedBuckets(fixedBuckets),
                           vehLocator(vehLocator),
+                          tripTimeSavings(LogManager<std::ofstream>::getLogger("trip_time_saved_by_occupancy.csv",
+                                                                               "fixed_trip_time,"
+                                                                               "var_trip_time\n")),
                           noReoptLogger(LogManager<std::ofstream>::getLogger("no_costs_savable_time.csv",
                                                                              "running_time\n")),
                           notWorthItLogger(LogManager<std::ofstream>::getLogger("reopt_not_worth_it_time.csv",
@@ -252,6 +255,7 @@ namespace karri {
             int savings = 0;
             std::vector<int> occupancies;
             std::vector<int> dropOffStopIds;
+            std::vector<int> fixedTripTimes;
 
 
             for (int i = 1; i < fixedRouteStateData.numStopsOf(vehId); i++) {
@@ -264,6 +268,7 @@ namespace karri {
                     savings -= CostFunction::calcTripViolationCost(fixedTripTime, std::get<4>(oldReqData[reqId]));
                     occupancies.push_back(reqId);
                     dropOffStopIds.push_back(currStopId);
+                    fixedTripTimes.push_back(fixedTripTime);
                 }
             }
 
@@ -274,6 +279,9 @@ namespace karri {
             for (int i = 0; i < occupancies.size(); i++) {
                 while (variableStopIds[currVarIndex] != dropOffStopIds[i]) currVarIndex++;
                 const int varTripTime = variableRouteStateData.schedArrTimesFor(vehId)[currVarIndex] - std::get<0>(oldReqData[occupancies[i]]).requestTime + std::get<3>(oldReqData[occupancies[i]]).walkingDist;
+
+                tripTimeSavings << fixedTripTimes[i] << ',' << varTripTime << '\n';
+
                 savings += CostFunction::calcTripCostOnly(varTripTime);
                 savings += CostFunction::calcTripViolationCost(varTripTime, std::get<4>(oldReqData[occupancies[i]]));
             }
@@ -357,6 +365,7 @@ namespace karri {
         CurVehLocT &vehLocator;
 
         // Time Loggers
+        std::ofstream &tripTimeSavings;
         std::ofstream &noReoptLogger;
         std::ofstream  &notWorthItLogger;
         std::ofstream &reoptLogger;
