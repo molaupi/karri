@@ -36,6 +36,7 @@
 // based on http://upcoder.com/9/fast-resettable-flag-vector/
 
 
+namespace karri {
 template <typename Type = std::uint16_t>
 class ThreadSafeFastResetFlagArray {
 
@@ -148,3 +149,4 @@ void swap(ThreadSafeFastResetFlagArray<Type>& a,
           ThreadSafeFastResetFlagArray<Type>& b) {
   a.swap(b);
 }
+}  // namespace karri
