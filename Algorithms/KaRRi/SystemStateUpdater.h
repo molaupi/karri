@@ -244,7 +244,7 @@ namespace karri {
                 newCreatedStopIds.push_back(dropoffStopId);
             } else if (reoptRun && std::find(modifiedStopIds.begin(), modifiedStopIds.end(), dropoffStopId) == modifiedStopIds.end()
                        && std::find(newCreatedStopIds.begin(), newCreatedStopIds.end(), dropoffStopId) == newCreatedStopIds.end()) {
-                modifiedStopIds.push_back(pickupStopId);
+                modifiedStopIds.push_back(dropoffStopId);
                 unmodifiedStopInfos.push_back(stopInfos[dropoffStopId]);
             }
 
