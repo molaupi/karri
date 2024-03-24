@@ -245,6 +245,10 @@ namespace karri {
             return numRelPdLocsPerStop[stopId].load(std::memory_order_seq_cst);
         }
 
+        bool doesStopHaveRelPdLocs(const int stopId) const {
+            return getNumRelPdLocsForStop(stopId) > 0;
+        }
+
     private:
 
         const RouteState &routeState;

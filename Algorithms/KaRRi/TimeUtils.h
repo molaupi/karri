@@ -157,7 +157,8 @@ namespace karri::time_utils {
             return arrTimeAtPrevious;
         }
 
-        const auto depTimeAtPrevious = std::max(minDepTimes[dropoffIndex], arrTimeAtPrevious + InputConfig::getInstance().stopTime);
+        const auto depTimeAtPrevious = std::max(minDepTimes[dropoffIndex],
+                                                arrTimeAtPrevious + InputConfig::getInstance().stopTime);
         return depTimeAtPrevious + asgn.distToDropoff;
     }
 
@@ -183,6 +184,21 @@ namespace karri::time_utils {
 
         return timeUntilDep + distFromPickup - calcLengthOfLegStartingAt(pickupIndex, vehId, routeState);
     }
+
+    template<typename RequestContext, typename DistanceLabel>
+    static INLINE DistanceLabel
+    calcInitialPickupDetour(const int vehId, const int pickupIndex, const int dropoffIndex,
+                            const DistanceLabel &depTimeAtPickup, const DistanceLabel &distFromPickup,
+                            const RequestContext &context, const RouteState &routeState) {
+        const auto vehDepTimeAtPrevStop = getVehDepTimeAtStopForRequest(vehId, pickupIndex, context, routeState);
+        const DistanceLabel timeUntilDep = depTimeAtPickup - DistanceLabel(vehDepTimeAtPrevStop);
+
+        if (pickupIndex == dropoffIndex)
+            return timeUntilDep;
+
+        return timeUntilDep + distFromPickup - DistanceLabel(calcLengthOfLegStartingAt(pickupIndex, vehId, routeState));
+    }
+
 
     // Returns the additional time that is needed for the vehicle asgn.vehicle to drive from its stop at index
     // asgn.pickupStopIdx to the given pickup, perform the pickup and drive to its next scheduled stop at index
@@ -230,6 +246,18 @@ namespace karri::time_utils {
         return std::max(initialPickupDetour - vehWaitTime, 0);
     }
 
+    template<typename DistanceLabel>
+    static INLINE DistanceLabel
+    calcResidualPickupDetour(const int vehId, const int pickupIndex, const int toIndex,
+                             const DistanceLabel &initialPickupDetour,
+                             const RouteState &routeState) {
+        const DistanceLabel vehWaitTime = getTotalVehWaitTimeInInterval(vehId, pickupIndex,
+                                                                        toIndex - 1, routeState);
+        DistanceLabel detour = initialPickupDetour - vehWaitTime;
+        detour.max(0);
+        return detour;
+    }
+
     // Returns the additional time that is needed for the vehicle asgn.vehicle to drive from its stop at index
     // asgn.dropoffStopIdx to the given dropoff, perform the dropoff and drive to its next scheduled stop at index
     // asgn.dropoffStopIdx + 1 instead of driving from the stop at asgn.dropoffStopIdx directly to the stop
@@ -242,6 +270,19 @@ namespace karri::time_utils {
         if (dropoffAtExistingStop) return 0;
         const auto lengthOfReplacedLeg = calcLengthOfLegStartingAt(dropoffIndex, vehId, routeState);
         return distToDropoff + InputConfig::getInstance().stopTime + distFromDropoff - lengthOfReplacedLeg;
+    }
+
+    template<typename LabelSet>
+    static INLINE typename LabelSet::DistanceLabel
+    calcInitialDropoffDetour(const int vehId, const int dropoffIndex,
+                             const typename LabelSet::DistanceLabel &distToDropoff,
+                             const typename LabelSet::DistanceLabel &distFromDropoff,
+                             const typename LabelSet::LabelMask &dropoffAtExistingStop,
+                             const RouteState &routeState) {
+        const auto lengthOfReplacedLeg = calcLengthOfLegStartingAt(dropoffIndex, vehId, routeState);
+        auto detour = distToDropoff + InputConfig::getInstance().stopTime + distFromDropoff - lengthOfReplacedLeg;
+        detour.setIf(0, dropoffAtExistingStop);
+        return detour;
     }
 
     // Returns the additional time that is needed for the vehicle asgn.vehicle to drive from its stop at index
@@ -281,9 +322,36 @@ namespace karri::time_utils {
         return std::max(detourRightAfterDropoff - vehWaitTime, 0);
     }
 
+    template<typename DistanceLabel>
+    static INLINE DistanceLabel
+    calcResidualTotalDetourForStopAfterDropoff(const int vehId, const int dropoffIndex, const int toIndex,
+                                               const DistanceLabel &detourRightAfterDropoff,
+                                               const RouteState &routeState) {
+        assert(toIndex >= dropoffIndex);
+        const DistanceLabel vehWaitTime = getTotalVehWaitTimeInInterval(vehId, dropoffIndex,
+                                                                        toIndex - 1, routeState);
+        DistanceLabel detour = detourRightAfterDropoff - vehWaitTime;
+        detour.max(0);
+        return detour;
+    }
+
     static INLINE int
     calcResidualTotalDetour(const int vehId, const int pickupIndex, const int dropoffIndex, const int toIndex,
                             const int initialPickupDetour, const int detourRightAfterDropoff,
+                            const RouteState &routeState) {
+        assert(toIndex >= pickupIndex);
+        if (toIndex <= dropoffIndex) {
+            return calcResidualPickupDetour(vehId, pickupIndex, toIndex, initialPickupDetour, routeState);
+        }
+
+        return calcResidualTotalDetourForStopAfterDropoff(vehId, dropoffIndex, toIndex, detourRightAfterDropoff,
+                                                          routeState);
+    }
+
+    template<typename DistanceLabel>
+    static INLINE DistanceLabel
+    calcResidualTotalDetour(const int vehId, const int pickupIndex, const int dropoffIndex, const int toIndex,
+                            const DistanceLabel& initialPickupDetour, const DistanceLabel& detourRightAfterDropoff,
                             const RouteState &routeState) {
         assert(toIndex >= pickupIndex);
         if (toIndex <= dropoffIndex) {
@@ -344,6 +412,40 @@ namespace karri::time_utils {
                 vehWaitTimesAtDropoffsPrefixSums[resDetourUntilIdx] - vehWaitTimesAtDropoffsPrefixSums[fromIndex] -
                 numDropoffsInInterval * vehWaitTimePrefixSums[fromIndex];
         return numDropoffsInInterval * detourAtFromIndex - sumOfBuffersOfDropoffsInInterval;
+    }
+
+    template<typename DistanceLabel>
+    static INLINE DistanceLabel
+    calcAddedTripTimeInInterval(const int vehId, const int fromIndex, const int toIndex,
+                                const DistanceLabel &detourAtFromIndex,
+                                const RouteState &routeState) {
+
+        assert(allSet(detourAtFromIndex >= 0));
+        if (allSet(detourAtFromIndex == 0) || fromIndex == toIndex)
+            return 0;
+
+        const auto &vehWaitTimePrefixSums = routeState.vehWaitTimesPrefixSumFor(vehId);
+        const auto &vehWaitTimesAtDropoffsPrefixSums = routeState.vehWaitTimesUntilDropoffsPrefixSumsFor(vehId);
+        const auto &numDropoffsPrefixSums = routeState.numDropoffsPrefixSumFor(vehId);
+
+        // For description, see overload of function for individual integers
+        int resDetourUntilIdx = toIndex;
+        while (resDetourUntilIdx > fromIndex &&
+               anySet(getTotalVehWaitTimeInInterval(vehId, fromIndex, resDetourUntilIdx - 1, routeState) >=
+                      detourAtFromIndex)) {
+            --resDetourUntilIdx;
+        }
+        assert(allSet(getTotalVehWaitTimeInInterval(vehId, fromIndex, resDetourUntilIdx - 1, routeState) <
+                      detourAtFromIndex));
+
+        const auto numDropoffsInInterval = numDropoffsPrefixSums[resDetourUntilIdx] - numDropoffsPrefixSums[fromIndex];
+        const auto sumOfBuffersOfDropoffsInInterval =
+                vehWaitTimesAtDropoffsPrefixSums[resDetourUntilIdx] - vehWaitTimesAtDropoffsPrefixSums[fromIndex] -
+                numDropoffsInInterval * vehWaitTimePrefixSums[fromIndex];
+        auto addedTripTime = detourAtFromIndex;
+        addedTripTime.multiplyWithScalar(numDropoffsInInterval);
+        addedTripTime -= sumOfBuffersOfDropoffsInInterval;
+        return addedTripTime;
     }
 
 
@@ -438,6 +540,19 @@ namespace karri::time_utils {
                endServiceTime;
     }
 
+    template<typename RequestContext, typename LabelSet>
+    static INLINE typename LabelSet::LabelMask
+    isServiceTimeConstraintViolated(const Vehicle &veh, const RequestContext &context,
+                                    const typename LabelSet::DistanceLabel &residualDetourAtEnd,
+                                    const RouteState &routeState) {
+        using DistanceLabel = typename LabelSet::DistanceLabel;
+        const DistanceLabel endServiceTime = veh.endOfServiceTime;
+        const auto numStops = routeState.numStopsOf(veh.vehicleId);
+
+        return std::max(routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1],
+                        context.originalRequest.requestTime) + residualDetourAtEnd > endServiceTime;
+    }
+
     template<typename RequestContext>
     static INLINE bool
     doesPickupDetourViolateHardConstraints(const Vehicle &veh, const RequestContext &context, const int pickupIndex,
@@ -471,6 +586,43 @@ namespace karri::time_utils {
         return false;
     }
 
+    template<typename RequestContext, typename LabelSet>
+    static INLINE typename LabelSet::LabelMask
+    doesPickupDetourViolateHardConstraints(const Vehicle &veh, const RequestContext &context, const int pickupIndex,
+                                           const typename LabelSet::DistanceLabel &initialPickupDetour,
+                                           const RouteState &routeState) {
+        using DistanceLabel = typename LabelSet::DistanveLabel;
+        using LabelMask = typename LabelSet::LabelMask;
+
+        const auto vehId = veh.vehicleId;
+        const auto endServiceTime = veh.endOfServiceTime;
+        const auto numStops = routeState.numStopsOf(vehId);
+        const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
+        const auto &minArrTimes = routeState.schedArrTimesFor(vehId);
+        const auto &maxArrTimes = routeState.maxArrTimesFor(vehId);
+
+        LabelMask violates(false);
+
+        // If departure time at the last stop (which may be the time of issuing this request) is moved past
+        // the end of the service time by the pickup detour, the assignment violates the service time constraint.
+        const DistanceLabel residualDetourAtEnd = calcResidualPickupDetour(vehId, pickupIndex, numStops - 1,
+                                                                           initialPickupDetour, routeState);
+        violates |= DistanceLabel(std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime)) +
+                    residualDetourAtEnd > DistanceLabel(endServiceTime);
+
+        // If the pickup is inserted at/after the last stop and the service time constraint is not violated, the
+        // assignment is ok.
+        if (pickupIndex + 1 == numStops)
+            return violates;
+
+        // If the pickup detour moves the planned arrival time at the stop after the pickup past the latest permissible
+        // arrival time, this assignment violates some trip time or wait time hard constraint.
+        violates |= (initialPickupDetour != DistanceLabel(0)) &
+                    (DistanceLabel(minArrTimes[pickupIndex + 1]) + initialPickupDetour >
+                     DistanceLabel(maxArrTimes[pickupIndex + 1]));
+        return violates;
+    }
+
     template<typename RequestContext>
     static INLINE bool
     doesDropoffDetourViolateHardConstraints(const Vehicle &veh, const RequestContext &context, const int dropoffIndex,
@@ -502,6 +654,43 @@ namespace karri::time_utils {
             return true;
 
         return false;
+    }
+
+    template<typename RequestContext, typename LabelSet>
+    static INLINE typename LabelSet::LabelMask
+    doesDropoffDetourViolateHardConstraints(const Vehicle &veh, const RequestContext &context, const int dropoffIndex,
+                                            const typename LabelSet::DistanceLabel &initialDropoffDetour,
+                                            const RouteState &routeState) {
+        using DistanceLabel = typename LabelSet::DistanveLabel;
+        using LabelMask = typename LabelSet::LabelMask;
+
+        const auto vehId = veh.vehicleId;
+        const auto endServiceTime = veh.endOfServiceTime;
+        const auto numStops = routeState.numStopsOf(vehId);
+        const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
+        const auto &minArrTimes = routeState.schedArrTimesFor(vehId);
+        const auto &maxArrTimes = routeState.maxArrTimesFor(vehId);
+
+        LabelMask violates(false);
+
+        // If departure time at the last stop (which may be the time of issuing this request) is moved past
+        // the end of the service time by the dropoff detour, the assignment violates the service time constraint.
+        const auto residualDetourAtEnd = calcResidualTotalDetourForStopAfterDropoff(vehId, dropoffIndex, numStops - 1,
+                                                                                    initialDropoffDetour, routeState);
+        violates |= DistanceLabel(std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime)) +
+                    residualDetourAtEnd > DistanceLabel(endServiceTime);
+
+        // If the dropoff is inserted at/after the last stop and the service time constraint is not violated, the
+        // assignment is ok.
+        if (dropoffIndex + 1 == numStops)
+            return violates;
+
+        // If the dropoff detour moves the planned arrival time at the stop after the dropoff past the latest
+        // permissible arrival time, this assignment violates some trip time or wait time hard constraint.
+        violates |= (initialDropoffDetour != DistanceLabel(0)) &
+                    (DistanceLabel(minArrTimes[dropoffIndex + 1]) + initialDropoffDetour >
+                     DistanceLabel(maxArrTimes[dropoffIndex + 1]));
+        return violates;
     }
 
 } // end namespace

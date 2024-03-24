@@ -27,6 +27,11 @@
 
 namespace karri {
 
+    // todo: Eliminate existence of method overloads for SIMD with slightly different name
+    //  If possible, make only one overload of each method so same code can be used for batch (DistanceLabel) and
+    //  individual integer. Requires getting rid of member functions of DistanceLabel classes and replacing with
+    //  friend functions/operators (e.g. DistanceLabel::multiplyWithScalar(int) -> friend DistanceLabel& operator*(DistanceLabel&, int) )
+
 
     template<int PASSENGER_COST_SCALE = 1, int WALKING_COST_SCALE = 0, int VEHICLE_COST_SCALE = 1, int WAIT_TIME_VIOLATION_WEIGHT = 1, int TRIP_TIME_VIOLATION_WEIGHT = 10>
     struct TimeIsMoneyCostFunction {
@@ -127,6 +132,13 @@ namespace karri {
 
         static inline int calcChangeInTripCostsOfExistingPassengers(const int addedTripTimeForExistingPassengers) {
             return PASSENGER_COST_SCALE * addedTripTimeForExistingPassengers;
+        }
+
+        template<typename DistanceLabel>
+        static inline DistanceLabel
+        calcKChangesInTripCostsOfExistingPassengers(DistanceLabel addedTripTimeForExistingPassengers) {
+            addedTripTimeForExistingPassengers.multiplyWithScalar(PASSENGER_COST_SCALE);
+            return addedTripTimeForExistingPassengers;
         }
 
         static inline int calcUpperBoundVehicleCostDifference(const int detourDiff) {
