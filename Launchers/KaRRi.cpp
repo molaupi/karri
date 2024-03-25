@@ -265,9 +265,9 @@ int main(int argc, char *argv[]) {
                                            "end_of_service_time", "capacity");
         }
 
-        int maxVehId = INFTY;
+        float relFleetSize = 1;
 
-        while (fleet.size() <= maxVehId && ((csvFilesInLoudFormat &&
+        while (((csvFilesInLoudFormat &&
                 vehiclesFileReader.read_row(location, capacity, startOfServiceTime, endOfServiceTime)) ||
                (!csvFilesInLoudFormat &&
                 vehiclesFileReader.read_row(location, startOfServiceTime, endOfServiceTime, capacity)))) {
@@ -280,6 +280,14 @@ int main(int argc, char *argv[]) {
             fleet.push_back({vehicleId, vehGraphOrigIdToSeqId[location], startOfServiceTime * 10,
                              endOfServiceTime * 10, capacity});
         }
+
+	if (relFleetSize < 1) {
+		size_t newSize = static_cast<size_t>(fleet.size() * relFleetSize);
+		fleet.resize(newSize);
+	}
+
+	std::cout << "Fleet size: " << fleet.size() << "\n";
+
         std::cout << "done.\n";
 
 
