@@ -101,18 +101,18 @@ namespace karri {
 
             const DistanceLabel passengerArrTimesAtPickups =
                     DistanceLabel(requestState.originalRequest.requestTime) + walkingTimes;
-            const DistanceLabel depTimeAtPickup = getActualDepTimeAtPickup(vehId, stopIndex, distFromStopToPickup,
+            const DistanceLabel depTimeAtPickup = getActualDepTimeAtPickup<LabelSet>(vehId, stopIndex, distFromStopToPickup,
                                                                            pickupLocs, passengerArrTimesAtPickups,
                                                                            requestState, routeState);
             const DistanceLabel initialPickupDetour = calcInitialPickupDetour(vehId, stopIndex, INVALID_INDEX,
                                                                               depTimeAtPickup, distFromPickupToNextStop,
                                                                               requestState, routeState);
 
-            relevant &= ~doesPickupDetourViolateHardConstraints(veh, requestState, stopIndex, initialPickupDetour,
+            relevant &= ~doesPickupDetourViolateHardConstraints<LabelSet>(veh, requestState, stopIndex, initialPickupDetour,
                                                                 routeState);
 
             const DistanceLabel curKnownCost =
-                    calculator.calcMinKnownPickupSideCost(veh, stopIndex, initialPickupDetour, walkingTimes,
+                    calculator.calcMinKnownPickupSideCost<LabelSet>(veh, stopIndex, initialPickupDetour, walkingTimes,
                                                           depTimeAtPickup, requestState);
 
             // If cost for only pickup side is already worse than best known cost for a whole assignment, then
@@ -195,7 +195,7 @@ namespace karri {
             // dropoff coincides with the stop. A dropoff at an existing stop causes no detour, so it is always relevant.
             const auto &occupancy = routeState.occupanciesFor(vehId)[stopIndex];
             const auto &stopLocations = routeState.stopLocationsFor(vehId);
-            assert(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
+            assert(allSet((dropoffLocs != stopLocations[stopIndex]) | (distFromStopToDropoff == 0)));
             if (stopIndex == numStops - 1 || occupancy == veh.capacity)
                 return dropoffLocs == stopLocations[stopIndex];
 
@@ -205,24 +205,22 @@ namespace karri {
             relevant &= (distFromStopToDropoff < INFTY) & (distFromDropoffToNextStop < INFTY);
 
             const LabelMask isDropoffAtExistingStop = dropoffLocs == stopLocations[stopIndex];
-            const DistanceLabel initialDropoffDetour = calcInitialDropoffDetour(vehId, stopIndex, distFromStopToDropoff,
+            const DistanceLabel initialDropoffDetour = calcInitialDropoffDetour<LabelSet>(vehId, stopIndex, distFromStopToDropoff,
                                                                                 distFromDropoffToNextStop,
                                                                                 isDropoffAtExistingStop,
                                                                                 routeState);
             assert(allSet(initialDropoffDetour >= 0));
-            relevant &= ~doesDropoffDetourViolateHardConstraints(veh, requestState, stopIndex, initialDropoffDetour,
+            relevant &= ~doesDropoffDetourViolateHardConstraints<LabelSet>(veh, requestState, stopIndex, initialDropoffDetour,
                                                                  routeState);
 
             const DistanceLabel curMinCost =
-                    calculator.calcMinKnownDropoffSideCost(veh, stopIndex, initialDropoffDetour,
+                    calculator.calcMinKnownDropoffSideCost<LabelSet>(veh, stopIndex, initialDropoffDetour,
                                                            walkingTimes, requestState);
 
             // If cost for only dropoff side is already worse than best known cost for a whole assignment, then
             // this dropoff is not relevant at this stop.
-            if (curMinCost > requestState.getBestCost())
-                return false;
-
-            return true;
+            relevant &= curMinCost <= requestState.getBestCost();
+            return relevant;
         }
 
         // Default operator for stop eligibility. Considers every stop eligible.
@@ -251,9 +249,8 @@ namespace karri {
         typename LabelSet::DistanceLabel pdLocWalkingTimes = {};
         const auto& pdLocs = type == PICKUP? requestState.pickups : requestState.dropoffs;
         for (int j = firstPdLocIdInBatch; j < firstPdLocIdInBatch + K; ++j) {
-            const auto& pdLoc = j < pdLocs.size()? pdLocs[j] : pdLocs[firstPdLocIdInBatch];
-            pdLocLocations[j - firstPdLocIdInBatch] = pdLoc.loc;
-            pdLocWalkingTimes[j - firstPdLocIdInBatch] = pdLoc.walkingDist;
+            pdLocLocations[j - firstPdLocIdInBatch] = j < pdLocs.size()? pdLocs[j].loc : INVALID_EDGE;
+            pdLocWalkingTimes[j - firstPdLocIdInBatch] = j < pdLocs.size()? pdLocs[j].walkingDist : INFTY;
         }
 
         auto &indices = localDistances.indexInEntriesVector;

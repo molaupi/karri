@@ -86,9 +86,9 @@ namespace karri {
                                                           std::memory_order_relaxed);
 
             currentVehicleLocations[vehId] = curLoc;
+            vehiclesWithKnownLocation.insert(vehId);
             curVehLock.unlock();
 
-            vehiclesWithKnownLocation.insert(vehId);
         }
 
         void init(const int time) {

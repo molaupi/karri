@@ -141,7 +141,7 @@ namespace karri {
                         while (expectedMinForPickup > dist[i] &&
                                 !minDistForPickupAtomic.compare_exchange_strong(expectedMinForPickup, dist[i], std::memory_order_relaxed));
                     }
-                    assert(minDirectDist <= minDirectDistancesPerPickup[pickupId]);
+                    assert(pickupId >= requestState.pickups.size() || minDirectDist <= minDirectDistancesPerPickup[pickupId]);
                 }
             }
         }

@@ -185,6 +185,7 @@ namespace karri {
         // Transfers the distances computed by a single thread for a batch of K PDLocs to the global result and clears
         // the local result in the process.
         void transferThreadLocalResultToGlobalResult(const int firstPdLocIdInBatch,
+                                                     const int onePastLastPdLocIdInBatch,
                                                      ThreadLocalFeasibleEllipticDistances &localResult) {
             auto &localEntries = localResult.entries;
             auto &localIndices = localResult.indexInEntriesVector;
@@ -197,15 +198,20 @@ namespace karri {
 
             // Count total number of global entries (combinations of PD-loc in batch and stop relevant for that PD-loc)
             int numNewEntriesInGlobal = 0;
-            for (const auto &e: localEntries) {
+            for (auto &e: localEntries) {
                 assert(allSet(((e.distFromStopToPdLoc == INFTY) & (e.distFromPdLocToNextStop == INFTY)) |
                               ((e.distFromStopToPdLoc < INFTY) & (e.distFromPdLocToNextStop < INFTY))));
-                const LabelMask rel = e.distFromStopToPdLoc < INFTY;
+                // If this is a partially filled last batch, we have to make sure not to count the entries that are not
+                // used (copies of index 0 in batch) as they will not be stored in the global result.
+                for (int i = onePastLastPdLocIdInBatch; i < firstPdLocIdInBatch + K; ++i)
+                    e.distFromStopToPdLoc[i - firstPdLocIdInBatch] = INFTY;
+                LabelMask rel = e.distFromStopToPdLoc < INFTY;
+
                 const int numRel = countSet(rel);
-                assert(numRel == [&rel] {
+                assert(numRel == [&] {
                     int manualCountRel = 0;
-                    for (int i = 0; i < K; ++i)
-                        manualCountRel += rel[i];
+                    for (int pdId = firstPdLocIdInBatch; pdId < onePastLastPdLocIdInBatch; ++pdId)
+                        manualCountRel += rel[pdId - firstPdLocIdInBatch];
                     return manualCountRel;
                 }());
 
@@ -223,12 +229,12 @@ namespace karri {
                 const auto &stopId = e.stopId;
                 const DistanceLabel &batchDistTo = e.distFromStopToPdLoc;
                 const DistanceLabel &batchDistFrom = e.distFromPdLocToNextStop;
-                for (int i = 0; i < K; ++i) {
-                    if (batchDistTo[i] >= INFTY)
+                for (int pdId = firstPdLocIdInBatch; pdId < onePastLastPdLocIdInBatch; ++pdId) {
+                    int idxInBatch = pdId - firstPdLocIdInBatch;
+                    if (batchDistTo[idxInBatch] >= INFTY)
                         continue;
-                    const int pdId = firstPdLocIdInBatch + i;
                     assert(nextIdx < startOfRangeForBatch + numNewEntriesInGlobal);
-                    globalResults[nextIdx] = {stopId, pdId, batchDistTo[i], batchDistFrom[i]};
+                    globalResults[nextIdx] = {stopId, pdId, batchDistTo[idxInBatch], batchDistFrom[idxInBatch]};
                     ++nextIdx;
                 }
             }

@@ -246,7 +246,7 @@ namespace karri {
             // Run for pickups:
             Timer timer;
             runBCHSearchesFromAndTo<PICKUP>(requestState.pickups, feasibleEllipticPickups, pickupsAtExistingStops,
-                                            [] (const int) { return true; });
+                                            [](const int) { return true; });
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.pickupTime += pickupTime;
             requestState.stats().ellipticBchStats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations.load();
@@ -256,8 +256,9 @@ namespace karri {
             // Run for dropoffs:
             timer.restart();
             runBCHSearchesFromAndTo<DROPOFF>(requestState.dropoffs, feasibleEllipticDropoffs, dropoffsAtExistingStops,
-                                             [this](const int& stopId) {
-                                                 return routeState.stopPositionOf(stopId) > 0 || feasibleEllipticPickups.doesStopHaveRelPdLocs(stopId);
+                                             [this](const int &stopId) {
+                                                 return routeState.stopPositionOf(stopId) > 0 ||
+                                                        feasibleEllipticPickups.doesStopHaveRelPdLocs(stopId);
                                              });
             const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
@@ -325,11 +326,14 @@ namespace karri {
                                           localFeasibleDistances);
 
 
-                filterLocalEllipticDistances<type, LabelSetT>(i, localFeasibleDistances, fleet, requestState, routeState,
-                                                   isStopEligible);
+                filterLocalEllipticDistances<type, LabelSetT>(i, localFeasibleDistances, fleet, requestState,
+                                                              routeState,
+                                                              isStopEligible);
 
                 // After thread finishes a search batch of K PDLocs, write the distances back to the global vectors
-                feasibleDistances.transferThreadLocalResultToGlobalResult(i, localFeasibleDistances);
+                feasibleDistances.transferThreadLocalResultToGlobalResult(i, std::min(i + K,
+                                                                                      static_cast<int>(pdLocs.size())),
+                                                                          localFeasibleDistances);
             });
         }
 
