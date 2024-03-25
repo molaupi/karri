@@ -279,6 +279,14 @@ int main(int argc, char *argv[]) {
         }
         std::cout << "done.\n";
 
+        float maxFleetSize = 1;
+
+        if (maxFleetSize < 1) {
+            size_t newSize = static_cast<size_t>(fleet.size() * maxFleetSize);
+            fleet.resize(newSize);
+        }
+        std::cout << "Fleet size: " << fleet.size() << "\n";
+
         // Create Route State for empty routes.
         RouteState routeState(fleet, inputConfig.stopTime);
 
