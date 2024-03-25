@@ -5,6 +5,7 @@
 # Generated input files
 /Inputs/
 /Publications/KaRRi/Inputs/
+/Publications/output*
 
 # Various config files.
 /.settings/

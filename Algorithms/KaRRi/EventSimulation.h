@@ -82,6 +82,8 @@ namespace karri {
                   vehicleState(fleet.size(), OUT_OF_SERVICE),
                   requestState(requests.size(), NOT_RECEIVED),
                   requestData(requests.size(), RequestData()),
+                  searchTimeLogger(LogManager<std::ofstream>::getLogger("searchAssignmentRunningTime.csv",
+                                                                        "running_time\n")),
                   eventSimulationStatsLogger(LogManager<std::ofstream>::getLogger("eventsimulationstats.csv",
                                                                                   "occurrence_time,"
                                                                                   "type,"
@@ -280,7 +282,12 @@ namespace karri {
             Timer timer;
 
             const auto &request = requests[reqId];
+
+            Timer asgnTime;
+
             const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request);
+
+            searchTimeLogger << asgnTime.elapsed<std::chrono::nanoseconds>() << '\n';
             systemStateUpdater.writeBestAssignmentToLogger();
 
             applyAssignment(asgnFinderResponse, reqId, occTime);
@@ -385,6 +392,7 @@ namespace karri {
 
         std::vector<RequestData> requestData;
 
+        std::ofstream &searchTimeLogger;
         std::ofstream &eventSimulationStatsLogger;
         std::ofstream &assignmentQualityStats;
         std::ofstream &legStatsLogger;
