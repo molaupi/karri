@@ -201,7 +201,7 @@ namespace karri {
 
             LabelMask relevant(true);
 
-            relevant &= dropoffLocs != stopLocations[stopIndex];
+            relevant &= dropoffLocs != stopLocations[stopIndex + 1];
             relevant &= (distFromStopToDropoff < INFTY) & (distFromDropoffToNextStop < INFTY);
 
             const LabelMask isDropoffAtExistingStop = dropoffLocs == stopLocations[stopIndex];

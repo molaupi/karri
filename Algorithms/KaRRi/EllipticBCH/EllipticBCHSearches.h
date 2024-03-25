@@ -316,6 +316,11 @@ namespace karri {
                 // Get one thread local data structure for storing results of both to and from search.
                 auto localFeasibleDistances = feasibleDistances.getThreadLocalFeasibleDistances();
                 localFeasibleDistances.initForSearch();
+
+                if (requestState.originalRequest.requestId == 3590 && type == DROPOFF && i == 0) {
+                    std::cout << "";
+                }
+
                 initializePdLocsAtExistingStopsInLocal(pdLocsAtExistingStops, localFeasibleDistances, i);
 
 

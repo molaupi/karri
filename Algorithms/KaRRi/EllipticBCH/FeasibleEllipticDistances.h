@@ -199,6 +199,7 @@ namespace karri {
             // Count total number of global entries (combinations of PD-loc in batch and stop relevant for that PD-loc)
             int numNewEntriesInGlobal = 0;
             for (auto &e: localEntries) {
+
                 assert(allSet(((e.distFromStopToPdLoc == INFTY) & (e.distFromPdLocToNextStop == INFTY)) |
                               ((e.distFromStopToPdLoc < INFTY) & (e.distFromPdLocToNextStop < INFTY))));
                 // If this is a partially filled last batch, we have to make sure not to count the entries that are not
