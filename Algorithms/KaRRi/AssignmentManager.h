@@ -20,6 +20,7 @@ namespace karri {
             typename RequestStateInitializerT,
             typename BucketsWrapperT,
             typename RouteStateUpdaterT,
+            typename FixedUpdertT,
             typename CurVehLocT>
     class AssignmentManager {
 
@@ -30,7 +31,7 @@ namespace karri {
                           InputConfig &config, RequestStateInitializerT &requestStateInitializer,
                           RouteStateData &variableRouteStateData, RouteStateData &fixedRouteStateData,
                           BucketsWrapperT &variableBuckets, BucketsWrapperT &fixedBuckets,
-                          RouteStateUpdaterT &varUpdater, CurVehLocT &vehLocator):
+                          RouteStateUpdaterT &varUpdater,FixedUpdertT &fixedUpdater, CurVehLocT &vehLocator):
                           systemStateUpdater(systemStateUpdater),
                           asgnFinder(asgnFinder),
                           calc(calc),
@@ -39,9 +40,13 @@ namespace karri {
                           variableRouteStateData(variableRouteStateData),
                           fixedRouteStateData(fixedRouteStateData),
                           varUpdater(varUpdater),
+                          fixedUpder(fixedUpdater),
                           variableBuckets(variableBuckets),
                           fixedBuckets(fixedBuckets),
                           vehLocator(vehLocator),
+                          inaccuracyLogger(LogManager<std::ofstream>::getLogger("inaccuracies.csv",
+                                                                                "innacuracy,"
+                                                                                "type\n")),
                           tripTimeSavings(LogManager<std::ofstream>::getLogger("trip_time_saved_by_occupancy.csv",
                                                                                "fixed_trip_time,"
                                                                                "var_trip_time\n")),
@@ -86,6 +91,17 @@ namespace karri {
             affectedVehicles.push_back(fixedAssignment.vehicle->vehicleId);
             variableRouteStateData.getRouteDataForVehicle(fixedAssignment.vehicle->vehicleId, prevRouteData[0]);
 
+            //Inaccuracy logging
+            const int vehId = fixedAssignment.vehicle->vehicleId;
+            bool palsInaccuracy = (fixedRouteStateData.numStopsOf(vehId) == 1);
+            const VehicleLocation &currLoc = vehLocator.getCurrentLocationOf(vehId);
+            if(!palsInaccuracy) {
+                int nextFixedStopLoc = fixedRouteStateData.stopLocationsFor(vehId)[1];
+                int inaccuracy = fixedUpder.calcDistance(currLoc.location, nextFixedStopLoc) - (fixedRouteStateData.schedArrTimesFor(vehId)[1] - req.requestTime);
+                inaccuracyLogger << inaccuracy << "," <<"ord"<< '\n';
+            }
+
+
             // Get request data of requests that need to be moved and calculate total cost savings
             std::vector<int> movedReqIds;
             std::vector<int> movedReqDepTimes;
@@ -97,6 +113,14 @@ namespace karri {
             systemStateUpdater.insertBestAssignment(pickupId, dropoffId, *fixedReqState, true);
             addAssignmentData(changes, *fixedReqState, false, pickupId, dropoffId);
             reqStates.push_back(fixedReqState);
+
+            // Inaccuracy for PALS insertions
+            if (palsInaccuracy) {
+                int index = fixedRouteStateData.stopPositionOf(pickupId);
+                int pickupLoc = fixedRouteStateData.stopLocationsFor(vehId)[index];
+                int inaccuracy = fixedUpder.calcDistance(currLoc.location, pickupLoc) - (fixedRouteStateData.schedArrTimesFor(vehId)[index] - req.requestTime);
+                inaccuracyLogger << inaccuracy << "," << "pals" <<'\n';
+            }
 
             // Reassignment procedure
             for (const auto reqId: movedReqIds) {
@@ -358,6 +382,7 @@ namespace karri {
         RouteStateData &fixedRouteStateData;
 
         RouteStateUpdaterT &varUpdater;
+        FixedUpdertT &fixedUpder;
 
         BucketsWrapperT &variableBuckets;
         BucketsWrapperT &fixedBuckets;
@@ -365,6 +390,7 @@ namespace karri {
         CurVehLocT &vehLocator;
 
         // Time Loggers
+        std::ofstream  &inaccuracyLogger;
         std::ofstream &tripTimeSavings;
         std::ofstream &noReoptLogger;
         std::ofstream  &notWorthItLogger;

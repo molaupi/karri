@@ -610,10 +610,11 @@ int main(int argc, char *argv[]) {
                 RequestStateInitializerImpl,
                 BucketsWrapper,
                 RouteStateUpdater,
+                FixedRouteStateUpdaterImpl,
                 CurVehLocToPickupSearchesImpl>;
 
         AssignmentManager asgnManager(systemStateUpdater, insertionFinder, calc, inputConfig, requestStateInitializer,
-                                      variableData, fixedData, variableBuckets, fixedBuckets, variableUpdater, curVehLocToPickupSearches);
+                                      variableData, fixedData, variableBuckets, fixedBuckets, variableUpdater, fixedUpdater, curVehLocToPickupSearches);
 
         // Initialize last stop state for initial locations of vehicles
         for (const auto &veh: fleet) {

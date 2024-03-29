@@ -242,11 +242,6 @@ namespace karri {
         }
 
 
-    private:
-
-
-
-
         //Calculates distance between two edges
         int calcDistance(int from, int to) {
             const auto source = vehCh.rank(vehInputGraph.edgeHead(from));
@@ -254,6 +249,10 @@ namespace karri {
             vehChQuery.run(source, target);
             return vehChQuery.getDistance() + vehInputGraph.travelTime(to);
         }
+
+
+    private:
+
 
         void propgateNumOfOccupanciesForward(const int vehId, const int index, const int change, ConstantVectorRange<int> &occupancies) {
             for (int i = index; i < occupancies.size(); i++) {
