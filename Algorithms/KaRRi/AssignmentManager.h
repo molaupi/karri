@@ -21,7 +21,8 @@ namespace karri {
             typename BucketsWrapperT,
             typename RouteStateUpdaterT,
             typename FixedUpdertT,
-            typename CurVehLocT>
+            typename CurVehLocT,
+            typename VehLocatorT>
     class AssignmentManager {
 
         using CostFunction = typename CostCalculatorT::CostFunction;
@@ -31,7 +32,7 @@ namespace karri {
                           InputConfig &config, RequestStateInitializerT &requestStateInitializer,
                           RouteStateData &variableRouteStateData, RouteStateData &fixedRouteStateData,
                           BucketsWrapperT &variableBuckets, BucketsWrapperT &fixedBuckets,
-                          RouteStateUpdaterT &varUpdater,FixedUpdertT &fixedUpdater, CurVehLocT &vehLocator):
+                          RouteStateUpdaterT &varUpdater,FixedUpdertT &fixedUpdater, CurVehLocT &vehLocator, VehLocatorT &locator):
                           systemStateUpdater(systemStateUpdater),
                           asgnFinder(asgnFinder),
                           calc(calc),
@@ -44,6 +45,7 @@ namespace karri {
                           variableBuckets(variableBuckets),
                           fixedBuckets(fixedBuckets),
                           vehLocator(vehLocator),
+                          locator(locator),
                           inaccuracyLogger(LogManager<std::ofstream>::getLogger("inaccuracies.csv",
                                                                                 "innacuracy,"
                                                                                 "type\n")),
@@ -94,7 +96,7 @@ namespace karri {
             //Inaccuracy logging
             const int vehId = fixedAssignment.vehicle->vehicleId;
             bool palsInaccuracy = (fixedRouteStateData.numStopsOf(vehId) == 1);
-            const VehicleLocation &currLoc = vehLocator.getCurrentLocationOf(vehId);
+            const VehicleLocation &currLoc = locator.computeCurrentLocation(*fixedAssignment.vehicle, req.requestTime);
             if(!palsInaccuracy) {
                 int nextFixedStopLoc = fixedRouteStateData.stopLocationsFor(vehId)[1];
                 int inaccuracy = fixedUpder.calcDistance(currLoc.location, nextFixedStopLoc) - (fixedRouteStateData.schedArrTimesFor(vehId)[1] - req.requestTime);
@@ -388,6 +390,7 @@ namespace karri {
         BucketsWrapperT &fixedBuckets;
 
         CurVehLocT &vehLocator;
+        VehLocatorT &locator;
 
         // Time Loggers
         std::ofstream  &inaccuracyLogger;
