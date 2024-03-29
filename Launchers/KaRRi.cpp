@@ -141,6 +141,7 @@ inline void printUsage() {
               "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
               "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
+              "  -max-num-threads <int> set the maximum number of threads to use.\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
               "  -help                  show usage help text.\n";
 }
@@ -150,9 +151,7 @@ int main(int argc, char *argv[]) {
 
     using namespace karri;
 
-    // Setting maximum parallelism (i.e. number of threads)
-//    auto g = tbb::global_control(tbb::global_control::max_allowed_parallelism, 1);
-//    unused(g);
+
 
     try {
         CommandLineParser clp(argc, argv);
@@ -161,6 +160,9 @@ int main(int argc, char *argv[]) {
             return EXIT_SUCCESS;
         }
 
+        // Setting maximum parallelism (i.e. number of threads)
+        const auto maxNumThreads = clp.getValue<int>("max-num-threads");
+        auto g = tbb::global_control(tbb::global_control::max_allowed_parallelism, maxNumThreads);
 
         // Parse the command-line options.
         InputConfig& inputConfig = InputConfig::getInstance();
