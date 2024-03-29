@@ -118,9 +118,9 @@ namespace karri {
 
             // Inaccuracy for PALS insertions
             if (palsInaccuracy) {
-                int index = fixedRouteStateData.stopPositionOf(pickupId);
-                int pickupLoc = fixedRouteStateData.stopLocationsFor(vehId)[index];
-                int inaccuracy = fixedUpder.calcDistance(currLoc.location, pickupLoc) - (fixedRouteStateData.schedArrTimesFor(vehId)[index] - req.requestTime);
+                int index = variableRouteStateData.stopPositionOf(pickupId);
+                int pickupLoc = variableRouteStateData.stopLocationsFor(vehId)[index];
+                int inaccuracy = fixedUpder.calcDistance(currLoc.location, pickupLoc) - (variableRouteStateData.schedArrTimesFor(vehId)[index] - req.requestTime);
                 inaccuracyLogger << inaccuracy << "," << "pals" <<'\n';
             }
 
