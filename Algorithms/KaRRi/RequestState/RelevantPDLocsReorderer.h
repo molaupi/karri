@@ -99,6 +99,9 @@ namespace karri {
             for (auto &a: nextIdxForStop)
                 a.store(0);
 
+            relOrdinary.vehiclesWithRelevantSpots.clear();
+            relBns.vehiclesWithRelevantSpots.clear();
+
             int sumOrdinary = 0;
             int sumBns = 0;
             for (int vehId = 0; vehId < fleet.size(); ++vehId) {
