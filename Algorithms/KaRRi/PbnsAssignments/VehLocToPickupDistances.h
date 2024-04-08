@@ -46,6 +46,7 @@ namespace karri {
             for (const auto &vehId: vehiclesWithDistances)
                 for (int i = 0; i < prevNumPickups; ++i)
                     distances[vehId * prevNumPickups + i] = unknownDist;
+            vehiclesWithDistances.clear();
 
             // initialize for new result
             if (fleetSize * requestState.numPickups() > distances.size())

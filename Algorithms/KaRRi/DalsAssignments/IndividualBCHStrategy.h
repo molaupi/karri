@@ -169,6 +169,10 @@ namespace karri::DropoffAfterLastStopStrategies {
                               std::minstd_rand(seedCounter.fetch_add(1, std::memory_order_relaxed)));
                   }) {}
 
+        void init() {
+            curVehLocToPickupSearches.initialize();
+        }
+
         void tryDropoffAfterLastStop() {
             // Helper lambda to get sum of stats from thread local queries
             static const auto sumInts = [](const int &n1, const int &n2) { return n1 + n2; };

@@ -93,6 +93,10 @@ namespace karri::DropoffAfterLastStopStrategies {
                   checkPBNSForVehicle(fleet.size()),
                   fullCHQuery(chEnv.template getFullCHQuery<FallBackCHLabelSet>()) {}
 
+        void init() {
+            curVehLocToPickupSearches.initialize();
+        }
+
         void tryDropoffAfterLastStop() {
             Timer timer;
             runCollectiveSearch();

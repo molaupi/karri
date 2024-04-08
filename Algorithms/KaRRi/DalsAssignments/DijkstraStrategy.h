@@ -91,6 +91,10 @@ namespace karri::DropoffAfterLastStopStrategies {
                   dijSearchToDropoff(reverseGraph, {*this, calculator, requestState}),
                   vehiclesSeen(fleet.size()) {}
 
+        void init() {
+            curVehLocToPickupSearches.initialize();
+        }
+
         void tryDropoffAfterLastStop() {
 
             vehiclesSeen.clear();
@@ -135,7 +139,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                     vehiclesSeen.size() * requestState.numDropoffs();
             requestState.stats().dalsAssignmentsStats.numCandidateVehicles += vehiclesSeen.size();
             requestState.stats().dalsAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
-            requestState.stats().dalsAssignmentsStats.tryAssignmentsTime += tryAssignmentsTime - timeSpentLocatingVehicles;
+            requestState.stats().dalsAssignmentsStats.tryAssignmentsTime +=
+                    tryAssignmentsTime - timeSpentLocatingVehicles;
         }
 
     private:
@@ -167,7 +172,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
 
         void
-        enumerateAssignmentsWithLastStopsAt(const int v, const DistanceLabel &distFromV, const DistanceLabel &minCosts) {
+        enumerateAssignmentsWithLastStopsAt(const int v, const DistanceLabel &distFromV,
+                                            const DistanceLabel &minCosts) {
             using namespace time_utils;
 
 
@@ -202,7 +208,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                              pickupIt < relevantPickupsInRevOrder.end(); ++pickupIt) {
                             const auto &entry = *pickupIt;
 
-                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders > asgn.vehicle->capacity)
+                            if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders >
+                                asgn.vehicle->capacity)
                                 break;
 
                             asgn.pickup = &requestState.pickups[entry.pdId];
