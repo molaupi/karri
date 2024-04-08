@@ -75,6 +75,7 @@ namespace karri {
             bool operator()(const int v, const DistLabelT &distToV, const DistLabelContT &) {
                 searches.vehicleBuckets.insert(v, BucketEntry(searches.curVehId, distToV[0]));
                 searches.vehicleBucketsSearchSpace.push_back(v);
+                ++searches.numBucketEntries;
                 return false;
             }
 
@@ -155,6 +156,7 @@ namespace karri {
 
             totalVehicleToPickupSearchTimeForRequest = 0;
             totalNumCHSearchesRunForRequest = 0;
+            numBucketEntries = 0;
         }
 
         // Construct bucket entries for all marked vehicles.
@@ -245,6 +247,10 @@ namespace karri {
             return totalNumCHSearchesRunForRequest;
         }
 
+        int64_t getNumBucketEntries() const {
+            return numBucketEntries;
+        }
+
     private:
 
         void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle) {
@@ -284,7 +290,7 @@ namespace karri {
 
         int64_t totalVehicleToPickupSearchTimeForRequest;
         int64_t totalNumCHSearchesRunForRequest;
-
+        int64_t numBucketEntries;
 
         BucketContainer vehicleBuckets;
     };

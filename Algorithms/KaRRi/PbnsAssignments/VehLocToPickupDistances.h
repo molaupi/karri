@@ -36,7 +36,6 @@ namespace karri {
                   vehiclesWithDistances(fleetSize), prevNumPickups(0), initializedForRequestId(INVALID_ID) {}
 
         void init() {
-
             // Already initialized for current request
             if (initializedForRequestId == requestState.originalRequest.requestId)
                 return;
@@ -46,6 +45,7 @@ namespace karri {
             for (const auto &vehId: vehiclesWithDistances)
                 for (int i = 0; i < prevNumPickups; ++i)
                     distances[vehId * prevNumPickups + i].store(unknownDist, std::memory_order_seq_cst);
+            vehiclesWithDistances.clear();
 
             // initialize for new result
             if (fleetSize * requestState.numPickups() > distances.size())
@@ -58,10 +58,8 @@ namespace karri {
         void updateDistance(const int vehId, const int pickupId, const int newDist) {
             assert(vehId < fleetSize && pickupId < requestState.numPickups());
             auto &distAtomic = distances[vehId * requestState.numPickups() + pickupId];
-
-            int expected = unknownDist;
-            distAtomic.compare_exchange_strong(expected, newDist, std::memory_order_relaxed);
-            assert(distAtomic.load(std::memory_order_relaxed) == newDist);
+            int expected = distAtomic.load(std::memory_order_relaxed);
+            while (newDist < expected && distAtomic.compare_exchange_weak(expected, newDist, std::memory_order_relaxed));
             vehiclesWithDistances.insert(vehId);
         }
 

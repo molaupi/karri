@@ -101,6 +101,7 @@ namespace karri {
             requestState.stats().pbnsAssignmentsStats.locatingVehiclesTimeLocal += curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest();
             requestState.stats().pbnsAssignmentsStats.numCHSearches += curVehLocToPickupSearches.getTotalNumCHSearchesRunForRequest();
             requestState.stats().pbnsAssignmentsStats.bchSearchTimeLocal += curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
+            requestState.stats().pbnsAssignmentsStats.numBucketEntriesForVehicles += curVehLocToPickupSearches.getNumBucketEntries();
         }
 
         // Initialize for new request.

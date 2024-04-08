@@ -211,6 +211,7 @@ namespace karri::stats {
 
     struct PbnsAssignmentsPerformanceStats {
         int64_t initializationTime;
+        int64_t resettingDistancesTime;
 
         int64_t numRelevantStopsForPickups;
         int64_t numRelevantStopsForDropoffs;
@@ -221,6 +222,7 @@ namespace karri::stats {
         int64_t directCHSearchTimeLocal;
         int64_t bchSearchTimeLocal;
 
+        int64_t numBucketEntriesForVehicles;
 
         int64_t numCandidateVehicles;
         int64_t numAssignmentsTried;
@@ -232,6 +234,7 @@ namespace karri::stats {
 
         void clear() {
             initializationTime = 0;
+
             numRelevantStopsForPickups = 0;
             numRelevantStopsForDropoffs = 0;
             filterRelevantPDLocsTime = 0;
@@ -240,6 +243,8 @@ namespace karri::stats {
             numCHSearches = 0;
             directCHSearchTimeLocal = 0;
             bchSearchTimeLocal = 0;
+
+            numBucketEntriesForVehicles = 0;
 
             numCandidateVehicles = 0;
             numAssignmentsTried = 0;
@@ -256,6 +261,7 @@ namespace karri::stats {
                 "num_ch_searches,"
                 "direct_ch_search_time_local,"
                 "bch_search_time_local,"
+                "num_bucket_entries_for_vehicles,"
                 "num_candidate_vehicles,"
                 "num_assignments_tried,"
                 "try_assignments_and_locating_vehicles_time,"
@@ -272,6 +278,7 @@ namespace karri::stats {
                << numCHSearches << ", "
                << directCHSearchTimeLocal << ", "
                << bchSearchTimeLocal << ", "
+               << numBucketEntriesForVehicles << ", "
                << numCandidateVehicles << ", "
                << numAssignmentsTried << ", "
                << tryAssignmentsAndLocatingVehiclesTime << ", "
