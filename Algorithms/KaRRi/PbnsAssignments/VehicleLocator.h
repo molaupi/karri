@@ -93,7 +93,6 @@ namespace karri {
 
         void init(const int time) {
 
-
             // Already initialized for current time
             if (currentTime == time)
                 return;
@@ -104,7 +103,7 @@ namespace karri {
             }
             vehiclesWithKnownLocation.clear();
 
-            totalLocatingVehiclesTimeForRequest.store(0, std::memory_order_relaxed);
+            totalLocatingVehiclesTimeForRequest.store(0, std::memory_order_seq_cst);
         }
 
         const ThreadSafeSubset& getVehiclesWithKnownLocation() const {
@@ -117,7 +116,7 @@ namespace karri {
         }
 
         int64_t getTotalLocatingVehiclesTimeForRequest() const {
-            return totalLocatingVehiclesTimeForRequest;
+            return totalLocatingVehiclesTimeForRequest.load(std::memory_order_seq_cst);
         }
 
     private:

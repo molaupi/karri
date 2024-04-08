@@ -91,6 +91,10 @@ namespace karri::DropoffAfterLastStopStrategies {
                   dijSearchToDropoff(reverseGraph, {*this, calculator, requestState}),
                   vehiclesSeen(fleet.size()) {}
 
+        void init() {
+            curVehLocToPickupSearches.initialize();
+        }
+
         void tryDropoffAfterLastStop() {
 
             vehiclesSeen.clear();

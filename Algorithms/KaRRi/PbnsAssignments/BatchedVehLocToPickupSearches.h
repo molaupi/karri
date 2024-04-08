@@ -153,7 +153,6 @@ namespace karri {
             curLeeway = INFTY;
             maxLeewayOfMarkedVehicles = 0;
 
-            totalLocatingVehiclesTimeForRequest = 0;
             totalVehicleToPickupSearchTimeForRequest = 0;
             totalNumCHSearchesRunForRequest = 0;
         }
@@ -283,7 +282,6 @@ namespace karri {
         tbb::enumerable_thread_specific<std::array<int, K>> curPickupIds;
         int maxLeewayOfMarkedVehicles;
 
-        int64_t totalLocatingVehiclesTimeForRequest;
         int64_t totalVehicleToPickupSearchTimeForRequest;
         int64_t totalNumCHSearchesRunForRequest;
 

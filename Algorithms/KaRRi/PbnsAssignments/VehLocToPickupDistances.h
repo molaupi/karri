@@ -45,11 +45,11 @@ namespace karri {
             // clean up old result
             for (const auto &vehId: vehiclesWithDistances)
                 for (int i = 0; i < prevNumPickups; ++i)
-                    distances[vehId * prevNumPickups + i] = unknownDist;
+                    distances[vehId * prevNumPickups + i].store(unknownDist, std::memory_order_seq_cst);
 
             // initialize for new result
             if (fleetSize * requestState.numPickups() > distances.size())
-                distances.resize(fleetSize * requestState.numPickups(), unknownDist);
+                distances.resize(fleetSize * requestState.numPickups(), CAtomic<int>(unknownDist));
 
             assert(std::all_of(distances.begin(), distances.end(), [&](const auto& d) {return d == unknownDist;}));
             prevNumPickups = requestState.numPickups();
@@ -58,20 +58,23 @@ namespace karri {
         void updateDistance(const int vehId, const int pickupId, const int newDist) {
             assert(vehId < fleetSize && pickupId < requestState.numPickups());
             auto &distAtomic = distances[vehId * requestState.numPickups() + pickupId];
-            distAtomic = std::min(distAtomic, newDist);
+
+            int expected = unknownDist;
+            distAtomic.compare_exchange_strong(expected, newDist, std::memory_order_relaxed);
+            assert(distAtomic.load(std::memory_order_relaxed) == newDist);
             vehiclesWithDistances.insert(vehId);
         }
 
         bool knowsDistance(const int vehId, const unsigned int pickupId) {
             assert(vehId >= 0 && vehId < fleetSize);
             assert(pickupId < requestState.numPickups());
-            return distances[vehId * requestState.numPickups() + pickupId] != unknownDist;
+            return distances[vehId * requestState.numPickups() + pickupId].load(std::memory_order_relaxed) != unknownDist;
         }
 
         int getDistance(const int vehId, const unsigned int pickupId) {
             assert(vehId >= 0 && vehId < fleetSize);
             assert(pickupId < requestState.numPickups());
-            return distances[vehId * requestState.numPickups() + pickupId];
+            return distances[vehId * requestState.numPickups() + pickupId].load(std::memory_order_relaxed);
         }
 
     private:
@@ -79,10 +82,7 @@ namespace karri {
         const RequestState &requestState;
         const int fleetSize;
 
-        // todo: these distances may need to be atomics since during the parallel DALS+PBNS enumeration, multiple threads may
-        //  try to write and read the distance for the same vehicle and pickup at the same time.
-        //  So far does not seem to have an effect though. Okay since every thread will always write the same distance?
-        std::vector<int> distances;
+        std::vector<CAtomic<int>> distances;
 
         ThreadSafeSubset vehiclesWithDistances;
         int prevNumPickups;

@@ -73,8 +73,8 @@ namespace karri {
             distances.init();
             vehicleLocator.init(requestState.originalRequest.requestTime);
 
-            totalVehicleToPickupSearchTimeForRequest.store(0);
-            totalNumCHSearchesRunForRequest.store(0);
+            totalVehicleToPickupSearchTimeForRequest.store(0, std::memory_order_seq_cst);
+            totalNumCHSearchesRunForRequest.store(0, std::memory_order_seq_cst);
         }
 
         // Computes the exact distances via a given vehicle to a specific pickup

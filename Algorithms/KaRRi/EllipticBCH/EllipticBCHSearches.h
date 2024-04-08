@@ -317,10 +317,6 @@ namespace karri {
                 auto localFeasibleDistances = feasibleDistances.getThreadLocalFeasibleDistances();
                 localFeasibleDistances.initForSearch();
 
-                if (requestState.originalRequest.requestId == 3590 && type == DROPOFF && i == 0) {
-                    std::cout << "";
-                }
-
                 initializePdLocsAtExistingStopsInLocal(pdLocsAtExistingStops, localFeasibleDistances, i);
 
 
