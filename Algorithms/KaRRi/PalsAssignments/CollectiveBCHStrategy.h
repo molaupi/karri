@@ -106,7 +106,7 @@ namespace karri::PickupAfterLastStopStrategies {
                     }
                 }
                 assert(promisingDropoffIds.front() == 0); // Assert destination itself is always promising
-                stats.collective_pickupVehDistQueryTime += vehicleToPDLocQuery.getRunTime();
+                stats.collective_pickupVehDistQueryTime += vehicleToPDLocQuery.getRunTimeReverse();
             } else {
                 promisingDropoffIds.resize(requestState.numDropoffs());
                 std::iota(promisingDropoffIds.begin(), promisingDropoffIds.end(), 0u);

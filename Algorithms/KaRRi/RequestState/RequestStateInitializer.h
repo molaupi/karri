@@ -64,15 +64,12 @@ namespace karri {
 
             int numVerticesVisitedPickups = 0;
             int numVerticesVisitedDropoffs = 0;
-            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph,
-                                               numVerticesVisitedPickups,
-                                               numVerticesVisitedDropoffs);
-
-            // Log road categories of PDLocs
-            for (const auto &p: requestState.pickups)
-                requestState.allPDLocsRoadCategoryStats().incCountForCat(vehInputGraph.osmRoadCategory(p.loc));
-            for (const auto &d: requestState.dropoffs)
-                requestState.allPDLocsRoadCategoryStats().incCountForCat(vehInputGraph.osmRoadCategory(d.loc));
+            tbb::parallel_invoke([this, originInPsgGraph, &numVerticesVisitedPickups] {
+                                     findPdLocsInRadiusQuery.findPickups(originInPsgGraph, numVerticesVisitedPickups);
+                                 },
+                                 [this, destInPsgGraph, &numVerticesVisitedDropoffs] {
+                                     findPdLocsInRadiusQuery.findDropoffs(destInPsgGraph, numVerticesVisitedDropoffs);
+                                 });
 
             const auto findHaltingSpotsTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().initializationStats.findPDLocsInRadiusTime = findHaltingSpotsTime;
@@ -82,13 +79,19 @@ namespace karri {
             requestState.stats().numDropoffs = requestState.numDropoffs();
 
             timer.restart();
+
             // Precalculate the vehicle distances from pickups to origin and from destination to dropoffs for upper bounds on PD distances
-            vehicleToPdLocQuery.runReverse(requestState.pickups);
-            vehicleToPdLocQuery.runForward(requestState.dropoffs);
+            tbb::parallel_invoke([this] { vehicleToPdLocQuery.runReverse(requestState.pickups); },
+                                 [this] { vehicleToPdLocQuery.runForward(requestState.dropoffs); });
 
             const auto findVehicleToPdLocsDistancesTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().initializationStats.findVehicleToPdLocsDistancesTime = findVehicleToPdLocsDistancesTime;
 
+            // Log road categories of PDLocs
+            for (const auto &p: requestState.pickups)
+                requestState.allPDLocsRoadCategoryStats().incCountForCat(vehInputGraph.osmRoadCategory(p.loc));
+            for (const auto &d: requestState.dropoffs)
+                requestState.allPDLocsRoadCategoryStats().incCountForCat(vehInputGraph.osmRoadCategory(d.loc));
 
 
             // Calculate the direct distance between the requests origin and destination

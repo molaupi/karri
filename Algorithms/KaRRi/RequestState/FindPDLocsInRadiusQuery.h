@@ -93,37 +93,32 @@ namespace karri {
                   pickupRand(seed),
                   dropoffRand(seed) {}
 
-        // Pickups will be collected into the given pickups vector and dropoffs will be collected into the given dropoffs vector
-        void findPDLocs(const int origin, const int destination, int& numVerticesVisitedPickups, int& numVerticesVisitedDropoffs) {
-            assert(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
+        void findPickups(const int origin, int& numVerticesVisitedPickups) {
+            assert(origin < forwardGraph.numEdges());
             pickups.clear();
-            dropoffs.clear();
-
-            tbb::parallel_invoke([this, &origin] { findPickups(origin); },
-                                 [this, &destination] { findDropoffs(destination); });
-
-            numVerticesVisitedPickups = pickupSearchSpace.size();
-            numVerticesVisitedDropoffs = dropoffSearchSpace.size();
-        }
-
-    private:
-
-        void findPickups(const int origin) {
             pickupSearchSpace.clear();
             auto headOfOriginEdge = forwardGraph.edgeHead(origin);
             pickupSearch.run(headOfOriginEdge);
             turnSearchSpaceIntoPickupLocations();
             finalizePDLocs(origin, pickups, InputConfig::getInstance().maxNumPickups, pickupRand);
+
+            numVerticesVisitedPickups = pickupSearchSpace.size();
         }
 
-        void findDropoffs(const int destination) {
+        void findDropoffs(const int destination, int& numVerticesVisitedDropoffs) {
+            assert(destination < forwardGraph.numEdges());
+            dropoffs.clear();
             dropoffSearchSpace.clear();
             auto tailOfDestEdge = forwardGraph.edgeTail(destination);
             auto destOffset = forwardGraph.travelTime(destination);
             dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
             turnSearchSpaceIntoDropoffLocations();
             finalizePDLocs(destination, dropoffs, InputConfig::getInstance().maxNumDropoffs, dropoffRand);
+
+            numVerticesVisitedDropoffs = dropoffSearchSpace.size();
         }
+
+    private:
 
         void turnSearchSpaceIntoPickupLocations() {
             for (const auto &v: pickupSearchSpace) {
