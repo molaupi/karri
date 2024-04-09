@@ -51,7 +51,8 @@ namespace karri {
                   relOrdinaryPickups(relOrdinaryPickups),
                   relOrdinaryDropoffs(relOrdinaryDropoffs),
                   relPickupsBeforeNextStop(relPickupsBeforeNextStop),
-                  relDropoffsBeforeNextStop(relDropoffsBeforeNextStop) {}
+                  relDropoffsBeforeNextStop(relDropoffsBeforeNextStop),
+                  nextIdxForStop(0, INVALID_INDEX) {}
 
 
         void reorderAll() {
@@ -95,33 +96,38 @@ namespace karri {
             // data structure. Additionally compute auxiliary idx counters for every stop used when populating the
             // RelevantPDLocs data structure in parallel later.
             if (routeState.getMaxStopId() >= nextIdxForStop.size())
-                nextIdxForStop.resize(routeState.getMaxStopId() + 1, CAtomic<int>(INVALID_INDEX));
-            for (auto &a: nextIdxForStop)
-                a.store(0);
+//                nextIdxForStop.resize(routeState.getMaxStopId() + 1, CAtomic<int>(INVALID_INDEX));
+                nextIdxForStop.resize(routeState.getMaxStopId() + 1);
+//            for (auto &a: nextIdxForStop)
+//                a.store(0);
+            nextIdxForStop.clear();
 
+            for (const auto& vehId : relOrdinary.vehiclesWithRelevantSpots)
+                relOrdinary.rangeOfRelevantPdLocs[vehId] = {0, 0};
             relOrdinary.vehiclesWithRelevantSpots.clear();
+
+            for (const auto& vehId : relBns.vehiclesWithRelevantSpots)
+                relBns.rangeOfRelevantPdLocs[vehId] = {0, 0};
             relBns.vehiclesWithRelevantSpots.clear();
 
             int sumOrdinary = 0;
             int sumBns = 0;
-            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
-                const int &numStops = routeState.numStopsOf(vehId);
-                relOrdinary.startOfRelevantPDLocs[vehId] = sumOrdinary;
-                relBns.startOfRelevantPDLocs[vehId] = sumBns;
 
-                if (numStops == 1)
-                    continue;
+            for (const int& vehId : feasible.getVehiclesWithFeasibleDistances()) {
+                const int &numStops = routeState.numStopsOf(vehId);
+                assert(numStops > 1);
+                relOrdinary.rangeOfRelevantPdLocs[vehId].start = sumOrdinary;
+                relBns.rangeOfRelevantPdLocs[vehId].start = sumBns;
 
                 const auto &stopIds = routeState.stopIdsFor(vehId);
-                nextIdxForStop[stopIds[0]].store(relBns.startOfRelevantPDLocs[vehId], std::memory_order_seq_cst);
+                nextIdxForStop[stopIds[0]] = sumBns;
                 const int numRelPdLocsForVehBns = feasible.getNumRelPdLocsForStop(stopIds[0]);
                 numRelBnsStops += (numRelPdLocsForVehBns > 0);
 
                 int numRelPdLocsForVehOrdinary = 0;
                 for (int stopPos = 1; stopPos < numStops; ++stopPos) {
                     const auto &stopId = stopIds[stopPos];
-                    nextIdxForStop[stopId].store(relOrdinary.startOfRelevantPDLocs[vehId] + numRelPdLocsForVehOrdinary,
-                                                 std::memory_order_seq_cst);
+                    nextIdxForStop[stopId] = sumOrdinary + numRelPdLocsForVehOrdinary;
                     const auto &numRelForStop = feasible.getNumRelPdLocsForStop(stopId);
                     numRelPdLocsForVehOrdinary += numRelForStop;
 
@@ -131,14 +137,47 @@ namespace karri {
                 sumOrdinary += numRelPdLocsForVehOrdinary;
                 sumBns += numRelPdLocsForVehBns;
 
+                relOrdinary.rangeOfRelevantPdLocs[vehId].end = sumOrdinary;
+                relBns.rangeOfRelevantPdLocs[vehId].end = sumBns;
+
                 // If vehicle has at least one stop with relevant PD loc, add the vehicle
                 if (numRelPdLocsForVehOrdinary > 0)
                     relOrdinary.vehiclesWithRelevantSpots.insert(vehId);
                 if (numRelPdLocsForVehBns > 0)
                     relBns.vehiclesWithRelevantSpots.insert(vehId);
             }
-            assert(std::all_of(nextIdxForStop.begin(), nextIdxForStop.end(),
-                               [&](const auto &a) { return a.load() != INVALID_INDEX; }));
+//            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
+//                const int &numStops = routeState.numStopsOf(vehId);
+//                relOrdinary.startOfRelevantPDLocs[vehId] = sumOrdinary;
+//                relBns.startOfRelevantPDLocs[vehId] = sumBns;
+//
+//                if (numStops == 1)
+//                    continue;
+//
+//                const auto &stopIds = routeState.stopIdsFor(vehId);
+//                nextIdxForStop[stopIds[0]] = relBns.startOfRelevantPDLocs[vehId];
+//                const int numRelPdLocsForVehBns = feasible.getNumRelPdLocsForStop(stopIds[0]);
+//                numRelBnsStops += (numRelPdLocsForVehBns > 0);
+//
+//                int numRelPdLocsForVehOrdinary = 0;
+//                for (int stopPos = 1; stopPos < numStops; ++stopPos) {
+//                    const auto &stopId = stopIds[stopPos];
+//                    nextIdxForStop[stopId] = relOrdinary.startOfRelevantPDLocs[vehId] + numRelPdLocsForVehOrdinary;
+//                    const auto &numRelForStop = feasible.getNumRelPdLocsForStop(stopId);
+//                    numRelPdLocsForVehOrdinary += numRelForStop;
+//
+//                    numRelOrdinaryStops += (numRelForStop > 0);
+//                }
+//
+//                sumOrdinary += numRelPdLocsForVehOrdinary;
+//                sumBns += numRelPdLocsForVehBns;
+//
+//                // If vehicle has at least one stop with relevant PD loc, add the vehicle
+//                if (numRelPdLocsForVehOrdinary > 0)
+//                    relOrdinary.vehiclesWithRelevantSpots.insert(vehId);
+//                if (numRelPdLocsForVehBns > 0)
+//                    relBns.vehiclesWithRelevantSpots.insert(vehId);
+//            }
 
             relOrdinary.relevantSpots.resize(sumOrdinary);
             relBns.relevantSpots.resize(sumBns);
@@ -148,16 +187,17 @@ namespace karri {
             // For every RelevantPDLoc, write it into RelevantPDLocs structure at right index
             // (offsets computed in prefix sum earlier).
             const auto &unordered = feasible.getGlobalResults();
-            parallel_for(int(0), static_cast<int>(unordered.size()), [&](int i) {
-                const auto &e = unordered[i];
+
+            for (const auto &e: unordered) {
                 const int stopPos = routeState.stopPositionOf(e.stopId);
-                const int idxInRel = nextIdxForStop[e.stopId].fetch_add(1, std::memory_order_relaxed);
+                const int idxInRel = nextIdxForStop[e.stopId]++;
                 if (stopPos == 0) {
                     relBns.relevantSpots[idxInRel] = e;
                 } else {
                     relOrdinary.relevantSpots[idxInRel] = e;
                 }
-            });
+            }
+
         }
 
         const Fleet &fleet;
@@ -172,6 +212,7 @@ namespace karri {
         RelevantPDLocs &relPickupsBeforeNextStop;
         RelevantPDLocs &relDropoffsBeforeNextStop;
 
-        std::vector<CAtomic<int>> nextIdxForStop;
+//        std::vector<CAtomic<int>> nextIdxForStop;
+        TimestampedVector<int> nextIdxForStop;
     };
 }

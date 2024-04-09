@@ -158,15 +158,17 @@ namespace karri {
 
         };
 
-        explicit FeasibleEllipticDistances(const RouteState &routeState)
+        explicit FeasibleEllipticDistances(const RouteState &routeState, const int fleetSize)
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
+                  vehiclesWithFeasibleDistances(fleetSize),
                   indexInEntriesVector(),
                   localResults(),
                   numRelPdLocsPerStop() {}
 
         void init() {
             globalResults.clear();
+            vehiclesWithFeasibleDistances.clear();
 
             if (maxStopId >= numRelPdLocsPerStop.size()) {
                 numRelPdLocsPerStop.resize(maxStopId + 1);
@@ -237,6 +239,7 @@ namespace karri {
                     assert(nextIdx < startOfRangeForBatch + numNewEntriesInGlobal);
                     globalResults[nextIdx] = {stopId, pdId, batchDistTo[idxInBatch], batchDistFrom[idxInBatch]};
                     ++nextIdx;
+                    vehiclesWithFeasibleDistances.insert(routeState.vehicleIdOf(stopId));
                 }
             }
 
@@ -246,6 +249,10 @@ namespace karri {
 
         const ConcurrentResultEntriesVector &getGlobalResults() const {
             return globalResults;
+        }
+
+        const ThreadSafeSubset& getVehiclesWithFeasibleDistances() const {
+            return vehiclesWithFeasibleDistances;
         }
 
         int getNumRelPdLocsForStop(const int stopId) const {
@@ -262,6 +269,7 @@ namespace karri {
         const int &maxStopId;
 
         ConcurrentResultEntriesVector globalResults;
+        ThreadSafeSubset vehiclesWithFeasibleDistances;
 
         // Thread Local Storage for local distances calculation
         tbb::enumerable_thread_specific<std::vector<int>> indexInEntriesVector;

@@ -433,8 +433,8 @@ int main(int argc, char *argv[]) {
                 SimdLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>,
                 BasicLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>>;
         using FeasibleEllipticDistancesImpl = FeasibleEllipticDistances<EllipticBCHLabelSet>;
-        FeasibleEllipticDistancesImpl feasibleEllipticPickups(routeState);
-        FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(routeState);
+        FeasibleEllipticDistancesImpl feasibleEllipticPickups(routeState, fleet.size());
+        FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(routeState, fleet.size());
 
 
         LastStopsAtVertices lastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
