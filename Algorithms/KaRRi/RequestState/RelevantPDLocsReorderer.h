@@ -96,10 +96,7 @@ namespace karri {
             // data structure. Additionally compute auxiliary idx counters for every stop used when populating the
             // RelevantPDLocs data structure in parallel later.
             if (routeState.getMaxStopId() >= nextIdxForStop.size())
-//                nextIdxForStop.resize(routeState.getMaxStopId() + 1, CAtomic<int>(INVALID_INDEX));
                 nextIdxForStop.resize(routeState.getMaxStopId() + 1);
-//            for (auto &a: nextIdxForStop)
-//                a.store(0);
             nextIdxForStop.clear();
 
             for (const auto& vehId : relOrdinary.vehiclesWithRelevantSpots)
@@ -146,48 +143,14 @@ namespace karri {
                 if (numRelPdLocsForVehBns > 0)
                     relBns.vehiclesWithRelevantSpots.insert(vehId);
             }
-//            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
-//                const int &numStops = routeState.numStopsOf(vehId);
-//                relOrdinary.startOfRelevantPDLocs[vehId] = sumOrdinary;
-//                relBns.startOfRelevantPDLocs[vehId] = sumBns;
-//
-//                if (numStops == 1)
-//                    continue;
-//
-//                const auto &stopIds = routeState.stopIdsFor(vehId);
-//                nextIdxForStop[stopIds[0]] = relBns.startOfRelevantPDLocs[vehId];
-//                const int numRelPdLocsForVehBns = feasible.getNumRelPdLocsForStop(stopIds[0]);
-//                numRelBnsStops += (numRelPdLocsForVehBns > 0);
-//
-//                int numRelPdLocsForVehOrdinary = 0;
-//                for (int stopPos = 1; stopPos < numStops; ++stopPos) {
-//                    const auto &stopId = stopIds[stopPos];
-//                    nextIdxForStop[stopId] = relOrdinary.startOfRelevantPDLocs[vehId] + numRelPdLocsForVehOrdinary;
-//                    const auto &numRelForStop = feasible.getNumRelPdLocsForStop(stopId);
-//                    numRelPdLocsForVehOrdinary += numRelForStop;
-//
-//                    numRelOrdinaryStops += (numRelForStop > 0);
-//                }
-//
-//                sumOrdinary += numRelPdLocsForVehOrdinary;
-//                sumBns += numRelPdLocsForVehBns;
-//
-//                // If vehicle has at least one stop with relevant PD loc, add the vehicle
-//                if (numRelPdLocsForVehOrdinary > 0)
-//                    relOrdinary.vehiclesWithRelevantSpots.insert(vehId);
-//                if (numRelPdLocsForVehBns > 0)
-//                    relBns.vehiclesWithRelevantSpots.insert(vehId);
-//            }
 
             relOrdinary.relevantSpots.resize(sumOrdinary);
             relBns.relevantSpots.resize(sumBns);
-
 
             // Iterate through unordered feasible elliptic distances in parallel.
             // For every RelevantPDLoc, write it into RelevantPDLocs structure at right index
             // (offsets computed in prefix sum earlier).
             const auto &unordered = feasible.getGlobalResults();
-
             for (const auto &e: unordered) {
                 const int stopPos = routeState.stopPositionOf(e.stopId);
                 const int idxInRel = nextIdxForStop[e.stopId]++;
@@ -212,7 +175,6 @@ namespace karri {
         RelevantPDLocs &relPickupsBeforeNextStop;
         RelevantPDLocs &relDropoffsBeforeNextStop;
 
-//        std::vector<CAtomic<int>> nextIdxForStop;
         TimestampedVector<int> nextIdxForStop;
     };
 }
