@@ -62,7 +62,11 @@ namespace karri {
             assert(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
             const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
 
-            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph);
+            int numVerticesVisitedPickups = 0;
+            int numVerticesVisitedDropoffs = 0;
+            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph,
+                                               numVerticesVisitedPickups,
+                                               numVerticesVisitedDropoffs);
 
             // Log road categories of PDLocs
             for (const auto &p: requestState.pickups)
@@ -70,15 +74,22 @@ namespace karri {
             for (const auto &d: requestState.dropoffs)
                 requestState.allPDLocsRoadCategoryStats().incCountForCat(vehInputGraph.osmRoadCategory(d.loc));
 
+            const auto findHaltingSpotsTime = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().initializationStats.findPDLocsInRadiusTime = findHaltingSpotsTime;
+            requestState.stats().initializationStats.numVerticesVisitedPickups = numVerticesVisitedPickups;
+            requestState.stats().initializationStats.numVerticesVisitedDropoffs = numVerticesVisitedDropoffs;
+            requestState.stats().numPickups = requestState.numPickups();
+            requestState.stats().numDropoffs = requestState.numDropoffs();
 
+            timer.restart();
             // Precalculate the vehicle distances from pickups to origin and from destination to dropoffs for upper bounds on PD distances
             vehicleToPdLocQuery.runReverse(requestState.pickups);
             vehicleToPdLocQuery.runForward(requestState.dropoffs);
 
-            const auto findHaltingSpotsTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().initializationStats.findPDLocsInRadiusTime = findHaltingSpotsTime;
-            requestState.stats().numPickups = requestState.numPickups();
-            requestState.stats().numDropoffs = requestState.numDropoffs();
+            const auto findVehicleToPdLocsDistancesTime = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().initializationStats.findVehicleToPdLocsDistancesTime = findVehicleToPdLocsDistancesTime;
+
+
 
             // Calculate the direct distance between the requests origin and destination
             timer.restart();

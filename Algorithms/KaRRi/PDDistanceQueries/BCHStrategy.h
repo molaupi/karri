@@ -177,20 +177,18 @@ namespace karri::PDDistanceQueryStrategies {
             const auto numDropoffSearches = requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
             dropoffBuckets.init(numDropoffSearches);
 
-
             // Compute upper bound on every PD distance by adding the longest vehicle distance from any pickup to the
             // origin, the distance from the origin to the destination, and the longest distance from the destination
             // to any dropoff.
-            vehicleToPDLocQuery.runReverse(requestState.pickups);
-            vehicleToPDLocQuery.runForward(requestState.dropoffs);
-
             int maxPickupToOriginVehDist = 0;
             for (const auto &pickup: requestState.pickups) {
+                assert(pickup.vehDistToCenter != INFTY);
                 maxPickupToOriginVehDist = std::max(maxPickupToOriginVehDist, pickup.vehDistToCenter);
             }
 
             int maxDestToDropoffVehDist = 0;
             for (const auto &dropoff: requestState.dropoffs) {
+                assert(dropoff.vehDistFromCenter != INFTY);
                 maxDestToDropoffVehDist = std::max(maxDestToDropoffVehDist, dropoff.vehDistFromCenter);
             }
 
@@ -201,6 +199,9 @@ namespace karri::PDDistanceQueryStrategies {
                                          maxDestToDropoffVehDist; // read by stopping criterion of searches
             }
 
+            const int64_t initTime = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().pdDistancesStats.initializationTime += initTime;
+            timer.restart();
 
             // Fill dropoff buckets in parallel over dropoffs:
             tbb::parallel_for(int(0), static_cast<int>(requestState.numDropoffs()), K, [&] (int i)

@@ -31,15 +31,25 @@ namespace karri::stats {
 
     struct InitializationPerformanceStats {
         int64_t findPDLocsInRadiusTime;
+        int64_t numVerticesVisitedPickups;
+        int64_t numVerticesVisitedDropoffs;
+
+        int64_t findVehicleToPdLocsDistancesTime;
+
         int64_t notUsingVehicleTime;
         int64_t computeODDistanceTime;
 
         int64_t getTotalTime() const {
-            return findPDLocsInRadiusTime + notUsingVehicleTime + computeODDistanceTime;
+            return findPDLocsInRadiusTime + findVehicleToPdLocsDistancesTime + notUsingVehicleTime + computeODDistanceTime;
         }
 
         void clear() {
             findPDLocsInRadiusTime = 0;
+            numVerticesVisitedPickups = 0;
+            numVerticesVisitedDropoffs = 0;
+
+            findVehicleToPdLocsDistancesTime = 0;
+
             notUsingVehicleTime = 0;
             computeODDistanceTime = 0;
         }
@@ -47,6 +57,9 @@ namespace karri::stats {
         static constexpr auto LOGGER_NAME = "perf_initreq.csv";
         static constexpr auto LOGGER_COLS =
                 "find_pd_locs_in_radius_time,"
+                "num_vertices_visited_pickups,"
+                "num_vertices_visited_dropoffs,"
+                "find_vehicle_to_pd_locs_distances_time,"
                 "not_using_veh_time,"
                 "compute_od_distance_time,"
                 "total_time\n";
@@ -55,6 +68,9 @@ namespace karri::stats {
         std::string getLoggerRow() const {
             std::stringstream ss;
             ss << findPDLocsInRadiusTime << ", "
+               << numVerticesVisitedPickups << ", "
+               << numVerticesVisitedDropoffs << ", "
+               << findVehicleToPdLocsDistancesTime << ", "
                << notUsingVehicleTime << ", "
                << computeODDistanceTime << ", "
                << getTotalTime();
@@ -166,7 +182,8 @@ namespace karri::stats {
         int64_t tryPairedAssignmentsTime;
 
         int64_t getTotalTime() const {
-            return initializationTime + filterRelevantPDLocsTime + tryNonPairedAssignmentsTime + tryPairedAssignmentsTime;
+            return initializationTime + filterRelevantPDLocsTime + tryNonPairedAssignmentsTime +
+                   tryPairedAssignmentsTime;
         }
 
         void clear() {
