@@ -471,8 +471,8 @@ int main(int argc, char *argv[]) {
         PDDistancesImpl pdDistances(reqState);
 
 #if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
-        using PDDistanceQueryImpl = PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, VehicleToPDLocQueryImpl, PDDistancesLabelSet>;
-        PDDistanceQueryImpl pdDistanceQuery(vehicleInputGraph, *vehChEnv, pdDistances, reqState, vehicleToPdLocQuery);
+        using PDDistanceQueryImpl = PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>;
+        PDDistanceQueryImpl pdDistanceQuery(vehicleInputGraph, *vehChEnv, pdDistances, reqState);
 
 #else // KARRI_PD_STRATEGY == KARRI_CH_PD_STRAT
         using PDDistanceQueryImpl = PDDistanceQueryStrategies::CHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>;

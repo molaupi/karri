@@ -27,10 +27,6 @@
 
 #include "Tools/Simd/AlignedVector.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
-#include "Parallel/atomic_wrapper.h"
-
-#include <tbb/enumerable_thread_specific.h>
-#include <atomic>
 
 namespace karri {
 
@@ -45,24 +41,24 @@ namespace karri {
 
     public:
 
-        PDDistances(const RequestState &requestState) 
-            : requestState(requestState) {}
+        PDDistances(const RequestState &requestState)
+                : requestState(requestState) {}
 
 
         void clear() {
-            minDirectDist.store(INFTY, std::memory_order_relaxed);
             const int numLabelsPerDropoff = (requestState.numPickups() / K + (requestState.numPickups() % K != 0));
             const int numNeededLabels = numLabelsPerDropoff * requestState.numDropoffs();
             distances.clear();
             distances.resize(numNeededLabels, DistanceLabel(INFTY));
 
 
-            // minDirectDistancesPerPickup has one entry per pickup. Initialize to INFTY.
-            minDirectDistancesPerPickup.clear();
-            minDirectDistancesPerPickup.resize(requestState.numPickups());
+            minDirectDist = INFTY;
+            if (minDirectDistancesPerPickup.size() < numLabelsPerDropoff) {
+                minDirectDistancesPerPickup.resize(numLabelsPerDropoff);
+            }
+            std::fill(minDirectDistancesPerPickup.begin(), minDirectDistancesPerPickup.begin() + numLabelsPerDropoff,
+                      DistanceLabel(INFTY));
 
-            for (auto& min : minDirectDistancesPerPickup)
-                min.store(INFTY, std::memory_order_relaxed);
         }
 
         // IDs refer to the indices in the vectors of pickups/dropoffs given at the last initialize() call.
@@ -83,16 +79,12 @@ namespace karri {
             return labelFor(firstPickupIdInBatch, dropoffId);
         }
 
-        int getDistanceToDestinationFrom(const int pickupID) const {
-            return getDirectDistance(pickupID, 0);
-        }
-
-        const std::atomic_int &getMinDirectDistance() const {
+        int getMinDirectDistance() const {
             return minDirectDist;
         }
 
         int getMinDirectDistanceForPickup(const int pickupId) const {
-            return minDirectDistancesPerPickup[pickupId].load(std::memory_order_relaxed);
+            return minDirectDistancesPerPickup[pickupId / K][pickupId % K];
         }
 
         // Compares a current PD-distance to the given distance and updates the distances if the given distances are smaller.
@@ -101,51 +93,33 @@ namespace karri {
             auto &label = labelFor(pickupId, dropoffId);
             if (dist < label[offsetInBatch]) {
                 label[offsetInBatch] = dist;
-
-                auto &minDirectDistAtomic = minDirectDist;
-                int expectedMin = minDirectDistAtomic.load(std::memory_order_relaxed);
-                while (expectedMin > dist &&
-                        !minDirectDistAtomic.compare_exchange_strong(expectedMin, dist, std::memory_order_relaxed));
-
-
-                auto &minDistForPickupAtomic = minDirectDistancesPerPickup[pickupId];
-                int expectedMinForPickup = minDistForPickupAtomic.load(std::memory_order_relaxed);
-                while (expectedMinForPickup > dist &&
-                        !minDistForPickupAtomic.compare_exchange_strong(expectedMinForPickup, dist, std::memory_order_relaxed));
-
-                assert(minDirectDist <= minDirectDistancesPerPickup[pickupId]);
             }
         }
-        
+
         // Compares the current PD-distances for a batch of pickups to one dropoff to the given distances and updates the
         // ones for which the given distances are smaller.
         // Batch consists of K subsequent pickup IDs and is defined by the first ID in the batch.
         void updateDistanceBatchIfSmaller(const unsigned int firstPickupId, const unsigned int dropoffId,
                                           const DistanceLabel &dist) {
             auto &label = labelFor(firstPickupId, dropoffId);
-            const auto smaller = dist < label;
-            if (anySet(smaller)) {
-                label.setIf(dist, smaller);
+            label.min(dist);
+        }
 
-                const int minNewDist = dist.horizontalMin();
-                auto &minDirectDistAtomic = minDirectDist;
-                int expectedMin = minDirectDistAtomic.load(std::memory_order_relaxed);
-                while (expectedMin > minNewDist &&
-                        !minDirectDistAtomic.compare_exchange_strong(expectedMin, minNewDist, std::memory_order_relaxed));
-
-                for (int i = 0; i < K; ++i) {
-                    const int pickupId = firstPickupId + i;
-                    if (pickupId < requestState.numPickups() && smaller[i]) {
-                        auto &minDistForPickupAtomic = minDirectDistancesPerPickup[pickupId];
-                        int expectedMinForPickup = minDistForPickupAtomic.load(std::memory_order_relaxed);
-                        while (expectedMinForPickup > dist[i] &&
-                                !minDistForPickupAtomic.compare_exchange_strong(expectedMinForPickup, dist[i], std::memory_order_relaxed));
-                    }
-                    assert(pickupId >= requestState.pickups.size() || minDirectDist <= minDirectDistancesPerPickup[pickupId]);
-                }
+        void computeGlobalMinDirectDistance() {
+            for (int firstPickupIdInBatch = 0;
+                 firstPickupIdInBatch < requestState.numPickups(); firstPickupIdInBatch += K) {
+                DistanceLabel &minLabelForBatch = minDirectDistancesPerPickup[firstPickupIdInBatch / K];
+                minDirectDist = std::min(minDirectDist, minLabelForBatch.horizontalMin());
             }
         }
 
+        void computeMinDirectDistancesForPickupBatch(const int firstPickupIdInBatch) {
+            DistanceLabel &minLabelForBatch = minDirectDistancesPerPickup[firstPickupIdInBatch / K];
+            for (int dropoffId = 0; dropoffId < requestState.numDropoffs(); ++dropoffId) {
+                const auto &label = labelFor(firstPickupIdInBatch, dropoffId);
+                minLabelForBatch.min(label);
+            }
+        }
 
     private:
 
@@ -160,9 +134,9 @@ namespace karri {
         const RequestState &requestState;
 
         // Distances are stored as vectors of size K (DistanceLabel).
-        // ceil(numPickups / K) labels per dropoff, sequentially arranged by increasing dropoffId.
+        // Layout is [ [p(i * K)..p((i+1) * K - 1)] x d(0) .. [p(i * K)..p((i+1) * K - 1)] x d(Nd-1) ] for i=0 to Np / K
         AlignedVector<DistanceLabel> distances;
-        std::atomic_int minDirectDist;
-        AlignedVector<CAtomic<int>> minDirectDistancesPerPickup;
+        int minDirectDist;
+        std::vector<DistanceLabel> minDirectDistancesPerPickup;
     };
 }

@@ -73,7 +73,7 @@ namespace karri::PDDistanceQueryStrategies {
             });
 
 
-            requestState.minDirectPDDist = distances.getMinDirectDistance().load(std::memory_order_relaxed);
+            requestState.minDirectPDDist = distances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
