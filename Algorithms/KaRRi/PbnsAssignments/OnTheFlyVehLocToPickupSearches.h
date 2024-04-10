@@ -38,7 +38,7 @@
 #include "tbb/concurrent_vector.h"
 #include "tbb/enumerable_thread_specific.h"
 #include "Parallel/atomic_wrapper.h"
-#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeSubset.h"
 
 
 namespace karri {

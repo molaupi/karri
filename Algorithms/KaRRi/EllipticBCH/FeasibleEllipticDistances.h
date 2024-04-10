@@ -31,7 +31,7 @@
 #include "Tools/Simd/ConcurrentAlignedVector.h"
 #include "Tools/Simd/AlignedVector.h"
 #include "DataStructures/Containers/Subset.h"
-#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeSubset.h"
 
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/TimeUtils.h"

@@ -31,7 +31,7 @@
 #include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Parallel/atomic_wrapper.h"
-#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeSubset.h"
 #include "Tools/Timer.h"
 
 #include <tbb/enumerable_thread_specific.h>

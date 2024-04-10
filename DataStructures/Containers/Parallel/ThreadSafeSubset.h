@@ -24,12 +24,8 @@
 
 #pragma once
 
-#include "Parallel/thread_safe_fast_reset_flag_array.h"
+#include "ThreadSafeFastResetFlagArray.h"
 #include <tbb/concurrent_vector.h>
-
-// based on http://upcoder.com/9/fast-resettable-flag-vector/
-
-namespace karri {
 
 using namespace tbb;
 // This class represents a subset of a finite set of size n. Inserting elements, removing elements,
@@ -105,5 +101,3 @@ class ThreadSafeSubset {
   concurrent_vector<int32_t> elements;           // The elements contained in the subset.
   ThreadSafeFastResetFlagArray<> flags;         // The flags whether the element is set successfully in elements.
 };
-
-}  // namespace karri

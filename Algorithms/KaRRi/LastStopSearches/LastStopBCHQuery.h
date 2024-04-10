@@ -26,7 +26,7 @@
 #pragma once
 
 #include "DataStructures/Labels/BasicLabelSet.h"
-#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeSubset.h"
 #include "Algorithms/CH/CH.h"
 #include "Tools/Constants.h"
 #include "TentativeLastStopDistances.h"

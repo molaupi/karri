@@ -74,8 +74,23 @@ find_library(RoutingKit_LIBRARY routingkit)
 find_package(nlohmann_json)
 find_package(TBB REQUIRED)
 
+# Find HWLOC Library
+find_path(HWLOCK_INCLUDE_DIR NAME hwloc.h
+        HINTS $ENV{HOME}/local/include /opt/local/include /usr/local/include /usr/include)
+find_library(HWLOCK_LIBRARY NAME hwloc
+        HINTS $ENV{HOME}/local/lib64 $ENV{HOME}/local/lib /usr/local/lib64 /usr/local/lib /opt/local/lib64 /opt/local/lib /usr/lib64 /usr/lib
+)
 
+IF (HWLOCK_INCLUDE_DIR AND HWLOCK_LIBRARY)
+  message(STATUS "Found hwlock library: inc=${HWLOCK_INCLUDE_DIR}, lib=${HWLOCK_LIBRARY}")
+  include_directories(${HWLOCK_INCLUDE_DIR})
+  link_libraries(${HWLOCK_LIBRARY})
+ELSE ()
+  message(FATAL_ERROR "
+    HwLoc library not found. Install HwLoc on your system.")
+ENDIF ()
 
+# Find csv.h
 find_path(CSV_INCLUDE_PATH csv.h REQUIRED)
 if (NOT CSV_INCLUDE_PATH)
   message(FATAL_ERROR "csv.h cannot be found. Aborting.")
@@ -83,6 +98,7 @@ endif ()
 message("Found csv.h in ${CSV_INCLUDE_PATH}")
 include_directories(SYSTEM ${CSV_INCLUDE_PATH})
 
+# Find randomc
 find_path(RANDOMC_INCLUDE_PATH randomc.h REQUIRED PATHS ${RANDOMC_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES randomc)
 if (NOT RANDOMC_INCLUDE_PATH)
   message(FATAL_ERROR "randomc.h cannot be found. Aborting.")
@@ -90,6 +106,7 @@ endif ()
 message("Found randomc.h in ${RANDOMC_INCLUDE_PATH}")
 include_directories(${RANDOMC_INCLUDE_PATH})
 
+# Find RoutingKit include path
 find_path(ROUTINGKIT_INCLUDE_PATH contraction_hierarchy.h REQUIRED PATHS ${ROUTINGKIT_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES routingkit)
 if (NOT ROUTINGKIT_INCLUDE_PATH)
   message(FATAL_ERROR "RoutingKit headers cannot be found (searched for contraction_hierarchy.h). Aborting.")
@@ -97,6 +114,7 @@ endif ()
 message("Found RoutingKit headers in ${ROUTINGKIT_INCLUDE_PATH} (searched for contraction_hierarchy.h)")
 include_directories(${ROUTINGKIT_INCLUDE_PATH})
 
+# Find stocc invlude path
 find_path(STOCC_INCLUDE_PATH stocc.h REQUIRED PATHS ${STOCC_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES stocc)
 if (NOT STOCC_INCLUDE_PATH)
   message(FATAL_ERROR "stocc.h cannot be found. Aborting.")
@@ -104,6 +122,7 @@ endif ()
 message("Found stocc.h in ${STOCC_INCLUDE_PATH}")
 include_directories(${STOCC_INCLUDE_PATH})
 
+# Find vectorclass include path
 find_path(VECTORCLASS_INCLUDE_PATH vectorclass.h REQUIRED PATHS ${VECTORCLASS_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES vectorclass)
 if (NOT VECTORCLASS_INCLUDE_PATH)
   message(FATAL_ERROR "vectorclass.h cannot be found. Aborting.")

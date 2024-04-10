@@ -72,6 +72,9 @@
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
 
+#include "Parallel/tbb_initializer.h"
+#include "Parallel/hardware_topology.h"
+
 #ifdef KARRI_USE_CCHS
 #include "Algorithms/KaRRi/CCHEnvironment.h"
 #else
@@ -160,8 +163,9 @@ int main(int argc, char *argv[]) {
             return EXIT_SUCCESS;
         }
 
-        // Setting maximum parallelism (i.e. number of threads)
+        // Initialize TBB
         const auto maxNumThreads = clp.getValue<int>("max-num-threads");
+        parallel::TBBInitializer<parallel::HardwareTopology<>>::instance(maxNumThreads);
         auto g = tbb::global_control(tbb::global_control::max_allowed_parallelism, maxNumThreads);
 
         // Parse the command-line options.

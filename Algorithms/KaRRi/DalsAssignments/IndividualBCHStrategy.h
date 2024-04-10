@@ -29,7 +29,7 @@
 #include "Algorithms/KaRRi/LastStopSearches/TentativeLastStopDistances.h"
 #include "DataStructures/Utilities/Permutation.h"
 
-#include "Parallel/thread_safe_fast_reset_flag_array.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeFastResetFlagArray.h"
 #include "Parallel/atomic_wrapper.h"
 
 #include <atomic>

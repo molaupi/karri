@@ -30,7 +30,7 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
-#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeSubset.h"
 #include "tbb/concurrent_vector.h"
 #include "RelevantPDLoc.h"
 
