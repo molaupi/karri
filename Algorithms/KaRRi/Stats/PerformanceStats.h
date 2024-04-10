@@ -81,56 +81,40 @@ namespace karri::stats {
 
     struct EllipticBCHPerformanceStats {
         int64_t initializationTime;
-        int64_t pickupTime;
-        int64_t dropoffTime;
-        int64_t pickupNumEdgeRelaxations;
-        int64_t pickupNumVerticesSettled;
-        int64_t pickupNumEntriesScanned;
-        int64_t dropoffNumEdgeRelaxations;
-        int64_t dropoffNumVerticesSettled;
-        int64_t dropoffNumEntriesScanned;
+        int64_t searchTime;
+        int64_t numEdgeRelaxations;
+        int64_t numVerticesSettled;
+        int64_t numEntriesScanned;
 
         int64_t getTotalTime() const {
-            return initializationTime + pickupTime + dropoffTime;
+            return initializationTime + searchTime;
         }
 
         void clear() {
             initializationTime = 0;
-            pickupTime = 0;
-            dropoffTime = 0;
-            pickupNumEdgeRelaxations = 0;
-            pickupNumVerticesSettled = 0;
-            pickupNumEntriesScanned = 0;
-            dropoffNumEdgeRelaxations = 0;
-            dropoffNumVerticesSettled = 0;
-            dropoffNumEntriesScanned = 0;
+            searchTime = 0;
+            numEdgeRelaxations = 0;
+            numVerticesSettled = 0;
+            numEntriesScanned = 0;
         }
 
         static constexpr auto LOGGER_NAME = "perf_ellipticbch.csv";
         static constexpr auto LOGGER_COLS =
                 "initialization_time,"
-                "pickup_time,"
-                "dropoff_time,"
-                "pickup_num_edge_relaxations,"
-                "pickup_num_vertices_settled,"
-                "pickup_num_entries_scanned,"
-                "dropoff_num_edge_relaxations,"
-                "dropoff_num_vertices_settled,"
-                "dropoff_num_entries_scanned,"
+                "search_time,"
+                "num_edge_relaxations,"
+                "num_vertices_settled,"
+                "num_entries_scanned,"
                 "total_time\n";
 
 
         std::string getLoggerRow() const {
             std::stringstream ss;
             ss << initializationTime << ", "
-               << pickupTime << ", "
-               << dropoffTime << ", "
-               << pickupNumEdgeRelaxations << ", "
-               << pickupNumVerticesSettled << ", "
-               << pickupNumEntriesScanned << ", "
-               << dropoffNumEdgeRelaxations << ", "
-               << dropoffNumVerticesSettled << ", "
-               << dropoffNumEntriesScanned << ", "
+               << searchTime << ", "
+               << numEdgeRelaxations << ", "
+               << numVerticesSettled << ", "
+               << numEntriesScanned << ", "
                << getTotalTime();
             return ss.str();
         }

@@ -70,21 +70,17 @@ namespace karri {
 
         struct StopBCHQuery {
 
-            StopBCHQuery(const int &distUpperBound, int &numTimesStoppingCriterionMet)
-                    : distUpperBound(distUpperBound),
-                      numTimesStoppingCriterionMet(numTimesStoppingCriterionMet) {}
+            StopBCHQuery(const int &distUpperBound)
+                    : distUpperBound(distUpperBound) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
                 const LabelMask distExceedsUpperBound = distToV > DistanceLabel(distUpperBound);
-                const bool stop = allSet(distExceedsUpperBound);
-                numTimesStoppingCriterionMet += stop;
-                return stop;
+                return allSet(distExceedsUpperBound);
             }
 
         private:
             const int &distUpperBound;
-            int &numTimesStoppingCriterionMet;
         };
 
 
@@ -218,13 +214,12 @@ namespace karri {
                   updateDistancesFromPdLocs(&routeState),
                   numEntriesScanned(0),
                   numEntriesScannedWithDistSmallerLeeway(0),
-                  numTimesStoppingCriterionMet(0),
                   toQuery([&]() {
                       return chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
                               ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs.local(),
                                                 numEntriesScanned.local(),
                                                 numEntriesScannedWithDistSmallerLeeway.local()),
-                              StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet.local()));
+                              StopBCHQuery(distUpperBound));
                   }),
                   fromQuery([&]() {
                       return chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
@@ -232,7 +227,7 @@ namespace karri {
                                                 updateDistancesFromPdLocs.local(),
                                                 numEntriesScanned.local(),
                                                 numEntriesScannedWithDistSmallerLeeway.local()),
-                              StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet.local()));
+                              StopBCHQuery(distUpperBound));
                   }),
                   totalNumEdgeRelaxations(0),
                   totalNumVerticesVisited(0) {}
@@ -248,8 +243,6 @@ namespace karri {
             for (auto &local: numEntriesScanned)
                 local = 0;
             for (auto &local: numEntriesScannedWithDistSmallerLeeway)
-                local = 0;
-            for (auto &local: numTimesStoppingCriterionMet)
                 local = 0;
             totalNumEdgeRelaxations.store(0);
             totalNumVerticesVisited.store(0);
@@ -272,21 +265,11 @@ namespace karri {
                                                                  [](const int) { return true; });
                             });
 
-//             Run for dropoffs:
-//            timer.restart();
-
-
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ellipticBchStats.pickupTime += pickupTime;
-            requestState.stats().ellipticBchStats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations.load();
-            requestState.stats().ellipticBchStats.pickupNumVerticesSettled += totalNumVerticesVisited.load();
-            requestState.stats().ellipticBchStats.pickupNumEntriesScanned += numEntriesScanned.combine(sumInts);
-
-//            const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
-//            requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
-//            requestState.stats().ellipticBchStats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations.load();
-//            requestState.stats().ellipticBchStats.dropoffNumVerticesSettled += totalNumVerticesVisited.load();
-//            requestState.stats().ellipticBchStats.dropoffNumEntriesScanned += numEntriesScanned.combine(sumInts);
+            requestState.stats().ellipticBchStats.searchTime += pickupTime;
+            requestState.stats().ellipticBchStats.numEdgeRelaxations += totalNumEdgeRelaxations.load();
+            requestState.stats().ellipticBchStats.numVerticesSettled += totalNumVerticesVisited.load();
+            requestState.stats().ellipticBchStats.numEntriesScanned += numEntriesScanned.combine(sumInts);
         }
 
         // Initialize searches for new request
@@ -488,7 +471,6 @@ namespace karri {
 
         enumerable_thread_specific<int> numEntriesScanned;
         enumerable_thread_specific<int> numEntriesScannedWithDistSmallerLeeway;
-        enumerable_thread_specific<int> numTimesStoppingCriterionMet;
 
         enumerable_thread_specific<ToQueryType> toQuery;
         enumerable_thread_specific<FromQueryType> fromQuery;
