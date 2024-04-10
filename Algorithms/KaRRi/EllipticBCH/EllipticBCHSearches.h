@@ -243,28 +243,50 @@ namespace karri {
             // Helper lambda to get sum of stats from thread local queries
             static const auto sumInts = [](const int &n1, const int &n2) { return n1 + n2; };
 
-            // Run for pickups:
+            // Run for pickups and dropoffs in parallel:
             Timer timer;
-            runBCHSearchesFromAndTo<PICKUP>(requestState.pickups, feasibleEllipticPickups, pickupsAtExistingStops,
-                                            [](const int) { return true; });
+            for (auto &local: numEntriesScanned)
+                local = 0;
+            for (auto &local: numEntriesScannedWithDistSmallerLeeway)
+                local = 0;
+            for (auto &local: numTimesStoppingCriterionMet)
+                local = 0;
+            totalNumEdgeRelaxations.store(0);
+            totalNumVerticesVisited.store(0);
+
+            // Set an upper bound distance for the searches comprised of the maximum leeway or an upper bound based on the
+            // current best costs (we compute the maximum detour that would still allow an assignment with costs smaller
+            // than the best known and add the maximum leg length since a distance to a PD loc dist cannot lead to a
+            // better assignment than the best known if dist - max leg length > max allowed detour).
+            const int maxDistBasedOnVehCost = CostFunctionT::calcMinDistFromOrToPDLocSuchThatVehCostReachesMinCost(
+                    requestState.getBestCost(), routeState.getMaxLegLength());
+            distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
+
+            parallel_invoke([this] {
+                                runBCHSearchesFromAndTo<PICKUP>(requestState.pickups, feasibleEllipticPickups, pickupsAtExistingStops,
+                                                                [](const int) { return true; });
+                            },
+                            [this] {
+                                runBCHSearchesFromAndTo<DROPOFF>(requestState.dropoffs, feasibleEllipticDropoffs,
+                                                                 dropoffsAtExistingStops,
+                                                                 [](const int) { return true; });
+                            });
+
+//             Run for dropoffs:
+//            timer.restart();
+
+
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ellipticBchStats.pickupTime += pickupTime;
             requestState.stats().ellipticBchStats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations.load();
             requestState.stats().ellipticBchStats.pickupNumVerticesSettled += totalNumVerticesVisited.load();
             requestState.stats().ellipticBchStats.pickupNumEntriesScanned += numEntriesScanned.combine(sumInts);
 
-            // Run for dropoffs:
-            timer.restart();
-            runBCHSearchesFromAndTo<DROPOFF>(requestState.dropoffs, feasibleEllipticDropoffs, dropoffsAtExistingStops,
-                                             [this](const int &stopId) {
-                                                 return routeState.stopPositionOf(stopId) > 0 ||
-                                                        feasibleEllipticPickups.doesStopHaveRelPdLocs(stopId);
-                                             });
-            const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
-            requestState.stats().ellipticBchStats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations.load();
-            requestState.stats().ellipticBchStats.dropoffNumVerticesSettled += totalNumVerticesVisited.load();
-            requestState.stats().ellipticBchStats.dropoffNumEntriesScanned += numEntriesScanned.combine(sumInts);
+//            const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
+//            requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
+//            requestState.stats().ellipticBchStats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations.load();
+//            requestState.stats().ellipticBchStats.dropoffNumVerticesSettled += totalNumVerticesVisited.load();
+//            requestState.stats().ellipticBchStats.dropoffNumEntriesScanned += numEntriesScanned.combine(sumInts);
         }
 
         // Initialize searches for new request
@@ -293,23 +315,6 @@ namespace karri {
         void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs, FeasibleDistancesT &feasibleDistances,
                                      const PDLocsAtExistingStops &pdLocsAtExistingStops,
                                      const IsStopEligibleT &isStopEligible) {
-
-            for (auto &local: numEntriesScanned)
-                local = 0;
-            for (auto &local: numEntriesScannedWithDistSmallerLeeway)
-                local = 0;
-            for (auto &local: numTimesStoppingCriterionMet)
-                local = 0;
-            totalNumEdgeRelaxations.store(0);
-            totalNumVerticesVisited.store(0);
-
-            // Set an upper bound distance for the searches comprised of the maximum leeway or an upper bound based on the
-            // current best costs (we compute the maximum detour that would still allow an assignment with costs smaller
-            // than the best known and add the maximum leg length since a distance to a PD loc dist cannot lead to a
-            // better assignment than the best known if dist - max leg length > max allowed detour).
-            const int maxDistBasedOnVehCost = CostFunctionT::calcMinDistFromOrToPDLocSuchThatVehCostReachesMinCost(
-                    requestState.getBestCost(), routeState.getMaxLegLength());
-            distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
 
             // Process in batches of size K
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [&](int i) {
