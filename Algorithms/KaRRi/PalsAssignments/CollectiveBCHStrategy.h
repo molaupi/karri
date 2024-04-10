@@ -88,8 +88,10 @@ namespace karri::PickupAfterLastStopStrategies {
             int costLowerBound = calculator.calcCostLowerBoundForPickupAfterLastStopIndependentOfVehicle(0,
                                                                                                          requestState.minDirectPDDist,
                                                                                                          requestState);
-            if (costLowerBound > requestState.getBestCost())
+            if (costLowerBound > requestState.getBestCost()) {
+                stats.searchAndTryAssignmentsTime += timer.elapsed<std::chrono::nanoseconds>();
                 return;
+            }
 
 
             std::vector<int> promisingDropoffIds;
@@ -139,6 +141,8 @@ namespace karri::PickupAfterLastStopStrategies {
             if (!asgn.vehicle)
                 return;
 
+            stats.searchAndTryAssignmentsTime += timer.elapsed<std::chrono::nanoseconds>();
+
             const auto totalDetour = asgn.distToPickup + inputConfig.stopTime + asgn.distToDropoff + inputConfig.stopTime;
             using time_utils::isServiceTimeConstraintViolated;
             if (!isServiceTimeConstraintViolated(*asgn.vehicle, requestState, totalDetour, routeState)) {
@@ -146,20 +150,12 @@ namespace karri::PickupAfterLastStopStrategies {
                 // best PALS assignment.
                 assert(calculator.calc(asgn, requestState) == minCost);
                 requestState.tryAssignmentWithKnownCost(asgn, minCost);
-
-//                const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
-//                stats.tryAssignmentsTime += tryAssignmentsTime;
                 stats.numAssignmentsTried += 1;
                 return;
             }
 
-//            const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
-//            stats.tryAssignmentsTime += tryAssignmentsTime;
-
-            stats.searchAndTryAssignmentsTime += timer.elapsed<std::chrono::nanoseconds>();
-            stats.collective_usedFallback = true;
-
             // Otherwise fall back to computing distances explicitly:
+            stats.collective_usedFallback = true;
             fallbackStrategy.tryPickupAfterLastStop();
         }
 
