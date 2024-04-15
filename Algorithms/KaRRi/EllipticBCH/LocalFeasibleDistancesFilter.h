@@ -31,48 +31,6 @@ namespace karri {
 
 
     namespace {
-//        inline bool
-//        isPickupRelevant(const Vehicle &veh, const int stopIndex, const unsigned int pickupId,
-//                         const int distFromStopToPickup,
-//                         const int distFromPickupToNextStop,
-//                         const RequestState &requestState,
-//                         const RouteState &routeState) {
-//            using namespace time_utils;
-//
-//            CostCalculator calculator(routeState);
-//
-//            const int &vehId = veh.vehicleId;
-//
-//            assert(routeState.occupanciesFor(vehId)[stopIndex] < veh.capacity);
-//            if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
-//                return false;
-//
-//            assert(distFromStopToPickup + distFromPickupToNextStop >=
-//                   calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
-//
-//            const auto &p = requestState.pickups[pickupId];
-//
-//            const auto depTimeAtPickup = getActualDepTimeAtPickup(vehId, stopIndex, distFromStopToPickup, p,
-//                                                                  requestState, routeState);
-//            const auto initialPickupDetour = calcInitialPickupDetour(vehId, stopIndex, INVALID_INDEX, depTimeAtPickup,
-//                                                                     distFromPickupToNextStop, requestState,
-//                                                                     routeState);
-//
-//            if (doesPickupDetourViolateHardConstraints(veh, requestState, stopIndex, initialPickupDetour, routeState))
-//                return false;
-//
-//
-//            const int curKnownCost = calculator.calcMinKnownPickupSideCost(veh, stopIndex, initialPickupDetour,
-//                                                                           p.walkingDist, depTimeAtPickup,
-//                                                                           requestState);
-//
-//            // If cost for only pickup side is already worse than best known cost for a whole assignment, then
-//            // this pickup is not relevant at this stop.
-//            if (curKnownCost > requestState.getBestCost())
-//                return false;
-//
-//            return true;
-//        }
 
         template<typename LabelSet>
         inline typename LabelSet::LabelMask
@@ -120,56 +78,6 @@ namespace karri {
             relevant &= curKnownCost <= requestState.getBestCost();
             return relevant;
         }
-//
-//        inline bool
-//        isDropoffRelevant(const Vehicle &veh, const int stopIndex, const unsigned int dropoffId,
-//                          const int distFromStopToDropoff,
-//                          const int distFromDropoffToNextStop,
-//                          const RequestState &requestState,
-//                          const RouteState &routeState) {
-//            using namespace time_utils;
-//
-//            CostCalculator calculator(routeState);
-//
-//            const int &vehId = veh.vehicleId;
-//            const auto &numStops = routeState.numStopsOf(vehId);
-//            const auto &d = requestState.dropoffs[dropoffId];
-//
-//            // If this is the last stop in the route, we only consider this dropoff for ordinary assignments if it is at the
-//            // last stop. Similarly, if the vehicle is full after this stop, we can't perform the dropoff here unless the
-//            // dropoff coincides with the stop. A dropoff at an existing stop causes no detour, so it is always relevant.
-//            const auto &occupancy = routeState.occupanciesFor(vehId)[stopIndex];
-//            const auto &stopLocations = routeState.stopLocationsFor(vehId);
-//            assert(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
-//            if (stopIndex == numStops - 1 || occupancy == veh.capacity)
-//                return d.loc == stopLocations[stopIndex];
-//
-//            if (stopLocations[stopIndex + 1] == d.loc)
-//                return false;
-//
-//            if (distFromStopToDropoff >= INFTY || distFromDropoffToNextStop >= INFTY)
-//                return false;
-//
-//            const bool isDropoffAtExistingStop = d.loc == stopLocations[stopIndex];
-//            const int initialDropoffDetour = calcInitialDropoffDetour(vehId, stopIndex, distFromStopToDropoff,
-//                                                                      distFromDropoffToNextStop,
-//                                                                      isDropoffAtExistingStop,
-//                                                                      routeState);
-//            assert(initialDropoffDetour >= 0);
-//            if (doesDropoffDetourViolateHardConstraints(veh, requestState, stopIndex, initialDropoffDetour,
-//                                                        routeState))
-//                return false;
-//
-//            const int curMinCost = calculator.calcMinKnownDropoffSideCost(veh, stopIndex, initialDropoffDetour,
-//                                                                          d.walkingDist, requestState);
-//
-//            // If cost for only dropoff side is already worse than best known cost for a whole assignment, then
-//            // this dropoff is not relevant at this stop.
-//            if (curMinCost > requestState.getBestCost())
-//                return false;
-//
-//            return true;
-//        }
 
         template<typename LabelSet>
         inline typename LabelSet::LabelMask
@@ -294,29 +202,7 @@ namespace karri {
 
             distTo.setIf(INFTY, notRelevant);
             distFrom.setIf(INFTY, notRelevant);
-//
-//
-//            bool allFiltered = true;
-//            // todo SIMD-ify
-//            for (int idxInBatch = 0; idxInBatch < K; ++idxInBatch) {
-//                bool relevant = type == PICKUP ?
-//                                isPickupRelevant(veh, stopIdx, firstIdInPdLocBatch + idxInBatch, distTo[idxInBatch],
-//                                                 distFrom[idxInBatch], requestState, routeState) :
-//                                isDropoffRelevant(veh, stopIdx, firstIdInPdLocBatch + idxInBatch, distTo[idxInBatch],
-//                                                  distFrom[idxInBatch], requestState, routeState);
-//                if (relevant) {
-//                    allFiltered = false;
-//                    continue;
-//                }
-//                distTo[idxInBatch] = INFTY;
-//                distFrom[idxInBatch] = INFTY;
-//            }
-//
-//            if (allFiltered) {
-//                indices[e.stopId] = INVALID_INDEX;
-//                ++numEntriesRemoved;
-//                continue;
-//            }
+
             assert(numEntriesRemoved <= i);
             entries[i - numEntriesRemoved] = entries[i];
             indices[e.stopId] = i - numEntriesRemoved;
