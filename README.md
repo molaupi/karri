@@ -3,7 +3,8 @@
 This repository contains the C++17 source code used in
 
 * Moritz Laupichler, and Peter Sanders. Fast Many-to-Many Routing for Dynamic Taxi Sharing with 
-Meeting Points, 2023. arXiv: https://doi.org/10.48550/arXiv.2311.01581
+Meeting Points. 2024 Proceedings of the Symposium on Algorithm Engineering and Experiments (ALENEX),
+2024\. https://doi.org/10.1137/1.9781611977929.6
 
 ## License
 
