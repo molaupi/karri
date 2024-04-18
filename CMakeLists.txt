@@ -75,16 +75,16 @@ find_package(nlohmann_json)
 find_package(TBB REQUIRED)
 
 # Find HWLOC Library
-find_path(HWLOCK_INCLUDE_DIR NAME hwloc.h
+find_path(HWLOC_INCLUDE_DIR NAME hwloc.h
         HINTS $ENV{HOME}/local/include /opt/local/include /usr/local/include /usr/include)
-find_library(HWLOCK_LIBRARY NAME hwloc
+find_library(HWLOC_LIBRARY NAME hwloc
         HINTS $ENV{HOME}/local/lib64 $ENV{HOME}/local/lib /usr/local/lib64 /usr/local/lib /opt/local/lib64 /opt/local/lib /usr/lib64 /usr/lib
 )
 
-IF (HWLOCK_INCLUDE_DIR AND HWLOCK_LIBRARY)
-  message(STATUS "Found hwlock library: inc=${HWLOCK_INCLUDE_DIR}, lib=${HWLOCK_LIBRARY}")
-  include_directories(${HWLOCK_INCLUDE_DIR})
-  link_libraries(${HWLOCK_LIBRARY})
+IF (HWLOC_INCLUDE_DIR AND HWLOC_LIBRARY)
+  message(STATUS "Found hwloc library: inc=${HWLOC_INCLUDE_DIR}, lib=${HWLOC_LIBRARY}")
+  include_directories(${HWLOC_INCLUDE_DIR})
+  link_libraries(${HWLOC_LIBRARY})
 ELSE ()
   message(FATAL_ERROR "
     HwLoc library not found. Install HwLoc on your system.")
@@ -129,6 +129,15 @@ if (NOT VECTORCLASS_INCLUDE_PATH)
 endif ()
 message("Found vectorclass.h in ${VECTORCLASS_INCLUDE_PATH}")
 include_directories(${VECTORCLASS_INCLUDE_PATH})
+
+# Include kassert library
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(KASSERT_ASSERTION_LEVEL 40)
+else()
+  set(KASSERT_ASSERTION_LEVEL 20)
+endif ()
+add_subdirectory(External/kassert)
+
 
 foreach(SRC_DIR ${SOURCE_DIRECTORIES})
   add_subdirectory(${SRC_DIR})

@@ -24,6 +24,8 @@
 
 
 #include <cassert>
+#include <kassert/kassert.hpp>
+#include "Tools/custom_assertion_levels.h"
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -151,10 +153,7 @@ inline void printUsage() {
 
 int main(int argc, char *argv[]) {
 
-
     using namespace karri;
-
-
 
     try {
         CommandLineParser clp(argc, argv);
