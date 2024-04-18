@@ -80,12 +80,10 @@ namespace karri::PickupAfterLastStopStrategies {
                          const LastStopsAtVertices &lastStopsAtVertices,
                          const CostCalculator &calculator,
                          PDDistancesT &pdDistances,
-                         RequestState &requestState,
-                         const InputConfig &inputConfig)
+                         RequestState &requestState)
                 : inputGraph(inputGraph),
                   reverseGraph(reverseGraph),
                   requestState(requestState),
-                  inputConfig(inputConfig),
                   pdDistances(pdDistances),
                   calculator(calculator),
                   fleet(fleet),
@@ -153,8 +151,7 @@ namespace karri::PickupAfterLastStopStrategies {
                         continue;
 
                     // Compute cost lower bound for this pickup specifically
-                    const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState,
-                                                                              routeState, inputConfig);
+                    const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState, routeState);
                     const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
                                                             getVehDepTimeAtStopForRequest(vehId, numStops - 1,
                                                                                           requestState, routeState);
@@ -241,7 +238,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const InputGraphT &inputGraph;
         const InputGraphT &reverseGraph;
         RequestState &requestState;
-        const InputConfig &inputConfig;
 
         std::array<unsigned int, K> curPickupIds;
         DistanceLabel curWalkingDists;

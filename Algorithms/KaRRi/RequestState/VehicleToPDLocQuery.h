@@ -36,28 +36,30 @@ namespace karri {
 
         struct StopWhenAllFound {
 
-            explicit StopWhenAllFound(const VehicleToPDLocQuery &query) : query(query) {}
+            explicit StopWhenAllFound(const int &numToFind) : numToFind(numToFind) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int, DistLabelT &, const DistLabelContT & /* distanceLabels */) {
-                return query.numVerticesToFind == 0;
+                return numToFind == 0;
             }
 
-            const VehicleToPDLocQuery &query;
+            const int &numToFind;
         };
 
         struct CheckForPDLoc {
 
-            explicit CheckForPDLoc(VehicleToPDLocQuery &query) : query(query) {}
+            explicit CheckForPDLoc(FastResetFlagArray <> &marked, int &numToFind) : marked(marked),
+                                                                                    numToFind(numToFind) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &, const DistLabelContT & /* distanceLabels */) {
-                if (query.vertexHasPDLoc.isSet(v))
-                    --query.numVerticesToFind;
+                if (marked.isSet(v))
+                    --numToFind;
                 return false;
             }
 
-            VehicleToPDLocQuery &query;
+            FastResetFlagArray <> &marked;
+            int &numToFind;
         };
 
         using LabelSet = BasicLabelSet<0, ParentInfo::FULL_PARENT_INFO>;
@@ -67,9 +69,14 @@ namespace karri {
 
         VehicleToPDLocQuery(const VehGraphT &graph, const VehGraphT &revGraph)
                 : forwardGraph(graph),
-                  forwardSearch(graph, StopWhenAllFound(*this), CheckForPDLoc(*this)),
-                  reverseSearch(revGraph, StopWhenAllFound(*this), CheckForPDLoc(*this)),
-                  vertexHasPDLoc(graph.numVertices()), runTime(0) {}
+                  forwardSearch(graph, StopWhenAllFound(numVerticesToFindForward),
+                                CheckForPDLoc(vertexHasPDLocForward, numVerticesToFindForward)),
+                  vertexHasPDLocForward(graph.numVertices()),
+                  runTimeForward(0),
+                  reverseSearch(revGraph, StopWhenAllFound(numVerticesToFindReverse),
+                                CheckForPDLoc(vertexHasPDLocReverse, numVerticesToFindReverse)),
+                  vertexHasPDLocReverse(graph.numVertices()),
+                  runTimeReverse(0) {}
 
         // Takes a vector of PDLoc and a center point and finds the vehicle distances from the center to
         // every PD loc. Stores the found distances in the vehDistFromCenter field of each PD loc.
@@ -81,15 +88,15 @@ namespace karri {
             const auto center = forwardGraph.edgeHead(pdLocs[0].loc);
             pdLocs[0].vehDistFromCenter = 0;
 
-            vertexHasPDLoc.reset();
-            numVerticesToFind = 0;
+            vertexHasPDLocForward.reset();
+            numVerticesToFindForward = 0;
 
             for (int i = 1; i < pdLocs.size(); ++i) {
                 const auto &pdLoc = pdLocs[i];
                 const auto vertexOfSpot = forwardGraph.edgeTail(pdLoc.loc);
-                if (!vertexHasPDLoc.isSet(vertexOfSpot))
-                    ++numVerticesToFind;
-                vertexHasPDLoc.set(vertexOfSpot);
+                if (!vertexHasPDLocForward.isSet(vertexOfSpot))
+                    ++numVerticesToFindForward;
+                vertexHasPDLocForward.set(vertexOfSpot);
             }
 
             forwardSearch.run(center);
@@ -103,7 +110,7 @@ namespace karri {
             }
 
 
-            runTime = timer.elapsed<std::chrono::nanoseconds>();
+            runTimeForward = timer.elapsed<std::chrono::nanoseconds>();
         }
 
         // Takes a vector of PDLoc and a center point and finds the vehicle distances from every PD loc
@@ -117,15 +124,15 @@ namespace karri {
             const auto offset = forwardGraph.travelTime(pdLocs[0].loc);
             pdLocs[0].vehDistToCenter = 0;
 
-            vertexHasPDLoc.reset();
-            numVerticesToFind = 0;
+            vertexHasPDLocReverse.reset();
+            numVerticesToFindReverse = 0;
 
             for (int i = 1; i < pdLocs.size(); ++i) {
                 const auto &pdLoc = pdLocs[i];
                 const auto vertexOfSpot = forwardGraph.edgeHead(pdLoc.loc);
-                if (!vertexHasPDLoc.isSet(vertexOfSpot))
-                    ++numVerticesToFind;
-                vertexHasPDLoc.set(vertexOfSpot);
+                if (!vertexHasPDLocReverse.isSet(vertexOfSpot))
+                    ++numVerticesToFindReverse;
+                vertexHasPDLocReverse.set(vertexOfSpot);
             }
 
             reverseSearch.runWithOffset(center, offset);
@@ -137,11 +144,15 @@ namespace karri {
                 assert(pdLoc.vehDistToCenter < INFTY);
             }
 
-            runTime = timer.elapsed<std::chrono::nanoseconds>();
+            runTimeReverse = timer.elapsed<std::chrono::nanoseconds>();
         }
 
-        const int64_t &getRunTime() const {
-            return runTime;
+        const int64_t &getRunTimeForward() const {
+            return runTimeForward;
+        }
+
+        const int64_t &getRunTimeReverse() const {
+            return runTimeReverse;
         }
 
         int getNumEdgeRelaxationsInLastForwardRun() const {
@@ -164,12 +175,15 @@ namespace karri {
     private:
 
         const VehGraphT &forwardGraph;
+
         Search forwardSearch;
+        int numVerticesToFindForward;
+        FastResetFlagArray <> vertexHasPDLocForward;
+        int64_t runTimeForward;
+
         Search reverseSearch;
-
-        int numVerticesToFind;
-        FastResetFlagArray<> vertexHasPDLoc;
-
-        int64_t runTime;
+        int numVerticesToFindReverse;
+        FastResetFlagArray <> vertexHasPDLocReverse;
+        int64_t runTimeReverse;
     };
 }

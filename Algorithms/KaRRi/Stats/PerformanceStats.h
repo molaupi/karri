@@ -31,15 +31,25 @@ namespace karri::stats {
 
     struct InitializationPerformanceStats {
         int64_t findPDLocsInRadiusTime;
+        int64_t numVerticesVisitedPickups;
+        int64_t numVerticesVisitedDropoffs;
+
+        int64_t findVehicleToPdLocsDistancesTime;
+
         int64_t notUsingVehicleTime;
         int64_t computeODDistanceTime;
 
         int64_t getTotalTime() const {
-            return findPDLocsInRadiusTime + notUsingVehicleTime + computeODDistanceTime;
+            return findPDLocsInRadiusTime + findVehicleToPdLocsDistancesTime + notUsingVehicleTime + computeODDistanceTime;
         }
 
         void clear() {
             findPDLocsInRadiusTime = 0;
+            numVerticesVisitedPickups = 0;
+            numVerticesVisitedDropoffs = 0;
+
+            findVehicleToPdLocsDistancesTime = 0;
+
             notUsingVehicleTime = 0;
             computeODDistanceTime = 0;
         }
@@ -47,6 +57,9 @@ namespace karri::stats {
         static constexpr auto LOGGER_NAME = "perf_initreq.csv";
         static constexpr auto LOGGER_COLS =
                 "find_pd_locs_in_radius_time,"
+                "num_vertices_visited_pickups,"
+                "num_vertices_visited_dropoffs,"
+                "find_vehicle_to_pd_locs_distances_time,"
                 "not_using_veh_time,"
                 "compute_od_distance_time,"
                 "total_time\n";
@@ -55,6 +68,9 @@ namespace karri::stats {
         std::string getLoggerRow() const {
             std::stringstream ss;
             ss << findPDLocsInRadiusTime << ", "
+               << numVerticesVisitedPickups << ", "
+               << numVerticesVisitedDropoffs << ", "
+               << findVehicleToPdLocsDistancesTime << ", "
                << notUsingVehicleTime << ", "
                << computeODDistanceTime << ", "
                << getTotalTime();
@@ -65,56 +81,40 @@ namespace karri::stats {
 
     struct EllipticBCHPerformanceStats {
         int64_t initializationTime;
-        int64_t pickupTime;
-        int64_t dropoffTime;
-        int64_t pickupNumEdgeRelaxations;
-        int64_t pickupNumVerticesSettled;
-        int64_t pickupNumEntriesScanned;
-        int64_t dropoffNumEdgeRelaxations;
-        int64_t dropoffNumVerticesSettled;
-        int64_t dropoffNumEntriesScanned;
+        int64_t searchTime;
+        int64_t numEdgeRelaxations;
+        int64_t numVerticesSettled;
+        int64_t numEntriesScanned;
 
         int64_t getTotalTime() const {
-            return initializationTime + pickupTime + dropoffTime;
+            return initializationTime + searchTime;
         }
 
         void clear() {
             initializationTime = 0;
-            pickupTime = 0;
-            dropoffTime = 0;
-            pickupNumEdgeRelaxations = 0;
-            pickupNumVerticesSettled = 0;
-            pickupNumEntriesScanned = 0;
-            dropoffNumEdgeRelaxations = 0;
-            dropoffNumVerticesSettled = 0;
-            dropoffNumEntriesScanned = 0;
+            searchTime = 0;
+            numEdgeRelaxations = 0;
+            numVerticesSettled = 0;
+            numEntriesScanned = 0;
         }
 
         static constexpr auto LOGGER_NAME = "perf_ellipticbch.csv";
         static constexpr auto LOGGER_COLS =
                 "initialization_time,"
-                "pickup_time,"
-                "dropoff_time,"
-                "pickup_num_edge_relaxations,"
-                "pickup_num_vertices_settled,"
-                "pickup_num_entries_scanned,"
-                "dropoff_num_edge_relaxations,"
-                "dropoff_num_vertices_settled,"
-                "dropoff_num_entries_scanned,"
+                "search_time,"
+                "num_edge_relaxations,"
+                "num_vertices_settled,"
+                "num_entries_scanned,"
                 "total_time\n";
 
 
         std::string getLoggerRow() const {
             std::stringstream ss;
             ss << initializationTime << ", "
-               << pickupTime << ", "
-               << dropoffTime << ", "
-               << pickupNumEdgeRelaxations << ", "
-               << pickupNumVerticesSettled << ", "
-               << pickupNumEntriesScanned << ", "
-               << dropoffNumEdgeRelaxations << ", "
-               << dropoffNumVerticesSettled << ", "
-               << dropoffNumEntriesScanned << ", "
+               << searchTime << ", "
+               << numEdgeRelaxations << ", "
+               << numVerticesSettled << ", "
+               << numEntriesScanned << ", "
                << getTotalTime();
             return ss.str();
         }
@@ -166,7 +166,8 @@ namespace karri::stats {
         int64_t tryPairedAssignmentsTime;
 
         int64_t getTotalTime() const {
-            return initializationTime + filterRelevantPDLocsTime + tryNonPairedAssignmentsTime + tryPairedAssignmentsTime;
+            return initializationTime + filterRelevantPDLocsTime + tryNonPairedAssignmentsTime +
+                   tryPairedAssignmentsTime;
         }
 
         void clear() {
@@ -211,6 +212,7 @@ namespace karri::stats {
 
     struct PbnsAssignmentsPerformanceStats {
         int64_t initializationTime;
+        int64_t resettingDistancesTime;
 
         int64_t numRelevantStopsForPickups;
         int64_t numRelevantStopsForDropoffs;
@@ -221,6 +223,7 @@ namespace karri::stats {
         int64_t directCHSearchTimeLocal;
         int64_t bchSearchTimeLocal;
 
+        int64_t numBucketEntriesForVehicles;
 
         int64_t numCandidateVehicles;
         int64_t numAssignmentsTried;
@@ -232,6 +235,7 @@ namespace karri::stats {
 
         void clear() {
             initializationTime = 0;
+
             numRelevantStopsForPickups = 0;
             numRelevantStopsForDropoffs = 0;
             filterRelevantPDLocsTime = 0;
@@ -240,6 +244,8 @@ namespace karri::stats {
             numCHSearches = 0;
             directCHSearchTimeLocal = 0;
             bchSearchTimeLocal = 0;
+
+            numBucketEntriesForVehicles = 0;
 
             numCandidateVehicles = 0;
             numAssignmentsTried = 0;
@@ -256,6 +262,7 @@ namespace karri::stats {
                 "num_ch_searches,"
                 "direct_ch_search_time_local,"
                 "bch_search_time_local,"
+                "num_bucket_entries_for_vehicles,"
                 "num_candidate_vehicles,"
                 "num_assignments_tried,"
                 "try_assignments_and_locating_vehicles_time,"
@@ -272,6 +279,7 @@ namespace karri::stats {
                << numCHSearches << ", "
                << directCHSearchTimeLocal << ", "
                << bchSearchTimeLocal << ", "
+               << numBucketEntriesForVehicles << ", "
                << numCandidateVehicles << ", "
                << numAssignmentsTried << ", "
                << tryAssignmentsAndLocatingVehiclesTime << ", "

@@ -32,6 +32,8 @@
 #include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "Algorithms/Dijkstra/Dijkstra.h"
 
+#include <oneapi/tbb/parallel_invoke.h>
+
 namespace karri {
 
 
@@ -76,52 +78,56 @@ namespace karri {
 
         FindPDLocsInRadiusQuery(const PassengerGraphT &forwardPsgGraph,
                                 const PassengerGraphT &reversePsgGraph,
-                                const InputConfig &inputConfig,
                                 std::vector<PDLoc> &pickups,
                                 std::vector<PDLoc> &dropoffs)
                 : forwardGraph(forwardPsgGraph),
                   reverseGraph(reversePsgGraph),
-                  inputConfig(inputConfig),
                   pickups(pickups),
                   dropoffs(dropoffs),
-                  pickupSearch(forwardPsgGraph, {inputConfig.pickupRadius},
-                               {searchSpace}),
-                  dropoffSearch(reversePsgGraph, {inputConfig.dropoffRadius},
-                                {searchSpace}),
-                  searchSpace(),
-                  rand(seed) {}
+                  pickupSearch(forwardPsgGraph, {InputConfig::getInstance().pickupRadius},
+                               {pickupSearchSpace}),
+                  dropoffSearch(reversePsgGraph, {InputConfig::getInstance().dropoffRadius},
+                                {dropoffSearchSpace}),
+                  pickupSearchSpace(),
+                  dropoffSearchSpace(),
+                  pickupRand(seed),
+                  dropoffRand(seed) {}
 
-        // Pickups will be collected into the given pickups vector and dropoffs will be collected into the given dropoffs vector
-        void findPDLocs(const int origin, const int destination) {
-            assert(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
+        void findPickups(const int origin, int& numVerticesVisitedPickups) {
+            assert(origin < forwardGraph.numEdges());
             pickups.clear();
-            dropoffs.clear();
-
-            searchSpace.clear();
+            pickupSearchSpace.clear();
             auto headOfOriginEdge = forwardGraph.edgeHead(origin);
             pickupSearch.run(headOfOriginEdge);
             turnSearchSpaceIntoPickupLocations();
+            finalizePDLocs(origin, pickups, InputConfig::getInstance().maxNumPickups, pickupRand);
 
-            searchSpace.clear();
+            numVerticesVisitedPickups = pickupSearchSpace.size();
+        }
+
+        void findDropoffs(const int destination, int& numVerticesVisitedDropoffs) {
+            assert(destination < forwardGraph.numEdges());
+            dropoffs.clear();
+            dropoffSearchSpace.clear();
             auto tailOfDestEdge = forwardGraph.edgeTail(destination);
             auto destOffset = forwardGraph.travelTime(destination);
             dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
             turnSearchSpaceIntoDropoffLocations();
+            finalizePDLocs(destination, dropoffs, InputConfig::getInstance().maxNumDropoffs, dropoffRand);
 
-            finalizePDLocs(origin, pickups, inputConfig.maxNumPickups);
-            finalizePDLocs(destination, dropoffs, inputConfig.maxNumDropoffs);
+            numVerticesVisitedDropoffs = dropoffSearchSpace.size();
         }
 
     private:
 
         void turnSearchSpaceIntoPickupLocations() {
-            for (const auto &v: searchSpace) {
+            for (const auto &v: pickupSearchSpace) {
                 const auto distToV = pickupSearch.getDistance(v);
-                assert(distToV <= inputConfig.pickupRadius);
+                assert(distToV <= InputConfig::getInstance().pickupRadius);
                 FORALL_INCIDENT_EDGES(forwardGraph, v, e) {
                     const int eInVehGraph = forwardGraph.toCarEdge(e);
                     if (eInVehGraph == PsgEdgeToCarEdgeAttribute::defaultValue() ||
-                        distToV + forwardGraph.travelTime(e) > inputConfig.pickupRadius)
+                        distToV + forwardGraph.travelTime(e) > InputConfig::getInstance().pickupRadius)
                         continue;
 
                     pickups.push_back({INVALID_ID, eInVehGraph, e, distToV + forwardGraph.travelTime(e), INFTY, INFTY});
@@ -130,9 +136,9 @@ namespace karri {
         }
 
         void turnSearchSpaceIntoDropoffLocations() {
-            for (const auto &v: searchSpace) {
+            for (const auto &v: dropoffSearchSpace) {
                 const auto distToV = dropoffSearch.getDistance(v);
-                assert(distToV <= inputConfig.dropoffRadius);
+                assert(distToV <= InputConfig::getInstance().dropoffRadius);
                 FORALL_INCIDENT_EDGES(reverseGraph, v, e) {
                     const auto eInForwGraph = reverseGraph.edgeId(e);
                     const int eInVehGraph = forwardGraph.toCarEdge(eInForwGraph);
@@ -143,7 +149,7 @@ namespace karri {
             }
         }
 
-        void finalizePDLocs(const int centerInPsgGraph, std::vector<PDLoc> &pdLocs, const int maxNumber) {
+        void finalizePDLocs(const int centerInPsgGraph, std::vector<PDLoc> &pdLocs, const int maxNumber, std::minstd_rand& rand) {
             assert(maxNumber > 0);
             // Add center to PD locs
             const int nextSeqId = pdLocs.size();
@@ -206,15 +212,16 @@ namespace karri {
 
         const PassengerGraphT &forwardGraph;
         const PassengerGraphT &reverseGraph;
-        const InputConfig &inputConfig;
         std::vector<PDLoc> &pickups;
         std::vector<PDLoc> &dropoffs;
         PickupSearch pickupSearch;
         DropoffSearch dropoffSearch;
 
-        std::vector<int> searchSpace;
+        std::vector<int> pickupSearchSpace;
+        std::vector<int> dropoffSearchSpace;
 
         static constexpr int seed = 42;
-        std::minstd_rand rand;
+        std::minstd_rand pickupRand;
+        std::minstd_rand dropoffRand;
     };
 }

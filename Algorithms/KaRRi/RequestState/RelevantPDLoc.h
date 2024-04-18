@@ -1,7 +1,7 @@
 /// ******************************************************************************
 /// MIT License
 ///
-/// Copyright (c) 2023 Moritz Laupichler <moritz.laupichler@kit.edu>
+/// Copyright (c) 2024 Moritz Laupichler <moritz.laupichler@kit.edu>
 ///
 /// Permission is hereby granted, free of charge, to any person obtaining a copy
 /// of this software and associated documentation files (the "Software"), to deal
@@ -22,37 +22,17 @@
 /// SOFTWARE.
 /// ******************************************************************************
 
-
 #pragma once
+
+#include "Tools/Constants.h"
+
+
 namespace karri {
 
-    struct InputConfig {
-
-    public:
-        static InputConfig& getInstance()
-        {
-            static InputConfig instance; // Guaranteed to be destroyed.
-            // Instantiated on first use.
-            return instance;
-        }
-
-    private:
-        InputConfig() = default;
-
-    public:
-        // public deleted constructors for compiler error messages
-        InputConfig(InputConfig const&) = delete;
-        void operator=(InputConfig const&) = delete;
-
-        int maxWaitTime = -1;
-        int stopTime = -1;
-        int pickupRadius = -1;
-        int dropoffRadius = -1;
-        int maxNumPickups = -1;
-        int maxNumDropoffs = -1;
-        double alpha = -1;
-        int beta = -1;
-        bool alwaysUseVehicle = false;
+    struct RelevantPDLoc {
+        int stopId = INVALID_INDEX;
+        int pdId = INVALID_ID;
+        int distToPDLoc = INFTY;
+        int distFromPDLocToNextStop = INFTY;
     };
-
 }

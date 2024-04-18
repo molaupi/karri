@@ -35,7 +35,7 @@
 #include "Parallel/atomic_wrapper.h"
 #include "tbb/enumerable_thread_specific.h"
 #include "tbb/concurrent_vector.h"
-#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeSubset.h"
 
 namespace karri::PDDistanceQueryStrategies {
 
@@ -151,7 +151,7 @@ namespace karri::PDDistanceQueryStrategies {
         int numSearches;
         std::vector<SpinLock> vertexLocks;
 
-        karri::ThreadSafeSubset verticesWithEntries;
+        ThreadSafeSubset verticesWithEntries;
         std::vector<int> offsetForVertex;
         tbb::concurrent_vector<DistanceLabelT> distances;
     };

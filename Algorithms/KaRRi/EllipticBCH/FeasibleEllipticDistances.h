@@ -31,13 +31,14 @@
 #include "Tools/Simd/ConcurrentAlignedVector.h"
 #include "Tools/Simd/AlignedVector.h"
 #include "DataStructures/Containers/Subset.h"
-#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeSubset.h"
 
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Parallel/atomic_wrapper.h"
 #include "DataStructures/Utilities/Permutation.h"
+#include "Algorithms/KaRRi/RequestState/RelevantPDLoc.h"
 
 #include <atomic>
 #include <thread>
@@ -55,22 +56,11 @@ namespace karri {
         using DistanceLabel = typename LabelSetT::DistanceLabel;
         using LabelMask = typename LabelSetT::LabelMask;
 
-        struct ResultEntry {
-            explicit ResultEntry(const int stopId) : stopId(stopId) {}
 
-            int stopId = INVALID_ID;
-
-            DistanceLabel distFromStopToPDLoc = INFTY;
-            DistanceLabel meetingVertexFromStopToPDLoc = INVALID_VERTEX;
-
-            DistanceLabel distFromPDLocToNextStop = INFTY;
-            DistanceLabel meetingVertexFromPDLocToNextStop = INVALID_VERTEX;
-        };
-
-        using ConcurrentResultEntriesVector = tbb::concurrent_vector<ResultEntry>;
+        using ConcurrentResultEntriesVector = tbb::concurrent_vector<RelevantPDLoc>;
+        using ResultEntryIterator = typename ConcurrentResultEntriesVector::const_iterator;
 
     public:
-
 
 
         // Represents information that one thread computes during one elliptic BCH search. Can be incorporated into
@@ -79,22 +69,37 @@ namespace karri {
 
             friend FeasibleEllipticDistances;
 
+            struct LocalResultEntry {
+
+                explicit LocalResultEntry(const int stopId) : stopId(stopId) {}
+
+                int stopId = INVALID_ID;
+
+                DistanceLabel distFromStopToPdLoc = INFTY;
+                DistanceLabel meetingVertexFromStopToPdLoc = INVALID_VERTEX;
+
+                DistanceLabel distFromPdLocToNextStop = INFTY;
+                DistanceLabel meetingVertexFromPdLocToNextStop = INVALID_VERTEX;
+            };
+
         public:
+
+            static constexpr int K = FeasibleEllipticDistances::K;
 
             ThreadLocalFeasibleEllipticDistances(const int &maxStopId,
                                                  std::vector<int> &indexInEntriesVector,
-                                                 std::vector<ResultEntry> &entries)
-                    : maxStopId(maxStopId),
-                      indexInEntriesVector(indexInEntriesVector),
-                      entries(entries) {}
+                                                 std::vector<LocalResultEntry> &entries)
+                    : indexInEntriesVector(indexInEntriesVector),
+                      entries(entries),
+                      maxStopId(maxStopId) {}
 
             void initForSearch() {
+                assert(entries.empty());
+                assert(std::all_of(indexInEntriesVector.begin(), indexInEntriesVector.end(),
+                                   [this](const int &i) { return i == indexInEntriesVector[0]; }));
 
                 if (indexInEntriesVector.size() < maxStopId + 1)
                     indexInEntriesVector.resize(maxStopId + 1, INVALID_INDEX);
-                for (const auto &e: entries)
-                    indexInEntriesVector[e.stopId] = INVALID_INDEX;
-                entries.clear();
             }
 
             // Updates the distance from stop to the PD loc. Distance is written if there are
@@ -102,22 +107,23 @@ namespace karri {
             // Returns mask indicating where the distance has been improved (all false if we don't know the stop and dynamic
             // allocation is not allowed).
             LabelMask updateDistanceFromStopToPDLoc(const int stopId,
-                                                    const DistanceLabel newDistToPDLoc, const int meetingVertex) {
+                                                    const DistanceLabel newDistToPDLoc,
+                                                    const int meetingVertex) {
                 assert(stopId >= 0 && stopId <= maxStopId);
                 assert(newDistToPDLoc.horizontalMin() >= 0 && newDistToPDLoc.horizontalMin() < INFTY);
 
                 // If no entries exist yet for this stop, perform the allocation.
                 if (indexInEntriesVector[stopId] == INVALID_INDEX) {
                     indexInEntriesVector[stopId] = entries.size();
-                    entries.push_back(ResultEntry(stopId));
+                    entries.push_back(LocalResultEntry(stopId));
                 }
 
                 const auto &idx = indexInEntriesVector[stopId];
                 auto &entry = entries[idx];
 
-                const LabelMask improvedLocal = newDistToPDLoc < entry.distFromStopToPDLoc;
-                entry.distFromStopToPDLoc.setIf(newDistToPDLoc, improvedLocal);
-                entry.meetingVertexFromStopToPDLoc.setIf(meetingVertex, improvedLocal);
+                const LabelMask improvedLocal = newDistToPDLoc < entry.distFromStopToPdLoc;
+                entry.distFromStopToPdLoc.setIf(newDistToPDLoc, improvedLocal);
+                entry.meetingVertexFromStopToPdLoc.setIf(meetingVertex, improvedLocal);
 
                 return improvedLocal;
             }
@@ -126,7 +132,7 @@ namespace karri {
             // for the stop exist already.
             // Returns mask indicating where the distance has been improved (all false if we don't know the stop).
             LabelMask updateDistanceFromPDLocToNextStop(const int stopId,
-                                                        const DistanceLabel newDistFromPDLocToNextStop,
+                                                        const DistanceLabel newDistFromPdLocToNextStop,
                                                         const int meetingVertex) {
 
                 // We assume the same thread runs the to search and then the from search for a PDLoc. If the to search
@@ -137,94 +143,38 @@ namespace karri {
                 const auto &idx = indexInEntriesVector[stopId];
                 auto &entry = entries[idx];
 
-                const LabelMask improvedLocal = newDistFromPDLocToNextStop < entry.distFromPDLocToNextStop;
-                entry.distFromPDLocToNextStop.setIf(newDistFromPDLocToNextStop, improvedLocal);
-                entry.meetingVertexFromPDLocToNextStop.setIf(meetingVertex, improvedLocal);
+                const LabelMask improvedLocal = newDistFromPdLocToNextStop < entry.distFromPdLocToNextStop;
+                entry.distFromPdLocToNextStop.setIf(newDistFromPdLocToNextStop, improvedLocal);
+                entry.meetingVertexFromPdLocToNextStop.setIf(meetingVertex, improvedLocal);
 
                 return improvedLocal;
             }
 
+            std::vector<int> &indexInEntriesVector;
+            std::vector<LocalResultEntry> &entries;
 
         private:
             const int &maxStopId;
 
-            std::vector<int> &indexInEntriesVector;
-            std::vector<ResultEntry> &entries;
-
         };
 
-        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState)
+        explicit FeasibleEllipticDistances(const RouteState &routeState, const int fleetSize)
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
-                  startOfRange(fleetSize, INVALID_INDEX),
-                  stopHasEntries(fleetSize),
-                  stopLocks(fleetSize, SpinLock()),
+                  vehiclesWithFeasibleDistances(fleetSize),
                   indexInEntriesVector(),
                   localResults(),
-                  writeResultsToGlobalStopOrder([&] {
-                      return Permutation::getRandomPermutation(maxStopId + 1, std::minstd_rand(
-                              seedCounter.fetch_add(1, std::memory_order_relaxed)));
-                  }),
-                  vehiclesWithRelevantPDLocs(fleetSize),
-                  minDistToPDLoc(fleetSize),
-                  minDistFromPDLocToNextStop(fleetSize) {}
+                  numRelPdLocsPerStop() {}
 
-        template<typename PDLocsAtExistingStopsT, typename InputGraphT>
-        void init(const int newNumPDLocs, const PDLocsAtExistingStopsT &pdLocsAtExistingStops,
-                  const InputGraphT &inputGraph) {
-            numLabelsPerStop = newNumPDLocs / K + (newNumPDLocs % K != 0);
-            std::fill(startOfRange.begin(), startOfRange.end(), INVALID_INDEX);
-            stopHasEntries.reset();
-
-            if (maxStopId >= startOfRange.size()) {
-                stopLocks.resize(maxStopId + 1, SpinLock());
-                startOfRange.resize(maxStopId + 1, INVALID_INDEX);
-                stopHasEntries.resize(maxStopId + 1, false);
-                minDistToPDLoc.resize(maxStopId + 1);
-                minDistFromPDLocToNextStop.resize(maxStopId + 1);
-            }
-
-            vehiclesWithRelevantPDLocs.clear();
+        void init() {
             globalResults.clear();
+            vehiclesWithFeasibleDistances.clear();
 
-            for (auto& min : minDistToPDLoc)
-                min.store(INFTY, std::memory_order_relaxed);
-            for (auto& min : minDistFromPDLocToNextStop)
-                min.store(INFTY, std::memory_order_relaxed);
-
-            // Delete thread local random permutation of stop IDs (used for writing local results to global result)
-            // since previous permutations may not contain .
-            writeResultsToGlobalStopOrder.clear();
-
-
-            // Pre-allocate entries for PD locs at existing stops. The distance 0 may otherwise not be found by the
-            // BCH searches. Also, this way, the distance for such a PD loc never has to be updated, and we already
-            // allocate the entry array for this stop, which is good since it will likely also be reachable by other PD locs.
-            for (const auto &pdLocAtExistingStop: pdLocsAtExistingStops) {
-                const auto &vehId = pdLocAtExistingStop.vehId;
-                assert(pdLocAtExistingStop.stopIndex < routeState.numStopsOf(vehId));
-                const auto &stopId = routeState.stopIdsFor(vehId)[pdLocAtExistingStop.stopIndex];
-                const auto &stopVertex = inputGraph.edgeHead(
-                        routeState.stopLocationsFor(vehId)[pdLocAtExistingStop.stopIndex]);
-                // Write values for new entry and set pointer from PD loc to the entries directly into global storages
-                allocateEntriesFor(stopId);
-
-                DistanceLabel zeroLabel = INFTY;
-                zeroLabel[pdLocAtExistingStop.pdId % K] = 0;
-                const auto firstIdInBatch = (pdLocAtExistingStop.pdId / K) * K;
-                const auto offsetInBatch = pdLocAtExistingStop.pdId % K;
-                int idx = startOfRange[stopId] + firstIdInBatch / K;
-
-                globalResults[idx].distFromStopToPDLoc[offsetInBatch] = 0;
-                globalResults[idx].meetingVertexFromStopToPDLoc[offsetInBatch] = stopVertex;
-                minDistToPDLoc[stopId].store(0, std::memory_order_relaxed);
-
-                const auto lengthOfLegStartingHere = time_utils::calcLengthOfLegStartingAt(
-                        pdLocAtExistingStop.stopIndex, pdLocAtExistingStop.vehId, routeState);
-                globalResults[idx].distFromPDLocToNextStop[offsetInBatch] = lengthOfLegStartingHere;
-                globalResults[idx].meetingVertexFromPDLocToNextStop[offsetInBatch] = stopVertex;
-                minDistFromPDLocToNextStop[stopId].store(lengthOfLegStartingHere, std::memory_order_relaxed);
+            if (maxStopId >= numRelPdLocsPerStop.size()) {
+                numRelPdLocsPerStop.resize(maxStopId + 1);
             }
+            for (auto &n: numRelPdLocsPerStop)
+                n.store(0);
         }
 
         // Each thread gets an instance of a ThreadLocalFeasibleEllipticDistances at the beginning of a search. This
@@ -234,234 +184,98 @@ namespace karri {
             return ThreadLocalFeasibleEllipticDistances(maxStopId, indexInEntriesVector.local(), localResults.local());
         }
 
-        bool hasPotentiallyRelevantPDLocs(const int stopId) const {
-            assert(stopId <= maxStopId);
-            return startOfRange[stopId] != INVALID_INDEX;
-        }
+        // Transfers the distances computed by a single thread for a batch of K PDLocs to the global result and clears
+        // the local result in the process.
+        void transferThreadLocalResultToGlobalResult(const int firstPdLocIdInBatch,
+                                                     const int onePastLastPdLocIdInBatch,
+                                                     ThreadLocalFeasibleEllipticDistances &localResult) {
+            auto &localEntries = localResult.entries;
+            auto &localIndices = localResult.indexInEntriesVector;
 
-        // Writes the distances computed by a single thread for a batch of K PDLocs to the global result.
-        void writeThreadLocalResultToGlobalResult(const int firstPDLocId,
-                                                  const ThreadLocalFeasibleEllipticDistances &localResult) {
-            const auto &localIndices = localResult.indexInEntriesVector;
-            const auto &localEntries = localResult.entries;
+            // Reset local index vector
+            for (const auto &e: localEntries)
+                localIndices[e.stopId] = INVALID_INDEX;
 
-            // Each search has similar search spaces so results for all threads contain similar stops with relevant
-            // distances. To avoid lock contention when allocating distance labels in global result, we iterate
-            // through stops in a random order that differs between threads.
-            for (const auto &stopId: writeResultsToGlobalStopOrder.local()) {
-                const auto &idx = localIndices[stopId];
-                if (idx == INVALID_INDEX)
-                    continue;
+            // Un-batch local entries to write them results for individual PDLocs into global results vector
 
-                // Allocate the entries in global storage if not yet done
-                allocateEntriesFor(stopId);
+            // Count total number of global entries (combinations of PD-loc in batch and stop relevant for that PD-loc)
+            int numNewEntriesInGlobal = 0;
+            for (auto &e: localEntries) {
 
-                const auto &e = localEntries[idx];
-                assert(e.stopId == stopId);
+                assert(allSet(((e.distFromStopToPdLoc == INFTY) & (e.distFromPdLocToNextStop == INFTY)) |
+                              ((e.distFromStopToPdLoc < INFTY) & (e.distFromPdLocToNextStop < INFTY))));
+                // If this is a partially filled last batch, we have to make sure not to count the entries that are not
+                // used (copies of index 0 in batch) as they will not be stored in the global result.
+                for (int i = onePastLastPdLocIdInBatch; i < firstPdLocIdInBatch + K; ++i)
+                    e.distFromStopToPdLoc[i - firstPdLocIdInBatch] = INFTY;
+                LabelMask rel = e.distFromStopToPdLoc < INFTY;
 
-                updateToGlobalEntry(stopId, firstPDLocId, e);
-                updateFromGlobalEntry(stopId, firstPDLocId, e);
-            }
-        }
+                const int numRel = countSet(rel);
+                assert(numRel == [&] {
+                    int manualCountRel = 0;
+                    for (int pdId = firstPdLocIdInBatch; pdId < onePastLastPdLocIdInBatch; ++pdId)
+                        manualCountRel += rel[pdId - firstPdLocIdInBatch];
+                    return manualCountRel;
+                }());
 
-        // Updates global entry for distances and meeting vertices from stop to batch of PDLocs with given local result.
-        void updateToGlobalEntry(const int stopId, const int firstPDLocId, const ResultEntry& localEntry) {
-            assert(startOfRange[stopId] + firstPDLocId / K < globalResults.size());
-
-            const auto &localDist = localEntry.distFromStopToPDLoc;
-            const auto &localMeetingVertex = localEntry.meetingVertexFromStopToPDLoc;
-
-            auto& globalEntry = globalResults[startOfRange[stopId] + firstPDLocId / K];
-            auto& globalDist = globalEntry.distFromStopToPDLoc;
-            auto& globalMeetingVertex = globalEntry.meetingVertexFromStopToPDLoc;
-
-            const LabelMask improved = localDist < globalDist;
-            if (!anySet(improved))
-                return;
-
-            // Update distances and meeting vertices where necessary
-            globalDist.setIf(localDist, improved);
-            globalMeetingVertex.setIf(localMeetingVertex, improved);
-
-            // Update minima
-            const int minNewDistToPDLoc = localDist.horizontalMin();
-            auto &minToPDLocAtomic = minDistToPDLoc[stopId];
-            int expectedMinForStop = minToPDLocAtomic.load(std::memory_order_relaxed);
-            while (expectedMinForStop > minNewDistToPDLoc &&
-                   !minToPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistToPDLoc,
-                                                             std::memory_order_relaxed));
-        }
-
-        // Updates global entry for distances and meeting vertices from batch of PDLocs to stop following the one with
-        // ID stopId with given local result.
-        void updateFromGlobalEntry(const int stopId, const int firstPDLocId, const ResultEntry& localEntry) {
-            assert(startOfRange[stopId] + firstPDLocId / K < globalResults.size());
-
-            const auto &localDist = localEntry.distFromPDLocToNextStop;
-            const auto &localMeetingVertex = localEntry.meetingVertexFromPDLocToNextStop;
-
-            auto& globalEntry = globalResults[startOfRange[stopId] + firstPDLocId / K];
-            auto& globalDist = globalEntry.distFromPDLocToNextStop;
-            auto& globalMeetingVertex = globalEntry.meetingVertexFromPDLocToNextStop;
-
-            const LabelMask improved = localDist < globalDist;
-            if (!anySet(improved))
-                return;
-
-            // Update distances and meeting vertices where necessary
-            globalDist.setIf(localDist, improved);
-            globalMeetingVertex.setIf(localMeetingVertex, improved);
-
-            // Update minima
-            const int minNewDistFromPDLocToNextStop = localDist.horizontalMin();
-            auto &minFromPDLocAtomic = minDistFromPDLocToNextStop[stopId];
-            int expectedMinForStop = minFromPDLocAtomic.load(std::memory_order_relaxed);
-            while (expectedMinForStop > minNewDistFromPDLocToNextStop &&
-                   !minFromPDLocAtomic.compare_exchange_strong(expectedMinForStop, minNewDistFromPDLocToNextStop,
-                                                               std::memory_order_relaxed));
-        }
-
-        // Represents to and from distances for a single stop.
-        // Allows random access to distances for a single PDLoc in the block given a PD loc id.
-        // Used to hide intrinsics of DistanceLabels to caller.
-        class PerPDLocDistancesFacade {
-
-            using It = typename ConcurrentResultEntriesVector::const_iterator;
-
-        public:
-            // Returns distance from stop to PDLoc and distance from PDLoc to following stop.
-            std::pair<int, int> operator[](const unsigned int pdLocId) const {
-                const auto& e = labelBegin[pdLocId / K];
-                return {e.distFromStopToPDLoc[pdLocId % K], e.distFromPDLocToNextStop[pdLocId % K]};
+                numNewEntriesInGlobal += numRel;
+                numRelPdLocsPerStop[e.stopId].add_fetch(numRel, std::memory_order_relaxed);
             }
 
-        private:
-            friend FeasibleEllipticDistances;
-            explicit PerPDLocDistancesFacade(const It labelBegin) : labelBegin(labelBegin) {}
-            const It labelBegin;
-        };
+            // Allocate space for global entries
+            const auto startOfRangeForBatchIt = globalResults.grow_by(numNewEntriesInGlobal);
+            const int startOfRangeForBatch = static_cast<int>(startOfRangeForBatchIt - globalResults.begin());
 
-        // Represents to and from meeting vertices for a single stop.
-        // Allows random access to meeting vertices for a single PDLoc in the block given a PD loc id.
-        // Used to hide intrinsics of DistanceLabels to caller.
-        class PerPDLocMeetingVerticesFacade {
-
-            using It = typename ConcurrentResultEntriesVector::const_iterator;
-
-        public:
-            // Returns distance from stop to PDLoc and distance from PDLoc to following stop.
-            std::pair<int, int> operator[](const unsigned int pdLocId) const {
-                const auto& e = labelBegin[pdLocId / K];
-                return {e.meetingVertexFromStopToPDLoc[pdLocId % K], e.meetingVertexFromPDLocToNextStop[pdLocId % K]};
+            // Write global entries
+            int nextIdx = startOfRangeForBatch;
+            for (const auto &e: localEntries) {
+                const auto &stopId = e.stopId;
+                const DistanceLabel &batchDistTo = e.distFromStopToPdLoc;
+                const DistanceLabel &batchDistFrom = e.distFromPdLocToNextStop;
+                for (int pdId = firstPdLocIdInBatch; pdId < onePastLastPdLocIdInBatch; ++pdId) {
+                    int idxInBatch = pdId - firstPdLocIdInBatch;
+                    if (batchDistTo[idxInBatch] >= INFTY)
+                        continue;
+                    assert(nextIdx < startOfRangeForBatch + numNewEntriesInGlobal);
+                    globalResults[nextIdx] = {stopId, pdId, batchDistTo[idxInBatch], batchDistFrom[idxInBatch]};
+                    ++nextIdx;
+                    vehiclesWithFeasibleDistances.insert(routeState.vehicleIdOf(stopId));
+                }
             }
 
-        private:
-            friend FeasibleEllipticDistances;
-            explicit PerPDLocMeetingVerticesFacade(const It labelBegin) : labelBegin(labelBegin) {}
-            const It labelBegin;
-        };
-
-
-        PerPDLocDistancesFacade distancesToAndFromRelevantPDLocsFor(const int stopId) const {
-            assert(stopId <= maxStopId);
-            assert(startOfRange[stopId] != INVALID_INDEX);
-            const auto start = startOfRange[stopId];
-            assert(globalResults.begin() + start + numLabelsPerStop <= globalResults.end());
-            return PerPDLocDistancesFacade(globalResults.begin() + start);
+            // Clear local entries
+            localEntries.clear();
         }
 
-
-        int getDistanceFromStopToPDLoc(const int stopId, const int pdLocId) const {
-            if (!hasPotentiallyRelevantPDLocs(stopId))
-                return INFTY;
-            return globalResults[startOfRange[stopId] + pdLocId / K].distFromStopToPDLoc[pdLocId % K];
+        const ConcurrentResultEntriesVector &getGlobalResults() const {
+            return globalResults;
         }
 
-        int getDistanceFromPDLocToNextStop(const int stopId, const int pdLocId) const {
-            if (!hasPotentiallyRelevantPDLocs(stopId))
-                return INFTY;
-            return globalResults[startOfRange[stopId] + pdLocId / K].distFromPDLocToNextStop[pdLocId % K];
+        const ThreadSafeSubset& getVehiclesWithFeasibleDistances() const {
+            return vehiclesWithFeasibleDistances;
         }
 
-        PerPDLocMeetingVerticesFacade meetingVerticesToAndFromRelevantPDLocsFor(const int stopId) const {
-            assert(stopId <= maxStopId);
-            assert(startOfRange[stopId] != INVALID_INDEX);
-            const auto start = startOfRange[stopId];
-            assert(globalResults.begin() + start + numLabelsPerStop <= globalResults.end());
-            return PerPDLocMeetingVerticesFacade(globalResults.begin() + start);
+        int getNumRelPdLocsForStop(const int stopId) const {
+            return numRelPdLocsPerStop[stopId].load(std::memory_order_seq_cst);
         }
 
-        int minDistToRelevantPDLocsFor(const int stopId) const {
-            assert(stopId <= maxStopId);
-            assert(startOfRange[stopId] != INVALID_INDEX);
-            return minDistToPDLoc[stopId];
-        }
-
-        int minDistFromPDLocToNextStopOf(const int stopId) const {
-            assert(stopId <= maxStopId);
-            assert(startOfRange[stopId] != INVALID_INDEX);
-            return minDistFromPDLocToNextStop[stopId];
-        }
-
-        const ThreadSafeSubset &getVehiclesWithRelevantPDLocs() const {
-            return vehiclesWithRelevantPDLocs;
+        bool doesStopHaveRelPdLocs(const int stopId) const {
+            return getNumRelPdLocsForStop(stopId) > 0;
         }
 
     private:
 
-        void allocateEntriesFor(const int stopId) {
-
-            if (stopHasEntries[stopId])
-                return;
-
-            SpinLock &currLock = stopLocks[stopId];
-            currLock.lock();
-
-            if (startOfRange[stopId] != INVALID_INDEX) {
-                currLock.unlock();
-                return;
-            }
-
-            const auto resultsIt = globalResults.grow_by(numLabelsPerStop, ResultEntry(stopId));
-            startOfRange[stopId] = resultsIt - globalResults.begin();
-            currLock.unlock();
-
-            stopHasEntries.compare_and_set_to_true(stopId);
-            vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
-        }
-
         const RouteState &routeState;
-
-        int numLabelsPerStop{};
         const int &maxStopId;
 
-        // Points from a stop id to the start of the ResultEntries for PD locs that are relevant
-        // for this stop. Not used in case of static allocation
-        std::vector<int> startOfRange;
-        ThreadSafeFastResetFlagArray<> stopHasEntries;
-
-        // One spinlock per stop to synchronize dynamic allocation in global result
-        std::vector<SpinLock> stopLocks;
-
-        // Value arrays.
         ConcurrentResultEntriesVector globalResults;
-
-        // Counter for generating differing seeds for random permutations between threads
-        CAtomic<int> seedCounter;
+        ThreadSafeSubset vehiclesWithFeasibleDistances;
 
         // Thread Local Storage for local distances calculation
         tbb::enumerable_thread_specific<std::vector<int>> indexInEntriesVector;
-        tbb::enumerable_thread_specific<std::vector<ResultEntry>> localResults;
+        tbb::enumerable_thread_specific<std::vector<typename ThreadLocalFeasibleEllipticDistances::LocalResultEntry>> localResults;
 
-        // Each thread generates one random permutation of thread ids. The permutation defines the order in which
-        // a threads local results are written to the global result. This helps to alleviate contention on the
-        // spin locks (separate per stop id) used to synchronize global writes.
-        tbb::enumerable_thread_specific<Permutation> writeResultsToGlobalStopOrder;
-
-        ThreadSafeSubset vehiclesWithRelevantPDLocs;
-
-        std::vector<CAtomic<int>> minDistToPDLoc;
-        std::vector<CAtomic<int>> minDistFromPDLocToNextStop;
+        std::vector<CAtomic<int>> numRelPdLocsPerStop;
 
     };
 

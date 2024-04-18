@@ -101,6 +101,7 @@ namespace karri {
             requestState.stats().pbnsAssignmentsStats.locatingVehiclesTimeLocal += curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest();
             requestState.stats().pbnsAssignmentsStats.numCHSearches += curVehLocToPickupSearches.getTotalNumCHSearchesRunForRequest();
             requestState.stats().pbnsAssignmentsStats.bchSearchTimeLocal += curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
+            requestState.stats().pbnsAssignmentsStats.numBucketEntriesForVehicles += curVehLocToPickupSearches.getNumBucketEntries();
         }
 
         // Initialize for new request.
@@ -123,38 +124,50 @@ namespace karri {
 
         void determineVehiclesAndPickupsForSearches() {
 
-            int numCandidateVehicles = 0;
-            std::vector<std::pair<RelevantPDLocs::RelevantPDLoc, int>> jobs;
-            for (const auto &vehId: relPickupsBNS.getVehiclesWithRelevantPDLocs()) {
+//            int numCandidateVehicles = 0;
+//            std::vector<std::pair<RelevantPDLoc, int>> jobs;
+//            for (const auto &vehId: relPickupsBNS.getVehiclesWithRelevantPDLocs()) {
+//
+//                if (!relOrdinaryDropoffs.hasRelevantSpotsFor(vehId) && !relDropoffsBNS.hasRelevantSpotsFor(vehId))
+//                    continue;
+//                ++numCandidateVehicles;
+//
+//                assert(routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders <=
+//                       fleet[vehId].capacity);
+//
+//                for (const auto &entry: relPickupsBNS.relevantSpotsFor(vehId)) {
+//                    jobs.emplace_back(entry, vehId);
+//                }
+//            }
 
+            CAtomic<int> numCandidateVehicles(0);
+            const auto& vehicles = relPickupsBNS.getVehiclesWithRelevantPDLocs();
+            tbb::parallel_for(int(0), static_cast<int>(vehicles.size()), 1, [&](int vehIdx) {
+                const auto& vehId = *(vehicles.begin() + vehIdx);
                 if (!relOrdinaryDropoffs.hasRelevantSpotsFor(vehId) && !relDropoffsBNS.hasRelevantSpotsFor(vehId))
-                    continue;
-                ++numCandidateVehicles;
+                    return;
 
+                numCandidateVehicles.add_fetch(1, std::memory_order_relaxed);
                 assert(routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders <=
                        fleet[vehId].capacity);
 
-                for (const auto &entry: relPickupsBNS.relevantSpotsFor(vehId)) {
-                    jobs.emplace_back(entry, vehId);
-                }
-            }
-//            auto permutation = Permutation::getRandomPermutation(jobs.size(), std::minstd_rand(requestState.originalRequest.requestId));
-//            permutation.applyTo(jobs);
-
-            tbb::parallel_for(int(0), static_cast<int>(jobs.size()), 1, [&](int i) {
-                determineNecessaryExactDistancesForPickup(jobs[i].first, fleet[jobs[i].second]);
+                const auto& entries = relPickupsBNS.relevantSpotsFor(vehId);
+                tbb::parallel_for(int(0), static_cast<int>(entries.size()), 1, [&](int entryIdx) {
+                    const auto& entry = *(entries.begin() + entryIdx);
+                    determineNecessaryExactDistancesForPickup(entry, vehId);
+                });
             });
 
-            requestState.stats().pbnsAssignmentsStats.numCandidateVehicles += numCandidateVehicles;
+            requestState.stats().pbnsAssignmentsStats.numCandidateVehicles += numCandidateVehicles.load(std::memory_order_seq_cst);
         }
 
-        void determineNecessaryExactDistancesForPickup(const RelevantPDLocs::RelevantPDLoc &entry, const Vehicle &veh) {
+        void determineNecessaryExactDistancesForPickup(const RelevantPDLoc &entry, const int vehId) {
             using namespace time_utils;
-            const auto &relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(veh.vehicleId);
-            const auto &relDropoffsBeforeNextStopForVeh = relDropoffsBNS.relevantSpotsFor(veh.vehicleId);
-            const auto vehId = veh.vehicleId;
+            const auto &relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(vehId);
+            const auto &relDropoffsBeforeNextStopForVeh = relDropoffsBNS.relevantSpotsFor(vehId);
 
-            if (curVehLocToPickupSearches.knowsDistance(veh.vehicleId, entry.pdId)) {
+
+            if (curVehLocToPickupSearches.knowsDistance(vehId, entry.pdId)) {
                 continuationJobs.push_back({vehId, entry.pdId, 0, 0, PAIRED});
                 continuationJobs.push_back({vehId, entry.pdId, entry.distFromPDLocToNextStop, 0, ORDINARY});
                 // Count first continuations
@@ -162,7 +175,7 @@ namespace karri {
                 return;
             }
 
-            Assignment asgn(&veh);
+            Assignment asgn(&fleet[vehId]);
             assert(entry.pdId >= 0 && entry.pdId < requestState.numPickups());
             asgn.pickup = &requestState.pickups[entry.pdId];
 
@@ -175,7 +188,7 @@ namespace karri {
 
             // For paired assignments before next stop, first try a lower bound with the smallest direct PD distance
             const auto lowerBoundCostPairedAssignment = calculator.calcCostLowerBoundForPairedAssignmentBeforeNextStop(
-                    veh, *asgn.pickup, asgn.distToPickup, requestState.minDirectPDDist,
+                    fleet[vehId], *asgn.pickup, asgn.distToPickup, requestState.minDirectPDDist,
                     distFromPickup, requestState);
             if (lowerBoundCostPairedAssignment < requestState.getBestCost()) {
                 const auto pairedScannedUntil = tryLowerBoundsForPaired(asgn, numAssignmentsTriedLocal);
@@ -274,14 +287,14 @@ namespace karri {
             for (auto dropoffIt = relevantDropoffs.begin(); dropoffIt < relevantDropoffs.end(); ++dropoffIt) {
                 const auto &dropoffEntry = *dropoffIt;
                 asgn.dropoff = &requestState.dropoffs[dropoffEntry.pdId];
+                const auto stopIdx = routeState.stopPositionOf(dropoffEntry.stopId);
 
-                if (dropoffEntry.stopIndex + 1 < numStops &&
-                    stopLocations[dropoffEntry.stopIndex + 1] == asgn.dropoff->loc)
+                if (stopIdx + 1 < numStops && stopLocations[stopIdx + 1] == asgn.dropoff->loc)
                     continue;
                 if (asgn.dropoff->loc == asgn.pickup->loc)
                     continue;
 
-                asgn.dropoffStopIdx = dropoffEntry.stopIndex;
+                asgn.dropoffStopIdx = stopIdx;
                 asgn.distToDropoff = dropoffEntry.distToPDLoc;
                 asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                 ++numAssignmentsTried;
@@ -347,15 +360,15 @@ namespace karri {
                 for (auto dropoffIt = relOrdinaryDropoffsForVeh.begin() + cont.offsetInDropoffs;
                      dropoffIt < relOrdinaryDropoffsForVeh.end(); ++dropoffIt) {
                     const auto &dropoffEntry = *dropoffIt;
+                    const auto stopIdx = routeState.stopPositionOf(dropoffEntry.stopId);
                     asgn.dropoff = &requestState.dropoffs[dropoffEntry.pdId];
 
-                    if (dropoffEntry.stopIndex + 1 < numStops &&
-                        stopLocations[dropoffEntry.stopIndex + 1] == asgn.dropoff->loc)
+                    if (stopIdx + 1 < numStops && stopLocations[stopIdx + 1] == asgn.dropoff->loc)
                         continue;
                     if (asgn.pickup->loc == asgn.dropoff->loc)
                         continue;
 
-                    asgn.dropoffStopIdx = dropoffEntry.stopIndex;
+                    asgn.dropoffStopIdx = stopIdx;
                     asgn.distToDropoff = dropoffEntry.distToPDLoc;
                     asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                     tryAssignmentLocal(asgn, localBestCost, localBestAssignment);

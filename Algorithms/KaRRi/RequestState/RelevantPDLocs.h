@@ -30,8 +30,9 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
-#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeSubset.h"
 #include "tbb/concurrent_vector.h"
+#include "RelevantPDLoc.h"
 
 namespace karri {
 
@@ -39,16 +40,14 @@ namespace karri {
     struct RelevantPDLocs {
 
         template<typename, typename, typename> friend
-        class RelevantPDLocsFilter;
-
-        struct RelevantPDLoc {
-            int stopIndex;
-            int pdId;
-            int distToPDLoc;
-            int distFromPDLocToNextStop;
-        };
+        class RelevantPDLocsReorderer;
 
         using RelevantPDLocVector = AlignedVector<RelevantPDLoc>;
+
+        struct IndexRange {
+            int start = 0;
+            int end = 0;
+        };
 
     public:
 
@@ -57,7 +56,7 @@ namespace karri {
 
         RelevantPDLocs(const int fleetSize)
                 : fleetSize(fleetSize),
-                  startOfRelevantPDLocs(fleetSize + 1),
+                  rangeOfRelevantPdLocs(fleetSize),
                   relevantSpots(),
                   vehiclesWithRelevantSpots(fleetSize) {}
 
@@ -67,26 +66,28 @@ namespace karri {
 
         bool hasRelevantSpotsFor(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
-            return startOfRelevantPDLocs[vehId] != startOfRelevantPDLocs[vehId + 1];
+            return rangeOfRelevantPdLocs[vehId].start != rangeOfRelevantPdLocs[vehId].end;
         }
 
         IteratorRange<It> relevantSpotsFor(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
-            return {relevantSpots.begin() + startOfRelevantPDLocs[vehId],
-                    relevantSpots.begin() + startOfRelevantPDLocs[vehId + 1]};
+            const auto& range = rangeOfRelevantPdLocs[vehId];
+            return {relevantSpots.begin() + range.start,relevantSpots.begin() + range.end};
         }
 
         IteratorRange<RevIt> relevantSpotsForInReverseOrder(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
-            const int rstart = relevantSpots.size() - startOfRelevantPDLocs[vehId + 1];
-            const int rend = relevantSpots.size() - startOfRelevantPDLocs[vehId];
+            const auto& range = rangeOfRelevantPdLocs[vehId];
+            const int rstart = relevantSpots.size() - range.end;
+            const int rend = relevantSpots.size() - range.start;
             return {relevantSpots.rbegin() + rstart, relevantSpots.rbegin() + rend};
         }
 
     private:
 
         const int fleetSize;
-        std::vector<int> startOfRelevantPDLocs;
+        std::vector<IndexRange> rangeOfRelevantPdLocs;
+//        std::vector<int> startOfRelevantPDLocs;
         RelevantPDLocVector relevantSpots;
         Subset vehiclesWithRelevantSpots;
 

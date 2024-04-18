@@ -31,7 +31,7 @@
 #include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Parallel/atomic_wrapper.h"
-#include "DataStructures/Containers/ThreadSafeSubset.h"
+#include "DataStructures/Containers/Parallel/ThreadSafeSubset.h"
 #include "Tools/Timer.h"
 
 #include <tbb/enumerable_thread_specific.h>
@@ -86,13 +86,12 @@ namespace karri {
                                                           std::memory_order_relaxed);
 
             currentVehicleLocations[vehId] = curLoc;
+            vehiclesWithKnownLocation.insert(vehId);
             curVehLock.unlock();
 
-            vehiclesWithKnownLocation.insert(vehId);
         }
 
         void init(const int time) {
-
 
             // Already initialized for current time
             if (currentTime == time)
@@ -104,7 +103,7 @@ namespace karri {
             }
             vehiclesWithKnownLocation.clear();
 
-            totalLocatingVehiclesTimeForRequest.store(0, std::memory_order_relaxed);
+            totalLocatingVehiclesTimeForRequest.store(0, std::memory_order_seq_cst);
         }
 
         const ThreadSafeSubset& getVehiclesWithKnownLocation() const {
@@ -117,7 +116,7 @@ namespace karri {
         }
 
         int64_t getTotalLocatingVehiclesTimeForRequest() const {
-            return totalLocatingVehiclesTimeForRequest;
+            return totalLocatingVehiclesTimeForRequest.load(std::memory_order_seq_cst);
         }
 
     private:
