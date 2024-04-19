@@ -1,10 +1,16 @@
 # KaRRi
 
-This repository contains the C++17 source code used in
+This repository contains the C++17 implementation of KaRRi, a state-of-the-art dispatcher for the dynamic 
+taxi sharing problem with meeting points. 
+KaRRi uses engineered on-the-fly shortest path queries based on bucket contraction hierarchies (BCHs) 
+to allow for fast query times with maximum flexibility. 
+For more information on KaRRi's novel techniques, we refer to the related publication:
 
 * Moritz Laupichler, and Peter Sanders. Fast Many-to-Many Routing for Dynamic Taxi Sharing with
   Meeting Points. 2024 Proceedings of the Symposium on Algorithm Engineering and Experiments (ALENEX),
   2024\. https://doi.org/10.1137/1.9781611977929.6
+
+If you use KaRRi in your scientific publication, we ask that you reference the paper above.
 
 ## License
 
