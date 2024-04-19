@@ -56,11 +56,14 @@ target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_N
 
 add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
 target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateGeoJsonForGraph PRIVATE nlohmann_json::nlohmann_json)
 
 add_executable(GenerateGeoJsonForVehicles GenerateGeoJsonForVehicles.cc)
 target_compile_definitions(GenerateGeoJsonForVehicles PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateGeoJsonForVehicles PRIVATE nlohmann_json::nlohmann_json)
 
 
 add_executable(GenerateGeoJsonForRequests GenerateGeoJsonForRequests.cc)
 target_compile_definitions(GenerateGeoJsonForRequests PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateGeoJsonForRequests PRIVATE nlohmann_json::nlohmann_json)
 
