@@ -71,6 +71,7 @@ include_directories(${CMAKE_SOURCE_DIR})
 # Find openmp and proj libraries installed via package manager
 find_package(OpenMP)
 find_library(PROJ_LIBRARY proj)
+find_package(TBB REQUIRED)
 
 # Find HWLOC Library
 find_path(HWLOC_INCLUDE_DIR NAME hwloc.h
