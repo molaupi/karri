@@ -93,7 +93,6 @@ namespace karri {
             for (const auto &d: requestState.dropoffs)
                 requestState.allPDLocsRoadCategoryStats().incCountForCat(vehInputGraph.osmRoadCategory(d.loc));
 
-
             // Calculate the direct distance between the requests origin and destination
             timer.restart();
             const auto source = vehCh.rank(vehInputGraph.edgeHead(req.origin));

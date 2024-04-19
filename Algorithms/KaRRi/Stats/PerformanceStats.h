@@ -40,7 +40,8 @@ namespace karri::stats {
         int64_t computeODDistanceTime;
 
         int64_t getTotalTime() const {
-            return findPDLocsInRadiusTime + findVehicleToPdLocsDistancesTime + notUsingVehicleTime + computeODDistanceTime;
+            return findPDLocsInRadiusTime + findVehicleToPdLocsDistancesTime + notUsingVehicleTime +
+                   computeODDistanceTime;
         }
 
         void clear() {

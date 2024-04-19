@@ -68,11 +68,9 @@ endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 include_directories(${CMAKE_SOURCE_DIR})
 
+# Find openmp and proj libraries installed via package manager
 find_package(OpenMP)
 find_library(PROJ_LIBRARY proj)
-find_library(RoutingKit_LIBRARY routingkit)
-find_package(nlohmann_json)
-find_package(TBB REQUIRED)
 
 # Find HWLOC Library
 find_path(HWLOC_INCLUDE_DIR NAME hwloc.h
@@ -90,45 +88,20 @@ ELSE ()
     HwLoc library not found. Install HwLoc on your system.")
 ENDIF ()
 
-# Find csv.h
-find_path(CSV_INCLUDE_PATH csv.h REQUIRED)
-if (NOT CSV_INCLUDE_PATH)
-  message(FATAL_ERROR "csv.h cannot be found. Aborting.")
-endif ()
-message("Found csv.h in ${CSV_INCLUDE_PATH}")
-include_directories(SYSTEM ${CSV_INCLUDE_PATH})
+# Add json library from git submodule
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+add_subdirectory(External/json)
 
-# Find randomc
-find_path(RANDOMC_INCLUDE_PATH randomc.h REQUIRED PATHS ${RANDOMC_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES randomc)
-if (NOT RANDOMC_INCLUDE_PATH)
-  message(FATAL_ERROR "randomc.h cannot be found. Aborting.")
-endif ()
-message("Found randomc.h in ${RANDOMC_INCLUDE_PATH}")
-include_directories(${RANDOMC_INCLUDE_PATH})
+# Add RoutingKit library (needs to be built beforehand!) and include headers from git submodule
+find_library(RoutingKit_LIBRARY routingkit PATHS External/RoutingKit/lib REQUIRED)
+include_directories(External/RoutingKit/include)
 
-# Find RoutingKit include path
-find_path(ROUTINGKIT_INCLUDE_PATH contraction_hierarchy.h REQUIRED PATHS ${ROUTINGKIT_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES routingkit)
-if (NOT ROUTINGKIT_INCLUDE_PATH)
-  message(FATAL_ERROR "RoutingKit headers cannot be found (searched for contraction_hierarchy.h). Aborting.")
-endif ()
-message("Found RoutingKit headers in ${ROUTINGKIT_INCLUDE_PATH} (searched for contraction_hierarchy.h)")
-include_directories(${ROUTINGKIT_INCLUDE_PATH})
-
-# Find stocc invlude path
-find_path(STOCC_INCLUDE_PATH stocc.h REQUIRED PATHS ${STOCC_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES stocc)
-if (NOT STOCC_INCLUDE_PATH)
-  message(FATAL_ERROR "stocc.h cannot be found. Aborting.")
-endif ()
-message("Found stocc.h in ${STOCC_INCLUDE_PATH}")
-include_directories(${STOCC_INCLUDE_PATH})
-
-# Find vectorclass include path
-find_path(VECTORCLASS_INCLUDE_PATH vectorclass.h REQUIRED PATHS ${VECTORCLASS_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES vectorclass)
-if (NOT VECTORCLASS_INCLUDE_PATH)
-  message(FATAL_ERROR "vectorclass.h cannot be found. Aborting.")
-endif ()
-message("Found vectorclass.h in ${VECTORCLASS_INCLUDE_PATH}")
-include_directories(${VECTORCLASS_INCLUDE_PATH})
+# Include headers for header-only libraries from git submodules and embedded dependencies
+include_directories(SYSTEM External/fast-cpp-csv-parser)
+include_directories(External/randomc)
+include_directories(External/rapidxml)
+include_directories(External/stocc)
+include_directories(External/vectorclass)
 
 # Include kassert library
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
