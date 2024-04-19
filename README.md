@@ -30,6 +30,7 @@ $ sudo apt-get install libproj-dev
 $ sudo apt-get install zlib1g-dev
 $ sudo apt-get install osmium-tool
 $ sudo apt-get install intel-tbb intel-tbb-devel
+$ sudo apt-get install libhwloc-dev
 ```
 For the ```intel-tbb``` packages, you may need to set up the repository first, as instructed [here](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html?operatingsystem=linux&distributions=aptpackagemanager).
 
