@@ -31,6 +31,12 @@ if(OpenMP_FOUND)
     target_link_libraries(RunP2PAlgo OpenMP::OpenMP_CXX)
 endif()
 
+# Mixed Fixed-Flexible PT based on KaRRi
+add_executable(mixfix FindMixedFixedFlexibleNetwork.cpp)
+target_compile_definitions(mixfix PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(mixfix ${RoutingKit_LIBRARY})
+target_link_libraries(mixfix kassert)
+
 
 # KaRRi Simulation
 add_executable(karri KaRRi.cpp)
