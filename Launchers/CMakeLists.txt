@@ -39,6 +39,7 @@ target_link_libraries(karri ${RoutingKit_LIBRARY})
 if(OpenMP_FOUND)
     target_link_libraries(karri OpenMP::OpenMP_CXX)
 endif()
+target_link_libraries(karri kassert)
 
 # KaRRi compile time parameters
 

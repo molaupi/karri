@@ -24,6 +24,8 @@
 
 
 #include <cassert>
+#include <kassert/kassert.hpp>
+#include "Tools/custom_assertion_levels.h"
 #include <cstdlib>
 #include <fstream>
 #include <iostream>

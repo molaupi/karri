@@ -68,47 +68,33 @@ endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 include_directories(${CMAKE_SOURCE_DIR})
 
+# Find openmp and proj libraries installed via package manager
 find_package(OpenMP)
 find_library(PROJ_LIBRARY proj)
-find_library(RoutingKit_LIBRARY routingkit)
-find_package(nlohmann_json)
 
+# Add json library from git submodule
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+add_subdirectory(External/json)
 
+# Add RoutingKit library (needs to be built beforehand!) and include headers from git submodule
+find_library(RoutingKit_LIBRARY routingkit PATHS External/RoutingKit/lib REQUIRED)
+include_directories(External/RoutingKit/include)
 
-find_path(CSV_INCLUDE_PATH csv.h REQUIRED)
-if (NOT CSV_INCLUDE_PATH)
-  message(FATAL_ERROR "csv.h cannot be found. Aborting.")
+# Add kassert library from git submodule
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(KASSERT_ASSERTION_LEVEL 40)
+else()
+  set(KASSERT_ASSERTION_LEVEL 20)
 endif ()
-message("Found csv.h in ${CSV_INCLUDE_PATH}")
-include_directories(SYSTEM ${CSV_INCLUDE_PATH})
+add_subdirectory(External/kassert)
 
-find_path(RANDOMC_INCLUDE_PATH randomc.h REQUIRED PATHS ${RANDOMC_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES randomc)
-if (NOT RANDOMC_INCLUDE_PATH)
-  message(FATAL_ERROR "randomc.h cannot be found. Aborting.")
-endif ()
-message("Found randomc.h in ${RANDOMC_INCLUDE_PATH}")
-include_directories(${RANDOMC_INCLUDE_PATH})
+# Include headers for header-only libraries from git submodules and embedded dependencies
+include_directories(SYSTEM External/fast-cpp-csv-parser)
+include_directories(External/randomc)
+include_directories(External/rapidxml)
+include_directories(External/stocc)
+include_directories(External/vectorclass)
 
-find_path(ROUTINGKIT_INCLUDE_PATH contraction_hierarchy.h REQUIRED PATHS ${ROUTINGKIT_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES routingkit)
-if (NOT ROUTINGKIT_INCLUDE_PATH)
-  message(FATAL_ERROR "RoutingKit headers cannot be found (searched for contraction_hierarchy.h). Aborting.")
-endif ()
-message("Found RoutingKit headers in ${ROUTINGKIT_INCLUDE_PATH} (searched for contraction_hierarchy.h)")
-include_directories(${ROUTINGKIT_INCLUDE_PATH})
-
-find_path(STOCC_INCLUDE_PATH stocc.h REQUIRED PATHS ${STOCC_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES stocc)
-if (NOT STOCC_INCLUDE_PATH)
-  message(FATAL_ERROR "stocc.h cannot be found. Aborting.")
-endif ()
-message("Found stocc.h in ${STOCC_INCLUDE_PATH}")
-include_directories(${STOCC_INCLUDE_PATH})
-
-find_path(VECTORCLASS_INCLUDE_PATH vectorclass.h REQUIRED PATHS ${VECTORCLASS_INCLUDE_PATH} HINTS ${CSV_INCLUDE_PATH} PATH_SUFFIXES vectorclass)
-if (NOT VECTORCLASS_INCLUDE_PATH)
-  message(FATAL_ERROR "vectorclass.h cannot be found. Aborting.")
-endif ()
-message("Found vectorclass.h in ${VECTORCLASS_INCLUDE_PATH}")
-include_directories(${VECTORCLASS_INCLUDE_PATH})
 
 foreach(SRC_DIR ${SOURCE_DIRECTORIES})
   add_subdirectory(${SRC_DIR})
