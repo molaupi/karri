@@ -22,27 +22,35 @@
 /// SOFTWARE.
 /// ******************************************************************************
 
-
 #pragma once
 
 #include "Tools/Constants.h"
-#include "InputConfig.h"
 
 namespace mixfix {
+    struct InputConfig {
 
-    // Models a request with an ID, an origin location, a destination location and the request time.
-    struct Request {
-        int requestId = INVALID_ID;
-        int origin = INVALID_EDGE;
-        int destination = INVALID_EDGE;
-        int requestTime = INFTY;
+    public:
+        static InputConfig &getInstance() {
+            static InputConfig instance; // Guaranteed to be destroyed.
+            // Instantiated on first use.
+            return instance;
+        }
 
-        int directDist = INFTY;
+    private:
+        InputConfig() = default;
+
+    public:
+        // public deleted constructors for compiler error messages
+        InputConfig(InputConfig const &) = delete;
+
+        void operator=(InputConfig const &) = delete;
+
+        int minMaxFlowOnLine = INFTY;
+        int minNumPaxPerLine = INFTY;
+        double maxFlowRatioOnLine = 0.0;
+
+        int walkingRadius = -1;
+        double alpha = -1;
+        int beta = -1;
     };
-
-    static int getMaxTravelTime(const Request& req, const InputConfig& inputConfig) {
-        KASSERT(req.directDist != INFTY);
-        return static_cast<int>(inputConfig.alpha * static_cast<double>(req.directDist)) + inputConfig.beta;
-    }
-
 }

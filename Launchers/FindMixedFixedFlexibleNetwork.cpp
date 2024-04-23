@@ -44,65 +44,36 @@
 #include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
 
-#include "Algorithms/KaRRi/InputConfig.h"
-#include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
-#include "Algorithms/KaRRi/BaseObjects/Request.h"
-#include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
-#include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBucketsEnvironment.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
-#include "Algorithms/KaRRi/CostCalculator.h"
-#include "Algorithms/KaRRi/RequestState/RequestState.h"
-#include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
-#include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
-#include "Algorithms/KaRRi/RequestState/RelevantPDLocsFilter.h"
-#include "Algorithms/KaRRi/OrdinaryAssignments/OrdinaryAssignmentsFinder.h"
-#include "Algorithms/KaRRi/PbnsAssignments/PBNSAssignmentsFinder.h"
-#include "Algorithms/KaRRi/PalsAssignments/PALSAssignmentsFinder.h"
-#include "Algorithms/KaRRi/DalsAssignments/DALSAssignmentsFinder.h"
-#include "Algorithms/KaRRi/LastStopSearches/SortedLastStopBucketsEnvironment.h"
-#include "Algorithms/KaRRi/LastStopSearches/UnsortedLastStopBucketsEnvironment.h"
-#include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
-#include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
-#include "Algorithms/KaRRi/AssignmentFinder.h"
-#include "Algorithms/KaRRi/SystemStateUpdater.h"
-#include "Algorithms/KaRRi/EventSimulation.h"
-
-#ifdef KARRI_USE_CCHS
-#include "Algorithms/KaRRi/CCHEnvironment.h"
-#else
+#include "Algorithms/FindMixedFixedFlexibleNetwork/PickupDropoffManager.h"
+#include "Algorithms/FindMixedFixedFlexibleNetwork/GreedyFixedLineFinder.h"
+#include "Algorithms/FindMixedFixedFlexibleNetwork/SPPreliminaryPaths.h"
+#include "Algorithms/FindMixedFixedFlexibleNetwork/InputConfig.h"
+#include "DataStructures/Graph/Attributes/OsmRoadCategoryAttribute.h"
 #include "Algorithms/KaRRi/CHEnvironment.h"
-#endif
+#include <vector>
 
 inline void printUsage() {
     std::cout <<
               "Usage: mixfix -veh-g <vehicle network> -psg-g <passenger network> -r <requests> -v <vehicles> -o <file>\n"
               "Runs process to find mixed fixed-flexible bus public transport networks with given vehicle and passenger\n"
-              "road networks, demand, and taxi vehicles. Writes output files to specified base path."
+              "road networks and demand. Writes output files to specified base path."
               "  -veh-g <file>          vehicle road network in binary format.\n"
               "  -psg-g <file>          passenger road (and path) network in binary format.\n"
               "  -r <file>              requests in CSV format.\n"
-              "  -v <file>              vehicles in CSV format.\n"
-              "  -s <sec>               stop time (in s). (dflt: 60s)\n"
-              "  -w <sec>               maximum wait time (in s). (dflt: 300s)\n"
+              //              "  -v <file>              vehicles in CSV format.\n"
               "  -a <factor>            model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
               "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
-              "  -p-radius <sec>        walking radius (in s) for pickup locations around origin. (dflt: 300s)\n"
-              "  -d-radius <sec>        walking radius (in s) for dropoff locations around destination. (dflt: 300s)\n"
-              "  -max-num-p <int>       max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
-              "  -max-num-d <int>       max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
-              "  -always-veh            if set, the rider is not allowed to walk to their destination without a vehicle trip.\n"
+              "  -rho <sec>             walking radius (in s) for PD-Locs around origin/destination. (dflt: 300s)\n"
               "  -veh-h <file>          contraction hierarchy for the vehicle network in binary format.\n"
               "  -psg-h <file>          contraction hierarchy for the passenger network in binary format.\n"
               "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
               "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
-              "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
               "  -help                  show usage help text.\n";
 }
 
 int main(int argc, char *argv[]) {
-    using namespace karri;
+    using namespace mixfix;
     try {
         CommandLineParser clp(argc, argv);
         if (clp.isSet("help")) {
@@ -110,33 +81,27 @@ int main(int argc, char *argv[]) {
             return EXIT_SUCCESS;
         }
 
-
         // Parse the command-line options.
-        InputConfig inputConfig{};
-        inputConfig.stopTime = clp.getValue<int>("s", 60) * 10;
-        inputConfig.maxWaitTime = clp.getValue<int>("w", 300) * 10;
-        inputConfig.pickupRadius = clp.getValue<int>("p-radius", inputConfig.maxWaitTime / 10) * 10;
-        inputConfig.dropoffRadius = clp.getValue<int>("d-radius", inputConfig.maxWaitTime / 10) * 10;
-        inputConfig.maxNumPickups = clp.getValue<int>("max-num-p", INFTY);
-        inputConfig.maxNumDropoffs = clp.getValue<int>("max-num-d", INFTY);
-        inputConfig.alwaysUseVehicle = clp.isSet("always-veh");
-        if (inputConfig.maxNumPickups == 0) inputConfig.maxNumPickups = INFTY;
-        if (inputConfig.maxNumDropoffs == 0) inputConfig.maxNumDropoffs = INFTY;
+        InputConfig &inputConfig = InputConfig::getInstance();
+        inputConfig.minMaxFlowOnLine = clp.getValue<int>("min-max-line-flow", 5); // Delta1 in paper
+        inputConfig.maxFlowRatioOnLine = clp.getValue<double>("max-flow-dif", 10.0); // Delta2 in paper
+        inputConfig.minNumPaxPerLine = clp.getValue<int>("min-num-line-pax", 5); // Delta3 in paper
+
+        inputConfig.walkingRadius = clp.getValue<int>("rho", 300) * 10;
         inputConfig.alpha = clp.getValue<double>("a", 1.7);
         inputConfig.beta = clp.getValue<int>("b", 120) * 10;
+
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
-        const auto vehicleFileName = clp.getValue<std::string>("v");
+//        const auto vehicleFileName = clp.getValue<std::string>("v");
         const auto requestFileName = clp.getValue<std::string>("r");
         const auto vehHierarchyFileName = clp.getValue<std::string>("veh-h");
         const auto psgHierarchyFileName = clp.getValue<std::string>("psg-h");
         const auto vehSepDecompFileName = clp.getValue<std::string>("veh-d");
         const auto psgSepDecompFileName = clp.getValue<std::string>("psg-d");
-        const bool csvFilesInLoudFormat = clp.isSet("csv-in-LOUD-format");
         auto outputFileName = clp.getValue<std::string>("o");
         if (endsWith(outputFileName, ".csv"))
             outputFileName = outputFileName.substr(0, outputFileName.size() - 4);
-
 
         LogManager<std::ofstream>::setBaseFileName(outputFileName + ".");
 
@@ -211,122 +176,69 @@ int main(int argc, char *argv[]) {
         assert(numEdgesWithMappingToCar > 0);
         std::cout << "done.\n";
 
-
-        // Read the vehicle data from file.
-        std::cout << "Reading vehicle data from file... " << std::flush;
-        Fleet fleet;
-        int location, capacity, startOfServiceTime, endOfServiceTime;
-        io::CSVReader<4, io::trim_chars<' '>> vehiclesFileReader(vehicleFileName);
-
-        if (csvFilesInLoudFormat) {
-            vehiclesFileReader.read_header(io::ignore_no_column, "initial_location", "seating_capacity",
-                                           "start_service_time", "end_service_time");
-        } else {
-            vehiclesFileReader.read_header(io::ignore_no_column,
-                                           "initial_location", "start_of_service_time",
-                                           "end_of_service_time", "capacity");
-        }
-
-        int maxCapacity = 0;
-        while ((csvFilesInLoudFormat &&
-                vehiclesFileReader.read_row(location, capacity, startOfServiceTime, endOfServiceTime)) ||
-               (!csvFilesInLoudFormat &&
-                vehiclesFileReader.read_row(location, startOfServiceTime, endOfServiceTime, capacity))) {
-            if (location < 0 || location >= vehGraphOrigIdToSeqId.size() ||
-                vehGraphOrigIdToSeqId[location] == INVALID_ID)
-                throw std::invalid_argument("invalid location -- '" + std::to_string(location) + "'");
-            if (endOfServiceTime <= startOfServiceTime)
-                throw std::invalid_argument("start of service time needs to be before end of service time");
-            const int vehicleId = static_cast<int>(fleet.size());
-            fleet.push_back({vehicleId, vehGraphOrigIdToSeqId[location], startOfServiceTime * 10,
-                             endOfServiceTime * 10, capacity});
-            maxCapacity = std::max(maxCapacity, capacity);
-        }
-        std::cout << "done.\n";
-
-        // Create Route State for empty routes.
-        RouteState routeState(fleet, inputConfig.stopTime);
+//
+//        // Read the vehicle data from file.
+//        std::cout << "Reading vehicle data from file... " << std::flush;
+//        Fleet fleet;
+//        int location, capacity, startOfServiceTime, endOfServiceTime;
+//        io::CSVReader<4, io::trim_chars<' '>> vehiclesFileReader(vehicleFileName);
+//
+//        if (csvFilesInLoudFormat) {
+//            vehiclesFileReader.read_header(io::ignore_no_column, "initial_location", "seating_capacity",
+//                                           "start_service_time", "end_service_time");
+//        } else {
+//            vehiclesFileReader.read_header(io::ignore_no_column,
+//                                           "initial_location", "start_of_service_time",
+//                                           "end_of_service_time", "capacity");
+//        }
+//
+//        int maxCapacity = 0;
+//        while ((csvFilesInLoudFormat &&
+//                vehiclesFileReader.read_row(location, capacity, startOfServiceTime, endOfServiceTime)) ||
+//               (!csvFilesInLoudFormat &&
+//                vehiclesFileReader.read_row(location, startOfServiceTime, endOfServiceTime, capacity))) {
+//            if (location < 0 || location >= vehGraphOrigIdToSeqId.size() ||
+//                vehGraphOrigIdToSeqId[location] == INVALID_ID)
+//                throw std::invalid_argument("invalid location -- '" + std::to_string(location) + "'");
+//            if (endOfServiceTime <= startOfServiceTime)
+//                throw std::invalid_argument("start of service time needs to be before end of service time");
+//            const int vehicleId = static_cast<int>(fleet.size());
+//            fleet.push_back({vehicleId, vehGraphOrigIdToSeqId[location], startOfServiceTime * 10,
+//                             endOfServiceTime * 10, capacity});
+//            maxCapacity = std::max(maxCapacity, capacity);
+//        }
+//        std::cout << "done.\n";
+//
+//        // Create Route State for empty routes.
+//        RouteState routeState(fleet, inputConfig.stopTime);
 
 
 
         // Read the request data from file.
         std::cout << "Reading request data from file... " << std::flush;
         std::vector<Request> requests;
-        int origin, destination, requestTime, numRiders;
-        io::CSVReader<4, io::trim_chars<' '>> reqFileReader(requestFileName);
+        int origin, destination, requestTime;
+        io::CSVReader<3, io::trim_chars<' '>> reqFileReader(requestFileName);
+        reqFileReader.read_header(io::ignore_extra_column, "origin", "destination", "req_time");
 
-        if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time", "num_riders");
-        } else {
-            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders");
-        }
-
-        numRiders = -1;
-        while (reqFileReader.read_row(origin, destination, requestTime, numRiders)) {
+        while (reqFileReader.read_row(origin, destination, requestTime)) {
             if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
             if (destination < 0 || destination >= vehGraphOrigIdToSeqId.size() ||
                 vehGraphOrigIdToSeqId[destination] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
-            if (numRiders > maxCapacity)
-                throw std::invalid_argument("number of riders '" + std::to_string(numRiders) + "' is larger than max vehicle capacity (" + std::to_string(maxCapacity) + ")");
             const auto originSeqId = vehGraphOrigIdToSeqId[origin];
             assert(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const auto destSeqId = vehGraphOrigIdToSeqId[destination];
             assert(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const int requestId = static_cast<int>(requests.size());
-            if (numRiders == -1) // If number of riders was not specified, assume one rider
-                numRiders = 1;
-            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders});
-            numRiders = -1;
+            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
         }
         std::cout << "done.\n";
 
-#ifdef KARRI_USE_CCHS
 
         // Prepare vehicle CH environment
-        using VehCHEnv = CCHEnvironment<VehicleInputGraph, TravelTimeAttribute>;
-        std::unique_ptr<VehCHEnv> vehChEnv;
-        if (vehSepDecompFileName.empty()) {
-            std::cout << "Building Separator Decomposition and CCH... " << std::flush;
-            vehChEnv = std::make_unique<VehCHEnv>(vehicleInputGraph);
-            std::cout << "done.\n";
-        } else {
-            // Read the separator decomposition from file, construct and customize CCH.
-            std::cout << "Reading Seperator Decomposition from file and building CCH... " << std::flush;
-            std::ifstream vehSepDecompFile(vehSepDecompFileName, std::ios::binary);
-            if (!vehSepDecompFile.good())
-                throw std::invalid_argument("file not found -- '" + vehSepDecompFileName + "'");
-            SeparatorDecomposition vehSepDecomp;
-            vehSepDecomp.readFrom(vehSepDecompFile);
-            vehSepDecompFile.close();
-            std::cout << "done.\n";
-            vehChEnv = std::make_unique<VehCHEnv>(vehicleInputGraph, vehSepDecomp);
-        }
-
-        // Prepare passenger CH environment
-        using PsgCHEnv = CCHEnvironment<PsgInputGraph , TravelTimeAttribute>;
-        std::unique_ptr<PsgCHEnv> psgChEnv;
-        if (psgSepDecompFileName.empty()) {
-            std::cout << "Building Separator Decomposition and CCH... " << std::flush;
-            psgChEnv = std::make_unique<PsgCHEnv >(psgInputGraph);
-            std::cout << "done.\n";
-        } else {
-            // Read the separator decomposition from file, construct and customize CCH.
-            std::cout << "Reading Seperator Decomposition from file and building CCH... " << std::flush;
-            std::ifstream psgSepDecompFile(psgSepDecompFileName, std::ios::binary);
-            if (!psgSepDecompFile.good())
-                throw std::invalid_argument("file not found -- '" + psgSepDecompFileName + "'");
-            SeparatorDecomposition psgSepDecomp;
-            psgSepDecomp.readFrom(psgSepDecompFile);
-            psgSepDecompFile.close();
-            std::cout << "done.\n";
-            psgChEnv = std::make_unique<PsgCHEnv >(psgInputGraph, psgSepDecomp);
-        }
-
-#else
-        // Prepare vehicle CH environment
-        using VehCHEnv = CHEnvironment<VehicleInputGraph, TravelTimeAttribute>;
+        using VehCHEnv = karri::CHEnvironment<VehicleInputGraph, TravelTimeAttribute>;
         std::unique_ptr<VehCHEnv> vehChEnv;
         if (vehHierarchyFileName.empty()) {
             std::cout << "Building CH... " << std::flush;
@@ -345,7 +257,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Prepare passenger CH environment
-        using PsgCHEnv = CHEnvironment<PsgInputGraph, TravelTimeAttribute>;
+        using PsgCHEnv = karri::CHEnvironment<PsgInputGraph, TravelTimeAttribute>;
         std::unique_ptr<PsgCHEnv> psgChEnv;
         if (psgHierarchyFileName.empty()) {
             std::cout << "Building passenger CH... " << std::flush;
@@ -362,210 +274,38 @@ int main(int argc, char *argv[]) {
             std::cout << "done.\n";
             psgChEnv = std::make_unique<PsgCHEnv>(std::move(psgCh));
         }
-#endif
-
-
-        using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
-        VehicleLocatorImpl locator(vehicleInputGraph, *vehChEnv, routeState);
-
-        CostCalculator calc(routeState, inputConfig);
-        RequestState reqState(calc, inputConfig);
-
-        // Construct Elliptic BCH searches:
-        static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
-        using EllipticBucketsEnv = EllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
-        EllipticBucketsEnv ellipticBucketsEnv(vehicleInputGraph, *vehChEnv, routeState, inputConfig,
-                                              reqState.stats().updateStats);
-
-        using EllipticBCHLabelSet = std::conditional_t<KARRI_ELLIPTIC_BCH_USE_SIMD,
-                SimdLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>,
-                BasicLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>>;
-        using FeasibleEllipticDistancesImpl = FeasibleEllipticDistances<EllipticBCHLabelSet>;
-        FeasibleEllipticDistancesImpl feasibleEllipticPickups(fleet.size(), routeState);
-        FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(fleet.size(), routeState);
-
-
-        LastStopsAtVertices lastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
-
-        using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
-                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
-        EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, ellipticBucketsEnv, lastStopsAtVertices,
-                                                 *vehChEnv, routeState,
-                                                 feasibleEllipticPickups, feasibleEllipticDropoffs, reqState);
-
-
-        // Construct remaining request state
-        RelevantPDLocs relOrdinaryPickups(fleet.size());
-        RelevantPDLocs relOrdinaryDropoffs(fleet.size());
-        RelevantPDLocs relPickupsBeforeNextStop(fleet.size());
-        RelevantPDLocs relDropoffsBeforeNextStop(fleet.size());
-        using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
-        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, vehicleInputGraph, *vehChEnv, calc, reqState, routeState, inputConfig,
-                                                      feasibleEllipticPickups, feasibleEllipticDropoffs,
-                                                      relOrdinaryPickups, relOrdinaryDropoffs, relPickupsBeforeNextStop,
-                                                      relDropoffsBeforeNextStop);
 
 
         const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
-        using VehicleToPDLocQueryImpl = VehicleToPDLocQuery<VehicleInputGraph>;
-        VehicleToPDLocQueryImpl vehicleToPdLocQuery(vehicleInputGraph, revVehicleGraph);
+        const auto revPsgGraph = psgInputGraph.getReverseGraph();
+
+        using PickupDropoffManagerImpl = PickupDropoffManager<VehicleInputGraph, PsgInputGraph>;
+        PickupDropoffManagerImpl pdManager(vehicleInputGraph, psgInputGraph, revPsgGraph);
+
+        using PreliminaryPaths = SPPreliminaryPaths<VehicleInputGraph, VehCHEnv>;
+        PreliminaryPaths preliminaryPaths(vehicleInputGraph, *vehChEnv);
+
+        using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, PickupDropoffManagerImpl, std::ofstream>;
+        FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdManager, requests);
+
+        std::cout << "Finding PD-Locs ..." << std::flush;
+        pdManager.findPossiblePDLocsForRequests(requests);
+        std::cout << "done.\n";
+
+        std::cout << "Finding direct paths ..." << std::flush;
+        preliminaryPaths.findPathsAndDirectDists(requests);
+        std::cout << "done.\n";
+
+        std::cout << "Constructing lines ..." << std::flush;
+        const auto lines = lineFinder.findFixedLines(preliminaryPaths);
+        unused(lines); // todo: output served requests
+        std::cout << "done.\n";
 
 
-        // Construct PD-distance query
-        using PDDistancesLabelSet = std::conditional_t<KARRI_PD_DISTANCES_USE_SIMD,
-                SimdLabelSet<KARRI_PD_DISTANCES_LOG_K, ParentInfo::NO_PARENT_INFO>,
-                BasicLabelSet<KARRI_PD_DISTANCES_LOG_K, ParentInfo::NO_PARENT_INFO>>;
-        using PDDistancesImpl = PDDistances<PDDistancesLabelSet>;
-        PDDistancesImpl pdDistances(reqState);
-
-#if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
-        using PDDistanceQueryImpl = PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, VehicleToPDLocQueryImpl, PDDistancesLabelSet>;
-        PDDistanceQueryImpl pdDistanceQuery(vehicleInputGraph, *vehChEnv, pdDistances, reqState, vehicleToPdLocQuery);
-
-#else // KARRI_PD_STRATEGY == KARRI_CH_PD_STRAT
-        using PDDistanceQueryImpl = PDDistanceQueryStrategies::CHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>;
-        PDDistanceQueryImpl pdDistanceQuery(vehicleInputGraph, *vehChEnv, pdDistances, reqState);
-#endif
-
-        // Construct ordinary assignments finder:
-        using OrdinaryAssignmentsFinderImpl = OrdinaryAssignmentsFinder<PDDistancesImpl>;
-        OrdinaryAssignmentsFinderImpl ordinaryInsertionsFinder(relOrdinaryPickups, relOrdinaryDropoffs,
-                                                               pdDistances, fleet, calc, routeState,
-                                                               reqState);
-
-        // Construct PBNS assignments finder:
-        using CurVehLocToPickupLabelSet = PDDistancesLabelSet;
-        using CurVehLocToPickupSearchesImpl = CurVehLocToPickupSearches<VehicleInputGraph, VehicleLocatorImpl, VehCHEnv, CurVehLocToPickupLabelSet>;
-        CurVehLocToPickupSearchesImpl curVehLocToPickupSearches(vehicleInputGraph, locator, *vehChEnv, routeState,
-                                                                reqState, fleet.size());
 
 
-        using PBNSInsertionsFinderImpl = PBNSAssignmentsFinder<PDDistancesImpl, CurVehLocToPickupSearchesImpl>;
-        PBNSInsertionsFinderImpl pbnsInsertionsFinder(relPickupsBeforeNextStop, relOrdinaryDropoffs,
-                                                      relDropoffsBeforeNextStop, pdDistances, curVehLocToPickupSearches,
-                                                      fleet, calc, routeState, reqState);
-
-
-        // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
-        // Otherwise, we use no-op last stop buckets.
-
-
-#if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
-    KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
-
-    static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
-    using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
-            SortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
-            UnsortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
-    >;
-    LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, *vehChEnv, routeState, reqState.stats().updateStats);
-
-#else
-        using LastStopBucketsEnv = NoOpLastStopBucketsEnvironment;
-        LastStopBucketsEnv lastStopBucketsEnv;
-#endif
-
-        // Construct PALS strategy and assignment finder:
-        using PALSLabelSet = std::conditional_t<KARRI_PALS_USE_SIMD,
-                SimdLabelSet<KARRI_PALS_LOG_K, ParentInfo::NO_PARENT_INFO>,
-                BasicLabelSet<KARRI_PALS_LOG_K, ParentInfo::NO_PARENT_INFO>>;
-
-
-#if KARRI_PALS_STRATEGY == KARRI_COL
-        // Use Collective-BCH PALS Strategy
-        using PALSStrategy = PickupAfterLastStopStrategies::CollectiveBCHStrategy<VehicleInputGraph, VehCHEnv, LastStopBucketsEnv, VehicleToPDLocQueryImpl, PDDistancesImpl, PALSLabelSet>;
-        PALSStrategy palsStrategy(vehicleInputGraph, fleet, *vehChEnv,
-                                  vehicleToPdLocQuery, lastStopBucketsEnv, pdDistances, calc, routeState, reqState,
-                                  inputConfig);
-#elif KARRI_PALS_STRATEGY == KARRI_IND
-        // Use Individual-BCH PALS Strategy
-        using PALSStrategy = PickupAfterLastStopStrategies::IndividualBCHStrategy<VehicleInputGraph, VehCHEnv, LastStopBucketsEnv, PDDistancesImpl, PALSLabelSet>;
-        PALSStrategy palsStrategy(vehicleInputGraph, fleet, *vehChEnv, calc, lastStopBucketsEnv, pdDistances,
-                                  routeState, reqState, reqState.getBestCost(), inputConfig);
-#else // KARRI_PALS_STRATEGY == KARRI_DIJ
-        // Use Dijkstra PALS Strategy
-        using PALSStrategy = PickupAfterLastStopStrategies::DijkstraStrategy<VehicleInputGraph, PDDistancesImpl, PALSLabelSet>;
-        PALSStrategy palsStrategy(vehicleInputGraph, revVehicleGraph, fleet, routeState, lastStopsAtVertices, calc, pdDistances, reqState, inputConfig);
-#endif
-
-        using PALSInsertionsFinderImpl = PALSAssignmentsFinder<VehicleInputGraph, PDDistancesImpl, PALSStrategy>;
-        PALSInsertionsFinderImpl palsInsertionsFinder(palsStrategy, vehicleInputGraph, fleet, calc, lastStopsAtVertices,
-                                                      routeState, pdDistances, reqState);
-
-        // Construct DALS strategy and assignment finder:
-
-#if KARRI_DALS_STRATEGY == KARRI_COL
-        // Use Collective-BCH DALS Strategy
-        using DALSStrategy = DropoffAfterLastStopStrategies::CollectiveBCHStrategy<VehicleInputGraph, VehCHEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl>;
-        DALSStrategy dalsStrategy(vehicleInputGraph, fleet, routeState, *vehChEnv, lastStopBucketsEnv, calc,
-                                  curVehLocToPickupSearches, reqState, relOrdinaryPickups, relPickupsBeforeNextStop,
-                                  inputConfig);
-#elif KARRI_DALS_STRATEGY == KARRI_IND
-        // Use Individual-BCH DALS Strategy
-        using DALSLabelSet = std::conditional_t<KARRI_DALS_USE_SIMD,
-                SimdLabelSet<KARRI_DALS_LOG_K, ParentInfo::NO_PARENT_INFO>,
-                BasicLabelSet<KARRI_DALS_LOG_K, ParentInfo::NO_PARENT_INFO>>;
-        using DALSStrategy = DropoffAfterLastStopStrategies::IndividualBCHStrategy<VehicleInputGraph, VehCHEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl, DALSLabelSet>;
-        DALSStrategy dalsStrategy(vehicleInputGraph, fleet, *vehChEnv, calc, lastStopBucketsEnv,
-                                  curVehLocToPickupSearches, routeState, reqState, relOrdinaryPickups,
-                                  relPickupsBeforeNextStop);
-#else // KARRI_DALS_STRATEGY == KARRI_DIJ
-        // Use Dijkstra DALS Strategy
-        using DALSLabelSet = std::conditional_t<KARRI_DALS_USE_SIMD,
-                SimdLabelSet<KARRI_DALS_LOG_K, ParentInfo::NO_PARENT_INFO>,
-                BasicLabelSet<KARRI_DALS_LOG_K, ParentInfo::NO_PARENT_INFO>>;
-        using DALSStrategy = DropoffAfterLastStopStrategies::DijkstraStrategy<VehicleInputGraph, CurVehLocToPickupSearchesImpl , DALSLabelSet>;
-        DALSStrategy dalsStrategy(vehicleInputGraph, revVehicleGraph, fleet, calc, curVehLocToPickupSearches, routeState, lastStopsAtVertices, reqState, relOrdinaryPickups, relPickupsBeforeNextStop);
-#endif
-
-        using DALSInsertionsFinderImpl = DALSAssignmentsFinder<DALSStrategy>;
-        DALSInsertionsFinderImpl dalsInsertionsFinder(dalsStrategy);
-
-        using RequestStateInitializerImpl = RequestStateInitializer<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, VehicleToPDLocQueryImpl>;
-        RequestStateInitializerImpl requestStateInitializer(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
-                                                            reqState, inputConfig, vehicleToPdLocQuery);
-
-
-        using InsertionFinderImpl = AssignmentFinder<RequestStateInitializerImpl,
-                EllipticBCHSearchesImpl,
-                PDDistanceQueryImpl,
-                OrdinaryAssignmentsFinderImpl,
-                PBNSInsertionsFinderImpl,
-                PALSInsertionsFinderImpl,
-                DALSInsertionsFinderImpl,
-                RelevantPDLocsFilterImpl>;
-        InsertionFinderImpl insertionFinder(reqState, requestStateInitializer, ellipticSearches, pdDistanceQuery,
-                                            ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
-                                            dalsInsertionsFinder, relevantPdLocsFilter);
-
-
-#if KARRI_OUTPUT_VEHICLE_PATHS
-        using VehPathTracker = PathTracker<VehicleInputGraph, VehCHEnv, std::ofstream>;
-        VehPathTracker pathTracker(vehicleInputGraph, *vehChEnv, reqState, routeState, fleet.size());
-#else
-        using VehPathTracker = NoOpPathTracker;
-        VehPathTracker pathTracker;
-#endif
-
-
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl, VehPathTracker, std::ofstream>;
-        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, inputConfig, curVehLocToPickupSearches,
-                                                  pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv,
-                                                  lastStopsAtVertices);
-
-        // Initialize last stop state for initial locations of vehicles
-        for (const auto &veh: fleet) {
-            const auto head = vehicleInputGraph.edgeHead(veh.initialLocation);
-            lastStopsAtVertices.insertLastStopAt(head, veh.vehicleId);
-            lastStopBucketsEnv.generateIdleBucketEntries(veh);
-        }
-
-        // Run simulation:
-        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
-        EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, insertionFinder, systemStateUpdater,
-                                            routeState,
-                                            true);
-        eventSimulation.run();
+        std::cout << "Could serve " << requests.size() - preliminaryPaths.numPaths() << " / " << requests.size()
+                  << " requests with fixed lines." << std::endl;
 
     } catch (std::exception &e) {
         std::cerr << argv[0] << ": " << e.what() << '\n';

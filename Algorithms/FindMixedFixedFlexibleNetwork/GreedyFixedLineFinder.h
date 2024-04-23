@@ -32,7 +32,8 @@
 #include <kassert/kassert.hpp>
 #include "Tools/custom_assertion_levels.h"
 #include "DataStructures/Containers/Subset.h"
-#include "ServabilityChecker.h"
+#include "PickupDropoffManager.h"
+#include "InputConfig.h"
 
 namespace mixfix {
 
@@ -44,26 +45,60 @@ namespace mixfix {
     // public transport networks by tracking the paths of on-demand vehicles", Transportation Research Part C: Emerging
     // Technologies, 2024, https://doi.org/10.1016/j.trc.2024.104580.
     template<typename VehicleInputGraphT,
-            typename PreliminaryPathsT>
+            typename PreliminaryPathsT,
+            typename PDManagerT,
+            typename LoggerT = NullLogger>
     class GreedyFixedLineFinder {
+
+        struct ServedRequest {
+            int requestId;
+            int pickupEdgeIdx;
+            int pickupWalkingTime;
+            int dropoffEdgeIdx;
+            int dropoffWalkingTime;
+        };
 
     public:
 
+        GreedyFixedLineFinder(const VehicleInputGraphT &inputGraph, const VehicleInputGraphT &reverseGraph,
+                              const PDManagerT &pdManager, const std::vector<Request> &requests)
+                : inputGraph(inputGraph), reverseGraph(reverseGraph),
+                  pdManager(pdManager), requests(requests), inputConfig(InputConfig::getInstance()),
+                  residualFlow(inputGraph.numEdges(), 0),
+                  linesLogger(LogManager<LoggerT>::getLogger("lines.csv",
+                                                             "line_id, served\n")) {}
+
         // Finds fixed lines given preliminary rider paths.
         // Each path is expected to be a sequence of edges in the network.
-        std::vector<FixedLine> findFixedLines(PreliminaryPathsT &paths) {
+        std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> findFixedLines(PreliminaryPathsT &paths) {
 
-            while (true) {
+            std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> lines;
 
+            while (!paths.empty()) {
                 const auto &[line, flow] = constructNextLine(paths);
 
                 if (flow < inputConfig.minMaxFlowOnLine)
                     break;
 
-                const auto &pax = findPassengersServedByLine(line);
+                const auto &pax = findPassengersServableByLine(line, [&](const int reqId) {
+                    return !paths.hasPathFor(reqId);
+                });
+                if (pax.size() < inputConfig.minNumPaxPerLine)
+                    break;
 
+                for (const auto &served: pax)
+                    paths.removePathForRequest(served.requestId);
+
+                lines.push_back(std::make_pair(std::move(line), std::move(pax)));
+
+                linesLogger << lines.size() - 1 << ", ";
+                for (const auto& served : pax) {
+                    linesLogger << served.requestId << ":";
+                }
+                linesLogger << "\n";
             }
 
+            return lines;
         }
 
 
@@ -73,9 +108,10 @@ namespace mixfix {
 
         struct OverlappingPath {
 
-            OverlappingPath(const Path &path, const int start, const int end) : path(path), start(start), end(end) {}
+            OverlappingPath(const int requestId, const int start, const int end) : requestId(requestId), start(start),
+                                                                                   end(end) {}
 
-            const Path &path;
+            int requestId;
             int start; // smallest known index in path of passenger where path overlaps with line
             int end; // (one past) largest known index in path of passenger where path overlaps with line
         };
@@ -110,22 +146,25 @@ namespace mixfix {
 
             // Construct line by greedily extending in both directions.
             // TODO: Try extending by one edge forward and backward in alternating fashion.
-            extendLineBackwards(line, maxFlow, overlapping, paths);
-            extendLineForwards(line, maxFlow, overlapping, paths);
+            int maxFlowOnLine = maxFlow;
+            int minFlowOnLine = maxFlow;
+            extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlapping, paths);
+            extendLineForwards(line, maxFlowOnLine, minFlowOnLine, overlapping, paths);
 
-            return {line, maxFlow};
+            return {line, maxFlowOnLine};
         }
 
         static inline int square(const int n) { return n * n; }
 
         void extendLineForwards(FixedLine &line,
                                 int &maxFlowOnLine,
+                                int &minFlowOnLine,
                                 std::vector<OverlappingPath> &overlapping,
                                 const PreliminaryPathsT &paths) {
 
             // Begin extending
-            double flowDif = 0.0;
-            while (flowDif < inputConfig.maxFlowDif) {
+            double flowDif = static_cast<double>(maxFlowOnLine) / static_cast<double>(minFlowOnLine);
+            while (flowDif < inputConfig.maxFlowRatioOnLine) {
                 const auto v = inputGraph.edgeHead(line.back());
 
                 // Search for edge on which to extend line. Edge is chosen using a scoring system.
@@ -139,7 +178,7 @@ namespace mixfix {
                     // Paths already on line whose next edge is e increase the score by 1 + the square of the length of
                     // the current overlap between the line and the path.
                     for (const auto &o: overlapping) {
-                        const auto &path = o.path;
+                        const auto &path = paths.getPathFor(o.requestId);
                         if (o.end < path.size() && path[o.end] == e) {
                             score += 1 + square(o.end - o.start);
                             ++flow;
@@ -161,10 +200,10 @@ namespace mixfix {
                 }
 
                 // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
-                flowDif = static_cast<double>(flowOnExtension) /
-                          static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
-                if (flowDif >= inputConfig.maxFlowDif)
-                    break;
+                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
+                          static_cast<double>(std::min(minFlowOnLine, flowOnExtension));
+                if (flowDif >= inputConfig.maxFlowRatioOnLine)
+                    return;
 
                 // If extension edge is already part of line, stop extending
                 for (const auto &e: line)
@@ -172,13 +211,14 @@ namespace mixfix {
                          inputGraph.edgeTail(e) == inputGraph.edgeTail(extension)) ||
                         (inputGraph.edgeHead(e) == inputGraph.edgeTail(extension) &&
                          inputGraph.edgeTail(e) == inputGraph.edgeHead(extension)))
-                        break;
+                        return;
+
 
                 // Remove overlapping paths that do not overlap with extension
                 int i = 0;
                 while (i < overlapping.size()) {
-                    const auto &o = overlapping[i];
-                    const auto &path = o.path;
+                    auto &o = overlapping[i];
+                    const auto &path = paths.getPathFor(o.requestId);
                     if (o.end < path.size() && path[o.end] == extension) {
                         ++o.end;
                         ++i;
@@ -194,7 +234,7 @@ namespace mixfix {
                 //  (or store them while counting flow in FORALL_INCIDENT_EDGES loop)
                 for (const auto &path: paths) {
                     if (path.front() == extension) {
-                        overlapping.push_back({path, 0, 1});
+                        overlapping.push_back({path.getRequestId(), 0, 1});
                         if (++numOnLine == flowOnExtension)
                             break;
                     }
@@ -203,11 +243,13 @@ namespace mixfix {
                 // Add extension
                 line.push_back(extension);
                 maxFlowOnLine = std::max(maxFlowOnLine, flowOnExtension);
+                minFlowOnLine = std::min(minFlowOnLine, flowOnExtension);
             }
         }
 
         void extendLineBackwards(FixedLine &line,
                                  int &maxFlowOnLine,
+                                 int &minFlowOnLine,
                                  std::vector<OverlappingPath> &overlapping,
                                  const PreliminaryPathsT &paths) {
 
@@ -221,12 +263,12 @@ namespace mixfix {
                         break;
                     }
                 }
-                KASSERT(false, "No reverse edge found for " << e << "!", kassert::assert::light);
+                KASSERT(e != reverseGraph.edgeId(e), "No reverse edge found for " << e << "!", kassert::assert::light);
             }
 
             // Begin extending
-            double flowDif = 0.0;
-            while (flowDif < inputConfig.maxFlowDif) {
+            double flowDif = static_cast<double>(maxFlowOnLine) / static_cast<double>(minFlowOnLine);
+            while (flowDif < inputConfig.maxFlowRatioOnLine) {
                 const auto v = reverseGraph.edgeHead(line.back());
 
                 // Search for edge on which to extend line. Edge is chosen using a scoring system.
@@ -240,7 +282,7 @@ namespace mixfix {
                     // Paths already on line whose previous edge is e increase the score by 1 + the square of the length of
                     // the current overlap between the line and the path.
                     for (const auto &o: overlapping) {
-                        const auto &path = o.path;
+                        const auto &path = paths.getPathFor(o.requestId);
                         if (o.start > 0 && path[o.start - 1] == e) {
                             score += 1 + square(o.end - o.start);
                             ++flow;
@@ -262,9 +304,9 @@ namespace mixfix {
                 }
 
                 // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
-                flowDif = static_cast<double>(flowOnExtension) /
-                          static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
-                if (flowDif >= inputConfig.maxFlowDif)
+                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
+                          static_cast<double>(std::min(minFlowOnLine, flowOnExtension));
+                if (flowDif >= inputConfig.maxFlowRatioOnLine)
                     break;
 
                 // If extension edge is already part of line, stop extending
@@ -278,8 +320,8 @@ namespace mixfix {
                 // Remove passengers on line whose paths do not overlap with extension
                 int i = 0;
                 while (i < overlapping.size()) {
-                    const auto &o = overlapping[i];
-                    const auto &path = o.path;
+                    auto &o = overlapping[i];
+                    const auto &path = paths.getPathFor(o.requestId);
                     if (o.start > 0 && path[o.start - 1] == extension) {
                         --o.start;
                         ++i;
@@ -304,6 +346,7 @@ namespace mixfix {
                 // Add extension
                 line.push_back(extension);
                 maxFlowOnLine = std::max(maxFlowOnLine, flowOnExtension);
+                minFlowOnLine = std::min(minFlowOnLine, flowOnExtension);
             }
 
             // Convert line back into forwards representation
@@ -312,17 +355,115 @@ namespace mixfix {
                 e = reverseGraph.edgeId(e);
         }
 
-        std::vector<int> findPassengersServedByLine(const FixedLine &line, const Subset& paxToServe) {
+        template<typename IsPassengerAlreadyServedT>
+        std::vector<ServedRequest>
+        findPassengersServableByLine(const FixedLine &line, const IsPassengerAlreadyServedT &isPaxAlreadyServed) {
+
+            // We iterate over the edges of the line from front to back, keeping track of a subset of requests P that
+            // may be picked up by the vehicle before the current edge.
+            // When reaching edge i, we perform the following:
+            //  1. Remove a request r from P if the detour of r has become too large with edge i.
+            //  2. Check whether r can be dropped off at edge i. If so, r can be served by the line. Remove r from P.
+            //  3. Add all unserved requests that can be picked up at edge i to P.
+            //
+            // There may be multiple possible pickup edges on the same line for a request r. We always use the one with
+            // the smallest travel time to the current edge i, i.e. walking distance + current in-vehicle distance.
+
+            std::vector<ServedRequest> servableRequests;
+
+            struct Pickupable {
+                int requestId;
+                int pickupIdx;
+                int walkingTime;
+            };
+
+            std::vector<Pickupable> pickupables;
+            for (int i = 0; i < line.size(); ++i) {
+                const auto &e = line[i];
+
+                // 1. Remove pickup-able requests whose detour would grow too large with edge i:
+                int k = 0;
+                while (k < pickupables.size()) {
+                    const auto tt = pickupables[k].walkingTime +
+                                    getVehicleTravelTimeInInterval(line, pickupables[k].pickupIdx + 1, i + 1);
+                    if (tt > getMaxTravelTime(requests[pickupables[k].requestId], inputConfig)) {
+                        std::swap(pickupables[k], pickupables.back());
+                        pickupables.pop_back();
+                        continue;
+                    }
+                    ++k;
+                }
+
+                // 2. Check which pickup-able requests can be dropped off at edge i.
+                const auto &dropoffsAtE = pdManager.getPossibleDropoffsAt(e);
+                const auto &dropoffWalkingTimes = pdManager.getDropoffWalkingDistsAt(e);
+                for (int j = 0; j < dropoffsAtE.size(); ++j) {
+                    const auto reqId = dropoffsAtE[j];
+                    const auto pickupIt = std::find_if(pickupables.begin(), pickupables.end(),
+                                                       [&](const auto &p) { return p.requestId == reqId; });
+                    if (pickupIt == pickupables.end())
+                        continue;
+                    auto &p = *pickupIt;
+                    const auto totalTT = p.walkingTime + getVehicleTravelTimeInInterval(line, p.pickupIdx + 1, i + 1) +
+                                         dropoffWalkingTimes[j];
+                    if (totalTT <= getMaxTravelTime(requests[pickupables[k].requestId], inputConfig)) {
+                        // Request can be served by line
+                        servableRequests.push_back({reqId, p.pickupIdx, p.walkingTime, i, dropoffWalkingTimes[j]});
+                        std::swap(pickupables[k], pickupables.back());
+                        pickupables.pop_back();
+                    }
+                }
 
 
+                // 3. Add unserved passengers that may be picked up here:
+                const auto &pickupsAtE = pdManager.getPossiblePickupsAt(e);
+                const auto &pickupWalkingTimes = pdManager.getPickupWalkingDistsAt(e);
+                for (int j = 0; j < pickupsAtE.size(); ++j) {
+                    const auto &reqId = pickupsAtE[j];
+                    if (isPaxAlreadyServed(reqId))
+                        continue;
+                    const auto &walkingTime = pickupWalkingTimes[j];
 
+                    const auto dupIt = std::find_if(pickupables.begin(), pickupables.end(),
+                                                    [&](const auto &p) { return p.requestId == reqId; });
+                    if (dupIt == pickupables.end()) {
+                        pickupables.push_back({reqId, i, walkingTime});
+                        continue;
+                    }
+
+                    // If request can already be picked up at earlier edge on line, only store edge that provides
+                    // better travel time (ignoring waiting times).
+                    auto &p = *dupIt;
+                    const auto ttExisting =
+                            p.walkingTime + getVehicleTravelTimeInInterval(line, p.pickupIdx + 1, i + 1);
+                    const auto ttNew = walkingTime;
+                    if (ttNew < ttExisting) {
+                        p = {reqId, i, walkingTime};
+                    }
+                }
+            }
+
+            return servableRequests;
+        }
+
+        int getVehicleTravelTimeInInterval(const FixedLine &line, const int start, const int end) const {
+            if (start >= end)
+                return 0;
+            return std::accumulate(line.begin() + start, line.begin() + end, 0, [&](const int a, const int b) {
+                return a + inputGraph.travelTime(b);
+            });
         }
 
 
         const VehicleInputGraphT &inputGraph;
         const VehicleInputGraphT &reverseGraph;
-        const std::vector<Request> requests;
+        const PDManagerT &pdManager;
+        const std::vector<Request> &requests;
+        const InputConfig &inputConfig;
+
         TimestampedVector<int> residualFlow;
+
+        LoggerT& linesLogger;
 
     };
 
