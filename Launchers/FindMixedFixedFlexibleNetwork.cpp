@@ -46,7 +46,8 @@
 
 #include "Algorithms/FindMixedFixedFlexibleNetwork/PickupDropoffManager.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/GreedyFixedLineFinder.h"
-#include "Algorithms/FindMixedFixedFlexibleNetwork/SPPreliminaryPaths.h"
+#include "Algorithms/FindMixedFixedFlexibleNetwork/DirectDistancesFinder.h"
+#include "Algorithms/FindMixedFixedFlexibleNetwork/PreliminaryPaths.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/InputConfig.h"
 #include "DataStructures/Graph/Attributes/OsmRoadCategoryAttribute.h"
 #include "Algorithms/KaRRi/CHEnvironment.h"
@@ -72,6 +73,20 @@ inline void printUsage() {
               "  -help                  show usage help text.\n";
 }
 
+std::vector<int> parseEdgePathString(std::string s) {
+    // Paths are expected to be sequence of edge ids separated by " : "
+    s.erase(remove(s.begin(), s.end(), ' '), s.end());
+    std::vector<int> result;
+    std::stringstream ss(s);
+    std::string item;
+    while (getline(ss, item, ':')) {
+        result.push_back(std::stoi(item));
+    }
+
+    return result;
+}
+
+
 int main(int argc, char *argv[]) {
     using namespace mixfix;
     try {
@@ -95,6 +110,7 @@ int main(int argc, char *argv[]) {
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
 //        const auto vehicleFileName = clp.getValue<std::string>("v");
         const auto requestFileName = clp.getValue<std::string>("r");
+        const auto pathsFileName = clp.getValue<std::string>("p");
         const auto vehHierarchyFileName = clp.getValue<std::string>("veh-h");
         const auto psgHierarchyFileName = clp.getValue<std::string>("psg-h");
         const auto vehSepDecompFileName = clp.getValue<std::string>("veh-d");
@@ -176,44 +192,6 @@ int main(int argc, char *argv[]) {
         assert(numEdgesWithMappingToCar > 0);
         std::cout << "done.\n";
 
-//
-//        // Read the vehicle data from file.
-//        std::cout << "Reading vehicle data from file... " << std::flush;
-//        Fleet fleet;
-//        int location, capacity, startOfServiceTime, endOfServiceTime;
-//        io::CSVReader<4, io::trim_chars<' '>> vehiclesFileReader(vehicleFileName);
-//
-//        if (csvFilesInLoudFormat) {
-//            vehiclesFileReader.read_header(io::ignore_no_column, "initial_location", "seating_capacity",
-//                                           "start_service_time", "end_service_time");
-//        } else {
-//            vehiclesFileReader.read_header(io::ignore_no_column,
-//                                           "initial_location", "start_of_service_time",
-//                                           "end_of_service_time", "capacity");
-//        }
-//
-//        int maxCapacity = 0;
-//        while ((csvFilesInLoudFormat &&
-//                vehiclesFileReader.read_row(location, capacity, startOfServiceTime, endOfServiceTime)) ||
-//               (!csvFilesInLoudFormat &&
-//                vehiclesFileReader.read_row(location, startOfServiceTime, endOfServiceTime, capacity))) {
-//            if (location < 0 || location >= vehGraphOrigIdToSeqId.size() ||
-//                vehGraphOrigIdToSeqId[location] == INVALID_ID)
-//                throw std::invalid_argument("invalid location -- '" + std::to_string(location) + "'");
-//            if (endOfServiceTime <= startOfServiceTime)
-//                throw std::invalid_argument("start of service time needs to be before end of service time");
-//            const int vehicleId = static_cast<int>(fleet.size());
-//            fleet.push_back({vehicleId, vehGraphOrigIdToSeqId[location], startOfServiceTime * 10,
-//                             endOfServiceTime * 10, capacity});
-//            maxCapacity = std::max(maxCapacity, capacity);
-//        }
-//        std::cout << "done.\n";
-//
-//        // Create Route State for empty routes.
-//        RouteState routeState(fleet, inputConfig.stopTime);
-
-
-
         // Read the request data from file.
         std::cout << "Reading request data from file... " << std::flush;
         std::vector<Request> requests;
@@ -233,6 +211,27 @@ int main(int argc, char *argv[]) {
             assert(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const int requestId = static_cast<int>(requests.size());
             requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
+        }
+        std::cout << "done.\n";
+
+        // Read the preliminary paths from file.
+        std::cout << "Reading preliminary paths from file... " << std::flush;
+        int requestId;
+        std::string pathString;
+        io::CSVReader<2, io::trim_chars<' '>> pathFileReader(pathsFileName);
+        pathFileReader.read_header(io::ignore_extra_column, "request_id", "path_as_graph_edge_ids");
+
+        PreliminaryPaths preliminaryPaths;
+        preliminaryPaths.init(requests.size());
+        while (pathFileReader.read_row(requestId, pathString)) {
+            if (requestId < 0 || requestId >= requests.size())
+                throw std::invalid_argument("invalid request id -- '" + std::to_string(requestId) + "'");
+            std::vector<int> edges = parseEdgePathString(pathString);
+            assert(std::all_of(edges.begin(), edges.end(),
+                               [&](const int e) { return e < vehicleInputGraph.numEdges(); }));
+            if (edges.empty())
+                continue;
+            preliminaryPaths.addPathForRequest(requestId, std::move(edges));
         }
         std::cout << "done.\n";
 
@@ -282,9 +281,6 @@ int main(int argc, char *argv[]) {
         using PickupDropoffManagerImpl = PickupDropoffManager<VehicleInputGraph, PsgInputGraph>;
         PickupDropoffManagerImpl pdManager(vehicleInputGraph, psgInputGraph, revPsgGraph);
 
-        using PreliminaryPaths = SPPreliminaryPaths<VehicleInputGraph, VehCHEnv>;
-        PreliminaryPaths preliminaryPaths(vehicleInputGraph, *vehChEnv);
-
         using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, PickupDropoffManagerImpl, std::ofstream>;
         FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdManager, requests);
 
@@ -292,19 +288,19 @@ int main(int argc, char *argv[]) {
         pdManager.findPossiblePDLocsForRequests(requests);
         std::cout << "done.\n";
 
-        std::cout << "Finding direct paths ..." << std::flush;
-        preliminaryPaths.findPathsAndDirectDists(requests);
+        std::cout << "Computing direct distances ..." << std::flush;
+        DirectDistancesFinder<VehicleInputGraph, VehCHEnv> directDistancesFinder(vehicleInputGraph, *vehChEnv);
+        directDistancesFinder.computeDirectDists(requests);
         std::cout << "done.\n";
 
+        const auto numNonEmptyPaths = preliminaryPaths.numPaths();
         std::cout << "Constructing lines ..." << std::flush;
         const auto lines = lineFinder.findFixedLines(preliminaryPaths);
-        unused(lines); // todo: output served requests
+        unused(lines);
         std::cout << "done.\n";
 
 
-
-
-        std::cout << "Could serve " << requests.size() - preliminaryPaths.numPaths() << " / " << requests.size()
+        std::cout << "Could serve " << numNonEmptyPaths - preliminaryPaths.numPaths()  << " / " << requests.size()
                   << " requests with fixed lines." << std::endl;
 
     } catch (std::exception &e) {

@@ -32,6 +32,7 @@
 #include "Request.h"
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
 #include "InputConfig.h"
+#include "Tools/CommandLine/ProgressBar.h"
 
 namespace mixfix {
 
@@ -82,9 +83,12 @@ namespace mixfix {
                   reversePsgGraph(reversePsgGraph),
                   pickupSearch(forwardPsgGraph, {InputConfig::getInstance().walkingRadius}, {searchSpace}),
                   dropoffSearch(reversePsgGraph, {InputConfig::getInstance().walkingRadius}, {searchSpace}),
-                  searchSpace() {}
+                  searchSpace(),
+                  progressBar() {}
 
         void findPossiblePDLocsForRequests(const std::vector<Request> &requests) {
+
+            progressBar.init(requests.size());
 
             pickupIndex.resize(vehGraph.numEdges());
             std::fill(pickupIndex.begin(), pickupIndex.end(), ValueBlockPosition{0,0});
@@ -110,6 +114,7 @@ namespace mixfix {
                 dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
                 turnSearchSpaceIntoDropoffLocations(req.requestId);
 
+                ++progressBar;
             }
 
             // TODO: Post-process 2D-arrays, (compression, potentially sorting)
@@ -250,6 +255,8 @@ namespace mixfix {
         // IDs of requests that can be dropped off at edge.
         std::vector<int> dropoffWalkingDists;
 
+
+        ProgressBar progressBar;
 
     };
 } // end namespace

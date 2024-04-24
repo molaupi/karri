@@ -32,9 +32,8 @@
 
 namespace mixfix {
 
-    template<typename InputGraphT,
-            typename VehChEnvT>
-    class SPPreliminaryPaths {
+    class PreliminaryPaths {
+
     public:
 
         struct Path {
@@ -48,27 +47,27 @@ namespace mixfix {
                 return edges.cend();
             }
 
-            int& operator[](const int idx) {
+            int &operator[](const int idx) {
                 return edges[idx];
             }
 
-            const int& operator[](const int idx) const {
+            const int &operator[](const int idx) const {
                 return edges[idx];
             }
 
-            int& front() {
+            int &front() {
                 return edges.front();
             }
 
-            const int& front() const {
+            const int &front() const {
                 return edges.front();
             }
 
-            int& back() {
+            int &back() {
                 return edges.back();
             }
 
-            const int& back() const {
+            const int &back() const {
                 return edges.back();
             }
 
@@ -76,55 +75,38 @@ namespace mixfix {
                 return edges.size();
             }
 
-            const int& getRequestId() const {
+            const int &getRequestId() const {
                 return requestId;
             }
 
         private:
-            friend SPPreliminaryPaths;
 
-            Path(const int requestId) : requestId(requestId), edges() {}
+            friend PreliminaryPaths;
+
+            Path(const int requestId, std::vector<int> &&edges) : requestId(requestId), edges(edges) {}
 
             int requestId;
             std::vector<int> edges;
         };
 
     private:
+
         using Paths = std::vector<Path>;
         using PathIt = typename Paths::const_iterator;
-        using Query = typename VehChEnvT::template FullCHQuery<>;
 
     public:
 
-        SPPreliminaryPaths(const InputGraphT &inputGraph, const VehChEnvT &vehChEnv)
-                : inputGraph(inputGraph),
-                  ch(vehChEnv.getCH()),
-                  query(vehChEnv.template getFullCHQuery<>()),
-                  pathUnpacker(ch) {}
+        PreliminaryPaths() {}
 
-        void findPathsAndDirectDists(std::vector<Request> &requests) {
-
+        void init(const int numRequests) {
             std::fill(reqIdToPathIdx.begin(), reqIdToPathIdx.end(), INVALID_INDEX);
-            reqIdToPathIdx.resize(requests.size(), INVALID_INDEX);
+            reqIdToPathIdx.resize(numRequests, INVALID_INDEX);
             paths.clear();
+        }
 
-            for (auto &req: requests) {
-                const int srcRank = ch.rank(inputGraph.edgeHead(req.origin));
-                const int destRank = ch.rank(inputGraph.edgeTail(req.destination));
-                const int offset = inputGraph.travelTime(req.destination);
-                query.run(srcRank, destRank);
-
-                // TODO: Finding the direct distances should technically be separate from finding preliminary
-                //  paths. If we use a different method for finding preliminary paths, we need to separate them.
-                req.directDist = query.getDistance() + offset;
-
-                reqIdToPathIdx[req.requestId] = paths.size();
-                Path newPath(req.requestId);
-                pathUnpacker.unpackUpDownPath(query.getUpEdgePath(), query.getDownEdgePath(), newPath.edges);
-                newPath.edges.push_back(req.destination);
-                paths.push_back(std::move(newPath));
-            }
-
+        void addPathForRequest(const int requestId, std::vector<int> &&edges) {
+            reqIdToPathIdx[requestId] = paths.size();
+            paths.push_back(Path(requestId, std::move(edges)));
         }
 
         int numPaths() const {
@@ -139,7 +121,7 @@ namespace mixfix {
             return reqIdToPathIdx[reqId] != INVALID_INDEX;
         }
 
-        const Path& getPathFor(const int reqId) const {
+        const Path &getPathFor(const int reqId) const {
             KASSERT(hasPathFor(reqId),
                     "Request " << reqId << " does not have a path.", kassert::assert::light);
             return paths[reqIdToPathIdx[reqId]];
@@ -154,7 +136,7 @@ namespace mixfix {
             paths.pop_back();
 
             reqIdToPathIdx[requestId] = INVALID_INDEX;
-            reqIdToPathIdx[paths[idx].requestId] = idx;
+            reqIdToPathIdx[paths[idx].getRequestId()] = idx;
         }
 
         PathIt begin() const {
@@ -166,11 +148,6 @@ namespace mixfix {
         }
 
     private:
-
-        const InputGraphT &inputGraph;
-        const CH &ch;
-        Query query;
-        CHPathUnpacker pathUnpacker;
 
         std::vector<int> reqIdToPathIdx;
         std::vector<Path> paths;
