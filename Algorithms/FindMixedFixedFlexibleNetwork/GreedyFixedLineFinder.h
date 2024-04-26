@@ -75,21 +75,28 @@ namespace mixfix {
             std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> lines;
 
             while (!paths.empty()) {
-                const auto &[line, flow] = constructNextLine(paths);
+                FixedLine line;
+                int maxFlowOnLine;
+                std::vector<OverlappingPath> overlappingPaths;
+                constructNextLine(paths, line, maxFlowOnLine, overlappingPaths);
 
-                if (flow < inputConfig.minMaxFlowOnLine)
+                if (maxFlowOnLine < inputConfig.minMaxFlowOnLine)
                     break;
 
                 const auto &pax = findPassengersServableByLine(line, [&](const int reqId) {
                     return !paths.hasPathFor(reqId);
                 });
-                std::cout << "Found a line of length " << line.size() << " that can serve " << pax.size() << " passengers." << std::endl;
+                std::cout << "\nFound a line of length " << line.size() << " that can serve " << pax.size()
+                          << " passengers." << std::endl;
                 if (pax.size() < inputConfig.minNumPaxPerLine)
                     break;
 
 
-                for (const auto &served: pax)
+                for (const auto &served: pax) {
+                    if (!std::any_of(overlappingPaths.begin(), overlappingPaths.end(),[&](const auto& o) {return o.requestId == served.requestId;}))
+                        std::cout << "Passenger " << served.requestId << " is served by line but their path does not overlap." << std::endl;
                     paths.removePathForRequest(served.requestId);
+                }
 
                 // Log line
                 linesLogger << lines.size() - 1 << ", ";
@@ -121,7 +128,8 @@ namespace mixfix {
         };
 
         // Greedily constructs new line from remaining paths. Returns line and max flow on line.
-        std::pair<FixedLine, int> constructNextLine(PreliminaryPathsT &paths) {
+        void constructNextLine(PreliminaryPathsT &paths, FixedLine &line, int &maxFlowOnLine,
+                               std::vector<OverlappingPath> &overlappingPaths) {
             residualFlow.clear();
             int maxFlow = 0;
             int maxFlowEdge = INVALID_EDGE;
@@ -135,33 +143,30 @@ namespace mixfix {
                 }
             }
 
-            FixedLine line = {maxFlowEdge};
-            std::vector<OverlappingPath> overlapping;
+            line = {maxFlowEdge};
             for (const auto &path: paths) {
                 for (int i = 0; i < path.size(); ++i) {
                     if (path[i] == maxFlowEdge) {
-                        overlapping.push_back({path.getRequestId(), i, i + 1});
+                        overlappingPaths.push_back({path.getRequestId(), i, i + 1});
                         break;
                     }
                 }
-                if (overlapping.size() == maxFlow)
+                if (overlappingPaths.size() == maxFlow)
                     break;
             }
 
             // Construct line by greedily extending in both directions.
             // TODO: Try extending by one edge forward and backward in alternating fashion.
-            int maxFlowOnLine = maxFlow;
+            maxFlowOnLine = maxFlow;
             int minFlowOnLine = maxFlow;
-            extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlapping, paths);
-            extendLineForwards(line, maxFlowOnLine, minFlowOnLine, overlapping, paths);
-
-            return {line, maxFlowOnLine};
+            extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, paths);
+            extendLineForwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, paths);
         }
 
         static inline int square(const int n) { return n * n; }
 
         void extendLineForwards(FixedLine &line,
-                                int &maxFlowOnLine,
+                                const int &maxFlowOnLine,
                                 int &minFlowOnLine,
                                 std::vector<OverlappingPath> &overlapping,
                                 const PreliminaryPathsT &paths) {
@@ -207,18 +212,21 @@ namespace mixfix {
                 if (extension == INVALID_EDGE)
                     break;
 
+                KASSERT(flowOnExtension <= maxFlowOnLine, "Larger flow than max flow has been found!",
+                        kassert::assert::light);
+
                 // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
 //                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
 //                          static_cast<double>(std::min(minFlowOnLine, flowOnExtension));
-//                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
-//                          static_cast<double>(flowOnExtension);
+                flowDif = static_cast<double>(maxFlowOnLine) /
+                          static_cast<double>(flowOnExtension);
 
                 // In the paper, they give this formula for the flow difference. The given intention is to stop
                 // extending once the difference in flow becomes too large since this would imply bad utilization of
                 // vehicle capacity in parts of the line. However, a line is started on the edge with most flow so
                 // flowOnExtension will become smaller over time which means flowDif also becomes smaller over time.
-                flowDif = static_cast<double>(flowOnExtension) /
-                          static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
+//                flowDif = static_cast<double>(flowOnExtension) /
+//                          static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
                 if (flowDif >= inputConfig.maxFlowRatioOnLine)
                     break; // Stop extending line
 
@@ -265,13 +273,12 @@ namespace mixfix {
 
                 // Add extension
                 line.push_back(extension);
-                maxFlowOnLine = std::max(maxFlowOnLine, flowOnExtension);
                 minFlowOnLine = std::min(minFlowOnLine, flowOnExtension);
             }
         }
 
         void extendLineBackwards(FixedLine &line,
-                                 int &maxFlowOnLine,
+                                 const int &maxFlowOnLine,
                                  int &minFlowOnLine,
                                  std::vector<OverlappingPath> &overlapping,
                                  const PreliminaryPathsT &paths) {
@@ -332,19 +339,22 @@ namespace mixfix {
                 if (extension == INVALID_EDGE)
                     break;
 
+                KASSERT(flowOnExtension <= maxFlowOnLine, "Larger flow than max flow has been found!",
+                        kassert::assert::light);
+
                 // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
 //                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
 //                          static_cast<double>(std::min(minFlowOnLine, flowOnExtension));
-//                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
-//                          static_cast<double>(flowOnExtension);
+                flowDif = static_cast<double>(maxFlowOnLine) /
+                          static_cast<double>(flowOnExtension);
 
                 // In the paper, they give this formula for the flow difference. The given intention is to stop
                 // extending once the difference in flow becomes too large since this would imply bad utilization of
                 // vehicle capacity in parts of the line. However, a line is started on the edge with most flow so
                 // flowOnExtension will become smaller over time which means flowDif also becomes smaller over time.
                 // Thus, this stopping criterion is never met.
-                flowDif = static_cast<double>(flowOnExtension) /
-                          static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
+//                flowDif = static_cast<double>(flowOnExtension) /
+//                          static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
                 if (flowDif >= inputConfig.maxFlowRatioOnLine)
                     break; // Stop extending line
 
@@ -394,7 +404,6 @@ namespace mixfix {
 
                 // Add extension
                 line.push_back(extension);
-                maxFlowOnLine = std::max(maxFlowOnLine, flowOnExtension);
                 minFlowOnLine = std::min(minFlowOnLine, flowOnExtension);
             }
 
