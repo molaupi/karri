@@ -154,22 +154,27 @@ namespace karri {
         }
 
 
-        // Called when a vehicle reaches a new stop and thus has completed the leg between stop 0 and stop 1 (needs to
-        // be called before completed leg is removed from routeState).
-        // Logs the completed leg of the vehicle path.
-        void logCompletedLeg(const Vehicle &veh) {
-            const auto stopCount = numCompletedStopsPerVeh[veh.vehicleId]++;
-            const auto idOfStartedStop = routeState.stopIdsFor(veh.vehicleId)[1];
-            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[1];
-            const auto arrTime = routeState.schedArrTimesFor(veh.vehicleId)[1];
-            const auto depTime = routeState.schedDepTimesFor(veh.vehicleId)[1];
+        // Called when a vehicle completes a stop and thus has performed all pickups and dropoffs at the stop.
+        // Logs the completed stop along with the previous leg of the vehicle path.
+        void logCompletedStop(const Vehicle &veh) {
+            const auto idOfCompletedStop = routeState.stopIdsFor(veh.vehicleId)[0];
+            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[0];
+            const auto arrTime = routeState.schedArrTimesFor(veh.vehicleId)[0];
+            const auto depTime = routeState.schedDepTimesFor(veh.vehicleId)[0];
 
-            const auto &edgePathToStop = getEdgePathTo(idOfStartedStop);
-            const auto &requestIdsAtStop = requestIdsAt(idOfStartedStop);
-            const auto &pdLocTypesAtStop = pdLocTypesAt(idOfStartedStop);
+            const auto &edgePathToStop = getEdgePathTo(idOfCompletedStop);
+            const auto &requestIdsAtStop = requestIdsAt(idOfCompletedStop);
+            const auto &pdLocTypesAtStop = pdLocTypesAt(idOfCompletedStop);
             assert(requestIdsAtStop.size() == pdLocTypesAtStop.size());
             const auto numEvents = requestIdsAtStop.size();
 
+            if (numEvents == 0) {
+                KASSERT(edgePathToStop.size() == 0, "No events (finished idling) but non-empty path!", kassert::assert::light);
+                invalidateDataFor(idOfCompletedStop);
+                return;
+            }
+
+            const auto stopCount = numCompletedStopsPerVeh[veh.vehicleId]++;
             vehiclePathLogger << veh.vehicleId << ", " << stopCount << ", " << arrTime << ", " << depTime << ", ";
             for (int i = 0; i < numEvents; ++i) {
                 const auto typeStr = pdLocTypesAtStop[i] == PICKUP ? "pickup" : "dropoff";
@@ -216,7 +221,7 @@ namespace karri {
             assert(edgePathToStop.size() == 0 || inputGraph.edgeTail(stopLoc) == prevVertex);
             vehiclePathLogger << "\n";
 
-            invalidateDataFor(idOfStartedStop);
+            invalidateDataFor(idOfCompletedStop);
         }
 
     private:
@@ -358,6 +363,6 @@ namespace karri {
 
         void updateForBestAssignment(const int, const int, const int, const bool) {}
 
-        void logCompletedLeg(const Vehicle &) {}
+        void logCompletedStop(const Vehicle &) {}
     };
 }
