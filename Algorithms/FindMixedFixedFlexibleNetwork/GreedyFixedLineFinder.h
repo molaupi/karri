@@ -35,6 +35,8 @@
 #include "PickupDropoffManager.h"
 #include "InputConfig.h"
 
+#include <nlohmann/json.hpp>
+
 namespace mixfix {
 
     // Given a set of OD-pairs and paths between each origin and destination in a road network, this facility
@@ -66,13 +68,20 @@ namespace mixfix {
                   pdManager(pdManager), requests(requests), inputConfig(InputConfig::getInstance()),
                   residualFlow(inputGraph.numEdges(), 0),
                   linesLogger(LogManager<LoggerT>::getLogger("lines.csv",
-                                                             "line_id, served\n")) {}
+                                                             "line_id, "
+                                                             "num_edges, "
+                                                             "path_as_edge_ids, "
+                                                             "path_as_lat_lng, "
+                                                             "num_pax_served, "
+                                                             "served\n")) {}
 
         // Finds fixed lines given preliminary rider paths.
         // Each path is expected to be a sequence of edges in the network.
-        std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> findFixedLines(PreliminaryPathsT &paths) {
+        void findFixedLines(PreliminaryPathsT &paths) {
 
-            std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> lines;
+            lines.clear();
+            linesGeoJson.clear();
+            linesGeoJson["type"] = "GeometryCollection";
 
             while (!paths.empty()) {
                 FixedLine line;
@@ -92,24 +101,31 @@ namespace mixfix {
                     break;
 
 
+                int numServedButNotOverlapping = 0;
                 for (const auto &served: pax) {
-                    if (!std::any_of(overlappingPaths.begin(), overlappingPaths.end(),[&](const auto& o) {return o.requestId == served.requestId;}))
-                        std::cout << "Passenger " << served.requestId << " is served by line but their path does not overlap." << std::endl;
+                    if (!std::any_of(overlappingPaths.begin(), overlappingPaths.end(),
+                                     [&](const auto &o) { return o.requestId == served.requestId; })) {
+//                        std::cout << "Passenger " << served.requestId << " is served by line but their path does not overlap." << std::endl;
+                        ++numServedButNotOverlapping;
+                    }
                     paths.removePathForRequest(served.requestId);
                 }
+                std::cout << "Number of passengers served that have not contributed to construction of line: "
+                          << numServedButNotOverlapping << std::endl;
 
-                // Log line
-                linesLogger << lines.size() - 1 << ", ";
-                for (const auto &served: pax) {
-                    linesLogger << served.requestId << ":";
-                }
-                linesLogger << "\n";
+                logLine(line, lines.size(), pax);
 
                 // Add line
                 lines.push_back(std::make_pair(std::move(line), std::move(pax)));
             }
+        }
 
+        const std::vector<std::pair<FixedLine, std::vector<ServedRequest>>>& getLines() const {
             return lines;
+        }
+
+        const nlohmann::json& getLinesGeoJson() const {
+            return linesGeoJson;
         }
 
 
@@ -518,6 +534,55 @@ namespace mixfix {
             });
         }
 
+        void logLine(const FixedLine &line, const int lineId, const std::vector<ServedRequest> &pax) {
+
+            linesLogger << lineId << ", " << line.size() << ", ";
+
+            // Log path as edge Ids:
+            for (int i = 0; i < line.size(); ++i)
+                linesLogger << line[i] << (i < line.size() - 1 ? " : " : ", ");
+
+            // Log path as edge Ids:
+            std::vector<LatLng> latLngPath;
+            for (int i = 0; i < line.size(); ++i) {
+                const auto e = line[i];
+                const auto tail = inputGraph.edgeTail(e);
+                const auto latLng = inputGraph.latLng(tail);
+                linesLogger << latLngForCsv(latLng) << " : ";
+                latLngPath.push_back(latLng);
+            }
+            if (!line.empty()) {
+                const auto latLng = inputGraph.latLng(inputGraph.edgeHead(line.back()));
+                linesLogger << latLngForCsv(latLng);
+                latLngPath.push_back(latLng);
+            }
+            linesLogger << ", ";
+
+            linesLogger << pax.size() << ", ";
+            for (int i = 0; i < pax.size(); ++i)
+                linesLogger << pax[i].requestId << (i < pax.size() - 1 ? " : " : "\n");
+
+            // Also write GeoJson for line:
+            linesGeoJson["geometries"].push_back(generateGeoJsonFeatureForLine(latLngPath, lineId));
+        }
+
+        nlohmann::json generateGeoJsonFeatureForLine(const std::vector<LatLng>& latLngPath, const int lineId) {
+
+            static char color[] = "blue";
+            nlohmann::json feature;
+            feature["type"] = "LineString";
+
+            for (const auto& latLng : latLngPath) {
+                const auto coord = nlohmann::json::array({latLng.lngInDeg(), latLng.latInDeg()});
+                feature["coordinates"].push_back(coord);
+            }
+
+            feature["properties"] = {{"stroke",       color},
+                                     {"stroke-width", 3},
+                                     {"line_id",      lineId}};
+            return feature;
+        }
+
 
         const VehicleInputGraphT &inputGraph;
         const VehicleInputGraphT &reverseGraph;
@@ -526,6 +591,9 @@ namespace mixfix {
         const InputConfig &inputConfig;
 
         TimestampedVector<int> residualFlow;
+
+        std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> lines;
+        nlohmann::json linesGeoJson;
 
         LoggerT &linesLogger;
 

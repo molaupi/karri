@@ -295,13 +295,20 @@ int main(int argc, char *argv[]) {
 
         const auto numNonEmptyPaths = preliminaryPaths.numPaths();
         std::cout << "Constructing lines ..." << std::flush;
-        const auto lines = lineFinder.findFixedLines(preliminaryPaths);
-        unused(lines);
+        lineFinder.findFixedLines(preliminaryPaths);
         std::cout << "done.\n";
 
 
         std::cout << "Could serve " << numNonEmptyPaths - preliminaryPaths.numPaths()  << " / " << requests.size()
                   << " requests with fixed lines." << std::endl;
+
+        std::cout << "Writing GeoJSON to output file... " << std::flush;
+        // Open the output file and write the GeoJson.
+        std::ofstream geoJsonOutputFile(outputFileName + ".geojson");
+        if (!geoJsonOutputFile.good())
+            throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".geojson" + "'");
+        geoJsonOutputFile << std::setw(2) << lineFinder.getLinesGeoJson() << std::endl;
+        std::cout << "done.\n";
 
     } catch (std::exception &e) {
         std::cerr << argv[0] << ": " << e.what() << '\n';
