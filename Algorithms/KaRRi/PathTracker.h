@@ -144,8 +144,7 @@ namespace karri {
             // If a new stop was inserted for the dropoff, we set the path to the new stop and update the path to the next
             // stop (if one exists).
             if (!isDropoffAtExistingStop) {
-                assert(pathToDropoff.empty() || inputGraph.edgeHead(pathToDropoff.back()) ==
-                                                inputGraph.edgeTail(stopLocations[dropoffIndexAfterInsertion]));
+                assert(pathToDropoff.empty() || pathToDropoff.back() == stopLocations[dropoffIndexAfterInsertion]);
                 setPathTo(stopIds[dropoffIndexAfterInsertion], pathToDropoff);
                 if (dropoffIndexAfterInsertion + 1 < numStopsAfterInsertion) {
                     setPathTo(stopIds[dropoffIndexAfterInsertion + 1], pathFromDropoff);
@@ -296,6 +295,7 @@ namespace karri {
                 const auto &toPickupUpPath = chQuery.getUpEdgePath();
                 const auto &toPickupDownPath = chQuery.getDownEdgePath();
                 pathUnpacker.unpackUpDownPath(toPickupUpPath, toPickupDownPath, pathToPickup);
+                pathToPickup.push_back(stopLocations[pickupIndexAfterInsertion]);
             }
 
             // Retrieve path from pickup to next stop (if not dropoff and pickup inserted after same stop).
@@ -306,6 +306,7 @@ namespace karri {
                 const auto &upPath = chQuery.getUpEdgePath();
                 const auto &downPath = chQuery.getDownEdgePath();
                 pathUnpacker.unpackUpDownPath(upPath, downPath, pathFromPickup);
+                pathFromPickup.push_back(stopLocations[pickupIndexAfterInsertion + 1]);
             }
 
             // Retrieve path to dropoff (if not dropoff at existing stop).
@@ -316,6 +317,7 @@ namespace karri {
                 const auto &toDropoffUpPath = chQuery.getUpEdgePath();
                 const auto &toDropoffDownPath = chQuery.getDownEdgePath();
                 pathUnpacker.unpackUpDownPath(toDropoffUpPath, toDropoffDownPath, pathToDropoff);
+                pathToDropoff.push_back(stopLocations[dropoffIndexAfterInsertion]);
             }
 
             // Retrieve path from dropoff (if dropoff is not new last stop).
@@ -326,6 +328,7 @@ namespace karri {
                 const auto &fromDropoffUpPath = chQuery.getUpEdgePath();
                 const auto &fromDropoffDownPath = chQuery.getDownEdgePath();
                 pathUnpacker.unpackUpDownPath(fromDropoffUpPath, fromDropoffDownPath, pathFromDropoff);
+                pathFromDropoff.push_back(stopLocations[dropoffIndexAfterInsertion + 1]);
             }
         }
 
