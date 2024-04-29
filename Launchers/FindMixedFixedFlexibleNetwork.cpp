@@ -86,6 +86,33 @@ std::vector<int> parseEdgePathString(std::string s) {
     return result;
 }
 
+template<typename InputGraphT>
+void verifyPathViability(const mixfix::PreliminaryPaths &paths, const InputGraphT &inputGraph) {
+
+    for (const auto &path: paths) {
+        int prevVertex = path.size() == 0 ? INVALID_VERTEX : inputGraph.edgeTail(path[0]);
+        int prevEdge = INVALID_EDGE;
+        for (int i = 0; i < path.size() - 1; ++i) {
+            const auto nextPathEdge = path[i];
+            assert(inputGraph.edgeTail(nextPathEdge) == prevVertex);
+            bool found = false;
+            FORALL_INCIDENT_EDGES(inputGraph, prevVertex, e) {
+                if (e == nextPathEdge) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                std::cout << "Tail: " << inputGraph.osmNodeId(prevVertex) << ", Head: " << inputGraph.osmNodeId(inputGraph.edgeHead(nextPathEdge)) << std::endl;
+                std::cout << "Prev Edge: " << prevEdge << std::endl;
+                throw std::invalid_argument("Cannot find edge " + std::to_string(nextPathEdge) + " incident to vertex " +
+                                            std::to_string(prevVertex) + " in path for request " + std::to_string(path.getRequestId()));
+            }
+            prevVertex = inputGraph.edgeHead(nextPathEdge);
+            prevEdge = nextPathEdge;
+        }
+    }
+}
 
 int main(int argc, char *argv[]) {
     using namespace mixfix;
@@ -284,6 +311,10 @@ int main(int argc, char *argv[]) {
         using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, PickupDropoffManagerImpl, std::ofstream>;
         FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdManager, requests);
 
+        std::cout << "Verifying input paths ..." << std::flush;
+        verifyPathViability(preliminaryPaths, vehicleInputGraph);
+        std::cout << "done.\n";
+
         std::cout << "Finding PD-Locs ..." << std::flush;
         pdManager.findPossiblePDLocsForRequests(requests);
         std::cout << "done.\n";
@@ -299,7 +330,7 @@ int main(int argc, char *argv[]) {
         std::cout << "done.\n";
 
 
-        std::cout << "Could serve " << numNonEmptyPaths - preliminaryPaths.numPaths()  << " / " << requests.size()
+        std::cout << "Could serve " << numNonEmptyPaths - preliminaryPaths.numPaths() << " / " << requests.size()
                   << " requests with fixed lines." << std::endl;
 
         std::cout << "Writing GeoJSON to output file... " << std::flush;
