@@ -206,7 +206,8 @@ namespace mixfix {
                     for (const auto &o: overlapping) {
                         const auto &path = paths.getPathFor(o.requestId);
                         if (o.end < path.size() && path[o.end] == e) {
-                            score += 1 + square(o.end - o.start);
+                            const int overlapLength = 1 + o.end - o.start;
+                            score += square(overlapLength);
                             ++flow;
                         }
                     }
@@ -333,7 +334,8 @@ namespace mixfix {
                     for (const auto &o: overlapping) {
                         const auto &path = paths.getPathFor(o.requestId);
                         if (o.start > 0 && path[o.start - 1] == eInForwGraph) {
-                            score += 1 + square(o.end - o.start);
+                            const int overlapLength = 1 + o.end - o.start;
+                            score += square(overlapLength);
                             ++flow;
                         }
                     }

@@ -53,6 +53,10 @@ numRequests = maxReqId + 1
 
 df = df[["vehicle_id", "stop_number", "events", "graph_edge_ids_to_stop"]]
 df = df.sort_values("vehicle_id", kind="stable")
+vehpaths = df[["vehicle_id", "graph_edge_ids_to_stop"]]
+
+vehpaths = vehpaths.groupby("vehicle_id", as_index=False)["graph_edge_ids_to_stop"].apply(list)
+
 
 asgns = [(-1, math.inf, math.inf)] * numRequests
 events_with_stop = df.apply(lambda x: [(e[0], x["vehicle_id"], x["stop_number"]) for e in read_events(x["events"])],
@@ -62,17 +66,27 @@ for e in events_with_stop:
     reqid = e[0]
     vehid = e[1]
     stopnum = e[2]
+    if asgns[reqid][0] != -1 and asgns[reqid][0] != vehid:
+        print("Pickup of request %s is with vehicle %s but dropoff is with vehicle %s" % (reqid, asgns[reqid][0], vehid))
     asgns[reqid] = (vehid, min(stopnum, asgns[reqid][1]), max(stopnum, asgns[reqid][1]))
 
-vehpaths = df[["vehicle_id", "graph_edge_ids_to_stop"]]
-vehpaths = vehpaths.groupby("vehicle_id").apply(lambda x: x["graph_edge_ids_to_stop"].to_list())
+for (v, p, d) in asgns:
+    if p == math.inf or d == math.inf:
+        continue
+    path = vehpaths.loc[vehpaths["vehicle_id"] == v]["graph_edge_ids_to_stop"].values[0]
+    numstops = len(path)
+    if p >= numstops:
+        print("Event at stop %s of vehicle %s even though vehicle has only %s stops." % (p, v, numstops))
+    if d >= numstops:
+        print("Event at stop %s of vehicle %s even though vehicle has only %s stops." % (d, v, numstops))
 
 
 def getRiderPath(asgn, vehpaths):
     if asgn[1] == math.inf or asgn[2] == math.inf:
         return ""
     vehid = asgn[0]
-    path_as_list = vehpaths[vehid][asgn[1] + 1:asgn[2] + 1]
+    path_as_list = vehpaths.loc[vehpaths["vehicle_id"] == vehid]["graph_edge_ids_to_stop"].values[0]
+    path_as_list = path_as_list[asgn[1] + 1:asgn[2] + 1]
     path_as_list = [s for s in path_as_list if s != ""]
     path_as_string = " : ".join(path_as_list)
     return path_as_string
