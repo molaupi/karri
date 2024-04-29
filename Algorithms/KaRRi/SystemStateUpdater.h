@@ -161,7 +161,7 @@ namespace karri {
         }
 
         void notifyStopStarted(const Vehicle &veh) {
-            pathTracker.logCompletedLeg(veh);
+            pathTracker.logCompletedStop(veh);
 
             // Update buckets and route state
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
@@ -172,6 +172,11 @@ namespace karri {
             if (routeState.numStopsOf(veh.vehicleId) == 1) {
                 lastStopBucketsEnv.updateBucketEntries(veh, 0);
             }
+        }
+
+
+        void notifyStopCompleted(const Vehicle &veh) {
+            pathTracker.logCompletedStop(veh);
         }
 
         void notifyVehicleReachedEndOfServiceTime(const Vehicle &veh) {
