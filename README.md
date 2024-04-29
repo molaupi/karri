@@ -10,7 +10,7 @@ For more information on KaRRi's novel techniques, we refer to the related public
   Meeting Points. 2024 Proceedings of the Symposium on Algorithm Engineering and Experiments (ALENEX),
   2024\. https://doi.org/10.1137/1.9781611977929.6
 
-If you use KaRRi in your scientific publication, we ask that you reference the paper above.
+If you use KaRRi in your scientific publication, we ask that you cite the paper above.
 
 ## License
 

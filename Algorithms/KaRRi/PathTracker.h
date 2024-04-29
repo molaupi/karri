@@ -63,7 +63,8 @@ namespace karri {
                                                                  "dep_time, "
                                                                  "events, "
                                                                  "osm_node_ids_path_to_stop, "
-                                                                 "lat_lng_path_to_stop\n")) {}
+                                                                 "lat_lng_path_to_stop,"
+                                                                 "graph_edge_ids_to_stop\n")) {}
 
 
         // Updates paths of vehicle for best assignment of pickup and dropoff into the vehicle path.
@@ -178,8 +179,7 @@ namespace karri {
             vehiclePathLogger << ", ";
 
 
-            int prevVertex =
-                    edgePathToStop.size() == 0 ? INVALID_VERTEX : inputGraph.edgeTail(edgePathToStop[0]);
+            int prevVertex = edgePathToStop.size() == 0 ? INVALID_VERTEX : inputGraph.edgeTail(edgePathToStop[0]);
             unused(prevVertex);
             for (int i = 0; i < edgePathToStop.size(); ++i) {
                 const auto e = edgePathToStop[i];
@@ -202,7 +202,19 @@ namespace karri {
                 prevVertex = head;
             }
             assert(edgePathToStop.size() == 0 || inputGraph.edgeTail(stopLoc) == prevVertex);
-            vehiclePathLogger << latLngForCsv(inputGraph.latLng(inputGraph.edgeHead(stopLoc))) << "\n";
+            vehiclePathLogger << latLngForCsv(inputGraph.latLng(inputGraph.edgeHead(stopLoc))) << ", ";
+
+            prevVertex = edgePathToStop.size() == 0 ? INVALID_VERTEX : inputGraph.edgeTail(edgePathToStop[0]);
+            for (int i = 0; i < edgePathToStop.size(); ++i) {
+                const auto e = edgePathToStop[i];
+                assert(inputGraph.edgeTail(e) == prevVertex);
+                vehiclePathLogger << e;
+                if (i < edgePathToStop.size() - 1)
+                    vehiclePathLogger << " : ";
+                prevVertex = inputGraph.edgeHead(e);
+            }
+            assert(edgePathToStop.size() == 0 || inputGraph.edgeTail(stopLoc) == prevVertex);
+            vehiclePathLogger << "\n";
 
             invalidateDataFor(idOfStartedStop);
         }
