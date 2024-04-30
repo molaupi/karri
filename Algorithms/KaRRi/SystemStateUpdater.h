@@ -143,25 +143,22 @@ namespace karri {
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
 
-            if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 &&
-                routeState.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime) {
-                movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
-            }
-
             updateBucketState(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore);
 
             pickupStopId = routeState.stopIdsFor(vehId)[pickupIndex];
             dropoffStopId = routeState.stopIdsFor(vehId)[dropoffIndex];
 
-            // Register the inserted pickup and dropoff with the path data
-            const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
-            const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
-            pathTracker.updateForBestAssignment(pickupIndex, dropoffIndex, numStopsBefore, dropoffAtExistingStop);
+            if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] <
+                                                                 requestState.originalRequest.requestTime) {
+                pathTracker.registerLocAlongCurrentLeg(vehId, routeState.stopLocationsFor(vehId)[0]);
+                movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
+            }
 
+            // Register the inserted pickup and dropoff with the path data
+            pathTracker.registerPdEventsForBestAssignment(pickupIndex, dropoffIndex);
         }
 
         void notifyStopStarted(const Vehicle &veh) {
-            pathTracker.logCompletedStop(veh);
 
             // Update buckets and route state
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
@@ -303,7 +300,7 @@ namespace karri {
 
         void generateBucketStateForNewStops(const Assignment &asgn, const int pickupIndex, const int dropoffIndex) {
             const auto vehId = asgn.vehicle->vehicleId;
-            const auto& numStops = routeState.numStopsOf(vehId);
+            const auto &numStops = routeState.numStopsOf(vehId);
             const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
 
