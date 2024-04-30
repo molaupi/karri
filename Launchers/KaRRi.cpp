@@ -579,7 +579,7 @@ int main(int argc, char *argv[]) {
 
 #if KARRI_OUTPUT_VEHICLE_PATHS
         using VehPathTracker = PathTracker<VehicleInputGraph, VehCHEnv, std::ofstream>;
-        VehPathTracker pathTracker(vehicleInputGraph, *vehChEnv, reqState, routeState, fleet.size());
+        VehPathTracker pathTracker(vehicleInputGraph, *vehChEnv, reqState, routeState, fleet);
 #else
         using VehPathTracker = NoOpPathTracker;
         VehPathTracker pathTracker;
