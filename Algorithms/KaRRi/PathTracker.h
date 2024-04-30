@@ -165,9 +165,12 @@ namespace karri {
             for (int i = 0; i < legPath.size(); ++i) {
                 const auto e = legPath[i];
                 KASSERT(inputGraph.edgeTail(e) == prevVertex, "", kassert::assert::light);
-                vehiclePathLogger << e << (i < legPath.size() - 1 ? " : " : "\n");
+                vehiclePathLogger << e;
+                if (i < legPath.size() - 1)
+                    vehiclePathLogger << " : ";
                 prevVertex = inputGraph.edgeHead(e);
             }
+            vehiclePathLogger << "\n";
 
             if (!legPath.empty()) {
                 lastEdgeOfPrevLeg[veh.vehicleId] = legPath.back();
