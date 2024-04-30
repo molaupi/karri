@@ -126,13 +126,6 @@ namespace karri {
             const auto numEvents = requestIdsAtStop.size();
             KASSERT(numEvents > 0, "No events at stop with id " << idOfCompletedStop, kassert::assert::light);
 
-//            if (numEvents == 0) {
-//                KASSERT(edgePathToStop.size() == 0, "No events (finished idling) but non-empty path!",
-//                        kassert::assert::light);
-//                invalidateDataFor(idOfCompletedStop);
-//                return;
-//            }
-
             const auto stopCount = numCompletedStopsPerVeh[veh.vehicleId]++;
 
             vehiclePathLogger << veh.vehicleId << ", " << stopCount << ", " << arrTime << ", " << depTime << ", ";
@@ -222,14 +215,6 @@ namespace karri {
             return {locsInCurLeg.begin() + start, locsInCurLeg.begin() + end};
         }
 
-        bool isEdgeIncident(const int v, const int e) const {
-            FORALL_INCIDENT_EDGES(inputGraph, v, inc) {
-                if (inc == e)
-                    return true;
-            }
-            return false;
-        }
-
         ConstantVectorRange<int> requestIdsAt(const int stopId) const {
             assert(stopId >= 0);
             assert(stopId < eventIndexRange.size());
@@ -266,7 +251,6 @@ namespace karri {
             insertion(vehId, stopLoc, locsInCurLegIndexRange, locsInCurLeg);
         }
 
-
         const InputGraphT &inputGraph;
         const RequestState &requestState;
         const RouteState &routeState;
@@ -288,7 +272,6 @@ namespace karri {
 
         LoggerT &vehiclePathLogger;
 
-
         // Temporarily store paths for completed leg.
         std::vector<int> legPath;
 
@@ -296,7 +279,9 @@ namespace karri {
 
     struct NoOpPathTracker {
 
-        void updateForBestAssignment(const int, const int, const int, const bool) {}
+        void registerLocAlongCurrentLeg(const int, const int) {}
+
+        void registerPdEventsForBestAssignment(const int, const int) {}
 
         void logCompletedStop(const Vehicle &) {}
     };
