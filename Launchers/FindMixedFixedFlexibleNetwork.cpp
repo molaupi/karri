@@ -86,8 +86,8 @@ std::vector<int> parseEdgePathString(std::string s) {
     return result;
 }
 
-template<typename InputGraphT>
-void verifyPathViability(const mixfix::PreliminaryPaths &paths, const InputGraphT &inputGraph) {
+template<typename InputGraphT, typename PdManagerT>
+void verifyPathViability(const mixfix::PreliminaryPaths &paths, const InputGraphT &inputGraph, const PdManagerT& pdManager) {
 
     for (const auto &path: paths) {
         int prevVertex = path.size() == 0 ? INVALID_VERTEX : inputGraph.edgeTail(path[0]);
@@ -110,6 +110,17 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const InputGraph
             }
             prevVertex = inputGraph.edgeHead(nextPathEdge);
             prevEdge = nextPathEdge;
+        }
+
+        if (path.size() > 0) {
+            const auto& pickups = pdManager.getPossiblePickupsAt(path.front());
+            if (!contains(pickups.begin(), pickups.end(), path.getRequestId()))
+                throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) + " does not start at a possible pickup for that request.");
+
+
+            const auto& dropoffs = pdManager.getPossibleDropoffsAt(path.back());
+            if (!contains(dropoffs.begin(), dropoffs.end(), path.getRequestId()))
+                throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) + " does not end at a possible dropoff for that request.");
         }
     }
 }
@@ -311,12 +322,12 @@ int main(int argc, char *argv[]) {
         using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, PickupDropoffManagerImpl, std::ofstream>;
         FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdManager, requests);
 
-        std::cout << "Verifying input paths ..." << std::flush;
-        verifyPathViability(preliminaryPaths, vehicleInputGraph);
-        std::cout << "done.\n";
-
         std::cout << "Finding PD-Locs ..." << std::flush;
         pdManager.findPossiblePDLocsForRequests(requests);
+        std::cout << "done.\n";
+
+        std::cout << "Verifying input paths ..." << std::flush;
+        verifyPathViability(preliminaryPaths, vehicleInputGraph, pdManager);
         std::cout << "done.\n";
 
         std::cout << "Computing direct distances ..." << std::flush;
