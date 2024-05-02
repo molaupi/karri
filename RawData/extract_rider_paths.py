@@ -31,13 +31,17 @@ import pandas as pd
 
 
 argParser = argparse.ArgumentParser()
-argParser.add_argument("-i", "--infile", type=str, help="path to vehpaths.csv file output by KaRRi", required=True,
-                       dest="infile")
+argParser.add_argument("-p", "--inpaths", type=str, help="path to vehpaths.csv file output by KaRRi", required=True,
+                       dest="pathsfile")
+argParser.add_argument("-v", "--vehicles", type=str, help="path to .csv file containing initial vehicle locations", required=True,
+                       dest="vehiclesfile")
 argParser.add_argument("-o", "--output", type=str, help="path to output file", required=True, dest="output")
 
 args = argParser.parse_args()
 
-df = pd.read_csv(args.infile, skipinitialspace=True, keep_default_na=False)
+df = pd.read_csv(args.pathsfile, skipinitialspace=True, keep_default_na=False)
+vehicles_df = pd.read_csv(args.vehiclesfile, skipinitialspace=True, keep_default_na=False)
+initial_veh_locs = vehicles_df["initial_location"]
 
 
 def read_events(events_str):
@@ -80,6 +84,20 @@ for (v, p, d) in asgns:
     if d >= numstops:
         print("Event at stop %s of vehicle %s even though vehicle has only %s stops." % (d, v, numstops))
 
+def getPickupLoc(asgn, vehpaths):
+    if asgn[1] == math.inf:
+        return ""
+    vehid = asgn[0]
+    vehpath = vehpaths.loc[vehpaths["vehicle_id"] == vehid]["graph_edge_ids_to_stop"].values[0]
+    i = asgn[1]
+    while i >= 0:
+        leg_to_pickup = vehpath[i]
+        if leg_to_pickup != "":
+            locs_to_pickup = leg_to_pickup.split(" : ")
+            return locs_to_pickup[-1]
+        i -= 1
+    return str(initial_veh_locs[vehid])
+
 
 def getRiderPath(asgn, vehpaths):
     if asgn[1] == math.inf or asgn[2] == math.inf:
@@ -88,6 +106,7 @@ def getRiderPath(asgn, vehpaths):
     path_as_list = vehpaths.loc[vehpaths["vehicle_id"] == vehid]["graph_edge_ids_to_stop"].values[0]
     path_as_list = path_as_list[asgn[1] + 1:asgn[2] + 1]
     path_as_list = [s for s in path_as_list if s != ""]
+    path_as_list = [getPickupLoc(asgn, vehpaths)] + path_as_list
     path_as_string = " : ".join(path_as_list)
     return path_as_string
 

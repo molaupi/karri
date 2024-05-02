@@ -51,6 +51,8 @@
 #include "Algorithms/FindMixedFixedFlexibleNetwork/InputConfig.h"
 #include "DataStructures/Graph/Attributes/OsmRoadCategoryAttribute.h"
 #include "Algorithms/KaRRi/CHEnvironment.h"
+#include "Algorithms/KaRRi/BaseObjects/Request.h"
+#include "Algorithms/KaRRi/RequestState/FindPDLocsInRadiusQuery.h"
 #include <vector>
 
 inline void printUsage() {
@@ -86,15 +88,15 @@ std::vector<int> parseEdgePathString(std::string s) {
     return result;
 }
 
-template<typename InputGraphT, typename PdManagerT>
-void verifyPathViability(const mixfix::PreliminaryPaths &paths, const InputGraphT &inputGraph, const PdManagerT& pdManager) {
+template<typename VehInputGraphT, typename PdManagerT>
+void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGraphT &inputGraph,
+                         const PdManagerT &pdManager) {
 
     for (const auto &path: paths) {
         int prevVertex = path.size() == 0 ? INVALID_VERTEX : inputGraph.edgeTail(path[0]);
-        int prevEdge = INVALID_EDGE;
         for (int i = 0; i < path.size() - 1; ++i) {
             const auto nextPathEdge = path[i];
-            assert(inputGraph.edgeTail(nextPathEdge) == prevVertex);
+            LIGHT_KASSERT(inputGraph.edgeTail(nextPathEdge) == prevVertex);
             bool found = false;
             FORALL_INCIDENT_EDGES(inputGraph, prevVertex, e) {
                 if (e == nextPathEdge) {
@@ -102,25 +104,24 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const InputGraph
                     break;
                 }
             }
-            if (!found) {
-                std::cout << "Tail: " << inputGraph.osmNodeId(prevVertex) << ", Head: " << inputGraph.osmNodeId(inputGraph.edgeHead(nextPathEdge)) << std::endl;
-                std::cout << "Prev Edge: " << prevEdge << std::endl;
-                throw std::invalid_argument("Cannot find edge " + std::to_string(nextPathEdge) + " incident to vertex " +
-                                            std::to_string(prevVertex) + " in path for request " + std::to_string(path.getRequestId()));
-            }
+            if (!found)
+                throw std::invalid_argument(
+                        "Cannot find edge " + std::to_string(nextPathEdge) + " incident to vertex " +
+                        std::to_string(prevVertex) + " in path for request " + std::to_string(path.getRequestId()));
+
             prevVertex = inputGraph.edgeHead(nextPathEdge);
-            prevEdge = nextPathEdge;
         }
 
         if (path.size() > 0) {
-            const auto& pickups = pdManager.getPossiblePickupsAt(path.front());
+            const auto &pickups = pdManager.getPossiblePickupsAt(path.front());
             if (!contains(pickups.begin(), pickups.end(), path.getRequestId()))
-                throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) + " does not start at a possible pickup for that request.");
+                throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) +
+                                            " does not start at a possible pickup for that request.");
 
-
-            const auto& dropoffs = pdManager.getPossibleDropoffsAt(path.back());
+            const auto &dropoffs = pdManager.getPossibleDropoffsAt(path.back());
             if (!contains(dropoffs.begin(), dropoffs.end(), path.getRequestId()))
-                throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) + " does not end at a possible dropoff for that request.");
+                throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) +
+                                            " does not end at a possible dropoff for that request.");
         }
     }
 }
@@ -175,19 +176,19 @@ int main(int argc, char *argv[]) {
             vehGraphOrigIdToSeqId.assign(vehicleInputGraph.numEdges(), INVALID_ID);
             std::iota(vehGraphOrigIdToSeqId.begin(), vehGraphOrigIdToSeqId.end(), 0);
             FORALL_VALID_EDGES(vehicleInputGraph, v, e) {
-                    assert(vehicleInputGraph.edgeId(e) == INVALID_ID);
+                    LIGHT_KASSERT(vehicleInputGraph.edgeId(e) == INVALID_ID);
                     vehicleInputGraph.edgeTail(e) = v;
                     vehicleInputGraph.edgeId(e) = e;
                 }
         } else {
             FORALL_VALID_EDGES(vehicleInputGraph, v, e) {
-                    assert(vehicleInputGraph.edgeId(e) != INVALID_ID);
+                    LIGHT_KASSERT(vehicleInputGraph.edgeId(e) != INVALID_ID);
                     if (vehicleInputGraph.edgeId(e) >= vehGraphOrigIdToSeqId.size()) {
                         const auto numElementsToBeInserted =
                                 vehicleInputGraph.edgeId(e) + 1 - vehGraphOrigIdToSeqId.size();
                         vehGraphOrigIdToSeqId.insert(vehGraphOrigIdToSeqId.end(), numElementsToBeInserted, INVALID_ID);
                     }
-                    assert(vehGraphOrigIdToSeqId[vehicleInputGraph.edgeId(e)] == INVALID_ID);
+                    LIGHT_KASSERT(vehGraphOrigIdToSeqId[vehicleInputGraph.edgeId(e)] == INVALID_ID);
                     vehGraphOrigIdToSeqId[vehicleInputGraph.edgeId(e)] = e;
                     vehicleInputGraph.edgeTail(e) = v;
                     vehicleInputGraph.edgeId(e) = e;
@@ -205,7 +206,7 @@ int main(int argc, char *argv[]) {
             throw std::invalid_argument("file not found -- '" + passengerNetworkFileName + "'");
         PsgInputGraph psgInputGraph(psgNetworkFile);
         psgNetworkFile.close();
-        assert(psgInputGraph.numEdges() > 0 && psgInputGraph.edgeId(0) == INVALID_ID);
+        LIGHT_KASSERT(psgInputGraph.numEdges() > 0 && psgInputGraph.edgeId(0) == INVALID_ID);
         int numEdgesWithMappingToCar = 0;
         FORALL_VALID_EDGES(psgInputGraph, v, e) {
                 assert(psgInputGraph.edgeId(e) == INVALID_ID);
@@ -215,19 +216,19 @@ int main(int argc, char *argv[]) {
                 const int eInVehGraph = psgInputGraph.toCarEdge(e);
                 if (eInVehGraph != PsgEdgeToCarEdgeAttribute::defaultValue()) {
                     ++numEdgesWithMappingToCar;
-                    assert(eInVehGraph < vehGraphOrigIdToSeqId.size());
+                    LIGHT_KASSERT(eInVehGraph < vehGraphOrigIdToSeqId.size());
                     psgInputGraph.toCarEdge(e) = vehGraphOrigIdToSeqId[eInVehGraph];
-                    assert(psgInputGraph.toCarEdge(e) < vehicleInputGraph.numEdges());
+                    LIGHT_KASSERT(psgInputGraph.toCarEdge(e) < vehicleInputGraph.numEdges());
                     vehicleInputGraph.toPsgEdge(psgInputGraph.toCarEdge(e)) = e;
 
-                    assert(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
+                    LIGHT_KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
                            vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).latitude());
-                    assert(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
+                    LIGHT_KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
                             vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).longitude());
                 }
             }
         unused(numEdgesWithMappingToCar);
-        assert(numEdgesWithMappingToCar > 0);
+        LIGHT_KASSERT(numEdgesWithMappingToCar > 0);
         std::cout << "done.\n";
 
         // Read the request data from file.
@@ -244,9 +245,9 @@ int main(int argc, char *argv[]) {
                 vehGraphOrigIdToSeqId[destination] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
             const auto originSeqId = vehGraphOrigIdToSeqId[origin];
-            assert(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
+            LIGHT_KASSERT(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const auto destSeqId = vehGraphOrigIdToSeqId[destination];
-            assert(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
+            LIGHT_KASSERT(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const int requestId = static_cast<int>(requests.size());
             requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
         }
@@ -265,7 +266,7 @@ int main(int argc, char *argv[]) {
             if (requestId < 0 || requestId >= requests.size())
                 throw std::invalid_argument("invalid request id -- '" + std::to_string(requestId) + "'");
             std::vector<int> edges = parseEdgePathString(pathString);
-            assert(std::all_of(edges.begin(), edges.end(),
+            LIGHT_KASSERT(std::all_of(edges.begin(), edges.end(),
                                [&](const int e) { return e < vehicleInputGraph.numEdges(); }));
             if (edges.empty())
                 continue;

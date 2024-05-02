@@ -102,15 +102,20 @@ namespace mixfix {
 
             // TODO: SIMD-ify, parallelize
             for (const auto &req: requests) {
+                addPickupAtEdge(req.requestId, 0, req.origin);
+                addDropoffAtEdge(req.requestId, 0, req.destination);
+
+                const int originInPsg = vehGraph.toPsgEdge(req.origin);
+                const int destInPsg = vehGraph.toPsgEdge(req.destination);
 
                 searchSpace.clear();
-                auto headOfOriginEdge = forwardPsgGraph.edgeHead(req.origin);
+                auto headOfOriginEdge = forwardPsgGraph.edgeHead(originInPsg);
                 pickupSearch.run(headOfOriginEdge);
                 turnSearchSpaceIntoPickupLocations(req.requestId);
 
                 searchSpace.clear();
-                auto tailOfDestEdge = forwardPsgGraph.edgeTail(req.destination);
-                auto destOffset = forwardPsgGraph.travelTime(req.destination);
+                auto tailOfDestEdge = forwardPsgGraph.edgeTail(destInPsg);
+                auto destOffset = forwardPsgGraph.travelTime(destInPsg);
                 dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
                 turnSearchSpaceIntoDropoffLocations(req.requestId);
 

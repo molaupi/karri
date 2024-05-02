@@ -31,6 +31,7 @@
 #include <random>
 #include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "Algorithms/Dijkstra/Dijkstra.h"
+#include "Algorithms/KaRRi/InputConfig.h"
 
 namespace karri {
 
