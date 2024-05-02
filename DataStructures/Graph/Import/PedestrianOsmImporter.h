@@ -55,6 +55,7 @@
 #include "Tools/StringHelpers.h"
 #include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
+#include "Tools/custom_assertion_levels.h"
 
 // An importer for reading graphs from OpenStreetMap data. The OSM data must be given as a file in
 // PBF format. Edge attributes depending on the mode of transportation (travel time) refer to pedestrians.
@@ -73,20 +74,10 @@ public:
     // Opens the input file(s) and reads the header line(s).
     void init(const std::string &filename) {
         // Returns the direction in which the road segment is open.
-        auto getRoadDirection = [&](const OsmRoadCategory cat, const RoutingKit::TagMap &tags) {
-            assert(cat != OsmRoadCategory::ROAD);
-
-            const auto oneway = tags["oneway"];
-            if (oneway) {
-                if (stringEq(oneway, "no") || stringEq(oneway, "false") || stringEq(oneway, "0"))
-                    return RoadDirection::OPEN_IN_BOTH;
-                else if (stringEq(oneway, "yes") || stringEq(oneway, "true") || stringEq(oneway, "1"))
-                    return RoadDirection::FORWARD;
-                else if (stringEq(oneway, "-1") || stringEq(oneway, "reverse"))
-                    return RoadDirection::REVERSE;
-            }
-
-            return roadDefaults.at(cat).direction;
+        auto getRoadDirection = [&](const OsmRoadCategory cat, const RoutingKit::TagMap &) {
+            LIGHT_KASSERT(cat != OsmRoadCategory::ROAD);
+            // Pedestrians can traverse any way in both directions.
+            return RoadDirection::OPEN_IN_BOTH;
         };
 
         EnumParser<OsmRoadCategory> parseOsmRoadCategory;
@@ -234,6 +225,7 @@ private:
             {OsmRoadCategory::BRIDLEWAY,     {4.5, RoadDirection::OPEN_IN_BOTH}},
             {OsmRoadCategory::STEPS,         {4.5, RoadDirection::OPEN_IN_BOTH}},
             {OsmRoadCategory::PATH,          {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::CYCLEWAY,      {4.5, RoadDirection::OPEN_IN_BOTH}},
     };
 
     const IsRoadAccessibleByCategory& isPedestrianAccessible;
