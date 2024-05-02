@@ -76,6 +76,22 @@ with open(args.output + "_Inner.poly", "w") as b:
     b.write("\t%s\t%s\n" % (minLng, maxLat))
     b.write("END\nEND")
 
+if not "utrecht" in args.infile.lower():
+    latPadding = 0.05 * (maxLat - minLat)
+    minLat -= latPadding
+    maxLat += latPadding
+    lngPadding = 0.05 * (maxLng - minLng)
+    minLng -= lngPadding
+    maxLng += lngPadding
+    with open(args.output + "_Outer.poly", "w") as b:
+        b.write("polygon\n1\n")
+        b.write("\t%s\t%s\n" % (minLng, maxLat))
+        b.write("\t%s\t%s\n" % (maxLng, maxLat))
+        b.write("\t%s\t%s\n" % (maxLng, minLat))
+        b.write("\t%s\t%s\n" % (minLng, minLat))
+        b.write("\t%s\t%s\n" % (minLng, maxLat))
+        b.write("END\nEND")
+
 # # Process edges
 # edges_res = {"tail": [int(e[0]) - 1 for e in edges], "head": [int(e[1]) - 1 for e in edges], "travel_time": [e[2] for e in edges]}
 # edges_res = pd.DataFrame(edges_res)
