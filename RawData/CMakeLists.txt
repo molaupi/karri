@@ -67,3 +67,9 @@ add_executable(GenerateGeoJsonForRequests GenerateGeoJsonForRequests.cc)
 target_compile_definitions(GenerateGeoJsonForRequests PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(GenerateGeoJsonForRequests PRIVATE nlohmann_json::nlohmann_json)
 
+
+add_executable(GenerateGeoJsonForPaths GenerateGeoJsonForPaths.cc)
+target_compile_definitions(GenerateGeoJsonForPaths PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateGeoJsonForPaths PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(GenerateGeoJsonForPaths PRIVATE kassert)
+
