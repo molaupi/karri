@@ -28,6 +28,30 @@ namespace kassert::assert {
 #define KASSERT_ASSERTION_LEVEL_LIGHT 20
     constexpr int light = KASSERT_ASSERTION_LEVEL_LIGHT;
 
+#define LIGHT_KASSERT_NO_MSG(cond) KASSERT(cond, "", kassert::assert::light)
+#define LIGHT_KASSERT_MSG(cond, msg) KASSERT(cond, msg, kassert::assert::light)
+#define LIGHT_KASSERT(...)                  \
+    KASSERT_KASSERT_HPP_VARARG_HELPER_2(    \
+        ,                                   \
+        __VA_ARGS__,                        \
+        LIGHT_KASSERT_MSG(__VA_ARGS__),     \
+        LIGHT_KASSERT_NO_MSG(__VA_ARGS__),  \
+        dummy                               \
+    )
+
+
 #define KASSERT_ASSERTION_LEVEL_HEAVY 40
     constexpr int heavy = KASSERT_ASSERTION_LEVEL_HEAVY;
+
+#define HEAVY_KASSERT_NO_MSG(cond) KASSERT(cond, "", kassert::assert::heavy)
+#define HEAVY_KASSERT_MSG(cond, msg) KASSERT(cond, msg, kassert::assert::heavy)
+#define HEAVY_KASSERT(...)                  \
+    KASSERT_KASSERT_HPP_VARARG_HELPER_2(    \
+        ,                                   \
+        __VA_ARGS__,                        \
+        HEAVY_KASSERT_MSG(__VA_ARGS__),     \
+        HEAVY_KASSERT_NO_MSG(__VA_ARGS__),  \
+        dummy                               \
+    )
+
 } // namespace kassert::assert
