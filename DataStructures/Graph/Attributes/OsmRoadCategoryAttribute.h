@@ -67,7 +67,8 @@ static IsRoadAccessibleByCategory defaultIsVehicleAccessible = [](const OsmRoadC
 };
 
 static IsRoadAccessibleByCategory defaultIsPedestrianAccessible = [](const OsmRoadCategory& cat) {
-    return cat != OsmRoadCategory::ROAD && cat >= OsmRoadCategory::TERTIARY && cat != OsmRoadCategory::CYCLEWAY;
+    // We allow pedestrians to walk on cycle paths as shared paths are sometimes misdeclared.
+    return cat != OsmRoadCategory::ROAD && cat >= OsmRoadCategory::TERTIARY; // && cat != OsmRoadCategory::CYCLEWAY;
 };
 
 static IsRoadAccessibleByCategory defaultIsCyclistAccessible = [](const OsmRoadCategory& cat) {

@@ -24,6 +24,8 @@
 
 #pragma once
 
+#include <kassert/kassert.hpp>
+
 namespace kassert::assert {
 #define KASSERT_ASSERTION_LEVEL_LIGHT 20
     constexpr int light = KASSERT_ASSERTION_LEVEL_LIGHT;
