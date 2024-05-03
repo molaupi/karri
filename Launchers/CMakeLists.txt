@@ -34,7 +34,7 @@ endif()
 # Mixed Fixed-Flexible PT based on KaRRi
 add_executable(mixfix FindMixedFixedFlexibleNetwork.cpp)
 target_compile_definitions(mixfix PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(mixfix ${RoutingKit_LIBRARY})
+target_link_libraries(mixfix ${RoutingKit_LIBRARY} nlohmann_json)
 target_link_libraries(mixfix kassert)
 
 
