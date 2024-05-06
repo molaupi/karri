@@ -66,7 +66,7 @@ class PedestrianOsmImporter {
 public:
 
     PedestrianOsmImporter(
-            const IsRoadAccessibleByCategory& isPedestrianAccessible = defaultIsPedestrianAccessible,
+            const IsRoadAccessibleByCategory &isPedestrianAccessible = defaultIsPedestrianAccessible,
             std::function<bool(uint64_t osm_node_id, const RoutingKit::TagMap &node_tags)> make_routing_node = nullptr)
             : isPedestrianAccessible(isPedestrianAccessible),
               make_routing_node(std::move(make_routing_node)) {}
@@ -205,30 +205,30 @@ private:
 
     // A map that contains default road properties for a set of OSM road categories.
     inline static const std::unordered_map<OsmRoadCategory, RoadDefaults> roadDefaults = {
-//            {OsmRoadCategory::MOTORWAY,       {120, 2, 2000, RoadDirection::FORWARD}},
-//            {OsmRoadCategory::MOTORWAY_LINK,  {80,  1, 1500, RoadDirection::FORWARD}},
-//            {OsmRoadCategory::TRUNK,          {80,  1, 2000, RoadDirection::OPEN_IN_BOTH}},
-//            {OsmRoadCategory::TRUNK_LINK,     {50,  1, 1500, RoadDirection::OPEN_IN_BOTH}},
-//            {OsmRoadCategory::PRIMARY,        {80,  1, 1500, RoadDirection::OPEN_IN_BOTH}},
-//            {OsmRoadCategory::PRIMARY_LINK,   {60,  1, 1500, RoadDirection::OPEN_IN_BOTH}},
-//            {OsmRoadCategory::SECONDARY,      {30,  1, 800,  RoadDirection::OPEN_IN_BOTH}},
-//            {OsmRoadCategory::SECONDARY_LINK, {30,  1, 800,  RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::TERTIARY,      {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::TERTIARY_LINK, {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::UNCLASSIFIED,  {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::RESIDENTIAL,   {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::LIVING_STREET, {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::SERVICE,       {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::PEDESTRIAN,    {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::TRACK,         {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::FOOTWAY,       {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::BRIDLEWAY,     {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::STEPS,         {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::PATH,          {4.5, RoadDirection::OPEN_IN_BOTH}},
-            {OsmRoadCategory::CYCLEWAY,      {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::MOTORWAY,       {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::MOTORWAY_LINK,  {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::TRUNK,          {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::TRUNK_LINK,     {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::PRIMARY,        {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::PRIMARY_LINK,   {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::SECONDARY,      {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::SECONDARY_LINK, {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::TERTIARY,       {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::TERTIARY_LINK,  {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::UNCLASSIFIED,   {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::RESIDENTIAL,    {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::LIVING_STREET,  {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::SERVICE,        {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::PEDESTRIAN,     {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::TRACK,          {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::FOOTWAY,        {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::BRIDLEWAY,      {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::STEPS,          {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::PATH,           {4.5, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::CYCLEWAY,       {4.5, RoadDirection::OPEN_IN_BOTH}},
     };
 
-    const IsRoadAccessibleByCategory& isPedestrianAccessible;
+    const IsRoadAccessibleByCategory &isPedestrianAccessible;
 
     std::function<bool(uint64_t osm_node_id, const RoutingKit::TagMap &node_tags)> make_routing_node;
 

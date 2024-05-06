@@ -66,6 +66,7 @@ inline void printUsage() {
               "                             travel_time vertex_id xatf_road_category\n"
               "  -psg-mode <mode>       mode of transportation of the passenger\n"
               "                             possible values: pedestrian (default), cyclist\n"
+              "  -psg-on-car-network    If set, passenger and car network use same links but with differing travel times.\n"
               "  -no-union-nodes        If set, nodes are intersections in each individual network. Less precise mapping but smaller networks.\n"
               "  -no-veh-on-service     Disallow vehicles on roads of OSM 'SERVICE' road category.\n"
               "  -i <file>              input graph in OSM PBF format without file extension\n"
@@ -109,8 +110,7 @@ using PsgGraphT = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
 
 
 template<typename PsgOsmImporterT>
-void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCategory &isPsgAccessible) {
-    unused(isPsgAccessible);
+void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCategory &isPsgAccessibleInput) {
 
     const auto infile = clp.getValue<std::string>("i");
 
@@ -118,6 +118,9 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
     const auto isVehicleAccessible = [noVehiclesOnServiceRoads](const OsmRoadCategory& cat) -> bool {
         return !(noVehiclesOnServiceRoads && cat == OsmRoadCategory::SERVICE) && defaultIsVehicleAccessible(cat);
     };
+
+    const auto psgOnCarNetwork = clp.isSet("psg-on-car-network");
+    const auto isPsgAccessible = psgOnCarNetwork? isVehicleAccessible : isPsgAccessibleInput;
 
     const bool noUnionNodes = clp.isSet("no-union-nodes");
     std::function<bool(uint64_t, const RoutingKit::TagMap &)> isRoutingNodeInUnionOfNetworks = [](uint64_t,

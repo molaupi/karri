@@ -213,12 +213,12 @@ private:
 
     // A map that contains default road properties for a set of OSM road categories.
     inline static const std::unordered_map<OsmRoadCategory, RoadDefaults> roadDefaults = {
-//            {OsmRoadCategory::MOTORWAY,       {120, 2, 2000, RoadDirection::FORWARD}},
-//            {OsmRoadCategory::MOTORWAY_LINK,  {80,  1, 1500, RoadDirection::FORWARD}},
-//            {OsmRoadCategory::TRUNK,          {80,  1, 2000, RoadDirection::OPEN_IN_BOTH}},
-//            {OsmRoadCategory::TRUNK_LINK,     {50,  1, 1500, RoadDirection::OPEN_IN_BOTH}},
-//            {OsmRoadCategory::PRIMARY,        {80,  1, 1500, RoadDirection::OPEN_IN_BOTH}},
-//            {OsmRoadCategory::PRIMARY_LINK,   {60,  1, 1500, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::MOTORWAY,       {18, RoadDirection::FORWARD}},
+            {OsmRoadCategory::MOTORWAY_LINK,  {18, RoadDirection::FORWARD}},
+            {OsmRoadCategory::TRUNK,          {18, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::TRUNK_LINK,     {18, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::PRIMARY,        {18, RoadDirection::OPEN_IN_BOTH}},
+            {OsmRoadCategory::PRIMARY_LINK,   {18, RoadDirection::OPEN_IN_BOTH}},
             {OsmRoadCategory::SECONDARY,      {18,  RoadDirection::OPEN_IN_BOTH}},
             {OsmRoadCategory::SECONDARY_LINK, {18,  RoadDirection::OPEN_IN_BOTH}},
             {OsmRoadCategory::TERTIARY,       {18,  RoadDirection::OPEN_IN_BOTH}},
@@ -231,7 +231,7 @@ private:
             {OsmRoadCategory::TRACK,          {4.5, RoadDirection::OPEN_IN_BOTH}}, // speed of walking and pushing a bike
             {OsmRoadCategory::FOOTWAY,        {4.5, RoadDirection::OPEN_IN_BOTH}}, // speed of walking and pushing a bike
             {OsmRoadCategory::BRIDLEWAY,      {4.5, RoadDirection::OPEN_IN_BOTH}}, // speed of walking and pushing a bike
-//            {OsmRoadCategory::STEPS,          {4.5, RoadDirection::OPEN_IN_BOTH}}, // speed of walking and pushing a bike
+            {OsmRoadCategory::STEPS,          {0, RoadDirection::CLOSED}}, // cannot use steps with bike
             {OsmRoadCategory::PATH,           {4.5, RoadDirection::OPEN_IN_BOTH}}, // speed of walking and pushing a bike
             {OsmRoadCategory::CYCLEWAY,       {18,  RoadDirection::OPEN_IN_BOTH}},
     };
