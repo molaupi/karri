@@ -206,7 +206,6 @@ int main(int argc, char *argv[]) {
             throw std::invalid_argument("file not found -- '" + passengerNetworkFileName + "'");
         PsgInputGraph psgInputGraph(psgNetworkFile);
         psgNetworkFile.close();
-        LIGHT_KASSERT(psgInputGraph.numEdges() > 0 && psgInputGraph.edgeId(0) == INVALID_ID);
         int numEdgesWithMappingToCar = 0;
         FORALL_VALID_EDGES(psgInputGraph, v, e) {
                 assert(psgInputGraph.edgeId(e) == INVALID_ID);
