@@ -84,6 +84,7 @@ namespace mixfix {
             linesGeoJson["type"] = "GeometryCollection";
 
             while (!paths.empty()) {
+                std::cout << "\n\n";
                 FixedLine line;
                 int maxFlowOnLine;
                 std::vector<OverlappingPath> overlappingPaths;
@@ -95,7 +96,7 @@ namespace mixfix {
                 const auto &pax = findPassengersServableByLine(line, [&](const int reqId) {
                     return !paths.hasPathFor(reqId);
                 });
-                std::cout << "\nFound a line of length " << line.size() << " that can serve " << pax.size()
+                std::cout << "Found a line of length " << line.size() << " that can serve " << pax.size()
                           << " passengers." << std::endl;
                 if (pax.size() < inputConfig.minNumPaxPerLine)
                     break;
@@ -171,7 +172,7 @@ namespace mixfix {
                     break;
             }
 
-            std::cout << "Line starts at edge " << maxFlowEdge
+            std::cout << "Line construction started at edge " << maxFlowEdge
                       << " (tail: " << inputGraph.osmNodeId(inputGraph.edgeTail(maxFlowEdge))
                       << ", head: " << inputGraph.osmNodeId(inputGraph.edgeHead(maxFlowEdge))
                       << ") with flow " << maxFlow << std::endl;

@@ -33,7 +33,8 @@ import pandas as pd
 argParser = argparse.ArgumentParser()
 argParser.add_argument("-p", "--inpaths", type=str, help="path to vehpaths.csv file output by KaRRi", required=True,
                        dest="pathsfile")
-argParser.add_argument("-v", "--vehicles", type=str, help="path to .csv file containing initial vehicle locations", required=True,
+argParser.add_argument("-v", "--vehicles", type=str, help="path to .csv file containing initial vehicle locations",
+                       required=True,
                        dest="vehiclesfile")
 argParser.add_argument("-o", "--output", type=str, help="path to output file", required=True, dest="output")
 
@@ -52,26 +53,28 @@ def read_events(events_str):
     return events
 
 
-maxReqId = max(df["events"].apply(lambda x: max([e[0] for e in read_events(x)])))
-numRequests = maxReqId + 1
-
 df = df[["vehicle_id", "stop_number", "events", "graph_edge_ids_to_stop"]]
 df = df.sort_values("vehicle_id", kind="stable")
 vehpaths = df[["vehicle_id", "graph_edge_ids_to_stop"]]
-
 vehpaths = vehpaths.groupby("vehicle_id", as_index=False)["graph_edge_ids_to_stop"].apply(list)
 
 
-asgns = [(-1, math.inf, math.inf)] * numRequests
+df = df[df["events"] != '']
 events_with_stop = df.apply(lambda x: [(e[0], x["vehicle_id"], x["stop_number"]) for e in read_events(x["events"])],
                             axis='columns')
 events_with_stop = [e for es in events_with_stop for e in es]
+
+maxReqId = max([e[0] for e in events_with_stop])
+numRequests = maxReqId + 1
+asgns = [(-1, math.inf, math.inf)] * numRequests
+
 for e in events_with_stop:
     reqid = e[0]
     vehid = e[1]
     stopnum = e[2]
     if asgns[reqid][0] != -1 and asgns[reqid][0] != vehid:
-        print("Pickup of request %s is with vehicle %s but dropoff is with vehicle %s" % (reqid, asgns[reqid][0], vehid))
+        print(
+            "Pickup of request %s is with vehicle %s but dropoff is with vehicle %s" % (reqid, asgns[reqid][0], vehid))
     asgns[reqid] = (vehid, min(stopnum, asgns[reqid][1]), max(stopnum, asgns[reqid][1]))
 
 for (v, p, d) in asgns:
@@ -83,6 +86,7 @@ for (v, p, d) in asgns:
         print("Event at stop %s of vehicle %s even though vehicle has only %s stops." % (p, v, numstops))
     if d >= numstops:
         print("Event at stop %s of vehicle %s even though vehicle has only %s stops." % (d, v, numstops))
+
 
 def getPickupLoc(asgn, vehpaths):
     if asgn[1] == math.inf:
@@ -110,10 +114,11 @@ def getRiderPath(asgn, vehpaths):
     path_as_string = " : ".join(path_as_list)
     return path_as_string
 
+
 riderpaths = [''] * numRequests
 for i in range(numRequests):
     riderpaths[i] = getRiderPath(asgns[i], vehpaths)
 
-res = {"request_id" : range(numRequests), "path_as_graph_edge_ids" : riderpaths}
+res = {"request_id": range(numRequests), "path_as_graph_edge_ids": riderpaths}
 res = pd.DataFrame(res)
 res.to_csv(args.output, index=False)
