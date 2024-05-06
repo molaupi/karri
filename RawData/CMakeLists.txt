@@ -74,3 +74,7 @@ target_compile_definitions(GenerateGeoJsonForPaths PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(GenerateGeoJsonForPaths PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(GenerateGeoJsonForPaths PRIVATE kassert)
 
+add_executable(FielbaumToKaRRiInputGraph FielbaumToKaRRiInputGraph.cc)
+target_compile_definitions(FielbaumToKaRRiInputGraph PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(FielbaumToKaRRiInputGraph PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(FielbaumToKaRRiInputGraph PRIVATE kassert)

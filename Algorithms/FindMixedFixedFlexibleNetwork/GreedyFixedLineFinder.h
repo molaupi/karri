@@ -308,13 +308,15 @@ namespace mixfix {
             // reverseGraph.
             std::reverse(line.begin(), line.end());
             for (auto &e: line) {
+                bool found = false;
                 FORALL_INCIDENT_EDGES(reverseGraph, inputGraph.edgeHead(e), eInRev) {
                     if (reverseGraph.edgeId(eInRev) == e) {
                         e = eInRev;
+                        found = true;
                         break;
                     }
                 }
-                KASSERT(e != reverseGraph.edgeId(e), "No reverse edge found for " << e << "!", kassert::assert::light);
+                KASSERT(found, "No reverse edge found for " << e << "!", kassert::assert::light);
             }
 
             // Begin extending

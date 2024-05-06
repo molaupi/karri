@@ -44,10 +44,16 @@ args = argParser.parse_args()
 
 if "utrecht" in args.infile.lower():
     req_name = "Requests"
-    def req_time_scale(x): return (x - 2) * 3600
+
+
+    def req_time_scale(x):
+        return (x - 2) * 3600
 else:
     req_name = "RequestsSunshine"
-    def req_time_scale(x): return x * 60
+
+
+    def req_time_scale(x):
+        return x * 60
 
 data = loadmat(args.infile)
 nodes = data["Nodes"]
@@ -92,10 +98,18 @@ if not "utrecht" in args.infile.lower():
         b.write("\t%s\t%s\n" % (minLng, maxLat))
         b.write("END\nEND")
 
-# # Process edges
-# edges_res = {"tail": [int(e[0]) - 1 for e in edges], "head": [int(e[1]) - 1 for e in edges], "travel_time": [e[2] for e in edges]}
-# edges_res = pd.DataFrame(edges_res)
-# edges_res.to_csv(args.output + ".edges.csv", index=False)
+# Process nodes
+nodes_res = {"latitude": [n[0] for n in nodes], "longitude": [n[1] for n in nodes]}
+nodes_res = pd.DataFrame(nodes_res)
+nodes_res.to_csv(args.output + ".nodes.csv", index=False)
+
+# Process edges
+edges = data["Edges"]
+edges.sort(key=lambda x: x[0])
+edges_res = {"tail": [int(e[0]) - 1 for e in edges], "head": [int(e[1]) - 1 for e in edges],
+             "travel_time": [e[2] for e in edges]}
+edges_res = pd.DataFrame(edges_res)
+edges_res.to_csv(args.output + ".edges.csv", index=False)
 
 # Process requests
 nodes_latlng_str = ["(%s|%s)" % (lat, lng) for (lat, lng) in zip(latitudes, longitudes)]
