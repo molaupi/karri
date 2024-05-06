@@ -120,11 +120,11 @@ namespace mixfix {
             }
         }
 
-        const std::vector<std::pair<FixedLine, std::vector<ServedRequest>>>& getLines() const {
+        const std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> &getLines() const {
             return lines;
         }
 
-        const nlohmann::json& getLinesGeoJson() const {
+        const nlohmann::json &getLinesGeoJson() const {
             return linesGeoJson;
         }
 
@@ -171,12 +171,17 @@ namespace mixfix {
                     break;
             }
 
+            std::cout << "Line starts at edge " << maxFlowEdge
+                      << " (tail: " << inputGraph.osmNodeId(inputGraph.edgeTail(maxFlowEdge))
+                      << ", head: " << inputGraph.osmNodeId(inputGraph.edgeHead(maxFlowEdge))
+                      << ") with flow " << maxFlow << std::endl;
+
             // Construct line by greedily extending in both directions.
             // TODO: Try extending by one edge forward and backward in alternating fashion.
             maxFlowOnLine = maxFlow;
             int minFlowOnLine = maxFlow;
-            extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, paths);
             extendLineForwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, paths);
+            extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, paths);
         }
 
         static inline int square(const int n) { return n * n; }
@@ -248,12 +253,10 @@ namespace mixfix {
                     break; // Stop extending line
 
                 // If extension edge is already part of line, stop extending
+                const int newReachedVertex = inputGraph.edgeHead(extension);
                 bool extensionClosesLoop = false;
                 for (const auto &e: line) {
-                    if ((inputGraph.edgeHead(e) == inputGraph.edgeHead(extension) &&
-                         inputGraph.edgeTail(e) == inputGraph.edgeTail(extension)) ||
-                        (inputGraph.edgeHead(e) == inputGraph.edgeTail(extension) &&
-                         inputGraph.edgeTail(e) == inputGraph.edgeHead(extension))) {
+                    if (inputGraph.edgeHead(e) == newReachedVertex || inputGraph.edgeTail(e) == newReachedVertex) {
                         extensionClosesLoop = true;
                         break;
                     }
@@ -378,12 +381,10 @@ namespace mixfix {
 
 
                 // If extension edge is already part of line, stop extending
+                const int newReachedVertex = reverseGraph.edgeHead(extension);
                 bool extensionClosesLoop = false;
                 for (const auto &e: line) {
-                    if ((reverseGraph.edgeHead(e) == reverseGraph.edgeHead(extension) &&
-                         reverseGraph.edgeTail(e) == reverseGraph.edgeTail(extension)) ||
-                        (reverseGraph.edgeHead(e) == reverseGraph.edgeTail(extension) &&
-                         reverseGraph.edgeTail(e) == reverseGraph.edgeHead(extension))) {
+                    if (reverseGraph.edgeHead(e) == newReachedVertex || reverseGraph.edgeTail(e) == newReachedVertex) {
                         extensionClosesLoop = true;
                         break;
                     }
@@ -568,13 +569,13 @@ namespace mixfix {
             linesGeoJson["geometries"].push_back(generateGeoJsonFeatureForLine(latLngPath, lineId));
         }
 
-        nlohmann::json generateGeoJsonFeatureForLine(const std::vector<LatLng>& latLngPath, const int lineId) {
+        nlohmann::json generateGeoJsonFeatureForLine(const std::vector<LatLng> &latLngPath, const int lineId) {
 
             static char color[] = "blue";
             nlohmann::json feature;
             feature["type"] = "LineString";
 
-            for (const auto& latLng : latLngPath) {
+            for (const auto &latLng: latLngPath) {
                 const auto coord = nlohmann::json::array({latLng.lngInDeg(), latLng.latInDeg()});
                 feature["coordinates"].push_back(coord);
             }
