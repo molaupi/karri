@@ -140,23 +140,27 @@ namespace karri {
             const auto depTimeAtLastStopBefore = routeState.schedDepTimesFor(vehId)[numStopsBefore - 1];
 
             timer.restart();
-            const auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, requestState);
+            auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, requestState);
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
 
             updateBucketState(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore);
 
+            // If the vehicle has to be rerouted at its current location for a PBNS assignment, we introduce an
+            // intermediate stop at its current location representing the rerouting.
+            if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] <
+                                                                 requestState.originalRequest.requestTime) {
+                createIntermediateStopStopAtCurrentLocationForReroute(*asgn.vehicle,
+                                                                      requestState.originalRequest.requestTime);
+                ++pickupIndex;
+                ++dropoffIndex;
+            }
+
             pickupStopId = routeState.stopIdsFor(vehId)[pickupIndex];
             dropoffStopId = routeState.stopIdsFor(vehId)[dropoffIndex];
 
-            if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] <
-                                                                 requestState.originalRequest.requestTime) {
-                pathTracker.registerLocAlongCurrentLeg(vehId, routeState.stopLocationsFor(vehId)[0]);
-                movePreviousStopToCurrentLocationForReroute(*asgn.vehicle);
-            }
-
             // Register the inserted pickup and dropoff with the path data
-            pathTracker.registerPdEventsForBestAssignment(pickupIndex, dropoffIndex);
+            pathTracker.registerPdEventsForBestAssignment(pickupStopId, dropoffStopId);
         }
 
         void notifyStopStarted(const Vehicle &veh) {
@@ -266,6 +270,19 @@ namespace karri {
             assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
             auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
             routeState.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
+            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
+        }
+
+        // If vehicle is rerouted from its current position to a newly inserted stop (PBNS assignment), create new
+        // intermediate stop at the vehicle's current position to maintain the invariant of the schedule for the
+        // first stop, i.e. dist(s[i], s[i+1]) = schedArrTime(s[i+1]) - schedDepTime(s[i]).
+        // Intermediate stop gets an arrival time equal to the request time so the stop is reached immediately,
+        // making it the new stop 0. Thus, we do not need to compute target bucket entries for the stop.
+        void createIntermediateStopStopAtCurrentLocationForReroute(const Vehicle &veh, const int now) {
+            assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
+            auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
+            LIGHT_KASSERT(loc.depTimeAtHead >= now);
+            routeState.createIntermediateStopForReroute(veh.vehicleId, loc.location, now, loc.depTimeAtHead);
             ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
         }
 
