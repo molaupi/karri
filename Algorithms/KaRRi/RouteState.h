@@ -406,19 +406,6 @@ namespace karri {
                 recomputeMaxLeeway();
         }
 
-        void updateStartOfCurrentLeg(const int vehId, const int location, const int depTime) {
-            assert(vehId >= 0);
-            assert(vehId < pos.size());
-            assert(pos[vehId].end - pos[vehId].start > 0);
-            const auto start = pos[vehId].start;
-            const auto end = pos[vehId].end;
-            stopLocations[start] = location;
-            schedDepTimes[start] = depTime;
-            schedArrTimes[start] = depTime - stopTime;
-            recalculateVehWaitTimesPrefixSum(start, end - 1, 0);
-            recalculateVehWaitTimesAtDropoffsPrefixSum(start, end - 1, 0);
-        }
-
         // Creates an intermediate stop between stop 0 and stop 1 for a vehicle reroute at the given location.
         void createIntermediateStopForReroute(const int vehId, const int location, const int now, const int depTime) {
             KASSERT(vehId >= 0);
