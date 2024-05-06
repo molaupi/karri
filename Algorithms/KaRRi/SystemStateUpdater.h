@@ -261,18 +261,6 @@ namespace karri {
 
     private:
 
-        // If vehicle is rerouted from its current position to a newly inserted stop (PBNS assignment), move stop 0
-        // of the vehicle to its current position to maintain the invariant of the schedule for the first stop,
-        // i.e. dist(s_0, s_1) = schedArrTime(s_1) - schedDepTime(s_0).
-        // Update the stop location in the routeState and the bucket entries in the elliptic buckets.
-        void movePreviousStopToCurrentLocationForReroute(const Vehicle &veh) {
-            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
-            assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
-            auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
-            routeState.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
-            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
-        }
-
         // If vehicle is rerouted from its current position to a newly inserted stop (PBNS assignment), create new
         // intermediate stop at the vehicle's current position to maintain the invariant of the schedule for the
         // first stop, i.e. dist(s[i], s[i+1]) = schedArrTime(s[i+1]) - schedDepTime(s[i]).
