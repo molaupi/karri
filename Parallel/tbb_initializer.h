@@ -103,7 +103,7 @@ class TBBInitializer {
     _numa_node_to_cpu_id() {
     HwTopology& topology = HwTopology::instance();
     int num_numa_nodes = topology.num_numa_nodes();
-    std::cout << "Initialize TBB with " << num_threads << " threads" << std::endl;
+    std::cout << "Initialize TBB with " << num_threads << " threads." << std::endl;
     _cpus = topology.get_all_cpus();
     // Sort cpus in the following order
     // 1.) Non-hyperthread first

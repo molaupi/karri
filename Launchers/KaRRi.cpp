@@ -146,7 +146,7 @@ inline void printUsage() {
               "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
               "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
-              "  -max-num-threads <int> set the maximum number of threads to use.\n"
+              "  -max-num-threads <int> set the maximum number of threads to use (dflt: 1).\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
               "  -help                  show usage help text.\n";
 }
@@ -163,12 +163,17 @@ int main(int argc, char *argv[]) {
         }
 
         // Initialize TBB
-        const auto maxNumThreads = clp.getValue<int>("max-num-threads");
+        auto maxNumThreads = clp.getValue<size_t>("max-num-threads", 1);
+        size_t numAvailableCpus = parallel::HardwareTopology<>::instance().num_cpus();
+        if (numAvailableCpus < maxNumThreads) {
+            std::cout << "There are currently only " << numAvailableCpus << " cpus available. "
+                      << "Setting number of threads from " << maxNumThreads << " to " << numAvailableCpus << std::endl;
+            maxNumThreads = numAvailableCpus;
+        }
         parallel::TBBInitializer<parallel::HardwareTopology<>>::instance(maxNumThreads);
-        auto g = tbb::global_control(tbb::global_control::max_allowed_parallelism, maxNumThreads);
 
         // Parse the command-line options.
-        InputConfig& inputConfig = InputConfig::getInstance();
+        InputConfig &inputConfig = InputConfig::getInstance();
         inputConfig.stopTime = clp.getValue<int>("s", 60) * 10;
         inputConfig.maxWaitTime = clp.getValue<int>("w", 300) * 10;
         inputConfig.pickupRadius = clp.getValue<int>("p-radius", inputConfig.maxWaitTime / 10) * 10;
@@ -456,9 +461,10 @@ int main(int argc, char *argv[]) {
         RelevantPDLocs relDropoffsBeforeNextStop(fleet.size());
         using RelevantPDLocsReordererImpl = RelevantPDLocsReorderer<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
         RelevantPDLocsReordererImpl relevantPdLocsReorderer(fleet, reqState, routeState,
-                                                      feasibleEllipticPickups, feasibleEllipticDropoffs,
-                                                      relOrdinaryPickups, relOrdinaryDropoffs, relPickupsBeforeNextStop,
-                                                      relDropoffsBeforeNextStop);
+                                                            feasibleEllipticPickups, feasibleEllipticDropoffs,
+                                                            relOrdinaryPickups, relOrdinaryDropoffs,
+                                                            relPickupsBeforeNextStop,
+                                                            relDropoffsBeforeNextStop);
 
 
         const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
@@ -548,7 +554,8 @@ int main(int argc, char *argv[]) {
         // Use Collective-BCH DALS Strategy
         using DALSStrategy = DropoffAfterLastStopStrategies::CollectiveBCHStrategy<VehicleInputGraph, VehCHEnv, LastStopBucketsEnv, OnTheFlyVehLocToPickupSearchesImpl>;
         DALSStrategy dalsStrategy(vehicleInputGraph, fleet, routeState, *vehChEnv, lastStopBucketsEnv, calc,
-                                  reqState, onTheFlyVehLocToPickupSearches, relOrdinaryPickups, relPickupsBeforeNextStop);
+                                  reqState, onTheFlyVehLocToPickupSearches, relOrdinaryPickups,
+                                  relPickupsBeforeNextStop);
 #elif KARRI_DALS_STRATEGY == KARRI_IND
         // Use Individual-BCH DALS Strategy
         using DALSLabelSet = std::conditional_t<KARRI_DALS_USE_SIMD,
@@ -574,7 +581,8 @@ int main(int argc, char *argv[]) {
         using CurVehLocToPickupLabelSet = PDDistancesLabelSet;
         using CurVehLocationToPickupSearchesImpl = BatchedVehLocToPickupSearches<VehicleInputGraph, VehicleLocatorImpl, VehCHEnv, CurVehLocToPickupLabelSet>;
         CurVehLocationToPickupSearchesImpl curVehLocationToPickupSearches(
-                vehicleInputGraph, relPickupsBeforeNextStop, *vehChEnv, fleet, routeState, reqState, locator, vehLocToPickupDistances);
+                vehicleInputGraph, relPickupsBeforeNextStop, *vehChEnv, fleet, routeState, reqState, locator,
+                vehLocToPickupDistances);
 
         using PBNSInsertionsFinderImpl = PBNSAssignmentsFinder<PDDistancesImpl, CurVehLocationToPickupSearchesImpl>;
         PBNSInsertionsFinderImpl pbnsInsertionsFinder(relPickupsBeforeNextStop, relOrdinaryDropoffs,
