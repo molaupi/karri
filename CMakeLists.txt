@@ -2,6 +2,7 @@
 # MIT License
 #
 # Copyright (c) 2020 Valentin Buchhold
+# Copyright (c) 2023 Moritz Laupichler
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -46,9 +47,10 @@ endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES GNU|Clang)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 endif()
-option(DISABLE_AVX "Disable use of instructions in the AVX extended instruction set.")
+option(DISABLE_AVX "Disable use of instructions in the AVX extended instruction set." OFF)
 if(DISABLE_AVX)
   if(CMAKE_CXX_COMPILER_ID MATCHES GNU|Clang)
+    message("Disabling use of AVX instructions.")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mno-avx")
   endif()
 endif()
@@ -91,6 +93,7 @@ ENDIF ()
 
 # Add json library from git submodule
 set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "")
 add_subdirectory(External/json)
 
 # Add RoutingKit library (needs to be built beforehand!) and include headers from git submodule
