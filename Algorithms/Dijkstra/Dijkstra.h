@@ -81,6 +81,10 @@ namespace karri {
     class ClosestPDLocToLastStopBCHQuery;
 }
 
+namespace traffic_flow_subnetwork {
+    template<typename, typename, typename>
+    class KeptEdgesFinder;
+}
 
 
 // Implementation of Dijkstra's shortest-path algorithm. Depending on the used label set, it
@@ -123,6 +127,10 @@ class Dijkstra {
     template<typename, typename, typename, typename, typename>
     friend
     class karri::ClosestPDLocToLastStopBCHQuery;
+
+    template<typename, typename, typename>
+    friend
+    class traffic_flow_subnetwork::KeptEdgesFinder;
 
 private:
     using Graph = GraphT;                                    // The graph we work on.

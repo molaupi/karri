@@ -23,10 +23,28 @@
 # SOFTWARE.
 # ******************************************************************************
 
+add_executable(BuildTrafficFlowBasedSubgraph BuildTrafficFlowBasedSubgraph.cc)
+target_compile_definitions(BuildTrafficFlowBasedSubgraph PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert)
+
+add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc)
+target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
 
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(ConvertGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+
+add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
+target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateGeoJsonForGraph PRIVATE nlohmann_json::nlohmann_json kassert)
+
+add_executable(GenerateGeoJsonForRequests GenerateGeoJsonForRequests.cc)
+target_compile_definitions(GenerateGeoJsonForRequests PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateGeoJsonForRequests PRIVATE nlohmann_json::nlohmann_json kassert)
+
+add_executable(GenerateGeoJsonForVehicles GenerateGeoJsonForVehicles.cc)
+target_compile_definitions(GenerateGeoJsonForVehicles PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateGeoJsonForVehicles PRIVATE nlohmann_json::nlohmann_json kassert)
 
 add_executable(GenerateODPairs GenerateODPairs.cc)
 target_compile_definitions(GenerateODPairs PRIVATE CSV_IO_NO_THREAD)
@@ -34,7 +52,6 @@ target_link_libraries(GenerateODPairs kassert)
 if(OpenMP_FOUND)
   target_link_libraries(GenerateODPairs OpenMP::OpenMP_CXX)
 endif()
-
 
 add_executable(GenerateRandomVehicles GenerateRandomVehicles.cc)
 target_compile_definitions(GenerateRandomVehicles PRIVATE CSV_IO_NO_THREAD)
@@ -49,22 +66,3 @@ target_link_libraries(OsmToCarAndPassengerGraph ${PROJ_LIBRARY} ${RoutingKit_LIB
 add_executable(TransformLocations TransformLocations.cc)
 target_compile_definitions(TransformLocations PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(TransformLocations ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
-
-
-add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc
-        ../Algorithms/KaRRi/LastStopSearches/NoOpLastStopBucketEnvironment.h)
-target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
-
-add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
-target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForGraph PRIVATE nlohmann_json::nlohmann_json kassert)
-
-add_executable(GenerateGeoJsonForVehicles GenerateGeoJsonForVehicles.cc)
-target_compile_definitions(GenerateGeoJsonForVehicles PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForVehicles PRIVATE nlohmann_json::nlohmann_json kassert)
-
-
-add_executable(GenerateGeoJsonForRequests GenerateGeoJsonForRequests.cc)
-target_compile_definitions(GenerateGeoJsonForRequests PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForRequests PRIVATE nlohmann_json::nlohmann_json kassert)
-
