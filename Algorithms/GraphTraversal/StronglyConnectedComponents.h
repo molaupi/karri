@@ -46,7 +46,7 @@ class StronglyConnectedComponents {
 
   // Computes the SCCs of the specified graph.
   template <typename GraphT>
-  void run(const GraphT graph) {
+  void run(const GraphT& graph) {
     dfs.run(graph);
     for (const auto representative : components) {
       unused(representative);

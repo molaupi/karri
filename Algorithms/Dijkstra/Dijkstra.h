@@ -84,6 +84,9 @@ namespace karri {
 namespace traffic_flow_subnetwork {
     template<typename, typename, typename>
     class KeptEdgesFinder;
+
+    template<typename, typename, typename>
+    class KeptEdgesConnector;
 }
 
 
@@ -131,6 +134,10 @@ class Dijkstra {
     template<typename, typename, typename>
     friend
     class traffic_flow_subnetwork::KeptEdgesFinder;
+
+    template<typename, typename, typename>
+    friend
+    class traffic_flow_subnetwork::KeptEdgesConnector;
 
 private:
     using Graph = GraphT;                                    // The graph we work on.

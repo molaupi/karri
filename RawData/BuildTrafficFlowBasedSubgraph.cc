@@ -29,6 +29,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <iomanip>
 
 #include "DataStructures/Graph/Graph.h"
 #include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
@@ -47,6 +48,7 @@
 #include "Tools/custom_assertion_levels.h"
 
 #include "BuildTrafficFlowBasedSubgraph/KeptEdgesFinder.h"
+#include "BuildTrafficFlowBasedSubgraph/KeptEdgesConnecter.h"
 
 inline void printUsage() {
     std::cout <<
@@ -161,7 +163,6 @@ int main(int argc, char *argv[]) {
         const auto revPsgGraph = psgInputGraph.getReverseGraph();
         std::cout << "done.\n";
 
-
         // Read the flow data from file.
         std::cout << "Reading flow data from file... " << std::flush;
         std::vector<int> trafficFlows;
@@ -179,14 +180,43 @@ int main(int argc, char *argv[]) {
                                         + std::to_string(vehicleInputGraph.numEdges()) + ")!");
         std::cout << "done.\n";
 
+
+        std::cout << "Number of edges in the original vehicle network: " << vehicleInputGraph.numEdges() << std::endl;
+        int numPsgAccessible = 0;
+        FORALL_EDGES(vehicleInputGraph, e)numPsgAccessible += vehicleInputGraph.toPsgEdge(e) !=
+                                                              CarEdgeToPsgEdgeAttribute::defaultValue();
+        std::cout << "\tamong these passenger accessible: " << numPsgAccessible << std::endl;
+
         namespace tfs = traffic_flow_subnetwork;
         std::cout << "Finding high-flow edges to cover network in meeting points... " << std::endl;
         tfs::KeptEdgesFinder<VehicleInputGraph, PsgInputGraph> keptEdgesFinder(vehicleInputGraph, psgInputGraph,
                                                                                revPsgGraph, radius);
-        const auto edges = keptEdgesFinder.findKeptEdges(trafficFlows);
+        auto edges = keptEdgesFinder.findKeptEdges(trafficFlows);
         std::cout << "done." << std::endl;
 
-        std::cout << edges.size() << std::endl;
+        std::cout << "Number of edges that need to be kept: " << edges.size() << std::endl;
+        int numNeededPsgAccessible = std::count_if(edges.begin(), edges.end(), [&](const int &e) {
+            return vehicleInputGraph.toPsgEdge(e) != CarEdgeToPsgEdgeAttribute::defaultValue();
+        });
+        std::cout << "\tamong these passenger accessible: " << numNeededPsgAccessible << std::endl;
+
+        tfs::KeptEdgesConnector<VehicleVertexAttributes, VehicleEdgeAttributes, TravelTimeAttribute> keptEdgesConnector(vehicleInputGraph);
+        auto subGraph = keptEdgesConnector.connectEdges(edges);
+        std::cout << "Generated connected sub-network: " << std::endl;
+        std::cout << "\t|V| = " << subGraph.numVertices() << std::endl;
+        std::cout << "\t|E| = " << subGraph.numEdges() << std::endl;
+
+        subGraph.defrag();
+
+        std::cout << "Write the vehicle subnetwork output file..." << std::flush;
+        const auto vehOutputFileName = outputFileName + ".veh_subnetwork.gr.bin";
+        std::ofstream out(vehOutputFileName, std::ios::binary);
+        if (!out.good())
+            throw std::invalid_argument("file cannot be opened -- '" + vehOutputFileName + ".gr.bin'");
+        subGraph.writeTo(out);
+        std::cout << " done." << std::endl;
+
+        // TODO: Compute new mapping for psg network and output
 
 
     } catch (std::invalid_argument &e) {
