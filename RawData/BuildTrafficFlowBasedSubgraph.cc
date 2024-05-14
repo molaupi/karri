@@ -206,17 +206,35 @@ int main(int argc, char *argv[]) {
         std::cout << "\t|V| = " << subGraph.numVertices() << std::endl;
         std::cout << "\t|E| = " << subGraph.numEdges() << std::endl;
 
-        subGraph.defrag();
 
-        std::cout << "Write the vehicle subnetwork output file..." << std::flush;
-        const auto vehOutputFileName = outputFileName + ".veh_subnetwork.gr.bin";
-        std::ofstream out(vehOutputFileName, std::ios::binary);
-        if (!out.good())
-            throw std::invalid_argument("file cannot be opened -- '" + vehOutputFileName + ".gr.bin'");
-        subGraph.writeTo(out);
+        std::cout << "Compute new mappings between vehicle subnetwork and passenger network..." << std::flush;
+        FORALL_EDGES(psgInputGraph, e) {
+            psgInputGraph.toCarEdge(e) = PsgEdgeToCarEdgeAttribute::defaultValue();
+        }
+        FORALL_EDGES(subGraph, e) {
+            const int eInPsg = subGraph.toPsgEdge(e);
+            if (eInPsg != CarEdgeToPsgEdgeAttribute::defaultValue()) {
+                psgInputGraph.toCarEdge(eInPsg) = e;
+            }
+        }
         std::cout << " done." << std::endl;
 
-        // TODO: Compute new mapping for psg network and output
+        std::cout << "Write the vehicle subnetwork output file..." << std::flush;
+        LIGHT_KASSERT(subGraph.isDefrag());
+        const auto vehOutputFileName = outputFileName + ".veh_subnetwork.gr.bin";
+        std::ofstream vehOut(vehOutputFileName, std::ios::binary);
+        if (!vehOut.good())
+            throw std::invalid_argument("file cannot be opened -- '" + vehOutputFileName + ".gr.bin'");
+        subGraph.writeTo(vehOut, {"edge_id", "edge_tail"});
+        std::cout << " done." << std::endl;
+
+        std::cout << "Write the passenger network with new mappings to output file..." << std::flush;
+        const auto psgOutputFileName = outputFileName + ".psg_new_mappings.gr.bin";
+        std::ofstream psgOut(psgOutputFileName, std::ios::binary);
+        if (!psgOut.good())
+            throw std::invalid_argument("file cannot be opened -- '" + psgOutputFileName + ".gr.bin'");
+        subGraph.writeTo(psgOut, {"edge_id", "edge_tail"});
+        std::cout << " done." << std::endl;
 
 
     } catch (std::invalid_argument &e) {

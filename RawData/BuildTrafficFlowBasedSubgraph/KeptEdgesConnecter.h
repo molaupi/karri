@@ -228,12 +228,14 @@ namespace traffic_flow_subnetwork {
                     reprToComp[uniqueReprs[c]] = c;
                 }
 
-//                std::cout << "After iteration " << iteration << ": " << uniqueReprs.size() << " SCCs" << std::endl;
+                std::cout << "After iteration " << iteration << ": " << uniqueReprs.size() << " SCCs" << std::endl;
             }
 
 
             LIGHT_KASSERT(hasOneScc(out));
             std::cout << "Connected subnetwork in " << iteration << " iterations." << std::endl;
+
+            out.defrag();
             return out;
         }
 
