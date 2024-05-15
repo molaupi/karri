@@ -28,7 +28,7 @@
 #include <vector>
 #include <cstdint>
 #include <random>
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
 #include "Algorithms/Dijkstra/Dijkstra.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
@@ -136,8 +136,8 @@ namespace traffic_flow_subnetwork {
                         break;
                 }
 
-                const int eInForwPsgGraph = vehGraph.toPsgEdge(eInVeh);
-                if (eInForwPsgGraph == CarEdgeToPsgEdgeAttribute::defaultValue())
+                const int eInForwPsgGraph = vehGraph.mapToEdgeInPsg(eInVeh);
+                if (eInForwPsgGraph == MapToEdgeInPsgAttribute::defaultValue())
                     continue;
 
                 if (edgeYetToBeCovered[eInForwPsgGraph]) {
@@ -182,7 +182,7 @@ namespace traffic_flow_subnetwork {
 
             // Remove zero flow edges that are not passenger-accessible as they cannot serve as sources for searches:
             const auto &isNotPsgAcc = [&](const int &e) -> bool {
-                return vehGraph.toPsgEdge(e) == CarEdgeToPsgEdgeAttribute::defaultValue();
+                return vehGraph.mapToEdgeInPsg(e) == MapToEdgeInPsgAttribute::defaultValue();
             };
             descendingFlowOrder.erase(
                     std::remove_if(descendingFlowOrder.begin() + startRank, descendingFlowOrder.end(), isNotPsgAcc),
@@ -190,8 +190,8 @@ namespace traffic_flow_subnetwork {
 
             // Sort zero flow edges by how far away they are from previous sources in descending order.
             const auto cmpCurSearchDist = [&](const int &e1, const int &e2) {
-                const int e1InForwPsg = vehGraph.toPsgEdge(e1);
-                const int e2InForwPsg = vehGraph.toPsgEdge(e2);
+                const int e1InForwPsg = vehGraph.mapToEdgeInPsg(e1);
+                const int e2InForwPsg = vehGraph.mapToEdgeInPsg(e2);
                 LIGHT_KASSERT(!isNotPsgAcc(e1) && !isNotPsgAcc(e2));
 
                 if constexpr (type == karri::PICKUP) {
@@ -219,10 +219,10 @@ namespace traffic_flow_subnetwork {
             }
 
             FORALL_EDGES(vehGraph, e) {
-                KASSERT(vehGraph.toPsgEdge(e) == CarEdgeToPsgEdgeAttribute::defaultValue() ||
-                        forwardPsgGraph.toCarEdge(vehGraph.toPsgEdge(e)) == e);
-                const auto eInForwPsgGraph = vehGraph.toPsgEdge(e);
-                if (eInForwPsgGraph != CarEdgeToPsgEdgeAttribute::defaultValue()) {
+                KASSERT(vehGraph.mapToEdgeInPsg(e) == MapToEdgeInPsgAttribute::defaultValue() ||
+                        forwardPsgGraph.mapToEdgeInFullVeh(vehGraph.mapToEdgeInPsg(e)) == e);
+                const auto eInForwPsgGraph = vehGraph.mapToEdgeInPsg(e);
+                if (eInForwPsgGraph != MapToEdgeInPsgAttribute::defaultValue()) {
                     edgeYetToBeCovered[eInForwPsgGraph] = true;
                     ++numEdgesYetToBeCovered;
                 }

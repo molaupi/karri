@@ -33,27 +33,27 @@
 // An edge attribute mapping an edge in a car graph to an edge in a passenger graph.
 // MULTIPLE PASSENGER EDGES MAY BE MAPPED TO THE SAME VEHICLE EDGE SO THIS ONLY RETURNS ONE
 // (OUT OF POTENTIALLY MULTIPLE) PASSENGER EDGES!!!
-class CarEdgeToPsgEdgeAttribute : public AbstractAttribute<int> {
+class MapToEdgeInPsgAttribute : public AbstractAttribute<int> {
 public:
     // Returns the attribute's default value.
     static Type defaultValue() {
         return INVALID_ID;
     }
 
-    // Returns the edge e' in the passenger graph that is equivalent to the given edge e in the car graph.
-    const Type &toPsgEdge(const int e) const {
+    // Returns the edge e' in the passenger graph that is equivalent to the given edge e in this graph.
+    const Type &mapToEdgeInPsg(const int e) const {
         assert(e >= 0);
         assert(e < values.size());
         return values[e];
     }
 
-    // Returns a reference to the stored value e' that the given edge e in the car graph maps to.
-    Type &toPsgEdge(const int e) {
+    // Returns the edge e' in the passenger graph that is equivalent to the given edge e in this graph.
+    Type &mapToEdgeInPsg(const int e) {
         assert(e >= 0);
         assert(e < values.size());
         return values[e];
     }
 
 protected:
-    static constexpr const char *NAME = "car_edge_to_psg_edge"; // The attribute's unique name.
+    static constexpr const char *NAME = "map_to_edge_in_psg"; // The attribute's unique name.
 };

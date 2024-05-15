@@ -27,7 +27,7 @@
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Graph.h"
-#include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "DataStructures/Utilities/OriginDestination.h"
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"

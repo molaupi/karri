@@ -32,14 +32,14 @@
 #include <iomanip>
 
 #include "DataStructures/Graph/Graph.h"
-#include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
 #include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
 #include "DataStructures/Graph/Attributes/LatLngAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmRoadCategoryAttribute.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
 #include "DataStructures/Graph/Attributes/RoadGeometryAttribute.h"
 #include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
 
@@ -49,6 +49,7 @@
 
 #include "BuildTrafficFlowBasedSubgraph/KeptEdgesFinder.h"
 #include "BuildTrafficFlowBasedSubgraph/KeptEdgesConnecter.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInReducedVehAttribute.h"
 
 inline void printUsage() {
     std::cout <<
@@ -91,10 +92,10 @@ int main(int argc, char *argv[]) {
 
         // Read the vehicle network from file.
         std::cout << "Reading vehicle network from file... " << std::flush;
-        using VehicleVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
-        using VehicleEdgeAttributes = EdgeAttrs<
-                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute>;
-        using VehicleInputGraph = StaticGraph<VehicleVertexAttributes, VehicleEdgeAttributes>;
+        using VertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>; // same for all graphs
+        using VehicleInputEdgeAttributes = EdgeAttrs<
+                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, OsmRoadCategoryAttribute, MapToEdgeInPsgAttribute>;
+        using VehicleInputGraph = StaticGraph<VertexAttributes, VehicleInputEdgeAttributes>;
         std::ifstream vehicleNetworkFile(vehicleNetworkFileName, std::ios::binary);
         if (!vehicleNetworkFile.good())
             throw std::invalid_argument("file not found -- '" + vehicleNetworkFileName + "'");
@@ -127,9 +128,8 @@ int main(int argc, char *argv[]) {
 
         // Read the passenger network from file.
         std::cout << "Reading passenger network from file... " << std::flush;
-        using PsgVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
-        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, PsgEdgeToCarEdgeAttribute, TravelTimeAttribute>;
-        using PsgInputGraph = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
+        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, TravelTimeAttribute, MapToEdgeInFullVehAttribute>;
+        using PsgInputGraph = StaticGraph<VertexAttributes, PsgEdgeAttributes>;
         std::ifstream psgNetworkFile(passengerNetworkFileName, std::ios::binary);
         if (!psgNetworkFile.good())
             throw std::invalid_argument("file not found -- '" + passengerNetworkFileName + "'");
@@ -142,19 +142,19 @@ int main(int argc, char *argv[]) {
                 psgInputGraph.edgeTail(e) = v;
                 psgInputGraph.edgeId(e) = e;
 
-                const int eInVehGraph = psgInputGraph.toCarEdge(e);
-                if (eInVehGraph != PsgEdgeToCarEdgeAttribute::defaultValue()) {
+                const int eInVehGraph = psgInputGraph.mapToEdgeInFullVeh(e);
+                if (eInVehGraph != MapToEdgeInFullVehAttribute::defaultValue()) {
                     ++numEdgesWithMappingToCar;
                     KASSERT(eInVehGraph < vehGraphOrigIdToSeqId.size());
-                    psgInputGraph.toCarEdge(e) = vehGraphOrigIdToSeqId[eInVehGraph];
-                    KASSERT(psgInputGraph.toCarEdge(e) < vehicleInputGraph.numEdges());
-                    vehicleInputGraph.toPsgEdge(psgInputGraph.toCarEdge(e)) = e;
+                    psgInputGraph.mapToEdgeInFullVeh(e) = vehGraphOrigIdToSeqId[eInVehGraph];
+                    KASSERT(psgInputGraph.mapToEdgeInFullVeh(e) < vehicleInputGraph.numEdges());
+                    vehicleInputGraph.mapToEdgeInPsg(psgInputGraph.mapToEdgeInFullVeh(e)) = e;
 
                     KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
                             vehicleInputGraph.latLng(
-                                    vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).latitude());
+                                    vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).latitude());
                     KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
-                            vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).longitude());
+                            vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).longitude());
                 }
             }
         unused(numEdgesWithMappingToCar);
@@ -183,8 +183,8 @@ int main(int argc, char *argv[]) {
 
         std::cout << "Number of edges in the original vehicle network: " << vehicleInputGraph.numEdges() << std::endl;
         int numPsgAccessible = 0;
-        FORALL_EDGES(vehicleInputGraph, e)numPsgAccessible += vehicleInputGraph.toPsgEdge(e) !=
-                                                              CarEdgeToPsgEdgeAttribute::defaultValue();
+        FORALL_EDGES(vehicleInputGraph, e)numPsgAccessible += vehicleInputGraph.mapToEdgeInPsg(e) !=
+                                                              MapToEdgeInPsgAttribute::defaultValue();
         std::cout << "\tamong these passenger accessible: " << numPsgAccessible << std::endl;
 
         namespace tfs = traffic_flow_subnetwork;
@@ -196,36 +196,91 @@ int main(int argc, char *argv[]) {
 
         std::cout << "Number of edges that need to be kept: " << edges.size() << std::endl;
         int numNeededPsgAccessible = std::count_if(edges.begin(), edges.end(), [&](const int &e) {
-            return vehicleInputGraph.toPsgEdge(e) != CarEdgeToPsgEdgeAttribute::defaultValue();
+            return vehicleInputGraph.mapToEdgeInPsg(e) != MapToEdgeInPsgAttribute::defaultValue();
         });
         std::cout << "\tamong these passenger accessible: " << numNeededPsgAccessible << std::endl;
 
-        tfs::KeptEdgesConnector<VehicleVertexAttributes, VehicleEdgeAttributes, TravelTimeAttribute> keptEdgesConnector(vehicleInputGraph);
-        auto subGraph = keptEdgesConnector.connectEdges(edges);
+        tfs::KeptEdgesConnector<VertexAttributes, VehicleInputEdgeAttributes, TravelTimeAttribute> keptEdgesConnector(
+                vehicleInputGraph);
+        std::vector<int> subGraphToFullVertexIds;
+        auto subGraph = keptEdgesConnector.connectEdges(edges, subGraphToFullVertexIds);
+        LIGHT_KASSERT(subGraph.isDefrag());
+        LIGHT_KASSERT(subGraphToFullVertexIds.size() == subGraph.numVertices());
         std::cout << "Generated connected sub-network: " << std::endl;
         std::cout << "\t|V| = " << subGraph.numVertices() << std::endl;
         std::cout << "\t|E| = " << subGraph.numEdges() << std::endl;
 
 
-        std::cout << "Compute new mappings between vehicle subnetwork and passenger network..." << std::flush;
-        FORALL_EDGES(psgInputGraph, e) {
-            psgInputGraph.toCarEdge(e) = PsgEdgeToCarEdgeAttribute::defaultValue();
-        }
-        FORALL_EDGES(subGraph, e) {
-            const int eInPsg = subGraph.toPsgEdge(e);
-            if (eInPsg != CarEdgeToPsgEdgeAttribute::defaultValue()) {
-                psgInputGraph.toCarEdge(eInPsg) = e;
+        std::cout << "Compute new mappings between full and reduced vehicle networks as well as passenger network..."
+                  << std::flush;
+        using OutputFullVehEdgeAttributes = EdgeAttrs<
+                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, OsmRoadCategoryAttribute, MapToEdgeInPsgAttribute, MapToEdgeInReducedVehAttribute>;
+        using FullVehOutputGraph = StaticGraph<VertexAttributes, OutputFullVehEdgeAttributes>;
+        FullVehOutputGraph fullVehOutputGraph(std::move(vehicleInputGraph));
+
+        using OutputReducedVehEdgeAttributes = EdgeAttrs<
+                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, OsmRoadCategoryAttribute, MapToEdgeInPsgAttribute, MapToEdgeInFullVehAttribute>;
+        using ReducedVehOutputGraph = StaticGraph<VertexAttributes, OutputReducedVehEdgeAttributes>;
+        ReducedVehOutputGraph reducedVehOutputGraph(std::move(subGraph));
+
+        using OutputPsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, TravelTimeAttribute, MapToEdgeInFullVehAttribute, MapToEdgeInReducedVehAttribute>;
+        using PsgOutputGraph = StaticGraph<VertexAttributes, OutputPsgEdgeAttributes>;
+        PsgOutputGraph psgOutputGraph(std::move(psgInputGraph));
+
+        FORALL_VALID_EDGES(reducedVehOutputGraph, uRed, eRed) {
+                const int &vRed = reducedVehOutputGraph.edgeHead(eRed);
+                const int &uFull = subGraphToFullVertexIds[uRed];
+                const int &vFull = subGraphToFullVertexIds[vRed];
+                int eFull = INVALID_EDGE;
+                FORALL_INCIDENT_EDGES(fullVehOutputGraph, uFull, e) {
+                    if (fullVehOutputGraph.edgeHead(e) == vFull) {
+                        eFull = e;
+                        break;
+                    }
+                }
+                LIGHT_KASSERT(eFull != INVALID_EDGE, "uRed = " << uRed << ", vRed = " << vRed << ", eRed = " << eRed << ", uFull = " << uFull << ", vFull = " << vFull);
+                reducedVehOutputGraph.mapToEdgeInFullVeh(eRed) = eFull;
+                fullVehOutputGraph.mapToEdgeInReducedVeh(eFull) = eRed;
+
+                const int ePsg = fullVehOutputGraph.mapToEdgeInPsg(eFull);
+                if (ePsg != MapToEdgeInPsgAttribute::defaultValue()) {
+                    reducedVehOutputGraph.mapToEdgeInPsg(eRed) = ePsg;
+                    psgOutputGraph.mapToEdgeInReducedVeh(ePsg) = eRed;
+                }
+            }
+
+        // Validate mappings:
+        FORALL_EDGES(fullVehOutputGraph, eFull) {
+            const int eRed = fullVehOutputGraph.mapToEdgeInReducedVeh(eFull);
+            if (eRed != MapToEdgeInReducedVehAttribute::defaultValue())
+                LIGHT_KASSERT(reducedVehOutputGraph.mapToEdgeInFullVeh(eRed) == eFull);
+
+            const int ePsg = fullVehOutputGraph.mapToEdgeInPsg(eFull);
+            if (ePsg != MapToEdgeInPsgAttribute::defaultValue())
+                LIGHT_KASSERT(psgOutputGraph.mapToEdgeInFullVeh(ePsg) == eFull);
+
+            if (eRed != MapToEdgeInReducedVehAttribute::defaultValue() && ePsg != MapToEdgeInPsgAttribute::defaultValue()) {
+                LIGHT_KASSERT(psgOutputGraph.mapToEdgeInReducedVeh(ePsg) == eRed);
+                LIGHT_KASSERT(reducedVehOutputGraph.mapToEdgeInPsg(eRed) == ePsg);
             }
         }
+
         std::cout << " done." << std::endl;
 
         std::cout << "Write the vehicle subnetwork output file..." << std::flush;
-        LIGHT_KASSERT(subGraph.isDefrag());
-        const auto vehOutputFileName = outputFileName + ".veh_subnetwork.gr.bin";
-        std::ofstream vehOut(vehOutputFileName, std::ios::binary);
-        if (!vehOut.good())
-            throw std::invalid_argument("file cannot be opened -- '" + vehOutputFileName + ".gr.bin'");
-        subGraph.writeTo(vehOut, {"edge_id", "edge_tail"});
+        const auto reducedVehOutputFileName = outputFileName + ".veh_subnetwork.gr.bin";
+        std::ofstream reducedVehOut(reducedVehOutputFileName, std::ios::binary);
+        if (!reducedVehOut.good())
+            throw std::invalid_argument("file cannot be opened -- '" + reducedVehOutputFileName + ".gr.bin'");
+        reducedVehOutputGraph.writeTo(reducedVehOut, {"edge_id", "edge_tail"});
+        std::cout << " done." << std::endl;
+
+        std::cout << "Write the full vehicle network with new mappings to output file..." << std::flush;
+        const auto fullVehOutputFileName = outputFileName + ".veh_full.gr.bin";
+        std::ofstream fullVehOut(fullVehOutputFileName, std::ios::binary);
+        if (!fullVehOut.good())
+            throw std::invalid_argument("file cannot be opened -- '" + fullVehOutputFileName + ".gr.bin'");
+        fullVehOutputGraph.writeTo(fullVehOut, {"edge_id", "edge_tail"});
         std::cout << " done." << std::endl;
 
         std::cout << "Write the passenger network with new mappings to output file..." << std::flush;
@@ -233,7 +288,7 @@ int main(int argc, char *argv[]) {
         std::ofstream psgOut(psgOutputFileName, std::ios::binary);
         if (!psgOut.good())
             throw std::invalid_argument("file cannot be opened -- '" + psgOutputFileName + ".gr.bin'");
-        subGraph.writeTo(psgOut, {"edge_id", "edge_tail"});
+        psgOutputGraph.writeTo(psgOut, {"edge_id", "edge_tail"});
         std::cout << " done." << std::endl;
 
 

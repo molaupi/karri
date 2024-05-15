@@ -54,7 +54,7 @@
 #include "Tools/EnumParser.h"
 #include "Tools/LexicalCast.h"
 #include "Tools/StringHelpers.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
 #include "DataStructures/Graph/Attributes/AbstractAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
 
@@ -318,7 +318,7 @@ public:
         assert(ALLOW_EDGE_MAPPING);
 //        assert(edgeIDMapper.is_global_id_mapped(osmWayId));
         if (!edgeIDMapper.is_global_id_mapped(osmWayId) || !nodeIDMapper.is_global_id_mapped(headOsmNodeId))
-            return PsgEdgeToCarEdgeAttribute::defaultValue();
+            return MapToEdgeInFullVehAttribute::defaultValue();
         uint64_t routing_way_id = edgeIDMapper.to_local(osmWayId, INFTY);
         assert(routing_way_id < firstArcOfRoutingWay.size());
         assert(isVehicleAccessible(wayCategory[routing_way_id]));
@@ -338,7 +338,7 @@ public:
                 return arc_graph_id;
         }
 //        assert(false);
-        return PsgEdgeToCarEdgeAttribute::defaultValue();
+        return MapToEdgeInFullVehAttribute::defaultValue();
     }
 
 //    uint64_t getNumRoutingWaysThatHaveAntiParallelArcs() const {

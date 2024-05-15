@@ -29,7 +29,7 @@
 #include <cstdint>
 #include <Algorithms/KaRRi/BaseObjects//Request.h>
 #include <random>
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
 #include "Algorithms/Dijkstra/Dijkstra.h"
 
 namespace karri {
@@ -119,8 +119,8 @@ namespace karri {
                 const auto distToV = pickupSearch.getDistance(v);
                 assert(distToV <= inputConfig.pickupRadius);
                 FORALL_INCIDENT_EDGES(forwardGraph, v, e) {
-                    const int eInVehGraph = forwardGraph.toCarEdge(e);
-                    if (eInVehGraph == PsgEdgeToCarEdgeAttribute::defaultValue() ||
+                    const int eInVehGraph = forwardGraph.mapToEdgeInFullVeh(e);
+                    if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue() ||
                         distToV + forwardGraph.travelTime(e) > inputConfig.pickupRadius)
                         continue;
 
@@ -135,8 +135,8 @@ namespace karri {
                 assert(distToV <= inputConfig.dropoffRadius);
                 FORALL_INCIDENT_EDGES(reverseGraph, v, e) {
                     const auto eInForwGraph = reverseGraph.edgeId(e);
-                    const int eInVehGraph = forwardGraph.toCarEdge(eInForwGraph);
-                    if (eInVehGraph == PsgEdgeToCarEdgeAttribute::defaultValue())
+                    const int eInVehGraph = forwardGraph.mapToEdgeInFullVeh(eInForwGraph);
+                    if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue())
                         continue;
                     dropoffs.push_back({INVALID_ID, eInVehGraph, eInForwGraph, distToV, INFTY, INFTY});
                 }
@@ -147,7 +147,7 @@ namespace karri {
             assert(maxNumber > 0);
             // Add center to PD locs
             const int nextSeqId = pdLocs.size();
-            const int centerInVehGraph = forwardGraph.toCarEdge(centerInPsgGraph);
+            const int centerInVehGraph = forwardGraph.mapToEdgeInFullVeh(centerInPsgGraph);
             pdLocs.push_back({nextSeqId, centerInVehGraph, centerInPsgGraph, 0, INFTY, INFTY});
 
             // Remove duplicates

@@ -28,7 +28,7 @@
 #include <vector>
 #include <cstdint>
 #include <random>
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
 #include "Algorithms/Dijkstra/Dijkstra.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
@@ -56,7 +56,7 @@ namespace traffic_flow_subnetwork {
 
         KeptEdgesConnector(const InGraph &in) : in(in), scc(), search(in) {}
 
-        OutGraph connectEdges(std::vector<int> &keptEdges) {
+        OutGraph connectEdges(std::vector<int> &keptEdges, std::vector<int>& outToInVertexIds) {
 
             // Get edge-induced subgraph
             std::vector<int> inToOutVertexIds(in.numVertices(), INVALID_VERTEX);
@@ -64,7 +64,8 @@ namespace traffic_flow_subnetwork {
             KASSERT(out.validate());
 
             // Compute out-to-in vertex ID mapping.
-            std::vector<int> outToInVertexIds(out.numVertices(), INVALID_VERTEX);
+            outToInVertexIds.clear();
+            outToInVertexIds.resize(out.numVertices(), INVALID_VERTEX);
             for (int vIn = 0; vIn < in.numVertices(); ++vIn) {
                 const auto &vOut = inToOutVertexIds[vIn];
                 if (vOut != INVALID_VERTEX)

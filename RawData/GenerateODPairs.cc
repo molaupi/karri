@@ -56,7 +56,7 @@
 #include "Tools/StringHelpers.h"
 #include "Tools/Timer.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
-#include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 
 inline void printUsage() {
     std::cout <<
@@ -73,7 +73,7 @@ inline void printUsage() {
               "  -r <rank>         space-separated list of (expected) Dijkstra ranks\n"
               "  -d <dist>         space-separated list of (expected) OD distances\n"
               "  -geom             choose geometrically distributed ranks/distances\n"
-              "  -psg <mode>       output only vertices that are accessible to passengers too as defined by the CarEdgeToPsgEdgeAttribute\n"
+              "  -psg <mode>       output only vertices that are accessible to passengers too as defined by the MapToEdgeInPsgAttribute\n"
               "                         possible values: incoming (vertices with incoming psg accessible edges), in-and-out (vertices with incoming and outgoing psg accessible edges)\n"
               "  -g <file>         input graph in binary format\n"
               "  -a <file>         restrict origins and destinations to polygonal study area\n"
@@ -87,7 +87,7 @@ bool hasIncomingPsgAccessibleEdge(const TargetGraphT &targetGraph, const TargetG
 
     // Requires at least one passenger accessible incoming edge:
     FORALL_INCIDENT_EDGES(revTargetGraph, vertex, e) {
-        if (targetGraph.toPsgEdge(revTargetGraph.edgeId(e)) != CarEdgeToPsgEdgeAttribute::defaultValue())
+        if (targetGraph.mapToEdgeInPsg(revTargetGraph.edgeId(e)) != MapToEdgeInPsgAttribute::defaultValue())
             return true;
     }
     return false;
@@ -103,7 +103,7 @@ bool hasIncomingAndOutgoingPsgAccessibleEdge(const TargetGraphT &targetGraph, co
 
     // ... and at least one passenger accessible outgoing edge.
     FORALL_INCIDENT_EDGES(targetGraph, vertex, e) {
-        if (targetGraph.toPsgEdge(targetGraph.edgeId(e)) != CarEdgeToPsgEdgeAttribute::defaultValue())
+        if (targetGraph.mapToEdgeInPsg(targetGraph.edgeId(e)) != MapToEdgeInPsgAttribute::defaultValue())
             return true;
     }
     return false;
@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
         // Read the graph from file.
         std::cout << "Reading graph from file..." << std::flush;
         using VertexAttributes = VertexAttrs<LatLngAttribute, SequentialVertexIdAttribute>;
-        using EdgeAttributes = EdgeAttrs<LengthAttribute, TravelTimeAttribute, EdgeIdAttribute, CarEdgeToPsgEdgeAttribute>;
+        using EdgeAttributes = EdgeAttrs<LengthAttribute, TravelTimeAttribute, EdgeIdAttribute, MapToEdgeInPsgAttribute>;
         using Graph = StaticGraph<VertexAttributes, EdgeAttributes>;
         std::ifstream graphFile(graphFileName, std::ios::binary);
         if (!graphFile.good())

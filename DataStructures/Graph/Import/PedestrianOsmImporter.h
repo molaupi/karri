@@ -53,7 +53,7 @@
 #include "Tools/EnumParser.h"
 #include "Tools/LexicalCast.h"
 #include "Tools/StringHelpers.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
 #include "Tools/custom_assertion_levels.h"
 

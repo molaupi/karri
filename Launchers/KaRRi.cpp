@@ -41,8 +41,8 @@
 #include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
 #include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
-#include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
@@ -182,7 +182,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Reading vehicle network from file... " << std::flush;
         using VehicleVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
         using VehicleEdgeAttributes = EdgeAttrs<
-                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute>;
+                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, MapToEdgeInPsgAttribute, OsmRoadCategoryAttribute>;
         using VehicleInputGraph = StaticGraph<VehicleVertexAttributes, VehicleEdgeAttributes>;
         std::ifstream vehicleNetworkFile(vehicleNetworkFileName, std::ios::binary);
         if (!vehicleNetworkFile.good())
@@ -217,7 +217,7 @@ int main(int argc, char *argv[]) {
         // Read the passenger network from file.
         std::cout << "Reading passenger network from file... " << std::flush;
         using PsgVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
-        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, PsgEdgeToCarEdgeAttribute, TravelTimeAttribute>;
+        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, MapToEdgeInFullVehAttribute, TravelTimeAttribute>;
         using PsgInputGraph = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
         std::ifstream psgNetworkFile(passengerNetworkFileName, std::ios::binary);
         if (!psgNetworkFile.good())
@@ -231,18 +231,18 @@ int main(int argc, char *argv[]) {
                 psgInputGraph.edgeTail(e) = v;
                 psgInputGraph.edgeId(e) = e;
 
-                const int eInVehGraph = psgInputGraph.toCarEdge(e);
-                if (eInVehGraph != PsgEdgeToCarEdgeAttribute::defaultValue()) {
+                const int eInVehGraph = psgInputGraph.mapToEdgeInFullVeh(e);
+                if (eInVehGraph != MapToEdgeInFullVehAttribute::defaultValue()) {
                     ++numEdgesWithMappingToCar;
                     assert(eInVehGraph < vehGraphOrigIdToSeqId.size());
-                    psgInputGraph.toCarEdge(e) = vehGraphOrigIdToSeqId[eInVehGraph];
-                    assert(psgInputGraph.toCarEdge(e) < vehicleInputGraph.numEdges());
-                    vehicleInputGraph.toPsgEdge(psgInputGraph.toCarEdge(e)) = e;
+                    psgInputGraph.mapToEdgeInFullVeh(e) = vehGraphOrigIdToSeqId[eInVehGraph];
+                    assert(psgInputGraph.mapToEdgeInFullVeh(e) < vehicleInputGraph.numEdges());
+                    vehicleInputGraph.mapToEdgeInPsg(psgInputGraph.mapToEdgeInFullVeh(e)) = e;
 
                     assert(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
-                           vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).latitude());
+                           vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).latitude());
                     assert(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
-                            vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).longitude());
+                            vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).longitude());
                 }
             }
         unused(numEdgesWithMappingToCar);
@@ -309,9 +309,9 @@ int main(int argc, char *argv[]) {
             if (numRiders > maxCapacity)
                 throw std::invalid_argument("number of riders '" + std::to_string(numRiders) + "' is larger than max vehicle capacity (" + std::to_string(maxCapacity) + ")");
             const auto originSeqId = vehGraphOrigIdToSeqId[origin];
-            assert(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
+            assert(vehicleInputGraph.mapToEdgeInPsg(originSeqId) != MapToEdgeInPsgAttribute::defaultValue());
             const auto destSeqId = vehGraphOrigIdToSeqId[destination];
-            assert(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
+            assert(vehicleInputGraph.mapToEdgeInPsg(destSeqId) != MapToEdgeInPsgAttribute::defaultValue());
             const int requestId = static_cast<int>(requests.size());
             if (numRiders == -1) // If number of riders was not specified, assume one rider
                 numRiders = 1;

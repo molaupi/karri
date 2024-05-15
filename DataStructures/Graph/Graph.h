@@ -946,7 +946,7 @@ private:
     template<
             typename SourceOutEdgeRangeT,
             typename = std::enable_if_t<!std::is_same<OutEdgeRange, SourceOutEdgeRangeT>::value>>
-    void setOutEdges(const std::vector<SourceOutEdgeRangeT> &srcOutEdges) {
+    void setOutEdges(const AlignedVector<SourceOutEdgeRangeT> &srcOutEdges) {
         outEdges.resize(srcOutEdges.size() + !dynamic - dynamic);
         if (numVertices() != 0) {
             outEdges.back().last() = srcOutEdges.back().last();

@@ -57,11 +57,11 @@ namespace karri {
 
             requestState.originalRequest = req;
 
-            assert(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.origin)) == req.origin);
-            const auto originInPsgGraph = vehInputGraph.toPsgEdge(req.origin);
+            assert(psgInputGraph.mapToEdgeInFullVeh(vehInputGraph.mapToEdgeInPsg(req.origin)) == req.origin);
+            const auto originInPsgGraph = vehInputGraph.mapToEdgeInPsg(req.origin);
 
-            assert(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
-            const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
+            assert(psgInputGraph.mapToEdgeInFullVeh(vehInputGraph.mapToEdgeInPsg(req.destination)) == req.destination);
+            const auto destInPsgGraph = vehInputGraph.mapToEdgeInPsg(req.destination);
 
             findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph);
 

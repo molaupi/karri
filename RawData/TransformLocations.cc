@@ -28,7 +28,7 @@
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Graph.h"
-#include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "DataStructures/Utilities/OriginDestination.h"
 #include "DataStructures/Geometry/Area.h"
@@ -84,7 +84,7 @@ struct IsEdgePsgEligible {
     explicit IsEdgePsgEligible(const TargetGraphT &graph) : targetGraph(graph) {}
 
     bool operator()(const int edgeId) const {
-        return targetGraph.toPsgEdge(edgeId) != CarEdgeToPsgEdgeAttribute::defaultValue();
+        return targetGraph.mapToEdgeInPsg(edgeId) != MapToEdgeInPsgAttribute::defaultValue();
     }
 
     const TargetGraphT &targetGraph;
@@ -367,7 +367,7 @@ int main(int argc, char *argv[]) {
             outputFileName = outputFileName.substr(0, outputFileName.size() - 4);
         LogManager<std::ofstream>::setBaseFileName(outputFileName + ".");
 
-        using Graph = StaticGraph<VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>, EdgeAttrs<EdgeIdAttribute, CarEdgeToPsgEdgeAttribute, EdgeTailAttribute, TravelTimeAttribute>>;
+        using Graph = StaticGraph<VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>, EdgeAttrs<EdgeIdAttribute, MapToEdgeInPsgAttribute, EdgeTailAttribute, TravelTimeAttribute>>;
 
         // Read target network
         std::cout << "Reading target network from file... " << std::flush;

@@ -44,8 +44,8 @@
 #include "DataStructures/Graph/Attributes/XatfRoadCategoryAttribute.h"
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "Algorithms/GraphTraversal/StronglyConnectedComponents.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
-#include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
 #include "DataStructures/Geometry/Area.h"
 #include "Tools/CommandLine/ProgressBar.h"
@@ -58,7 +58,7 @@ inline void printUsage() {
               "This program reads a graph from an OSM PBF source file and converts it into two binary graph files: a graph\n"
               "representing a network for cars and a graph representing a network for passengers moving on their own. For any edge e in the\n "
               "passenger graph that also occurs in the car graph, the passenger graph contains an attribute \n"
-              "PsgEdgeToCarEdgeAttribute that maps e to the according edge e' in the car graph. Both graphs only\n"
+              "MapToEdgeInFullVehAttribute that maps e to the according edge e' in the car graph. Both graphs only\n"
               "represent the largest SCC of the input graph.\n"
               "  -a <attrs>             blank-separated list of vertex/edge attributes to be output in the car graph\n"
               "                           possible values:\n"
@@ -92,7 +92,7 @@ using CarEdgeAttributes = EdgeAttrs<
         SpeedLimitAttribute,
         TravelTimeAttribute,
         XatfRoadCategoryAttribute,
-        CarEdgeToPsgEdgeAttribute
+        MapToEdgeInPsgAttribute
 >;
 using CarGraphT = StaticGraph<CarVertexAttributes, CarEdgeAttributes>;
 
@@ -104,7 +104,7 @@ using PsgVertexAttributes = VertexAttrs<
         OsmNodeIdAttribute
 >;
 using PsgEdgeAttributes = EdgeAttrs<
-        PsgEdgeToCarEdgeAttribute,
+        MapToEdgeInFullVehAttribute,
         TravelTimeAttribute,
         OsmRoadCategoryAttribute
 >;
@@ -278,7 +278,7 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
                 const auto [osmWayId, osmHeadNodeId] = osmWayIdAndHeadVertexId[e];
                 const auto eInFullCarGraph = carImporter.getEdgeForOSMIdOfWayAndHead(osmWayId, osmHeadNodeId);
 
-                if (eInFullCarGraph == PsgEdgeToCarEdgeAttribute::defaultValue())
+                if (eInFullCarGraph == MapToEdgeInFullVehAttribute::defaultValue())
                     continue;
 
                 assert(eInFullCarGraph < int(carGraphToSccEdgeMap.size()));
@@ -309,18 +309,18 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
                             latLngForCsv(carLatLng));
 
 
-                psgGraph.toCarEdge(e) = eInCarSCC;
-                carGraph.toPsgEdge(eInCarSCC) = e;
-                if (psgGraph.toCarEdge(e) != PsgEdgeToCarEdgeAttribute::defaultValue())
+                psgGraph.mapToEdgeInFullVeh(e) = eInCarSCC;
+                carGraph.mapToEdgeInPsg(eInCarSCC) = e;
+                if (psgGraph.mapToEdgeInFullVeh(e) != MapToEdgeInFullVehAttribute::defaultValue())
                     ++numEdgesInPsgWithValidMapping;
-                assert(psgGraph.toCarEdge(e) < carGraph.numEdges());
+                assert(psgGraph.mapToEdgeInFullVeh(e) < carGraph.numEdges());
             }
 
         }
 
     FORALL_VALID_EDGES(carGraph, v, e) {
-            assert(carGraph.toPsgEdge(e) == CarEdgeToPsgEdgeAttribute::defaultValue() ||
-                   carGraph.toPsgEdge(e) < psgGraph.numEdges());
+            assert(carGraph.mapToEdgeInPsg(e) == MapToEdgeInPsgAttribute::defaultValue() ||
+                           carGraph.mapToEdgeInPsg(e) < psgGraph.numEdges());
         }
 
 
@@ -336,7 +336,7 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
         // Output only those attributes specified on the command line.
         std::vector<std::string> attrsToIgnore;
         std::vector<std::string> attrsToOutput = clp.getValues<std::string>("a");
-        attrsToOutput.emplace_back("car_edge_to_psg_edge"); // Always output edge mapping to passenger graph
+        attrsToOutput.emplace_back("map_to_edge_in_psg"); // Always output edge mapping to passenger graph
         for (const auto &attr: CarGraphT::getAttributeNames())
             if (!contains(attrsToOutput.begin(), attrsToOutput.end(), attr))
                 attrsToIgnore.push_back(attr);
