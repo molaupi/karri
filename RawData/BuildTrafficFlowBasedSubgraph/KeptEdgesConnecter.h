@@ -35,6 +35,7 @@
 #include "Tools/CommandLine/ProgressBar.h"
 #include "Algorithms/GraphTraversal/StronglyConnectedComponents.h"
 #include "DataStructures/Utilities/IteratorRange.h"
+#include "DataStructures/Containers/FastResetFlagArray.h"
 
 namespace traffic_flow_subnetwork {
 
@@ -73,79 +74,56 @@ namespace traffic_flow_subnetwork {
 
             // Compute SCCs of subgraph induced by kept edges.
             scc.run(out);
-            std::vector<int> reprOfVertex = scc.getStronglyConnectedComponents();
-            std::vector<int> uniqueReprs;
+            std::vector<int> components = scc.getStronglyConnectedComponents();
             std::unordered_map<int, int> reprToComp;
-            for (const auto &r: reprOfVertex) {
-                if (!contains(uniqueReprs.begin(), uniqueReprs.end(), r)) {
-                    reprToComp[r] = static_cast<int>(uniqueReprs.size());
-                    uniqueReprs.push_back(r);
-                }
+
+            // Initially, components[v] stores the representative vertex of the component that contains v. We map this
+            // to a component ID by mapping the N unique representatives to component IDs [0, N).
+            int initialNumComponents = 0;
+            for (int v = 0; v < out.numVertices(); ++v) {
+                auto &r = components[v];
+                if (reprToComp.find(r) == reprToComp.end())
+                    reprToComp[r] = initialNumComponents++;
+                r = reprToComp[r];
             }
             std::cout << "Subgraph induced by kept edges:" << std::endl;
             std::cout << "\t|V| = " << out.numVertices() << std::endl;
             std::cout << "\t|E| = " << out.numEdges() << std::endl;
-            std::cout << "\tNumber of SCCs: " << uniqueReprs.size() << std::endl;
+            std::cout << "\tNumber of SCCs: " << initialNumComponents << std::endl;
             std::cout << "\tSize of largest SCC: " << scc.getLargestSccAsBitmask().count() << std::endl;
 
             using Path = std::vector<int>;
 
-            // Iteratively connect SCCs. In each iteration, for each remaining SCC C, a Dijkstra search rooted at all
-            // vertices in C is run in the input graph. The Dijkstra search stops once a vertex that belongs to a
-            // different SCC in the subgraph is settled. After running a search for each SCC, we find cycles in the
+            // touched[c] contains c' if the search for component c found the closest neighbor component c'.
+            // For any removed components, touched[c] contains INVALID_ID.
+            std::vector<int> touched(initialNumComponents);
+
+            // inPathToTouched[c] contains the shortest path from a vertex of component c to a vertex of the closest
+            // neighbor component touched[c]. For any removed components, inPathToTouched[c] is empty.
+            std::vector<Path> inPathToTouched(initialNumComponents);
+
+            // Run Dijkstra searches from each initial component, finding the closest neighbor component and
+            // according path.
+            for (int c = 0; c < initialNumComponents; ++c) {
+                findClosestNeighborComponent(c, touched[c], inPathToTouched[c],
+                                             out, outToInVertexIds, inToOutVertexIds, components);
+            }
+            LIGHT_KASSERT(!contains(touched.begin(), touched.end(), INVALID_VERTEX));
+
+
+            // Iteratively connect SCCs. After running a Dijkstra search for each initial SCC, we find cycles in the
             // component graph that would be created by inserting the paths found by the Dijkstra searches.
             // Each cycle is collapsed by actually inserting the according paths found by the searches into the
-            // subgraph and merging the SCCs. Note that there is always at least one new cycle so the iteration converges.
+            // subgraph and merging the SCCs. Then, the Dijkstra search is rerun for the merged component and cycles
+            // are found and collapsed again.
+            // Note that there is always at least one new cycle so the iteration converges.
+            std::cout << "% SCCs connected: ";
+            ProgressBar progressBar(initialNumComponents - 1);
             int iteration = 0;
-            while (uniqueReprs.size() > 1) {
+            FastResetFlagArray<> pTreeFinished(initialNumComponents);
+            int numComponents = initialNumComponents;
+            while (numComponents > 1) {
                 ++iteration;
-
-                const int numComponents = uniqueReprs.size();
-                // There are N = uniqueReprs.size() many SCCs. We identify each SCC either by its index c in [0,n).
-
-                // touched[c] contains c' if the search for component c found the closest neighbor component c'
-                std::vector<int> touched(numComponents);
-
-                // inPathToTouched[c] contains the shortest path from a vertex of component c to a vertex of the closest
-                // neighbor component touched[c].
-                std::vector<Path> inPathToTouched(numComponents);
-
-                for (int c = 0; c < numComponents; ++c) {
-                    const auto &r = uniqueReprs[c];
-
-                    // Root search at all vertices in SCC
-                    search.distanceLabels.init();
-                    search.queue.clear();
-                    for (int v = 0; v < reprOfVertex.size(); ++v) {
-                        if (reprOfVertex[v] == r) {
-                            const auto &vIn = outToInVertexIds[v];
-                            search.distanceLabels[vIn][0] = 0;
-                            search.queue.insert(vIn, 0);
-                            search.parent.setVertex(vIn, vIn, true);
-                            search.parent.setEdge(vIn, INVALID_EDGE, true);
-                        }
-                    }
-
-                    // Run search in input graph until a vertex that is in a different SCC of the subgraph is settled.
-                    // Store touched other component and path to the vertex in the input graph.
-                    while (true) {
-                        LIGHT_KASSERT(!search.queue.empty());
-                        const int vIn = search.queue.minId();
-                        const int &vOut = inToOutVertexIds[vIn];
-                        if (vOut != INVALID_VERTEX && reprOfVertex[vOut] != r) {
-                            touched[c] = reprToComp.at(reprOfVertex[vOut]);
-                            inPathToTouched[c] = search.getReverseEdgePath(vIn);
-                            std::reverse(inPathToTouched[c].begin(), inPathToTouched[c].end());
-                            break;
-                        }
-                        search.settleNextVertex();
-                    }
-                    LIGHT_KASSERT(touched[c] >= 0 && touched[c] < numComponents && touched[c] != c);
-                    LIGHT_KASSERT(!inPathToTouched[c].empty());
-                    LIGHT_KASSERT(reprOfVertex[inToOutVertexIds[in.edgeHead(inPathToTouched[c].back())]] == uniqueReprs[touched[c]]);
-                    LIGHT_KASSERT(reprOfVertex[inToOutVertexIds[in.edgeTail(inPathToTouched[c].front())]] == r);
-                }
-                LIGHT_KASSERT(!contains(touched.begin(), touched.end(), INVALID_VERTEX));
 
                 // The paths found by Dijkstra searches induce a pseudo-forest in the component graph of the subnetwork.
                 // We find the cycle in each pseudo-tree and collapse it by inserting the according paths into the
@@ -153,26 +131,32 @@ namespace traffic_flow_subnetwork {
                 // All components of a pseudo-tree that are not on the cycle of that pseudo-tree cannot be collapsed
                 // in this iteration.
                 std::vector<int> curCycle;
-                std::vector<int> reprsMarkedForRemoval;
-                for (int initialC = 0; initialC < numComponents; ++initialC) {
+                std::vector<int> expandedComponents; // components on a cycle that the cycle was collapsed into
+                pTreeFinished.reset();
+                for (int initialC = 0; initialC < initialNumComponents; ++initialC) {
                     LIGHT_KASSERT(curCycle.empty());
 
-                    if (touched[initialC] == INVALID_VERTEX) {
-                        // Cycle in pseudo-tree of initialC has already been found.
+                    // Check if component is no longer active, has been merged into different component:
+                    if (touched[initialC] == INVALID_ID) {
+                        LIGHT_KASSERT(inPathToTouched[initialC].empty());
                         continue;
                     }
 
+                    // Check whether we already know that the pseudo-tree for this component is finished:
+                    if (pTreeFinished.isSet(initialC))
+                        continue;
+
                     // Try to find a new cycle:
                     curCycle.push_back(initialC);
-                    curCycle.push_back(touched[initialC]);
                     while (true) {
                         const int nextC = touched[curCycle.back()];
+                        LIGHT_KASSERT(nextC != INVALID_ID, "curCycle == " << curCycle);
 
-                        // If we hit a component that has invalid vertex, the cycle for this pseudo-tree has already
-                        // been found.
-                        if (nextC == INVALID_VERTEX) {
+                        // If curCycle is a branch of a finished pseudo-tree, mark the components on the path as such
+                        // and stop extending:
+                        if (pTreeFinished.isSet(nextC)) {
                             for (const auto &c2: curCycle)
-                                touched[c2] = INVALID_VERTEX;
+                                pTreeFinished.set(c2);
                             curCycle.clear();
                             break;
                         }
@@ -185,52 +169,64 @@ namespace traffic_flow_subnetwork {
                             continue;
                         }
 
-                        // Close a cycle:
+                        // Close a cycle. New component will have ID nextC.
+                        const int expandedCompId = nextC;
 
-                        // Remove components from curCycle that are not part of the cycle. Mark them as finished.
-                        for (auto it = curCycle.begin(); it != startOfCycle; ++it)
-                            touched[*it] = INVALID_VERTEX;
+                        // Mark pseudo-tree as finished for all components on cycle + head branch:
+                        for (const auto &c: curCycle)
+                            pTreeFinished.set(c);
+
+                        // Remove components from curCycle that are not part of the cycle but part of the branch leading
+                        // to the cycle at the head of curCycle.
                         curCycle.erase(curCycle.begin(), startOfCycle);
-                        LIGHT_KASSERT(curCycle.front() == nextC);
+                        LIGHT_KASSERT(curCycle.front() == expandedCompId);
 
                         // Insert the Dijkstra paths into the subnetwork:
                         insertPathsIntoSubnetwork(out, curCycle, inPathToTouched, inToOutVertexIds, outToInVertexIds);
 
                         // Store representative of new vertices (new vertices are added at end with incremental IDs):
-                        const int newRepr = uniqueReprs[nextC];
-                        reprOfVertex.resize(out.numVertices(), newRepr);
+                        components.resize(out.numVertices(), expandedCompId);
 
-                        // Update the representatives of existing vertices:
-                        for (int v = 0; v < out.numVertices(); ++v) {
-                            if (contains(curCycle.begin(), curCycle.end(), reprToComp.at(reprOfVertex[v])))
-                                reprOfVertex[v] = newRepr;
+                        // Update the components of existing vertices to merged component:
+                        for (int v = 0; v < out.numVertices(); ++v)
+                            if (contains(curCycle.begin(), curCycle.end(), components[v]))
+                                components[v] = expandedCompId;
+
+                        // Mark removed components as such:
+                        for (int i = 1; i < curCycle.size(); ++i) {
+                            touched[curCycle[i]] = INVALID_ID;
+                            inPathToTouched[curCycle[i]].clear();
+                            --numComponents;
+                            ++progressBar;
                         }
 
-                        // Mark components on cycle for removal (except expanded first component):
-                        for (auto i = 1; i < curCycle.size(); ++i)
-                            reprsMarkedForRemoval.push_back(uniqueReprs[curCycle[i]]);
+                        // Update neighbor pointers that point at removed components:
+                        for (int c = 0; c < initialNumComponents; ++c)
+                            if (contains(curCycle.begin() + 1, curCycle.end(), touched[c]))
+                                touched[c] = expandedCompId;
 
-                        // Mark components on cycle as finished for this iteration and reset cycle:
-                        for (const auto &c2: curCycle)
-                            touched[c2] = INVALID_VERTEX;
+                        // Mark expanded component, reset its neighbor information (recomputed later).
+                        expandedComponents.push_back(expandedCompId);
+                        touched[expandedCompId] = INVALID_ID;
+                        inPathToTouched[expandedCompId].clear();
+
+                        // Start searching for next cycle:
                         curCycle.clear();
                         break;
                     }
-
                 }
 
-                // Remove representatives of components that were on collapsed cycles and did not become new component:
-                for (const auto& r : reprsMarkedForRemoval) {
-                    uniqueReprs.erase(std::find(uniqueReprs.begin(), uniqueReprs.end(), r));
-                    reprToComp.erase(r);
-                }
-                for (int c = 0; c < uniqueReprs.size(); ++c) {
-                    reprToComp[uniqueReprs[c]] = c;
+                if (numComponents > 1) {
+                    // Compute new neighbor information for those components that have been expanded by a cycle collapse:
+                    for (const auto &c: expandedComponents) {
+                        findClosestNeighborComponent(c, touched[c], inPathToTouched[c], out, outToInVertexIds,
+                                                     inToOutVertexIds, components);
+                    }
                 }
 
-                std::cout << "After iteration " << iteration << ": " << uniqueReprs.size() << " SCCs" << std::endl;
+//                std::cout << "After iteration " << iteration << ": " << numComponents << " SCCs" << std::endl;
             }
-
+            std::cout << " done." << std::endl;
 
             LIGHT_KASSERT(hasOneScc(out));
             std::cout << "Connected subnetwork in " << iteration << " iterations." << std::endl;
@@ -278,6 +274,43 @@ namespace traffic_flow_subnetwork {
             return out;
         }
 
+        void findClosestNeighborComponent(const int c, int &neighborC, std::vector<int> &pathToNeighborC,
+                                          const OutGraph &out, const std::vector<int> &outToInVertexIds,
+                                          const std::vector<int> &inToOutVertexIds,
+                                          const std::vector<int> &components) {
+            // Root search at all vertices in SCC
+            search.distanceLabels.init();
+            search.queue.clear();
+            for (int v = 0; v < out.numVertices(); ++v) {
+                if (components[v] == c) {
+                    const auto &vIn = outToInVertexIds[v];
+                    search.distanceLabels[vIn][0] = 0;
+                    search.queue.insert(vIn, 0);
+                    search.parent.setVertex(vIn, vIn, true);
+                    search.parent.setEdge(vIn, INVALID_EDGE, true);
+                }
+            }
+
+            // Run search in input graph until a vertex that is in a different SCC of the subgraph is settled.
+            // Store touched other component and path to the vertex in the input graph.
+            while (true) {
+                LIGHT_KASSERT(!search.queue.empty());
+                const int vIn = search.queue.minId();
+                const int &vOut = inToOutVertexIds[vIn];
+                if (vOut != INVALID_VERTEX && components[vOut] != c) {
+                    neighborC = components[vOut];
+                    pathToNeighborC = search.getReverseEdgePath(vIn);
+                    std::reverse(pathToNeighborC.begin(), pathToNeighborC.end());
+                    break;
+                }
+                search.settleNextVertex();
+            }
+            LIGHT_KASSERT(neighborC >= 0 && neighborC != c);
+            LIGHT_KASSERT(!pathToNeighborC.empty());
+            LIGHT_KASSERT(components[inToOutVertexIds[in.edgeHead(pathToNeighborC.back())]] == neighborC);
+            LIGHT_KASSERT(components[inToOutVertexIds[in.edgeTail(pathToNeighborC.front())]] == c);
+        }
+
         void insertPathsIntoSubnetwork(OutGraph &out,
                                        const std::vector<int> &pathIndices,
                                        const std::vector<std::vector<int>> &paths,
@@ -285,7 +318,7 @@ namespace traffic_flow_subnetwork {
                                        std::vector<int> &outToInVertexIds) {
 
             for (int idxInIndices = 0; idxInIndices < pathIndices.size(); ++idxInIndices) {
-                const auto& idx = pathIndices[idxInIndices];
+                const auto &idx = pathIndices[idxInIndices];
                 LIGHT_KASSERT(idx >= 0 && idx < paths.size());
                 // p is a vector of edges in the input network that we need to insert into the output subnetwork.
                 const auto &p = paths[idx];
@@ -317,7 +350,7 @@ namespace traffic_flow_subnetwork {
             }
         }
 
-        bool hasOneScc(const OutGraph& out) {
+        bool hasOneScc(const OutGraph &out) {
             scc.run(out);
             return scc.getLargestSccAsBitmask().count() == out.numVertices();
         }
