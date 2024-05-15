@@ -33,6 +33,7 @@
 
 #include "DataStructures/Geometry/Helpers.h"
 #include "DataStructures/Geometry/Point.h"
+#include "Tools/custom_assertion_levels.h"
 
 // A polygon defines a two-dimensional region enclosed by a single closed polygonal chain.
 class Polygon {
@@ -158,7 +159,7 @@ class Polygon {
   // Returns 1 or -1 as this polygon is counterclockwise or clockwise oriented.
   // Precondition: The polygon must be simple.
   int orientation() const {
-    assert(simple());
+    HEAVY_KASSERT(simple());
     const int q = leftmostVertex();
     const int p = (q - 1 + size()) % size();
     const int r = (q + 1) % size();

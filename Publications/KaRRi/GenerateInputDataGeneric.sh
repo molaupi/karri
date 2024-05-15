@@ -46,7 +46,7 @@ psg_name=${name}_psg
 
 # For a more precise mapping of edges in the vehicle and passenger networks, remove -no-union-nodes flag.
 # Leads to larger vehicle network with many vertices of degree 2, though.
-$binaryDir/RawData/OsmToCarAndPassengerGraph -psg-mode ${passengerMode} -no-union-nodes -no-veh-on-service -a lat_lng osm_node_id capacity free_flow_speed length num_lanes osm_road_category road_geometry speed_limit travel_time -i $inputGraph -co $inputDir/Graphs/${veh_name} -po $inputDir/Graphs/${psg_name}
+$binaryDir/RawData/OsmToCarAndPassengerGraph -psg-mode ${passengerMode} -no-union-nodes -no-veh-on-service -b $boundariesDir/${networkName}_Inner.poly -a lat_lng osm_node_id capacity free_flow_speed length num_lanes osm_road_category road_geometry speed_limit travel_time -i $inputGraph -co $inputDir/Graphs/${veh_name} -po $inputDir/Graphs/${psg_name}
 $binaryDir/RawData/GenerateRandomVehicles -n $numVehicles -g $inputDir/Graphs/${veh_name}.gr.bin -a $boundariesDir/${networkName}_Inner.poly -o $inputDir/Vehicles/${name}
 $binaryDir/RawData/GenerateODPairs -n $numRequests -d $meanTripTime -geom -psg -g $inputDir/Graphs/${veh_name}.gr.bin -a $boundariesDir/${networkName}_Inner.poly -o $inputDir/ODPairs/${name}_OD.csv
 $binaryDir/RawData/TransformLocations -src-g $inputDir/Graphs/${veh_name}.gr.bin -tar-g $inputDir/Graphs/${veh_name}.gr.bin -psg -p $inputDir/ODPairs/${name}_OD.csv -in-repr vertex-id -out-repr edge-id -o $inputDir/ODPairs/${name}_OD.csv

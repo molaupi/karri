@@ -47,6 +47,8 @@
 #include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
+#include "DataStructures/Geometry/Area.h"
+#include "Tools/CommandLine/ProgressBar.h"
 
 // Graph converter specifically for generating two matching graphs, one for cars and one for pedestrians or cyclists.
 
@@ -69,6 +71,7 @@ inline void printUsage() {
               "  -no-union-nodes        If set, nodes are intersections in each individual network. Less precise mapping but smaller networks.\n"
               "  -no-veh-on-service     Disallow vehicles on roads of OSM 'SERVICE' road category.\n"
               "  -i <file>              input graph in OSM PBF format without file extension\n"
+              "  -b <file>              .poly boundary file of inner area to limit passenger graph to\n"
               "  -co <file>             car graph output file without file extension\n"
               "  -po <file>             passenger graph output file without file extension\n"
               "  -help                  display this help and exit\n";
@@ -109,8 +112,7 @@ using PsgGraphT = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
 
 
 template<typename PsgOsmImporterT>
-void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCategory &isPsgAccessible) {
-    unused(isPsgAccessible);
+void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCategory& isPsgAccessible) {
 
     const auto infile = clp.getValue<std::string>("i");
 
@@ -176,6 +178,31 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
     auto psgGraph = PsgGraphT::makeGraphUsingImporterRef(infile, *psgImporter);
     std::cout << "\t done." << std::endl;
 
+    // Read the study area from OSM POLY file.
+    const auto areaFileName = clp.getValue<std::string>("b");
+    std::unique_ptr<std::vector<int>> psgGraphToStudyAreaEdgeMap;
+    if (!areaFileName.empty()) {
+        std::cout << "\tReading inner area from OSM POLY file..." << std::flush;
+        Area studyArea;
+        studyArea.importFromOsmPolyFile(areaFileName);
+        const auto box = studyArea.boundingBox();
+        boost::dynamic_bitset<> inStudyArea(psgGraph.numVertices());
+        ProgressBar vertexInStudyAreaProgress(psgGraph.numVertices());
+        FORALL_VERTICES(psgGraph, v) {
+            const LatLng ll = psgGraph.latLng(v);
+            const Point p(ll.longitude(), ll.latitude());
+            if (box.contains(p) && studyArea.contains(p))
+                inStudyArea[v] = true;
+            ++vertexInStudyAreaProgress;
+        }
+        std::cout << " done.\n";
+
+        std::cout << "\tExtracting passenger subgraph within inner area..." << std::flush;
+        psgGraphToStudyAreaEdgeMap = std::make_unique<std::vector<int>>(psgGraph.numEdges(), INVALID_ID);
+        psgGraph.extractVertexInducedSubgraph(inStudyArea, *psgGraphToStudyAreaEdgeMap);
+        std::cout << " done." << std::endl;
+    }
+
     std::cout << "\tComputing strongly connected components..." << std::flush;
     StronglyConnectedComponents psgScc;
     psgScc.run(psgGraph);
@@ -184,15 +211,27 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
     std::cout << "\tExtracting the largest SCC..." << std::flush;
     auto psgGraphToSccEdgeMap = std::make_unique<std::vector<int>>(psgGraph.numEdges(), INVALID_ID);
     psgGraph.extractVertexInducedSubgraph(psgScc.getLargestSccAsBitmask(), *psgGraphToSccEdgeMap);
+    if (psgGraphToStudyAreaEdgeMap) {
+        // Transform mapping from original to study area and study area to SCC to direct mapping from original to SCC.
+        // Store direct mapping in origToArea, and swap at the end so psgGraphToSccEdgeMap contains direct mapping.
+        auto& origToArea = *psgGraphToStudyAreaEdgeMap;
+        auto& areaToScc = *psgGraphToSccEdgeMap;
+        for (int eInOrigGraph = 0; eInOrigGraph < psgGraph.numEdges(); ++eInOrigGraph) {
+            const auto eInArea = origToArea[eInOrigGraph];
+            if (eInArea == INVALID_ID) continue;
+            const auto eInScc = areaToScc[eInArea];
+            origToArea[eInOrigGraph] = eInScc;
+        }
+        psgGraphToSccEdgeMap = std::move(psgGraphToStudyAreaEdgeMap);
+    }
+    LIGHT_KASSERT(!psgGraphToStudyAreaEdgeMap);
     std::cout << "\t done." << std::endl;
 
+
     std::cout << "\tStoring relevant OSM mapping..." << std::flush;
-
-
     std::vector<std::pair<uint64_t, uint64_t>> osmWayIdAndHeadVertexId(psgGraph.numEdges());
-    for (int e = 0; e < psgGraphToSccEdgeMap->size(); ++e) {
-        const auto eInOrigGraph = e;
-        const auto eInScc = psgGraphToSccEdgeMap->at(e);
+    for (int eInOrigGraph = 0; eInOrigGraph < psgGraph.numEdges(); ++eInOrigGraph) {
+        const auto eInScc = psgGraphToSccEdgeMap->at(eInOrigGraph);
 
         if (eInScc == INVALID_ID) continue;
         assert(eInScc >= 0 && eInScc < psgGraph.numEdges());

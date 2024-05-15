@@ -42,7 +42,7 @@ namespace kassert::assert {
     )
 
 
-#define KASSERT_ASSERTION_LEVEL_HEAVY 40
+#define KASSERT_ASSERTION_LEVEL_HEAVY 50
     constexpr int heavy = KASSERT_ASSERTION_LEVEL_HEAVY;
 
 #define HEAVY_KASSERT_NO_MSG(cond) KASSERT(cond, "", kassert::assert::heavy)

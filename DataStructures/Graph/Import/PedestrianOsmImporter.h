@@ -82,7 +82,7 @@ public:
 
         EnumParser<OsmRoadCategory> parseOsmRoadCategory;
 
-        // Returns true if the specified way is open for vehicles.
+        // Returns true if the specified way is open for pedestrians.
         auto isWayOpenForPedestrians = [&](uint64_t, const RoutingKit::TagMap &tags) {
             // todo: be more specific than only OSM category (e.g. for path, check whether it is pedestrian accessible using tags)
             const auto highway = tags["highway"];
@@ -94,7 +94,7 @@ public:
             return false;
         };
 
-        // Invoked when a way is discovered that is open for vehicles.
+        // Invoked when a way is discovered that is open for pedestrians.
         auto wayCallback = [&](uint64_t, const unsigned int seqId, const RoutingKit::TagMap &tags) {
             assert(seqId < wayCategory.size());
             assert(tags["highway"]);
