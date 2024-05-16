@@ -287,14 +287,15 @@ namespace karri {
         calcUpperBoundCostForKPairedAssignmentsAfterLastStop(const Vehicle &veh,
                                                              const typename LabelSet::DistanceLabel &distancesToPickups,
                                                              const typename LabelSet::DistanceLabel &psgArrTimesAtPickups,
-                                                             const typename LabelSet::DistanceLabel &distancesToDest,
                                                              const typename LabelSet::DistanceLabel &pickupWalkingDists,
+                                                             const typename LabelSet::DistanceLabel &distancesToDropoffForUpperBound,
+                                                             const typename LabelSet::DistanceLabel &dropoffForUpperBoundWalkingDist,
                                                              const RequestContext &context) const {
             using DistanceLabel = typename LabelSet::DistanceLabel;
             using LabelMask = typename LabelSet::LabelMask;
             using namespace time_utils;
             assert(psgArrTimesAtPickups.horizontalMin() >= 0 && psgArrTimesAtPickups.horizontalMax() < INFTY);
-            assert(distancesToDest.horizontalMin() >= 0 && distancesToDest.horizontalMax() < INFTY);
+            assert(distancesToDropoffForUpperBound.horizontalMin() >= 0 && distancesToDropoffForUpperBound.horizontalMax() < INFTY);
             assert(pickupWalkingDists.horizontalMin() >= 0 && pickupWalkingDists.horizontalMax() < INFTY);
 
             const int &vehId = veh.vehicleId;
@@ -312,11 +313,16 @@ namespace karri {
             depTimesAtPickups.max(psgArrTimesAtPickups);
 
             const DistanceLabel vehTimeTillDepAtPickup = depTimesAtPickups - DistanceLabel(vehDepTimeAtLastStop);
-            const DistanceLabel detourCost = F::calcKVehicleCosts(vehTimeTillDepAtPickup + distancesToDest + stopTime);
+            const DistanceLabel detourCost = F::calcKVehicleCosts(
+                    vehTimeTillDepAtPickup + distancesToDropoffForUpperBound + stopTime);
 
             const DistanceLabel psgTimeTillDepAtPickup = depTimesAtPickups - context.originalRequest.requestTime;
-            const DistanceLabel tripCost = F::calcKTripCosts(psgTimeTillDepAtPickup + distancesToDest, context);
-            const DistanceLabel walkingCost = F::calcKWalkingCosts(pickupWalkingDists, inputConfig.pickupRadius);
+            const DistanceLabel tripCost = F::calcKTripCosts(
+                    psgTimeTillDepAtPickup + distancesToDropoffForUpperBound + dropoffForUpperBoundWalkingDist,
+                    context);
+            const DistanceLabel walkingCost = F::calcKWalkingCosts(pickupWalkingDists, inputConfig.pickupRadius) +
+                                              F::calcKWalkingCosts(dropoffForUpperBoundWalkingDist,
+                                                                   inputConfig.dropoffRadius);
             const DistanceLabel waitViolationCost = F::calcKWaitViolationCosts(depTimesAtPickups, context);
 
             DistanceLabel cost = detourCost + tripCost + walkingCost + waitViolationCost;
@@ -327,10 +333,8 @@ namespace karri {
             // Check if service time hard constraint is violated for any pairs. Set cost to INFTY if so.
             const LabelMask violatesServiceTime = DistanceLabel(veh.endOfServiceTime) <
                                                   (DistanceLabel(vehDepTimeAtLastStop + 2 * stopTime) +
-                                                   distancesToPickups +
-                                                   distancesToDest);
+                                                   distancesToPickups + distancesToDropoffForUpperBound);
             cost.setIf(DistanceLabel(INFTY), violatesServiceTime);
-
 
             return cost;
         }

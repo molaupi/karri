@@ -37,7 +37,6 @@ namespace karri::PDDistanceQueryStrategies {
 
     template<typename InputGraphT,
             typename CHEnvT,
-            typename VehicleToPDLocQueryT,
             typename LabelSetT>
     class BCHStrategy {
 
@@ -136,12 +135,10 @@ namespace karri::PDDistanceQueryStrategies {
 
         BCHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
                     PDDistances<LabelSetT> &distances,
-                    RequestState &requestState,
-                    VehicleToPDLocQueryT &vehicleToPDLocQuery)
+                    RequestState &requestState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   requestState(requestState),
-                  vehicleToPDLocQuery(vehicleToPDLocQuery),
                   distances(distances),
                   dropoffBuckets(inputGraph.numVertices()),
                   fillBucketsSearch(
@@ -155,14 +152,7 @@ namespace karri::PDDistanceQueryStrategies {
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
         void run() {
-            assert(requestState.pickups[0].loc == requestState.originalRequest.origin
-                   && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
-
-            if (requestState.numPickups() == 1 && requestState.numDropoffs() == 1) {
-                requestState.minDirectPDDist = requestState.originalReqDirectDist;
-                return;
-            }
 
             const auto numDropoffSearches = requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
             dropoffBuckets.init(numDropoffSearches);
@@ -170,22 +160,23 @@ namespace karri::PDDistanceQueryStrategies {
 
             // Compute upper bound on every PD distance by adding the longest vehicle distance from any pickup to the
             // origin, the distance from the origin to the destination, and the longest distance from the destination
-            // to any dropoff.
-
+            // to any dropoff (all in the full vehicle graph).
             int maxPickupToOriginVehDist = 0;
             for (const auto &pickup: requestState.pickups) {
+                KASSERT(pickup.vehDistToCenter != INFTY);
                 maxPickupToOriginVehDist = std::max(maxPickupToOriginVehDist, pickup.vehDistToCenter);
             }
 
             int maxDestToDropoffVehDist = 0;
             for (const auto &dropoff: requestState.dropoffs) {
+                KASSERT(dropoff.vehDistFromCenter != INFTY);
                 maxDestToDropoffVehDist = std::max(maxDestToDropoffVehDist, dropoff.vehDistFromCenter);
             }
 
             if (maxPickupToOriginVehDist >= INFTY || maxDestToDropoffVehDist >= INFTY) {
                 upperBoundDirectPDDist = INFTY;
             } else {
-                upperBoundDirectPDDist = maxPickupToOriginVehDist + requestState.originalReqDirectDist +
+                upperBoundDirectPDDist = maxPickupToOriginVehDist + requestState.directDistInFullVeh +
                                          maxDestToDropoffVehDist; // read by stopping criterion of searches
             }
 
@@ -259,7 +250,7 @@ namespace karri::PDDistanceQueryStrategies {
         void init() {
             Timer timer;
             distances.clear();
-            distances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
+            distances.updateDistanceIfSmaller(0, 0, requestState.directDistInFullVeh);
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.initializationTime += time;
         }
@@ -274,7 +265,6 @@ namespace karri::PDDistanceQueryStrategies {
         const InputGraphT &inputGraph;
         const CH &ch;
         RequestState &requestState;
-        VehicleToPDLocQueryT &vehicleToPDLocQuery;
 
         PDDistances<LabelSetT> &distances;
 

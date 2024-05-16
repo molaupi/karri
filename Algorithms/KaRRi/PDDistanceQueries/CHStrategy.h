@@ -54,14 +54,7 @@ namespace karri::PDDistanceQueryStrategies {
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
         void run() {
-            assert(requestState.pickups[0].loc == requestState.originalRequest.origin
-                   && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
-
-            if (requestState.numPickups() == 1 && requestState.numDropoffs() == 1) {
-                requestState.minDirectPDDist = requestState.originalReqDirectDist;
-                return;
-            }
 
             // Run batched queries from all pickups to all dropoffs
             std::array<int, K> pickupHeadRanks;
@@ -82,7 +75,6 @@ namespace karri::PDDistanceQueryStrategies {
                 runWithAllDropoffs(pickupHeadRanks, requestState.numPickups() / K * K);
             }
 
-
             requestState.minDirectPDDist = distances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -92,7 +84,7 @@ namespace karri::PDDistanceQueryStrategies {
         void init() {
             Timer timer;
             distances.clear();
-            distances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
+            distances.updateDistanceIfSmaller(0, 0, requestState.directDistInFullVeh);
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.initializationTime += time;
         }

@@ -94,11 +94,11 @@ namespace karri::PickupAfterLastStopStrategies {
                   bestCostWithoutConstraints(INFTY),
                   bestAsgn() {}
 
-        void run(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost) {
+        void run(const int &bestKnownCost) {
 
             Timer timer;
 
-            initQueryForRun(promisingDropoffIds, bestKnownCost);
+            initQueryForRun(bestKnownCost);
 
             initializationTime = timer.elapsed<std::chrono::nanoseconds>();
             timer.restart();
@@ -172,7 +172,7 @@ namespace karri::PickupAfterLastStopStrategies {
             return minCostLowerBound > bestCostWithoutConstraints;
         }
 
-        void initQueryForRun(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost) {
+        void initQueryForRun(const int &bestKnownCost) {
             numLabelsRelaxed = 0;
             numEntriesScanned = 0;
             numInitialLabelsGenerated = 0;
@@ -196,10 +196,9 @@ namespace karri::PickupAfterLastStopStrategies {
                 // this pickup and dropoff needs to be created.
                 dropoffIdsForInitialLabels.clear();
                 directDistsForInitialLabels.clear();
-                for (const auto &dropoffId: promisingDropoffIds) {
-                    const auto &dropoff = requestState.dropoffs[dropoffId];
+                for (const auto &dropoff: requestState.dropoffs) {
                     const auto &directDistBatch = directSearches.getDirectDistancesForBatchOfPickups(
-                            pickupBatchIdx * PD_K, dropoffId);
+                            pickupBatchIdx * PD_K, dropoff.id);
                     checkDropoffForInitialLabelWithGivenPickupBatch(dropoff, directDistBatch);
                 }
 

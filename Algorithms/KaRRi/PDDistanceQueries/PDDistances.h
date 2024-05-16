@@ -72,10 +72,6 @@ namespace karri {
             return labelFor(firstPickupIdInBatch, dropoffId);
         }
 
-        int getDistanceToDestinationFrom(const int pickupID) const {
-            return getDirectDistance(pickupID, 0);
-        }
-
         const int &getMinDirectDistance() const {
             return minDirectDist;
         }

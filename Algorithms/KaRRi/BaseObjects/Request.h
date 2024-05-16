@@ -32,8 +32,8 @@ namespace karri {
     // Models a request with an ID, an origin location, a destination location and the earliest possible departure time.
     struct Request {
         int requestId = INVALID_ID;
-        int origin = INVALID_EDGE;
-        int destination = INVALID_EDGE;
+        int origin = INVALID_EDGE; // edge ID in the full vehicle network
+        int destination = INVALID_EDGE; // edge ID in the full vehicle network
         int requestTime = INFTY;
         int numRiders = INFTY;
     };
@@ -44,7 +44,8 @@ namespace karri {
     struct PDLoc {
 
         int id = INVALID_ID; // Should be counted separately for pickups and dropoffs
-        int loc = INVALID_EDGE; // Location in road network
+        int loc = INVALID_EDGE; // Location in reduced vehicle road network
+        int fullVehLoc = INVALID_EDGE; // Location in full vehicle road network
         int psgLoc = INVALID_EDGE; // Location in passenger road network
         int walkingDist = INFTY; // Walking time from origin to this pickup or from this dropoff to destination.
 

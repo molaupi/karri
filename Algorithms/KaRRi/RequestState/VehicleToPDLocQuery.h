@@ -74,31 +74,30 @@ namespace karri {
         // Takes a vector of PDLoc and a center point and finds the vehicle distances from the center to
         // every PD loc. Stores the found distances in the vehDistFromCenter field of each PD loc.
         template<typename VectorT>
-        void runForward(VectorT &pdLocs) {
+        void runForward(const int center, VectorT &pdLocs) {
 
             Timer timer;
 
-            const auto center = forwardGraph.edgeHead(pdLocs[0].loc);
-            pdLocs[0].vehDistFromCenter = 0;
+            const auto s = forwardGraph.edgeHead(center);
 
             vertexHasPDLoc.reset();
             numVerticesToFind = 0;
 
-            for (int i = 1; i < pdLocs.size(); ++i) {
+            for (int i = 0; i < pdLocs.size(); ++i) {
                 const auto &pdLoc = pdLocs[i];
-                const auto vertexOfSpot = forwardGraph.edgeTail(pdLoc.loc);
+                const auto vertexOfSpot = forwardGraph.edgeTail(pdLoc.fullVehLoc);
                 if (!vertexHasPDLoc.isSet(vertexOfSpot))
                     ++numVerticesToFind;
                 vertexHasPDLoc.set(vertexOfSpot);
             }
 
-            forwardSearch.run(center);
+            forwardSearch.run(s);
 
-            for (int i = 1; i < pdLocs.size(); ++i) {
+            for (int i = 0; i < pdLocs.size(); ++i) {
                 auto &pdLoc = pdLocs[i];
-                const auto vertexOfSpot = forwardGraph.edgeTail(pdLoc.loc);
+                const auto vertexOfSpot = forwardGraph.edgeTail(pdLoc.fullVehLoc);
                 pdLoc.vehDistFromCenter =
-                        forwardSearch.getDistance(vertexOfSpot) + forwardGraph.travelTime(pdLoc.loc);
+                        forwardSearch.getDistance(vertexOfSpot) + forwardGraph.travelTime(pdLoc.fullVehLoc);
                 assert(pdLoc.vehDistFromCenter < INFTY);
             }
 
@@ -109,30 +108,29 @@ namespace karri {
         // Takes a vector of PDLoc and a center point and finds the vehicle distances from every PD loc
         // to the center. Stores the found distances in the vehDistToCenter field of each PD loc.
         template<typename VectorT>
-        void runReverse(VectorT &pdLocs) {
+        void runReverse(const int center, VectorT &pdLocs) {
 
             Timer timer;
 
-            const auto center = forwardGraph.edgeTail(pdLocs[0].loc);
-            const auto offset = forwardGraph.travelTime(pdLocs[0].loc);
-            pdLocs[0].vehDistToCenter = 0;
+            const auto t = forwardGraph.edgeTail(center);
+            const auto offset = forwardGraph.travelTime(center);
 
             vertexHasPDLoc.reset();
             numVerticesToFind = 0;
 
-            for (int i = 1; i < pdLocs.size(); ++i) {
+            for (int i = 0; i < pdLocs.size(); ++i) {
                 const auto &pdLoc = pdLocs[i];
-                const auto vertexOfSpot = forwardGraph.edgeHead(pdLoc.loc);
+                const auto vertexOfSpot = forwardGraph.edgeHead(pdLoc.fullVehLoc);
                 if (!vertexHasPDLoc.isSet(vertexOfSpot))
                     ++numVerticesToFind;
                 vertexHasPDLoc.set(vertexOfSpot);
             }
 
-            reverseSearch.runWithOffset(center, offset);
+            reverseSearch.runWithOffset(t, offset);
 
-            for (int i = 1; i < pdLocs.size(); ++i) {
+            for (int i = 0; i < pdLocs.size(); ++i) {
                 auto &pdLoc = pdLocs[i];
-                const auto vertexOfSpot = forwardGraph.edgeHead(pdLoc.loc);
+                const auto vertexOfSpot = forwardGraph.edgeHead(pdLoc.fullVehLoc);
                 pdLoc.vehDistToCenter = reverseSearch.getDistance(vertexOfSpot);
                 assert(pdLoc.vehDistToCenter < INFTY);
             }

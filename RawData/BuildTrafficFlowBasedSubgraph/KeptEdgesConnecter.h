@@ -36,6 +36,7 @@
 #include "Algorithms/GraphTraversal/StronglyConnectedComponents.h"
 #include "DataStructures/Utilities/IteratorRange.h"
 #include "DataStructures/Containers/FastResetFlagArray.h"
+#include "DataStructures/Containers/Subset.h"
 
 namespace traffic_flow_subnetwork {
 
@@ -54,9 +55,11 @@ namespace traffic_flow_subnetwork {
 
     public:
 
-        KeptEdgesConnector(const InGraph &in) : in(in), scc(), search(in) {}
+        KeptEdgesConnector(const InGraph &in) : in(in), scc(), inEdgesIntroduced(in.numEdges()), search(in) {}
 
-        OutGraph connectEdges(std::vector<int> &keptEdges, std::vector<int>& outToInVertexIds) {
+        OutGraph connectEdges(std::vector<int> &keptEdges, std::vector<int> &outToInVertexIds) {
+
+            inEdgesIntroduced.clear();
 
             // Get edge-induced subgraph
             std::vector<int> inToOutVertexIds(in.numVertices(), INVALID_VERTEX);
@@ -239,8 +242,18 @@ namespace traffic_flow_subnetwork {
 
     private:
 
+        template<typename GraphT>
+        static int countEdgesBetween(const GraphT &graph, const int u, const int v) {
+            int n = 0;
+            FORALL_INCIDENT_EDGES(graph, u, e) {
+                if (graph.edgeHead(e) == v)
+                    ++n;
+            }
+            return n;
+        }
+
         OutGraph getInitialOutGraph(const std::vector<int> &keptEdges,
-                                    std::vector<int> &inToOutVertexIds) const {
+                                    std::vector<int> &inToOutVertexIds) {
             OutGraph out(in.numVertices(), in.numEdges());
 
             // Add vertices and memorize mapping from old to new vertex IDs.
@@ -265,11 +278,20 @@ namespace traffic_flow_subnetwork {
             // Add edges. (Mapping from old to new edge IDs will be computed later since they change in eventual
             // defragmentation).
             for (const auto &e: keptEdges) {
+                bool noDuplicate = inEdgesIntroduced.insert(e);
+                LIGHT_KASSERT(noDuplicate);
+                LIGHT_KASSERT(in.containsEdge(in.edgeTail(e), in.edgeHead(e)));
                 const auto u = inToOutVertexIds[in.edgeTail(e)];
                 const auto v = inToOutVertexIds[in.edgeHead(e)];
                 LIGHT_KASSERT(u != INVALID_VERTEX && v != INVALID_VERTEX);
+                LIGHT_KASSERT(countEdgesBetween(out, u, v) < countEdgesBetween(in, in.edgeTail(e), in.edgeHead(e)));
                 const int idx = out.insertEdge(u, v);
                 RUN_FORALL(out.template get<EdgeAttributes>(idx) = in.template get<EdgeAttributes>(e));
+                out.edgeTail(idx) = u;
+                LIGHT_KASSERT(out.edgeId(idx) == e);
+                if (e == 170009) {
+                    std::cout << "seen 170009 before. Idx of according edge in out: " << idx << std::endl;
+                }
             }
 
             return out;
@@ -342,11 +364,28 @@ namespace traffic_flow_subnetwork {
 
                 // Add edges on path:
                 for (const auto &e: p) {
+                    LIGHT_KASSERT(in.containsEdge(in.edgeTail(e), in.edgeHead(e)));
                     const auto u = inToOutVertexIds[in.edgeTail(e)];
                     const auto v = inToOutVertexIds[in.edgeHead(e)];
                     LIGHT_KASSERT(u != INVALID_VERTEX && v != INVALID_VERTEX);
+
+                    bool eAlreadyInOut = false;
+                    FORALL_INCIDENT_EDGES(out, u, eOut) {
+                        if (out.edgeId(eOut) == e) {
+                            eAlreadyInOut = true;
+                            break;
+                        }
+                    }
+                    if (eAlreadyInOut)
+                        continue;
+
+                    bool noDuplicate = inEdgesIntroduced.insert(e);
+                    LIGHT_KASSERT(noDuplicate);
+                    LIGHT_KASSERT(countEdgesBetween(out, u, v) < countEdgesBetween(in, in.edgeTail(e), in.edgeHead(e)));
                     const int outEdgeIdx = out.insertEdge(u, v);
                     RUN_FORALL(out.template get<EdgeAttributes>(outEdgeIdx) = in.template get<EdgeAttributes>(e));
+                    out.edgeTail(outEdgeIdx) = u;
+                    LIGHT_KASSERT(out.edgeId(outEdgeIdx) == e);
                 }
             }
         }
@@ -358,6 +397,8 @@ namespace traffic_flow_subnetwork {
 
         const InGraph &in;
         StronglyConnectedComponents scc;
+
+        Subset inEdgesIntroduced;
 
         Search search;
     };

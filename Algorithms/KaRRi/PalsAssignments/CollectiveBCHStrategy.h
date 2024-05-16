@@ -78,7 +78,6 @@ namespace karri::PickupAfterLastStopStrategies {
 
         void tryPickupAfterLastStop() {
 
-
             auto &stats = requestState.stats().palsAssignmentsStats;
             Timer timer;
 
@@ -91,33 +90,10 @@ namespace karri::PickupAfterLastStopStrategies {
             if (costLowerBound > requestState.getBestCost())
                 return;
 
-
-            std::vector<int> promisingDropoffIds;
-
-            static constexpr bool ONLY_PROMISING_DROPOFFS = KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS;
-            if constexpr (ONLY_PROMISING_DROPOFFS) {
-                // Preparation: Compute vehicle distances from dropoffs to destination. Used to decide which dropoffs are
-                // promising.
-                vehicleToPDLocQuery.runReverse(requestState.dropoffs);
-
-                for (const auto &dropoff: requestState.dropoffs) {
-                    if (dropoff.walkingDist <= dropoff.vehDistToCenter ||
-                        calculator.isDropoffCostPromisingForAfterLastStop(dropoff, requestState)) {
-                        promisingDropoffIds.push_back(dropoff.id);
-                    }
-                }
-                assert(promisingDropoffIds.front() == 0); // Assert destination itself is always promising
-                stats.collective_pickupVehDistQueryTime += vehicleToPDLocQuery.getRunTime();
-            } else {
-                promisingDropoffIds.resize(requestState.numDropoffs());
-                std::iota(promisingDropoffIds.begin(), promisingDropoffIds.end(), 0u);
-            }
-
             const auto colInitTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.collective_initializationTime += colInitTime;
-            stats.collective_numPromisingDropoffs += promisingDropoffIds.size();
 
-            minCostSearch.run(promisingDropoffIds, requestState.getBestCost());
+            minCostSearch.run(requestState.getBestCost());
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.searchTime += searchTime;

@@ -43,7 +43,7 @@ namespace karri {
 
         RequestState(const CostCalculator &calculator, const InputConfig &inputConfig)
                 : originalRequest(),
-                  originalReqDirectDist(-1),
+                  directDistInFullVeh(-1),
                   minDirectPDDist(-1),
                   pickups(),
                   dropoffs(),
@@ -62,7 +62,7 @@ namespace karri {
 
         // Information about current request itself
         Request originalRequest;
-        int originalReqDirectDist;
+        int directDistInFullVeh;
         int minDirectPDDist;
 
         std::vector<PDLoc> pickups;
@@ -82,8 +82,8 @@ namespace karri {
         }
 
         int getOriginalReqMaxTripTime() const {
-            assert(originalReqDirectDist >= 0);
-            return static_cast<int>(inputConfig.alpha * static_cast<double>(originalReqDirectDist)) + inputConfig.beta;
+            assert(directDistInFullVeh >= 0);
+            return static_cast<int>(inputConfig.alpha * static_cast<double>(directDistInFullVeh)) + inputConfig.beta;
         }
 
         int getPassengerArrAtPickup(const int pickupId) const {
@@ -93,7 +93,7 @@ namespace karri {
 
         int getMaxPDTripTime(const int pickupId, const int dropoffId) const {
             assert(pickupId < numPickups() && dropoffId < numDropoffs());
-            assert(originalReqDirectDist >= 0);
+            assert(directDistInFullVeh >= 0);
             return getOriginalReqMaxTripTime() - (pickups[pickupId].walkingDist + dropoffs[dropoffId].walkingDist);
         }
 
@@ -175,7 +175,7 @@ namespace karri {
             perfStats.clear();
 
             originalRequest = {};
-            originalReqDirectDist = INFTY;
+            directDistInFullVeh = INFTY;
             minDirectPDDist = INFTY;
             pickups.clear();
             dropoffs.clear();

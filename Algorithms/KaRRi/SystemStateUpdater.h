@@ -197,7 +197,7 @@ namespace karri {
             bestAssignmentsLogger
                     << requestState.originalRequest.requestId << ", "
                     << requestState.originalRequest.requestTime << ", "
-                    << requestState.originalReqDirectDist << ", ";
+                    << requestState.directDistInFullVeh << ", ";
 
             if (requestState.getBestCost() == INFTY) {
                 bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,inf\n";

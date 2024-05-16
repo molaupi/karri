@@ -29,8 +29,8 @@
 #include <cstdint>
 #include <Algorithms/KaRRi/BaseObjects//Request.h>
 #include <random>
-#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
 #include "Algorithms/Dijkstra/Dijkstra.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInReducedVehAttribute.h"
 
 namespace karri {
 
@@ -93,7 +93,7 @@ namespace karri {
 
         // Pickups will be collected into the given pickups vector and dropoffs will be collected into the given dropoffs vector
         void findPDLocs(const int origin, const int destination) {
-            assert(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
+            KASSERT(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
             pickups.clear();
             dropoffs.clear();
 
@@ -117,14 +117,18 @@ namespace karri {
         void turnSearchSpaceIntoPickupLocations() {
             for (const auto &v: searchSpace) {
                 const auto distToV = pickupSearch.getDistance(v);
-                assert(distToV <= inputConfig.pickupRadius);
+                KASSERT(distToV <= inputConfig.pickupRadius);
                 FORALL_INCIDENT_EDGES(forwardGraph, v, e) {
-                    const int eInVehGraph = forwardGraph.mapToEdgeInFullVeh(e);
-                    if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue() ||
+                    const int eInReducedVehGraph = forwardGraph.mapToEdgeInReducedVeh(e);
+                    if (eInReducedVehGraph == MapToEdgeInReducedVehAttribute::defaultValue() ||
                         distToV + forwardGraph.travelTime(e) > inputConfig.pickupRadius)
                         continue;
 
-                    pickups.push_back({INVALID_ID, eInVehGraph, e, distToV + forwardGraph.travelTime(e), INFTY, INFTY});
+                    const int eInFullVehGraph = forwardGraph.mapToEdgeInFullVeh(e);
+                    KASSERT(eInFullVehGraph != MapToEdgeInFullVehAttribute::defaultValue());
+                    pickups.push_back(
+                            {INVALID_ID, eInReducedVehGraph, eInFullVehGraph, e, distToV + forwardGraph.travelTime(e),
+                             INFTY, INFTY});
                 }
             }
         }
@@ -132,33 +136,46 @@ namespace karri {
         void turnSearchSpaceIntoDropoffLocations() {
             for (const auto &v: searchSpace) {
                 const auto distToV = dropoffSearch.getDistance(v);
-                assert(distToV <= inputConfig.dropoffRadius);
+                KASSERT(distToV <= inputConfig.dropoffRadius);
                 FORALL_INCIDENT_EDGES(reverseGraph, v, e) {
                     const auto eInForwGraph = reverseGraph.edgeId(e);
-                    const int eInVehGraph = forwardGraph.mapToEdgeInFullVeh(eInForwGraph);
-                    if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue())
+                    const int eInReducedVehGraph = forwardGraph.mapToEdgeInReducedVeh(eInForwGraph);
+                    if (eInReducedVehGraph == MapToEdgeInReducedVehAttribute::defaultValue())
                         continue;
-                    dropoffs.push_back({INVALID_ID, eInVehGraph, eInForwGraph, distToV, INFTY, INFTY});
+                    const int eInFullVehGraph = forwardGraph.mapToEdgeInFullVeh(eInForwGraph);
+                    KASSERT(eInFullVehGraph != MapToEdgeInFullVehAttribute::defaultValue());
+                    dropoffs.push_back(
+                            {INVALID_ID, eInReducedVehGraph, eInFullVehGraph, eInForwGraph, distToV, INFTY, INFTY});
                 }
             }
         }
 
         void finalizePDLocs(const int centerInPsgGraph, std::vector<PDLoc> &pdLocs, const int maxNumber) {
-            assert(maxNumber > 0);
-            // Add center to PD locs
-            const int nextSeqId = pdLocs.size();
-            const int centerInVehGraph = forwardGraph.mapToEdgeInFullVeh(centerInPsgGraph);
-            pdLocs.push_back({nextSeqId, centerInVehGraph, centerInPsgGraph, 0, INFTY, INFTY});
+            KASSERT(maxNumber > 0);
+            // If center is accessible in reduced vehicle network, add center to PD locs
+            const bool centerIsPdLoc = forwardGraph.mapToEdgeInReducedVeh(centerInPsgGraph) !=
+                                       MapToEdgeInReducedVehAttribute::defaultValue();
+            if (centerIsPdLoc) {
+                const int nextSeqId = pdLocs.size();
+                const int centerInRedVehGraph = forwardGraph.mapToEdgeInReducedVeh(centerInPsgGraph);
+                const int centerInFullVehGraph = forwardGraph.mapToEdgeInFullVeh(centerInPsgGraph);
+                KASSERT(centerInFullVehGraph != MapToEdgeInFullVehAttribute::defaultValue());
+                pdLocs.push_back(
+                        {nextSeqId, centerInRedVehGraph, centerInFullVehGraph, centerInPsgGraph, 0, INFTY, INFTY});
+            }
 
             // Remove duplicates
             removeDuplicates(pdLocs);
 
-            // Make sure center is at beginning
-            auto centerIt = std::find_if(pdLocs.begin(), pdLocs.end(),
-                                         [centerInVehGraph](const auto &h) { return h.loc == centerInVehGraph; });
-            assert(centerIt < pdLocs.end());
-            const auto idx = centerIt - pdLocs.begin();
-            std::swap(pdLocs[0], pdLocs[idx]);
+            if (centerIsPdLoc) {
+                // Make sure center is at beginning
+                const int centerInRedVehGraph = forwardGraph.mapToEdgeInReducedVeh(centerInPsgGraph);
+                auto centerIt = std::find_if(pdLocs.begin(), pdLocs.end(),
+                                             [centerInRedVehGraph](const auto &h) { return h.loc == centerInRedVehGraph; });
+                KASSERT(centerIt < pdLocs.end());
+                const auto idx = centerIt - pdLocs.begin();
+                std::swap(pdLocs[0], pdLocs[idx]);
+            }
 
             if (maxNumber > 1 && pdLocs.size() > maxNumber) {
                 // If there are more PD-locs than the maximum number, then we permute the PD-locs randomly and
@@ -177,7 +194,7 @@ namespace karri {
                 pdLocs[i].id = i;
             }
 
-            assert(sanityCheckPDLocs(pdLocs, centerInVehGraph));
+            KASSERT(sanityCheckPDLocs(pdLocs, forwardGraph));
         }
 
         // Remove duplicate PDLocs.
@@ -192,14 +209,14 @@ namespace karri {
             pdLocs.erase(last, pdLocs.end());
         }
 
-        static bool sanityCheckPDLocs(const std::vector<PDLoc> &pdLocs, const int centerInVehGraph) {
+        static bool sanityCheckPDLocs(const std::vector<PDLoc> &pdLocs, const PassengerGraphT& psgGraph) {
             if (pdLocs.empty()) return false;
-            if (pdLocs[0].loc != centerInVehGraph) return false;
-            if (pdLocs[0].walkingDist != 0) return false;
             for (int i = 0; i < pdLocs.size(); ++i) {
                 if (pdLocs[i].id != i) return false;
                 if (pdLocs[i].vehDistToCenter != INFTY) return false;
                 if (pdLocs[i].vehDistFromCenter != INFTY) return false;
+                if (psgGraph.mapToEdgeInReducedVeh(pdLocs[i].psgLoc) != pdLocs[i].loc) return false;
+                if (psgGraph.mapToEdgeInFullVeh(pdLocs[i].psgLoc) != pdLocs[i].fullVehLoc) return false;
             }
             return true;
         }

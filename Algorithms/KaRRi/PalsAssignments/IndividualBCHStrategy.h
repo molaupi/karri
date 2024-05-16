@@ -132,8 +132,10 @@ namespace karri::PickupAfterLastStopStrategies {
                 assert(allSet(distancesToPickups >= 0));
                 const DistanceLabel cost = calc.template calcUpperBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
                         strat.fleet[vehId], distancesToPickups, strat.curPassengerArrTimesAtPickups,
-                        strat.curDistancesToDest,
-                        strat.currentPickupWalkingDists, strat.requestState);
+                        strat.currentPickupWalkingDists,
+                        strat.curDistancesToDropoffForUpperBound,
+                        strat.dropoffForUpperBoundWalkingDist,
+                        strat.requestState);
 
                 strat.upperBoundCost = std::min(strat.upperBoundCost, cost.horizontalMin());
             }
@@ -287,7 +289,10 @@ namespace karri::PickupAfterLastStopStrategies {
                 travelTimes[i] = inputGraph.travelTime(pickup.loc);
                 currentPickupWalkingDists[i] = pickup.walkingDist;
                 curPassengerArrTimesAtPickups[i] = requestState.getPassengerArrAtPickup(pickup.id);
-                curDistancesToDest[i] = pdDistances.getDirectDistance(pickup.id, 0);
+                // To compute upper bounds on costs during the search, we arbitrarily combine each pickup with dropoff 0
+                // (any dropoff would be possible).
+                curDistancesToDropoffForUpperBound[i] = pdDistances.getDirectDistance(pickup.id, 0);
+                dropoffForUpperBoundWalkingDist[i] = requestState.dropoffs[0].walkingDist;
             }
 
             distances.setCurBatchIdx(firstPickupId / K);
@@ -316,7 +321,9 @@ namespace karri::PickupAfterLastStopStrategies {
         Subset vehiclesSeenForPickups;
         DistanceLabel currentPickupWalkingDists;
         DistanceLabel curPassengerArrTimesAtPickups;
-        DistanceLabel curDistancesToDest;
+
+        DistanceLabel curDistancesToDropoffForUpperBound;
+        DistanceLabel dropoffForUpperBoundWalkingDist;
 
         int totalNumEdgeRelaxations;
         int totalNumVerticesSettled;

@@ -101,29 +101,11 @@ int main(int argc, char *argv[]) {
             throw std::invalid_argument("file not found -- '" + vehicleNetworkFileName + "'");
         VehicleInputGraph vehicleInputGraph(vehicleNetworkFile);
         vehicleNetworkFile.close();
-        std::vector<int32_t> vehGraphOrigIdToSeqId;
-        if (vehicleInputGraph.numEdges() > 0 && vehicleInputGraph.edgeId(0) == INVALID_ID) {
-            vehGraphOrigIdToSeqId.assign(vehicleInputGraph.numEdges(), INVALID_ID);
-            std::iota(vehGraphOrigIdToSeqId.begin(), vehGraphOrigIdToSeqId.end(), 0);
-            FORALL_VALID_EDGES(vehicleInputGraph, v, e) {
-                    KASSERT(vehicleInputGraph.edgeId(e) == INVALID_ID);
-                    vehicleInputGraph.edgeTail(e) = v;
-                    vehicleInputGraph.edgeId(e) = e;
-                }
-        } else {
-            FORALL_VALID_EDGES(vehicleInputGraph, v, e) {
-                    KASSERT(vehicleInputGraph.edgeId(e) != INVALID_ID);
-                    if (vehicleInputGraph.edgeId(e) >= vehGraphOrigIdToSeqId.size()) {
-                        const auto numElementsToBeInserted =
-                                vehicleInputGraph.edgeId(e) + 1 - vehGraphOrigIdToSeqId.size();
-                        vehGraphOrigIdToSeqId.insert(vehGraphOrigIdToSeqId.end(), numElementsToBeInserted, INVALID_ID);
-                    }
-                    KASSERT(vehGraphOrigIdToSeqId[vehicleInputGraph.edgeId(e)] == INVALID_ID);
-                    vehGraphOrigIdToSeqId[vehicleInputGraph.edgeId(e)] = e;
-                    vehicleInputGraph.edgeTail(e) = v;
-                    vehicleInputGraph.edgeId(e) = e;
-                }
-        }
+        FORALL_VALID_EDGES(vehicleInputGraph, v, e) {
+                LIGHT_KASSERT(vehicleInputGraph.edgeId(e) == INVALID_ID);
+                vehicleInputGraph.edgeTail(e) = v;
+                vehicleInputGraph.edgeId(e) = e;
+            }
         std::cout << "done.\n";
 
         // Read the passenger network from file.
@@ -135,26 +117,27 @@ int main(int argc, char *argv[]) {
             throw std::invalid_argument("file not found -- '" + passengerNetworkFileName + "'");
         PsgInputGraph psgInputGraph(psgNetworkFile);
         psgNetworkFile.close();
-        KASSERT(psgInputGraph.numEdges() > 0 && psgInputGraph.edgeId(0) == INVALID_ID);
+        LIGHT_KASSERT(psgInputGraph.numEdges() > 0 && psgInputGraph.edgeId(0) == INVALID_ID);
         int numEdgesWithMappingToCar = 0;
         FORALL_VALID_EDGES(psgInputGraph, v, e) {
-                KASSERT(psgInputGraph.edgeId(e) == INVALID_ID);
+                LIGHT_KASSERT(psgInputGraph.edgeId(e) == INVALID_ID);
                 psgInputGraph.edgeTail(e) = v;
                 psgInputGraph.edgeId(e) = e;
 
                 const int eInVehGraph = psgInputGraph.mapToEdgeInFullVeh(e);
                 if (eInVehGraph != MapToEdgeInFullVehAttribute::defaultValue()) {
                     ++numEdgesWithMappingToCar;
-                    KASSERT(eInVehGraph < vehGraphOrigIdToSeqId.size());
-                    psgInputGraph.mapToEdgeInFullVeh(e) = vehGraphOrigIdToSeqId[eInVehGraph];
-                    KASSERT(psgInputGraph.mapToEdgeInFullVeh(e) < vehicleInputGraph.numEdges());
-                    vehicleInputGraph.mapToEdgeInPsg(psgInputGraph.mapToEdgeInFullVeh(e)) = e;
+                    LIGHT_KASSERT(eInVehGraph < vehicleInputGraph.numEdges());
+                    psgInputGraph.mapToEdgeInFullVeh(e) = eInVehGraph;
+                    LIGHT_KASSERT(psgInputGraph.mapToEdgeInFullVeh(e) < vehicleInputGraph.numEdges());
+                    vehicleInputGraph.mapToEdgeInPsg(eInVehGraph) = e;
 
-                    KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
-                            vehicleInputGraph.latLng(
-                                    vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).latitude());
-                    KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
-                            vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).longitude());
+                    LIGHT_KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
+                                  vehicleInputGraph.latLng(
+                                          vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).latitude());
+                    LIGHT_KASSERT(
+                            psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
+                                    vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).longitude());
                 }
             }
         unused(numEdgesWithMappingToCar);
@@ -183,8 +166,9 @@ int main(int argc, char *argv[]) {
 
         std::cout << "Number of edges in the original vehicle network: " << vehicleInputGraph.numEdges() << std::endl;
         int numPsgAccessible = 0;
-        FORALL_EDGES(vehicleInputGraph, e)numPsgAccessible += vehicleInputGraph.mapToEdgeInPsg(e) !=
-                                                              MapToEdgeInPsgAttribute::defaultValue();
+        FORALL_EDGES(vehicleInputGraph, e)
+            numPsgAccessible += vehicleInputGraph.mapToEdgeInPsg(e) !=
+                                MapToEdgeInPsgAttribute::defaultValue();
         std::cout << "\tamong these passenger accessible: " << numPsgAccessible << std::endl;
 
         namespace tfs = traffic_flow_subnetwork;
@@ -227,43 +211,75 @@ int main(int argc, char *argv[]) {
         using PsgOutputGraph = StaticGraph<VertexAttributes, OutputPsgEdgeAttributes>;
         PsgOutputGraph psgOutputGraph(std::move(psgInputGraph));
 
+
         FORALL_VALID_EDGES(reducedVehOutputGraph, uRed, eRed) {
-                const int &vRed = reducedVehOutputGraph.edgeHead(eRed);
-                const int &uFull = subGraphToFullVertexIds[uRed];
-                const int &vFull = subGraphToFullVertexIds[vRed];
-                int eFull = INVALID_EDGE;
-                FORALL_INCIDENT_EDGES(fullVehOutputGraph, uFull, e) {
-                    if (fullVehOutputGraph.edgeHead(e) == vFull) {
-                        eFull = e;
-                        break;
-                    }
-                }
-                LIGHT_KASSERT(eFull != INVALID_EDGE, "uRed = " << uRed << ", vRed = " << vRed << ", eRed = " << eRed << ", uFull = " << uFull << ", vFull = " << vFull);
+                // When loading input graph, we set edgeId(e) = e. Then, when constructing and transforming the output
+                // subgraph, we maintain the edge attribute values of each edge, including edgeId. Thus,
+                // psgOutputGraph.edgeId(eRed) is the ID of the according edge in the input graph.
+                const int eFull = reducedVehOutputGraph.edgeId(eRed);
+                LIGHT_KASSERT(eFull >= 0 && eFull < fullVehOutputGraph.numEdges());
+                LIGHT_KASSERT(
+                        reducedVehOutputGraph.mapToEdgeInFullVeh(eRed) == MapToEdgeInFullVehAttribute::defaultValue());
+                LIGHT_KASSERT(fullVehOutputGraph.mapToEdgeInReducedVeh(eFull) ==
+                              MapToEdgeInReducedVehAttribute::defaultValue());
                 reducedVehOutputGraph.mapToEdgeInFullVeh(eRed) = eFull;
                 fullVehOutputGraph.mapToEdgeInReducedVeh(eFull) = eRed;
-
-                const int ePsg = fullVehOutputGraph.mapToEdgeInPsg(eFull);
-                if (ePsg != MapToEdgeInPsgAttribute::defaultValue()) {
-                    reducedVehOutputGraph.mapToEdgeInPsg(eRed) = ePsg;
-                    psgOutputGraph.mapToEdgeInReducedVeh(ePsg) = eRed;
-                }
             }
+
+        FORALL_VALID_EDGES(psgOutputGraph, uPsg, ePsg) {
+            // Since multiple psg edges may map to the same vehicle edge, we have to iterate through the psg edges
+            // to construct the new mappings to the reduced vehicle network.
+                const int eFull = psgOutputGraph.mapToEdgeInFullVeh(ePsg);
+                if (eFull != MapToEdgeInFullVehAttribute::defaultValue()) {
+                    LIGHT_KASSERT(eFull >= 0 && eFull < fullVehOutputGraph.numEdges());
+                    const int eRed = fullVehOutputGraph.mapToEdgeInReducedVeh(eFull);
+                    if (eRed != MapToEdgeInReducedVehAttribute::defaultValue()) {
+                        LIGHT_KASSERT(eRed >= 0 && eRed < reducedVehOutputGraph.numEdges());
+                        psgOutputGraph.mapToEdgeInReducedVeh(ePsg) = eRed;
+                    }
+                }
+        }
 
         // Validate mappings:
         FORALL_EDGES(fullVehOutputGraph, eFull) {
             const int eRed = fullVehOutputGraph.mapToEdgeInReducedVeh(eFull);
-            if (eRed != MapToEdgeInReducedVehAttribute::defaultValue())
+            if (eRed != MapToEdgeInReducedVehAttribute::defaultValue()) {
                 LIGHT_KASSERT(reducedVehOutputGraph.mapToEdgeInFullVeh(eRed) == eFull);
+                LIGHT_KASSERT(
+                        fullVehOutputGraph.mapToEdgeInReducedVeh(reducedVehOutputGraph.mapToEdgeInFullVeh(eRed)) ==
+                        eRed);
+            }
 
             const int ePsg = fullVehOutputGraph.mapToEdgeInPsg(eFull);
-            if (ePsg != MapToEdgeInPsgAttribute::defaultValue())
+            if (ePsg != MapToEdgeInPsgAttribute::defaultValue()) {
                 LIGHT_KASSERT(psgOutputGraph.mapToEdgeInFullVeh(ePsg) == eFull);
+                LIGHT_KASSERT(fullVehOutputGraph.mapToEdgeInPsg(psgOutputGraph.mapToEdgeInFullVeh(ePsg)) == ePsg);
+            }
 
-            if (eRed != MapToEdgeInReducedVehAttribute::defaultValue() && ePsg != MapToEdgeInPsgAttribute::defaultValue()) {
+            if (eRed != MapToEdgeInReducedVehAttribute::defaultValue() &&
+                ePsg != MapToEdgeInPsgAttribute::defaultValue()) {
                 LIGHT_KASSERT(psgOutputGraph.mapToEdgeInReducedVeh(ePsg) == eRed);
                 LIGHT_KASSERT(reducedVehOutputGraph.mapToEdgeInPsg(eRed) == ePsg);
             }
         }
+
+        FORALL_VALID_EDGES(reducedVehOutputGraph, uRed, eRed) {
+                const int eFull = reducedVehOutputGraph.mapToEdgeInFullVeh(eRed);
+                LIGHT_KASSERT(eFull != MapToEdgeInFullVehAttribute::defaultValue());
+                LIGHT_KASSERT(fullVehOutputGraph.mapToEdgeInReducedVeh(eFull) == eRed);
+
+                LIGHT_KASSERT(reducedVehOutputGraph.latLng(reducedVehOutputGraph.edgeHead(eRed)) ==
+                              fullVehOutputGraph.latLng(fullVehOutputGraph.edgeHead(eFull)));
+
+                const int ePsg = reducedVehOutputGraph.mapToEdgeInPsg(eRed);
+                if (ePsg != MapToEdgeInPsgAttribute::defaultValue()) {
+                    LIGHT_KASSERT(psgOutputGraph.mapToEdgeInReducedVeh(ePsg) == eRed);
+                    LIGHT_KASSERT(psgOutputGraph.mapToEdgeInFullVeh(ePsg) == eFull);
+
+                    LIGHT_KASSERT(reducedVehOutputGraph.latLng(reducedVehOutputGraph.edgeHead(eRed)) ==
+                                  psgOutputGraph.latLng(psgOutputGraph.edgeHead(ePsg)));
+                }
+            }
 
         std::cout << " done." << std::endl;
 
