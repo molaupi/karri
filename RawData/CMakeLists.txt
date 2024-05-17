@@ -55,9 +55,11 @@ endif()
 
 add_executable(GenerateRandomVehicles GenerateRandomVehicles.cc)
 target_compile_definitions(GenerateRandomVehicles PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateRandomVehicles ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
 
 add_executable(DrawRandomDepartureTimes DrawRandomDepartureTimes.cc)
 target_compile_definitions(DrawRandomDepartureTimes PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(DrawRandomDepartureTimes ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
 
 add_executable(OsmToCarAndPassengerGraph OsmToCarAndPassengerGraph.cc)
 target_compile_definitions(OsmToCarAndPassengerGraph PRIVATE CSV_IO_NO_THREAD)
