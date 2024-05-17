@@ -42,15 +42,17 @@ inline void printUsage() {
               "Usage: GenerateGeoJsonForRequests -g <file> -r <file> -o <file>\n"
               "Outputs all request origin and destination edges in a given road network as GeoJson.\n"
               "  -g <file>         input road network in binary format.\n"
-              "  -r <file>         input requests in CSV format.\n"
-              "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
+              "  -p <file>         input pairs file in CSV format.\n"
+              "  -o-col-name <str> name of origin column in pairs file (default: 'origin').\n"
+              "  -d-col-name <str> name of destination column in pairs file (default: 'destination').\n"
+              "  -edges            if set, origin and destination values are assumed to be edge IDs instead of vertex IDs.\n"
               "  -o <file>         place GeoJSON in <file>\n"
               "  -help             display this help and exit\n";
 }
 
 
 template<typename InputGraphT>
-nlohmann::json generateGeoJsonFeatureForEdge(const InputGraphT &inputGraph, const int e, const int reqId) {
+nlohmann::json generateGeoJsonFeatureForEdge(const InputGraphT &inputGraph, const int e) {
 
     static char color[] = "blue";
     nlohmann::json feature;
@@ -66,24 +68,43 @@ nlohmann::json generateGeoJsonFeatureForEdge(const InputGraphT &inputGraph, cons
 
     feature["properties"] = {{"stroke",       color},
                              {"stroke-width", 3},
-                             {"edge_id",      e},
-                             {"request_id",   reqId}};
+                             {"edge_id",      e}};
 
     return feature;
 }
 
 template<typename InputGraphT>
+nlohmann::json generateGeoJsonFeatureForVertex(const InputGraphT &inputGraph, const int v) {
+    static char color[] = "red";
+    nlohmann::json feature;
+    feature["type"] = "Point";
+
+    const auto latLng = inputGraph.latLng(v);
+    const auto coord = nlohmann::json::array({latLng.lngInDeg(), latLng.latInDeg()});
+    feature["coordinates"].push_back(coord);
+
+    feature["properties"] = {{"stroke",       color},
+                             {"stroke-width", 3},
+                             {"vertex_id",    v}};
+
+    return feature;
+}
+
+template<typename InputGraphT, bool idsAreEdges>
 nlohmann::json
-generateGeoJsonObjectForRequestEdges(const InputGraphT &inputGraph, const std::vector<karri::Request> &requests) {
+generateGeoJsonObjectForPairs(const InputGraphT &inputGraph, const std::vector<std::pair<int, int>> &pairs) {
     // Construct the needed GeoJSON object
     nlohmann::json topGeoJson;
     topGeoJson["type"] = "GeometryCollection";
 
-    for (const auto &req: requests) {
-
-        topGeoJson["geometries"].push_back(generateGeoJsonFeatureForEdge(inputGraph, req.origin, req.requestId));
-        topGeoJson["geometries"].push_back(generateGeoJsonFeatureForEdge(inputGraph, req.destination, req.requestId));
-
+    for (const auto &[o, d]: pairs) {
+        if (idsAreEdges) {
+            topGeoJson["geometries"].push_back(generateGeoJsonFeatureForEdge(inputGraph, o));
+            topGeoJson["geometries"].push_back(generateGeoJsonFeatureForEdge(inputGraph, d));
+        } else {
+            topGeoJson["geometries"].push_back(generateGeoJsonFeatureForVertex(inputGraph, o));
+            topGeoJson["geometries"].push_back(generateGeoJsonFeatureForVertex(inputGraph, d));
+        }
     }
 
     return topGeoJson;
@@ -100,10 +121,12 @@ int main(int argc, char *argv[]) {
         auto inputGraphFileName = clp.getValue<std::string>("g");
         if (!endsWith(inputGraphFileName, ".gr.bin"))
             inputGraphFileName += ".gr.bin";
-        auto requestFileName = clp.getValue<std::string>("r");
-        if (!endsWith(requestFileName, ".csv"))
-            requestFileName += ".csv";
-        const bool csvFilesInLoudFormat = clp.isSet("csv-in-LOUD-format");
+        auto pairsFileName = clp.getValue<std::string>("p");
+        if (!endsWith(pairsFileName, ".csv"))
+            pairsFileName += ".csv";
+        const std::string oColName = clp.getValue<std::string>("o-col-name", "origin");
+        const std::string dColName = clp.getValue<std::string>("d-col-name", "destination");
+        const bool idsAreEdges = clp.isSet("edges");
         auto outputFileName = clp.getValue<std::string>("o");
         if (!endsWith(outputFileName, ".geojson"))
             outputFileName += ".geojson";
@@ -143,36 +166,38 @@ int main(int argc, char *argv[]) {
 
         // Read the request data from file.
         std::cout << "Reading request data from file... " << std::flush;
-        std::vector<karri::Request> requests;
-        int origin, destination, requestTime;
-        io::CSVReader<3, io::trim_chars<' '>> reqFileReader(requestFileName);
-
-        if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_no_column, "pickup_spot", "dropoff_spot", "min_dep_time");
-        } else {
-            reqFileReader.read_header(io::ignore_no_column, "origin", "destination", "req_time");
-        }
-
-        while (reqFileReader.read_row(origin, destination, requestTime)) {
-            if (origin < 0 || origin >= origIdToSeqId.size() || origIdToSeqId[origin] == INVALID_ID)
-                throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
-            if (destination < 0 || destination >= origIdToSeqId.size() ||
+        std::vector<std::pair<int, int>> odPairs;
+        int origin, destination;
+        io::CSVReader<2, io::trim_chars<' '>> pairsFileReader(pairsFileName);
+        pairsFileReader.read_header(io::ignore_extra_column, oColName, dColName);
+        while (pairsFileReader.read_row(origin, destination)) {
+            if (idsAreEdges) {
+                if (origin < 0 || origin >= origIdToSeqId.size() || origIdToSeqId[origin] == INVALID_ID)
+                    throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
+                if (destination < 0 || destination >= origIdToSeqId.size() ||
                     origIdToSeqId[destination] == INVALID_ID)
-                throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
-            const auto originSeqId = origIdToSeqId[origin];
-            const auto destSeqId = origIdToSeqId[destination];
-            const int requestId = static_cast<int>(requests.size());
-            assert(inputGraph.edgeTail(originSeqId) != EdgeTailAttribute::defaultValue());
-            assert(inputGraph.edgeTail(destSeqId) != EdgeTailAttribute::defaultValue());
-            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
+                    throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
+                origin = origIdToSeqId[origin];
+                destination = origIdToSeqId[destination];
+            } else {
+                if (origin < 0 || origin >= inputGraph.numVertices())
+                    throw std::invalid_argument("invalid vertex -- '" + std::to_string(origin) + "'");
+                if (destination < 0 || destination >= inputGraph.numVertices())
+                    throw std::invalid_argument("invalid vertex -- '" + std::to_string(destination) + "'");
+            }
+            odPairs.emplace_back(origin, destination);
         }
         std::cout << "done.\n";
 
 
         std::cout << "Generating GeoJson object ..." << std::flush;
-        nlohmann::json geoJson = generateGeoJsonObjectForRequestEdges(inputGraph, requests);
+        nlohmann::json geoJson;
+        if (idsAreEdges) {
+            geoJson = generateGeoJsonObjectForPairs<InputGraph, true>(inputGraph, odPairs);
+        } else {
+            geoJson = generateGeoJsonObjectForPairs<InputGraph, false>(inputGraph, odPairs);
+        }
         std::cout << " done." << std::endl;
-
 
         std::cout << "Writing GeoJSON to output file... " << std::flush;
         // Open the output file and write the GeoJson.
