@@ -70,7 +70,7 @@ endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-# Find openmp and proj libraries installed via package manager
+# Find openmp libraries installed via package manager
 find_package(OpenMP)
 find_library(PROJ_LIBRARY proj)
 find_package(TBB REQUIRED)
@@ -90,6 +90,7 @@ ELSE ()
   message(FATAL_ERROR "
     HwLoc library not found. Install HwLoc on your system.")
 ENDIF ()
+find_package(Boost REQUIRED)
 
 # Add json library from git submodule
 set(JSON_BuildTests OFF CACHE INTERNAL "")

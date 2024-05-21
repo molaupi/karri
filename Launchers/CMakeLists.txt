@@ -43,7 +43,7 @@ if (TBB_FOUND)
     message("TBB found")
     target_link_libraries(karri TBB::tbb)
 endif()
-target_link_libraries(karri kassert)
+target_link_libraries(karri kassert ${BOOST_LIBRARIES})
 
 # include KaRRi compile time parameters
 include(KaRRI_compile_time_parameters.cmake)
