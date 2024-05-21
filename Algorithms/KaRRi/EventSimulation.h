@@ -268,6 +268,7 @@ namespace karri {
                 vehicleEvents.increaseKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
             }
 
+            systemStateUpdater.notifyStopCompleted(fleet[vehId]);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",VehicleDeparture," << time << '\n';
@@ -392,4 +393,3 @@ namespace karri {
 
     };
 }
-
