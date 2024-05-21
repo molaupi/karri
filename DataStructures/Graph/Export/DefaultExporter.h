@@ -24,4 +24,18 @@
 
 
 #pragma once
-class DefaultExporter { public: DefaultExporter(bool) {} void ignoreAttribute(std::string) {} };
+
+class DefaultExporter {
+public:
+    DefaultExporter(bool) {}
+
+    void setBaseOutName(std::string) {}
+
+    void ignoreAttribute(std::string) {}
+
+    template<typename OutEdgeRangesT, typename EdgeHeadsT>
+    void writeTopology(const OutEdgeRangesT &, const EdgeHeadsT &) {}
+
+    template<bool, typename T>
+    void writeAttribute(const T &, const std::string &) {}
+};

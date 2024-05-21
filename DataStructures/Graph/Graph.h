@@ -782,7 +782,12 @@ public:
 
     // Writes a graph to disk. Different exporters support different file formats.
     template<typename ExporterT = DefaultExporter>
-    void exportTo(const std::string & /*filename*/, ExporterT /*ex*/ = ExporterT()) const {}
+    void exportTo(const std::string & baseOutName, ExporterT& ex) const {
+        ex.setBaseOutName(baseOutName);
+        ex.writeTopology(outEdges, edgeHeads);
+        RUN_FORALL(ex.template writeAttribute<true>(VertexAttributes::values, use(VertexAttributes::NAME)));
+        RUN_FORALL(ex.template writeAttribute<false>(EdgeAttributes::values, use(EdgeAttributes::NAME)));
+    }
 
     // Reads a graph from a binary file. Attributes that are present in the file, but not associated
     // with the graph are ignored. Attributes that are associated with the graph, but not present in

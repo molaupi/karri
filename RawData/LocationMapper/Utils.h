@@ -129,7 +129,7 @@ namespace transform_locations_input {
                 assert(destination >= 0);
                 pairs.emplace_back(origin, destination);
             }
-            std::cout << "done.\n";
+            std::cout << "done (read " << pairs.size() << " pairs).\n";
             return pairs;
         }
 
@@ -153,7 +153,7 @@ namespace transform_locations_input {
 
                 pairs.emplace_back(origin, destination);
             }
-            std::cout << "done.\n";
+            std::cout << "done (read " << pairs.size() << " pairs).\n";
             return pairs;
         }
 
@@ -167,7 +167,7 @@ namespace transform_locations_input {
             while (inReader.read_row(origin, destination)) {
                 pairs.emplace_back(parseLatLngString(origin), parseLatLngString(destination));
             }
-            std::cout << "done.\n";
+            std::cout << "done (read " << pairs.size() << " pairs).\n";
             return pairs;
         }
 
@@ -181,7 +181,7 @@ namespace transform_locations_input {
             while (inReader.read_row(origin, destination)) {
                 pairs.emplace_back(parseEastingNorthingString(origin), parseEastingNorthingString(destination));
             }
-            std::cout << "done.\n";
+            std::cout << "done (read " << pairs.size() << " pairs).\n";
             return pairs;
         }
 
@@ -216,7 +216,7 @@ namespace transform_locations_input {
                 assert(loc >= 0);
                 locs.emplace_back(loc);
             }
-            std::cout << "done.\n";
+            std::cout << "done (read " << locs.size() << " locations).\n";
             return locs;
         }
 
@@ -235,7 +235,7 @@ namespace transform_locations_input {
 
                 locs.emplace_back(loc);
             }
-            std::cout << "done.\n";
+            std::cout << "done (read " << locs.size() << " locations).\n";
             return locs;
         }
 
@@ -248,7 +248,7 @@ namespace transform_locations_input {
             while (inReader.read_row(loc)) {
                 locs.emplace_back(parseLatLngString(loc));
             }
-            std::cout << "done.\n";
+            std::cout << "done (read " << locs.size() << " locations).\n";
             return locs;
         }
 
@@ -261,7 +261,7 @@ namespace transform_locations_input {
             while (inReader.read_row(loc)) {
                 locs.emplace_back(parseEastingNorthingString(loc));
             }
-            std::cout << "done.\n";
+            std::cout << "done (read " << locs.size() << " locations).\n";
             return locs;
         }
 
