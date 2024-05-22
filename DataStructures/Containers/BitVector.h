@@ -79,6 +79,12 @@ public:
         resize(size, init);
     }
 
+    // Constructs a bit vector containing the given blocks of bits.
+    template<typename BlockIt>
+    explicit BitVector(BlockIt begin, BlockIt end, const int numBits) : blocks(begin, end), numBits(numBits) {
+        LIGHT_KASSERT(numBits > (end - begin - 1) * BITS_PER_BLOCK && numBits <= (end - begin) * BITS_PER_BLOCK);
+    }
+
     // Returns the number of bits in this bit vector.
     int size() const {
         return numBits;
@@ -136,6 +142,10 @@ public:
         return blocks[blockIndex];
     }
 
+    const AlignedVector<Block>& getBlocks() const {
+        return blocks;
+    }
+
     // Returns the index of the first one-bit. If no such bit exists then -1 is returned.
     int firstSetBit() const {
         int blockIndex = 0;
@@ -157,6 +167,12 @@ public:
         while (blocks[blockIndex] == 0 && blockIndex < blocks.size()) ++blockIndex;
         if (blockIndex == blocks.size()) return -1;
         return blockIndex * BITS_PER_BLOCK + numTrailingZeros(blocks[blockIndex]);
+    }
+
+    // Inverts every bit in the BitVector
+    void flip() {
+        for (auto &b: blocks)
+            b = ~b;
     }
 
 private:
