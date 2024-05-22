@@ -100,7 +100,7 @@ include_directories(External/vectorclass)
 
 set(REQ_BOOST_LIBS align assert config core static_assert)
 foreach(BOOST_LIB_NAME ${REQ_BOOST_LIBS})
-  include_directories(External/boost/libs/${BOOST_LIB_NAME})
+  include_directories(External/boost/libs/${BOOST_LIB_NAME}/include)
 endforeach()
 
 
