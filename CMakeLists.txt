@@ -74,6 +74,7 @@ include_directories(${CMAKE_SOURCE_DIR})
 find_package(OpenMP)
 find_library(PROJ_LIBRARY proj)
 find_package(TBB REQUIRED)
+find_package(Boost REQUIRED)
 
 # Find HWLOC Library
 find_path(HWLOC_INCLUDE_DIR NAME hwloc.h
@@ -90,7 +91,6 @@ ELSE ()
   message(FATAL_ERROR "
     HwLoc library not found. Install HwLoc on your system.")
 ENDIF ()
-find_package(Boost REQUIRED)
 
 # Add json library from git submodule
 set(JSON_BuildTests OFF CACHE INTERNAL "")
