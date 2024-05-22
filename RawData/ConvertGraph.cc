@@ -31,8 +31,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/dynamic_bitset.hpp>
-
 #include "Algorithms/GraphTraversal/StronglyConnectedComponents.h"
 #include "DataStructures/Geometry/Area.h"
 #include "DataStructures/Geometry/Point.h"
@@ -206,7 +204,7 @@ int main(int argc, char* argv[]) {
 
     if (clp.isSet("p")) {
       std::cout << "Extracting the given region..." << std::flush;
-      boost::dynamic_bitset<> isVertexInsideRegion(graph.numVertices());
+      BitVector isVertexInsideRegion(graph.numVertices());
       Area area;
       area.importFromOsmPolyFile(clp.getValue<std::string>("p"));
       const auto box = area.boundingBox();

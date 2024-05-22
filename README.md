@@ -31,7 +31,6 @@ To build KaRRi, you need to have some tools and libraries installed. On Debian a
 $ sudo apt-get install build-essential
 $ sudo apt-get install cmake
 $ sudo apt-get install python3 python3-pip; pip3 install -r python_requirements.txt
-$ sudo apt-get install libboost-all-dev
 $ sudo apt-get install libproj-dev
 $ sudo apt-get install zlib1g-dev
 $ sudo apt-get install osmium-tool
@@ -45,6 +44,7 @@ type the following commands at the top-level directory of the framework:
 
 ```
 $ git submodule update --init
+$ cd External/boost && git submodule update --init -- libs/align libs/assert libs/config libs/core libs/static_assert && cd ../..
 $ make -C External/RoutingKit
 ```
 

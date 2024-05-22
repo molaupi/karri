@@ -74,7 +74,6 @@ include_directories(${CMAKE_SOURCE_DIR})
 find_package(OpenMP)
 find_library(PROJ_LIBRARY proj)
 find_package(TBB REQUIRED)
-find_package(Boost REQUIRED)
 
 # Find HWLOC Library
 find_path(HWLOC_INCLUDE_DIR NAME hwloc.h
@@ -101,13 +100,6 @@ add_subdirectory(External/json)
 find_library(RoutingKit_LIBRARY routingkit PATHS External/RoutingKit/lib REQUIRED)
 include_directories(External/RoutingKit/include)
 
-# Include headers for header-only libraries from git submodules and embedded dependencies
-include_directories(SYSTEM External/fast-cpp-csv-parser)
-include_directories(External/randomc)
-include_directories(External/rapidxml)
-include_directories(External/stocc)
-include_directories(External/vectorclass)
-
 # Include kassert library
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(KASSERT_ASSERTION_LEVEL 40)
@@ -115,6 +107,18 @@ else()
   set(KASSERT_ASSERTION_LEVEL 20)
 endif ()
 add_subdirectory(External/kassert)
+
+# Include headers for header-only libraries from git submodules and embedded dependencies
+include_directories(SYSTEM External/fast-cpp-csv-parser)
+include_directories(External/randomc)
+include_directories(External/rapidxml)
+include_directories(External/stocc)
+include_directories(External/vectorclass)
+
+set(REQ_BOOST_LIBS align assert config core static_assert)
+foreach(BOOST_LIB_NAME ${REQ_BOOST_LIBS})
+  include_directories(External/boost/libs/${BOOST_LIB_NAME})
+endforeach()
 
 
 foreach(SRC_DIR ${SOURCE_DIRECTORIES})

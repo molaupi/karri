@@ -32,8 +32,6 @@
 #include <type_traits>
 #include <vector>
 
-#include <boost/dynamic_bitset.hpp>
-
 namespace bio {
 
 // Returns the number of bytes the specified self-contained object occupies on disk.
@@ -70,9 +68,8 @@ size(const std::vector<T, AllocT>& vec) {
 }
 
 // Returns the number of bytes the specified bit-vector occupies on disk.
-template <typename BlockT, typename AllocT>
-inline int size(const boost::dynamic_bitset<BlockT, AllocT>& vec) {
-  return 2 * sizeof(int) + vec.num_blocks() * sizeof(BlockT);
+inline int size(const BitVector& vec) {
+  return 2 * sizeof(int) + vec.numBlocks() * sizeof(typename BitVector::Block);
 }
 
 // Reads a self-contained object from a binary file.
@@ -112,14 +109,12 @@ read(std::ifstream& in, std::vector<T, AllocT>& vec) {
 }
 
 // Reads a bit-vector from a binary file.
-template <typename BlockT, typename AllocT>
-inline void read(std::ifstream& in, boost::dynamic_bitset<BlockT, AllocT>& vec) {
-  int size;
-  read(in, size);
-  vec.resize(size);
-  std::vector<BlockT> blocks;
+inline void read(std::ifstream& in, BitVector& vec) {
+  int numBits;
+  read(in, numBits);
+  std::vector<typename BitVector::Block> blocks;
   read(in, blocks);
-  boost::from_block_range(blocks.begin(), blocks.end(), vec);
+  vec = BitVector(blocks.begin(), blocks.end(), numBits);
 }
 
 // Writes a self-contained object to a binary file.
@@ -161,12 +156,9 @@ write(std::ofstream& out, const std::vector<T, AllocT>& vec) {
 }
 
 // Writes a bit-vector to a binary file.
-template <typename BlockT, typename AllocT>
-inline void write(std::ofstream& out, const boost::dynamic_bitset<BlockT, AllocT>& vec) {
+inline void write(std::ofstream& out, const BitVector& vec) {
   write(out, static_cast<int>(vec.size()));
-  std::vector<BlockT> blocks(vec.num_blocks());
-  boost::to_block_range(vec, blocks.begin());
-  write(out, blocks);
+  write(out, vec.getBlocks());
 }
 
 }
