@@ -27,28 +27,30 @@ add_executable(BuildTrafficFlowBasedSubgraph BuildTrafficFlowBasedSubgraph.cc)
 target_compile_definitions(BuildTrafficFlowBasedSubgraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert)
 
-add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc)
+
+add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc
+        ../Algorithms/KaRRi/LastStopSearches/NoOpLastStopBucketEnvironment.h)
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
 
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ConvertGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+target_link_libraries(ConvertGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 
 add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
 target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForGraph PRIVATE nlohmann_json::nlohmann_json kassert)
+target_link_libraries(GenerateGeoJsonForGraph PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
 
 add_executable(GenerateGeoJsonForODPairs GenerateGeoJsonForODPairs.cc)
 target_compile_definitions(GenerateGeoJsonForODPairs PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForODPairs PRIVATE nlohmann_json::nlohmann_json kassert)
+target_link_libraries(GenerateGeoJsonForODPairs PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
 
 add_executable(GenerateGeoJsonForVehicles GenerateGeoJsonForVehicles.cc)
 target_compile_definitions(GenerateGeoJsonForVehicles PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForVehicles PRIVATE nlohmann_json::nlohmann_json kassert)
+target_link_libraries(GenerateGeoJsonForVehicles PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
 
 add_executable(GenerateODPairs GenerateODPairs.cc)
 target_compile_definitions(GenerateODPairs PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateODPairs kassert)
+target_link_libraries(GenerateODPairs kassert ${BOOST_LIBRARIES})
 if(OpenMP_FOUND)
   target_link_libraries(GenerateODPairs OpenMP::OpenMP_CXX)
 endif()
@@ -68,8 +70,8 @@ target_link_libraries(ODPairsCsvToRoutingKit ${PROJ_LIBRARY} ${RoutingKit_LIBRAR
 
 add_executable(OsmToCarAndPassengerGraph OsmToCarAndPassengerGraph.cc)
 target_compile_definitions(OsmToCarAndPassengerGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(OsmToCarAndPassengerGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+target_link_libraries(OsmToCarAndPassengerGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 
 add_executable(TransformLocations TransformLocations.cc)
 target_compile_definitions(TransformLocations PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(TransformLocations ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+target_link_libraries(TransformLocations ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
