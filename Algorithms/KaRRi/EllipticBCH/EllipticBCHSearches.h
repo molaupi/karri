@@ -32,7 +32,7 @@
 #include <DataStructures/Labels/SimdLabelSet.h>
 
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
-#include <Algorithms/KaRRi/RouteState.h>
+#include <Algorithms/KaRRi/RouteStateData.h>
 #include "BucketEntryWithLeeway.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Tools/Timer.h"
@@ -147,7 +147,7 @@ namespace karri {
 
         struct UpdateDistancesFromPDLocs {
 
-            UpdateDistancesFromPDLocs(const RouteState &routeState)
+            UpdateDistancesFromPDLocs(const RouteStateData &routeState)
                     : routeState(routeState), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
@@ -173,7 +173,7 @@ namespace karri {
             }
 
         private:
-            const RouteState &routeState;
+            const RouteStateData &routeState;
             FeasibleEllipticDistancesT *curFeasible;
             int curFirstIdOfBatch;
         };
@@ -196,7 +196,7 @@ namespace karri {
                             const EllipticBucketsEnvT &ellipticBucketsEnv,
                             const LastStopsAtVertices &lastStopsAtVertices,
                             const CHEnvT &chEnv,
-                            const RouteState &routeState,
+                            const RouteStateData &routeState,
                             FeasibleEllipticDistancesT &feasibleEllipticPickups,
                             FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
                             RequestState &requestState)
@@ -389,7 +389,7 @@ namespace karri {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CH &ch;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         RequestState &requestState;
 
         const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;

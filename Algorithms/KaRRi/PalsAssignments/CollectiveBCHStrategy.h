@@ -29,7 +29,7 @@
 #include "MinCostPairAfterLastStopQuery.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteStateData.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "IndividualBCHStrategy.h"
 
@@ -59,7 +59,7 @@ namespace karri::PickupAfterLastStopStrategies {
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               PDDistancesT &pdDistances,
                               const CostCalculator &calculator,
-                              const RouteState &routeState,
+                              const RouteStateData &routeState,
                               RequestState &requestState,
                               const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
@@ -167,7 +167,7 @@ namespace karri::PickupAfterLastStopStrategies {
         const Fleet &fleet;
         const CostCalculator &calculator;
         const CH &ch;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         RequestState &requestState;
         const InputConfig &inputConfig;
 

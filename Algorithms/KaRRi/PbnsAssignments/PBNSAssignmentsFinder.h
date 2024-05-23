@@ -57,7 +57,7 @@ namespace karri {
                               const RelevantPDLocs &relDropoffsBns, const PDDistancesT &pdDistances,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
                               const Fleet &fleet, const CostCalculator &calculator,
-                              const RouteState &routeState, RequestState &requestState)
+                              const RouteStateData &routeState, RequestState &requestState)
                 : relPickupsBNS(relPickupsBns),
                   relOrdinaryDropoffs(relOrdinaryDropoffs),
                   relDropoffsBNS(relDropoffsBns),
@@ -335,7 +335,7 @@ namespace karri {
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         const Fleet &fleet;
         const CostCalculator &calculator;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         RequestState &requestState;
 
         int numAssignmentsTriedWithPickupBeforeNextStop;

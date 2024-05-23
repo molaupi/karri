@@ -73,7 +73,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                          const Fleet &fleet,
                          const CostCalculator &calculator,
                          CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
-                         const RouteState &routeState,
+                         const RouteStateData &routeState,
                          const LastStopsAtVertices &lastStopsAtVertices,
                          RequestState &requestState,
                          const RelevantPDLocs &relevantOrdinaryPickups,
@@ -298,7 +298,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         RequestState &requestState;
 
         const Fleet &fleet;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         const LastStopsAtVertices &lastStopsAtVertices;
         const CostCalculator &calculator;
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;

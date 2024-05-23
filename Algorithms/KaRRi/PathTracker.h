@@ -43,7 +43,7 @@ namespace karri {
     public:
 
         explicit PathTracker(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RequestState &requestState,
-                             const RouteState &routeState, const Fleet &fleet) :
+                             const RouteStateData &routeState, const Fleet &fleet) :
                 inputGraph(inputGraph),
                 requestState(requestState),
                 routeState(routeState),
@@ -207,7 +207,7 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const RequestState &requestState;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
 
         const CH &ch;
         typename CHEnvT::template FullCHQuery<> chQuery;

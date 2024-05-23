@@ -45,7 +45,7 @@ namespace karri {
 
         OrdinaryAssignmentsFinder(const RelevantPDLocs &relPickups, const RelevantPDLocs &relDropoffs,
                                   const PDDistancesT &pdDistances, const Fleet &fleet,
-                                  const CostCalculator &calculator, const RouteState &routeState,
+                                  const CostCalculator &calculator, const RouteStateData &routeState,
                                   RequestState &requestState)
                 : relPickups(relPickups),
                   relDropoffs(relDropoffs),
@@ -294,7 +294,7 @@ namespace karri {
         const PDDistancesT &pdDistances;
         const Fleet &fleet;
         const CostCalculator &calculator;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         RequestState &requestState;
     };
 }

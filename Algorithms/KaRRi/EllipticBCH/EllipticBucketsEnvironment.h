@@ -32,7 +32,7 @@
 #include "Algorithms/Buckets/DynamicBucketContainer.h"
 #include "Algorithms/Buckets/SortedBucketContainer.h"
 #include "BucketEntryWithLeeway.h"
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteStateData.h"
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/Stats/PerformanceStats.h"
@@ -84,7 +84,7 @@ namespace karri {
                 DynamicBucketContainer<Entry>
         >;
 
-        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState,
+        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateData &routeState,
                                    const InputConfig &inputConfig, karri::stats::UpdatePerformanceStats &stats)
                 : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState), inputConfig(inputConfig),
                   sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
@@ -342,7 +342,7 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const CH &ch;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         const InputConfig &inputConfig;
 
         BucketContainer sourceBuckets;

@@ -283,7 +283,7 @@ int main(int argc, char *argv[]) {
         std::cout << "done.\n";
 
         // Create Route State for empty routes.
-        RouteState routeState(fleet, inputConfig.stopTime);
+        RouteStateData routeState(fleet, inputConfig.stopTime);
 
 
 
@@ -599,7 +599,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Run simulation:
-        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
+        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteStateData>;
         EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, insertionFinder, systemStateUpdater,
                                             routeState,
                                             true);

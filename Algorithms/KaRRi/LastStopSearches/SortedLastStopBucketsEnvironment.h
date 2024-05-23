@@ -29,7 +29,7 @@
 #include "Algorithms/Buckets/DynamicBucketContainer.h"
 #include "Algorithms/Buckets/SortedBucketContainer.h"
 #include "Algorithms/Buckets/BucketEntry.h"
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteStateData.h"
 #include "Algorithms/CH/CH.h"
 #include "Tools/Timer.h"
 #include "Algorithms/Buckets/LastStopBucketContainer.h"
@@ -206,7 +206,7 @@ namespace karri {
     public:
 
         SortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                                         const RouteState &routeState,
+                                         const RouteStateData &routeState,
                                          karri::stats::UpdatePerformanceStats &stats)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
@@ -349,7 +349,7 @@ namespace karri {
         const InputGraphT &inputGraph;
         const CH &ch;
         const CH::SearchGraph &searchGraph;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
 
         BucketContainer bucketContainer;
 

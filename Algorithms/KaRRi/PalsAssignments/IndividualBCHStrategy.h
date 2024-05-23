@@ -158,7 +158,7 @@ namespace karri::PickupAfterLastStopStrategies {
                               const CostCalculator &calculator,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const PDDistancesT &pdDistances,
-                              const RouteState &routeState,
+                              const RouteStateData &routeState,
                               RequestState &requestState,
                               const int &bestCostBeforeQuery,
                               const InputConfig &inputConfig)
@@ -302,7 +302,7 @@ namespace karri::PickupAfterLastStopStrategies {
         const Fleet &fleet;
         const CostCalculator &calculator;
         const PDDistancesT &pdDistances;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         RequestState &requestState;
         const int &bestCostBeforeQuery;
         const InputConfig &inputConfig;

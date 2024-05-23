@@ -31,7 +31,7 @@
 #include "Tools/Simd/AlignedVector.h"
 #include "DataStructures/Containers/Subset.h"
 
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteStateData.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
@@ -51,7 +51,7 @@ namespace karri {
 
     public:
 
-        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState)
+        explicit FeasibleEllipticDistances(const int fleetSize, const RouteStateData &routeState)
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
                   startOfRangeInValueArray(fleetSize),
@@ -264,7 +264,7 @@ namespace karri {
             minDistFromPDLocToNextStop[stopId] = INFTY;
         }
 
-        const RouteState &routeState;
+        const RouteStateData &routeState;
 
         int numLabelsPerStop{};
         const int &maxStopId;

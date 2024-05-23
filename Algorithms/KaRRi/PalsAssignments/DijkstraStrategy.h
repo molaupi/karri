@@ -76,7 +76,7 @@ namespace karri::PickupAfterLastStopStrategies {
         DijkstraStrategy(const InputGraphT &inputGraph,
                          const InputGraphT &reverseGraph,
                          const Fleet &fleet,
-                         const RouteState &routeState,
+                         const RouteStateData &routeState,
                          const LastStopsAtVertices &lastStopsAtVertices,
                          const CostCalculator &calculator,
                          PDDistancesT &pdDistances,
@@ -255,7 +255,7 @@ namespace karri::PickupAfterLastStopStrategies {
         PDDistancesT &pdDistances;
         const CostCalculator &calculator;
         const Fleet &fleet;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         const LastStopsAtVertices &lastStopsAtVertices;
 
 

@@ -32,7 +32,7 @@
 #include "DataStructures/Containers/TimestampedVector.h"
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteStateData.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
 namespace karri {
@@ -112,7 +112,7 @@ namespace karri {
         CurVehLocToPickupSearches(const InputGraphT &graph,
                                   VehicleLocatorT &locator,
                                   const CHEnvT &chEnv,
-                                  const RouteState &routeState,
+                                  const RouteStateData &routeState,
                                   RequestState &requestState,
                                   const int fleetSize)
                 : inputGraph(graph),
@@ -330,7 +330,7 @@ namespace karri {
         const InputGraphT &inputGraph;
         VehicleLocatorT &vehicleLocator;
         const CH &ch;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         RequestState &requestState;
         const int fleetSize;
 

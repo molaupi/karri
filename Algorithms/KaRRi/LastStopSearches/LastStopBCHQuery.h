@@ -166,7 +166,7 @@ namespace karri {
                 const LastStopBucketsEnvT &lastStopBucketsEnv,
                 TentativeLastStopDistances <LabelSetT> &tentativeLastStopDistances,
                 const CHEnvT &chEnv,
-                const RouteState& routeState,
+                const RouteStateData& routeState,
                 Subset &vehiclesSeen,
                 PrunerT pruner)
                 : upwardSearch(chEnv.template getReverseSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT>(
@@ -209,7 +209,7 @@ namespace karri {
 
         const CH &ch;
         const typename LastStopBucketsEnvT::BucketContainer &bucketContainer;
-        const RouteState& routeState;
+        const RouteStateData& routeState;
 
         TentativeLastStopDistances <LabelSetT> &tentativeDistances;
 

@@ -63,7 +63,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         CollectiveBCHStrategy(const InputGraphT &inputGraph,
                               const Fleet &fleet,
-                              const RouteState &routeState,
+                              const RouteStateData &routeState,
                               const CHEnvT &chEnv,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const CostCalculator &calculator,
@@ -581,7 +581,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         const CostCalculator &calculator;
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         ClosestDropoffToLastStopQuery closestDropoffSearch;

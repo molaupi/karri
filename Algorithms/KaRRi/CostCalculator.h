@@ -30,7 +30,7 @@
 #include <cmath>
 
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteStateData.h"
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Tools/Constants.h"
@@ -49,7 +49,7 @@ namespace karri {
 
         using CostFunction = CostFunctionT;
 
-        explicit CostCalculatorTemplate(const RouteState &routeState,
+        explicit CostCalculatorTemplate(const RouteStateData &routeState,
                                         const InputConfig &inputConfig)
                 : routeState(routeState),
                   inputConfig(inputConfig),
@@ -616,7 +616,7 @@ namespace karri {
 
         }
 
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         const InputConfig &inputConfig;
         const int stopTime;
     };

@@ -29,7 +29,7 @@
 #include "Algorithms/CH/CHPathUnpacker.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
-#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/RouteStateData.h"
 
 namespace karri {
 
@@ -40,7 +40,7 @@ namespace karri {
     class VehicleLocator {
 
     public:
-        VehicleLocator(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState)
+        VehicleLocator(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteStateData &routeState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   chQuery(chEnv.template getFullCHQuery<>()),
@@ -116,7 +116,7 @@ namespace karri {
         const CH &ch;
         typename CHEnvT::template FullCHQuery<> chQuery;
         CHPathUnpacker unpacker;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
 
         std::vector<int> path;
 

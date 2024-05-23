@@ -40,7 +40,7 @@ namespace karri {
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
                               const CostCalculator &calculator, const LastStopsAtVertices &lastStopsAtVertices,
-                              const RouteState &routeState, const PDDistancesT &pdDistances, RequestState &requestState)
+                              const RouteStateData &routeState, const PDDistancesT &pdDistances, RequestState &requestState)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
@@ -115,7 +115,7 @@ namespace karri {
         const Fleet &fleet;
         const CostCalculator &calculator;
         const LastStopsAtVertices &lastStopsAtVertices;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         const PDDistancesT &pdDistances;
         RequestState &requestState;
 

@@ -57,7 +57,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                                          const CostCalculator &calculator,
                                          const LastStopBucketsEnvT &lastStopBucketsEnv,
                                          const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop,
-                                         const RouteState &routeState,
+                                         const RouteStateData &routeState,
                                          const RequestState &requestState,
                                          const InputConfig &inputConfig)
                 : inputGraph(inputGraph),
@@ -465,7 +465,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         const CostCalculator &calculator;
         const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
         const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         const RequestState &requestState;
         const InputConfig &inputConfig;
 

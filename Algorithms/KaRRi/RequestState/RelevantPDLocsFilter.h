@@ -38,7 +38,7 @@ namespace karri {
 
         RelevantPDLocsFilter(const Fleet &fleet, const InputGraphT &inputGraph, const CHEnvT &chEnv,
                              const CostCalculator &calculator,
-                             RequestState &requestState, const RouteState &routeState,
+                             RequestState &requestState, const RouteStateData &routeState,
                              const InputConfig &inputConfig, const FeasibleDistancesT &feasiblePickupDistances,
                              const FeasibleDistancesT &feasibleDropoffDistances,
                              RelevantPDLocs &relOrdinaryPickups, RelevantPDLocs &relOrdinaryDropoffs,
@@ -331,7 +331,7 @@ namespace karri {
         typename CHEnvT::template FullCHQuery<> chQuery;
         const CostCalculator &calculator;
         RequestState &requestState;
-        const RouteState &routeState;
+        const RouteStateData &routeState;
         const InputConfig &inputConfig;
 
         const FeasibleDistancesT &feasiblePickupDistances;
