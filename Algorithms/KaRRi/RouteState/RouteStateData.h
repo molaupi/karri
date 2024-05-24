@@ -44,7 +44,8 @@ namespace karri {
         friend class RouteStateUpdater;
 
     public:
-        RouteStateData(const Fleet &fleet, const int stopTime)
+
+        RouteStateData(const Fleet &fleet)
                 : pos(fleet.size()),
                   stopIds(fleet.size()),
                   stopLocations(fleet.size()),
@@ -66,8 +67,7 @@ namespace karri {
                   maxLeeway(0),
                   stopIdOfMaxLeeway(INVALID_ID),
                   maxLegLength(0),
-                  stopIdOfMaxLegLength(INVALID_ID),
-                  stopTime(stopTime) {
+                  stopIdOfMaxLegLength(INVALID_ID) {
             for (auto i = 0; i < fleet.size(); ++i) {
                 pos[i].start = i;
                 pos[i].end = i + 1;
@@ -210,6 +210,7 @@ namespace karri {
             return maxLegLength;
         }
 
+
         // Scheduled stop interface for event simulation
         struct ScheduledStop {
             int stopId;
@@ -261,12 +262,12 @@ namespace karri {
 
                 // If the planned departure time is already later than the new arrival time demands, then the planned
                 // departure time remains unaffected and subsequent arrival/departure times will not change either.
-                if (schedDepTimes[l] >= schedArrTimes[l] + stopTime) {
+                if (schedDepTimes[l] >= schedArrTimes[l] + InputConfig::getInstance().stopTime) {
                     break;
                 }
 
                 const auto oldMinDepTime = schedDepTimes[l];
-                schedDepTimes[l] = schedArrTimes[l] + stopTime; // = max(schedDepTimes[l], schedArrTimes[l] + stopTime);
+                schedDepTimes[l] = schedArrTimes[l] + InputConfig::getInstance().stopTime; // = max(schedDepTimes[l], schedArrTimes[l] + stopTime);
                 if (l < toIdx) distPrevToCurrent = schedArrTimes[l + 1] - oldMinDepTime;
             }
         }
@@ -275,7 +276,7 @@ namespace karri {
         void propagateMaxArrTimeBackward(const int fromIdx, const int toIdx) {
             for (int l = fromIdx; l >= toIdx; --l) {
                 const auto distToNext = schedArrTimes[l + 1] - schedDepTimes[l];
-                const auto propagatedMaxArrTime = maxArrTimes[l + 1] - distToNext - stopTime;
+                const auto propagatedMaxArrTime = maxArrTimes[l + 1] - distToNext - InputConfig::getInstance().stopTime;
                 if (maxArrTimes[l] <= propagatedMaxArrTime)
                     break; // Stop propagating if known maxArrTime at l is stricter already
                 maxArrTimes[l] = propagatedMaxArrTime;
@@ -291,7 +292,7 @@ namespace karri {
 
                 // Set leeway of stop, possibly update max leeway
                 const auto leeway =
-                        std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1]) - schedDepTimes[idx] - stopTime;
+                        std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1]) - schedDepTimes[idx] - InputConfig::getInstance().stopTime;
                 assert(leeway >= 0);
                 stopIdToLeeway[stopId] = leeway;
 
@@ -344,7 +345,7 @@ namespace karri {
         void recalculateVehWaitTimesPrefixSum(const int fromIdx, const int toIdx, const int baseline) {
             int prevSum = baseline;
             for (int l = fromIdx; l <= toIdx; ++l) {
-                const auto stopLength = schedDepTimes[l] - stopTime - schedArrTimes[l];
+                const auto stopLength = schedDepTimes[l] - InputConfig::getInstance().stopTime - schedArrTimes[l];
                 assert(stopLength >= 0);
                 vehWaitTimesPrefixSum[l] = prevSum + stopLength;
                 prevSum = vehWaitTimesPrefixSum[l];
@@ -367,7 +368,7 @@ namespace karri {
             for (const auto &[start, end]: pos) {
                 for (int idx = start; idx < end - 1; ++idx) {
                     const auto leeway = std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1])
-                                        - schedDepTimes[idx] - stopTime;
+                                        - schedDepTimes[idx] - InputConfig::getInstance().stopTime;
                     if (leeway > maxLeeway) {
                         maxLeeway = leeway;
                         stopIdOfMaxLeeway = stopIds[idx];
@@ -465,7 +466,5 @@ namespace karri {
 
         int maxLegLength;
         int stopIdOfMaxLegLength;
-
-        const int stopTime;
     };
 }

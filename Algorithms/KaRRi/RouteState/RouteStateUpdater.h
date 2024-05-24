@@ -85,13 +85,13 @@ namespace karri {
                 const int psgMaxDepTime =
                         std::max(requestState.getMaxDepTimeAtPickup(), requestState.getPassengerArrAtPickup(pickup.id));
                 data.maxArrTimes[start + pickupIndex] = std::min(data.maxArrTimes[start + pickupIndex],
-                                                                 psgMaxDepTime - data.stopTime);
+                                                                 psgMaxDepTime - InputConfig::getInstance().stopTime);
             } else {
                 // If vehicle is currently idle, the vehicle can leave its current stop at the earliest when the
                 // request is made. In that case, we update the arrival time to count the idling as one stopTime.
                 data.schedDepTimes[end - 1] = std::max(data.schedDepTimes[end - 1],
                                                        requestState.originalRequest.requestTime);
-                data.schedArrTimes[end - 1] = data.schedDepTimes[end - 1] - data.stopTime;
+                data.schedArrTimes[end - 1] = data.schedDepTimes[end - 1] - InputConfig::getInstance().stopTime;
                 ++pickupIndex;
                 ++dropoffIndex;
                 const int unusedStopId = StopIdManager::getUnusedStopId();
@@ -108,9 +108,9 @@ namespace karri {
                 data.schedArrTimes[start + pickupIndex] =
                         data.schedDepTimes[start + pickupIndex - 1] + asgn.distToPickup;
                 data.schedDepTimes[start + pickupIndex] = std::max(
-                        data.schedArrTimes[start + pickupIndex] + data.stopTime,
+                        data.schedArrTimes[start + pickupIndex] + InputConfig::getInstance().stopTime,
                         requestState.getPassengerArrAtPickup(pickup.id));
-                data.maxArrTimes[start + pickupIndex] = requestState.getMaxDepTimeAtPickup() - data.stopTime;
+                data.maxArrTimes[start + pickupIndex] = requestState.getMaxDepTimeAtPickup() - InputConfig::getInstance().stopTime;
                 data.occupancies[start + pickupIndex] = data.occupancies[start + pickupIndex - 1];
                 data.numDropoffsPrefixSum[start + pickupIndex] = data.numDropoffsPrefixSum[start + pickupIndex - 1];
                 pickupInsertedAsNewStop = true;
@@ -141,7 +141,7 @@ namespace karri {
                 data.stopLocations[start + dropoffIndex] = dropoff.loc;
                 data.schedArrTimes[start + dropoffIndex] =
                         data.schedDepTimes[start + dropoffIndex - 1] + asgn.distToDropoff;
-                data.schedDepTimes[start + dropoffIndex] = data.schedArrTimes[start + dropoffIndex] + data.stopTime;
+                data.schedDepTimes[start + dropoffIndex] = data.schedArrTimes[start + dropoffIndex] + InputConfig::getInstance().stopTime;
                 // compare maxVehArrTime to next stop later
                 data.maxArrTimes[start + dropoffIndex] = requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id);
                 data.occupancies[start + dropoffIndex] = data.occupancies[start + dropoffIndex - 1];
@@ -317,7 +317,7 @@ namespace karri {
 
             const auto leeway =
                     std::max(data.maxArrTimes[start + 2], data.schedDepTimes[start + 2]) -
-                    data.schedDepTimes[start + 1] - data.stopTime;
+                    data.schedDepTimes[start + 1] - InputConfig::getInstance().stopTime;
             KASSERT(leeway >= 0);
             data.stopIdToLeeway[newStopId] = leeway;
 

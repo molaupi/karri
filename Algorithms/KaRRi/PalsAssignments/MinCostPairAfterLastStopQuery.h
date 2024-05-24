@@ -75,7 +75,7 @@ namespace karri::PickupAfterLastStopStrategies {
                                       const RouteStateData &routeState, DirectSearchesT &directSearches,
                                       const CostCalculator &calculator,
                                       const LastStopBucketsEnvT &lastStopBucketsEnv,
-                                      const RequestState &requestState, const InputConfig &inputConfig)
+                                      const RequestState &requestState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   queryGraph(ch.downwardGraph()),
@@ -86,7 +86,6 @@ namespace karri::PickupAfterLastStopStrategies {
                   lastStopBuckets(lastStopBucketsEnv.getBuckets()),
                   directSearches(directSearches),
                   requestState(requestState),
-                  inputConfig(inputConfig),
                   reverseLabelBuckets(inputGraph.numVertices()),
                   reverseQueue(queryGraph.numVertices()),
                   markedIndices(),
@@ -343,8 +342,8 @@ namespace karri::PickupAfterLastStopStrategies {
         int lowerBoundCostOfLabel(const PDPairAfterLastStopLabel &label) const {
             const auto &pickup = requestState.pickups[label.pickupId];
             const auto &dropoff = requestState.dropoffs[label.dropoffId];
-            const int minVehTimeTillDepAtPickup = label.distToPickup + inputConfig.stopTime;
-            const int minPsgTimeTillDepAtPickup = std::max(label.distToPickup + inputConfig.stopTime,
+            const int minVehTimeTillDepAtPickup = label.distToPickup + InputConfig::getInstance().stopTime;
+            const int minPsgTimeTillDepAtPickup = std::max(label.distToPickup + InputConfig::getInstance().stopTime,
                                                            pickup.walkingDist);
             return calculator.calcCostForPairedAssignmentAfterLastStop(minVehTimeTillDepAtPickup,
                                                                        minPsgTimeTillDepAtPickup,
@@ -517,8 +516,8 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
             using F = CostCalculator::CostFunction;
-            const auto maxDepTimeDiff = std::max(label1.distToPickup + inputConfig.stopTime, pickup1.walkingDist) -
-                                        (label2.distToPickup + inputConfig.stopTime);
+            const auto maxDepTimeDiff = std::max(label1.distToPickup + InputConfig::getInstance().stopTime, pickup1.walkingDist) -
+                                        (label2.distToPickup + InputConfig::getInstance().stopTime);
             const auto maxDetourDiff = maxDepTimeDiff + label1.directDistance - label2.directDistance;
             const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
             const auto walkDiff =
@@ -575,7 +574,7 @@ namespace karri::PickupAfterLastStopStrategies {
                     //  could be used for both checking for new best insertion and stopping bucket scan early.
                     //  (This is not the case for non-idle vehicles as their detour may still differ and that has an
                     //  effect beyond the arrival time, too, so the vehicle-independent lower bound is different.)
-                    const auto vehTimeTillDepAtPickup = fullDistToPickup + inputConfig.stopTime;
+                    const auto vehTimeTillDepAtPickup = fullDistToPickup + InputConfig::getInstance().stopTime;
                     const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
                             vehTimeTillDepAtPickup, std::max(pickup.walkingDist, vehTimeTillDepAtPickup),
                             directDist, pickup.walkingDist, dropoff.walkingDist, requestState);
@@ -594,9 +593,9 @@ namespace karri::PickupAfterLastStopStrategies {
                     // We compute a vehicle-independent lower bound on the cost of any insertion for which the vehicle
                     // arrives at v at the earliest at entry.distOrArrTime. Since entries are ordered by the arrival
                     // time at v, we can stop scanning entries if the lower bound exceeds the best known cost.
-                    const int minVehTimeTillDepAtPickup = label.distToPickup + inputConfig.stopTime;
+                    const int minVehTimeTillDepAtPickup = label.distToPickup + InputConfig::getInstance().stopTime;
                     const int minPsgTimeTillDepAtPickup = std::max(
-                            vehArrTimeAtPickup + inputConfig.stopTime - requestState.originalRequest.requestTime,
+                            vehArrTimeAtPickup + InputConfig::getInstance().stopTime - requestState.originalRequest.requestTime,
                             pickup.walkingDist);
                     const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
                             minVehTimeTillDepAtPickup, minPsgTimeTillDepAtPickup,
@@ -662,7 +661,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
         DirectSearchesT &directSearches;
         const RequestState &requestState;
-        const InputConfig &inputConfig;
 
         BucketContainer reverseLabelBuckets;
         QueueT reverseQueue;
