@@ -60,21 +60,19 @@ namespace karri::PickupAfterLastStopStrategies {
                               PDDistancesT &pdDistances,
                               const CostCalculator &calculator,
                               const RouteState &routeState,
-                              RequestState &requestState,
-                              const InputConfig &inputConfig)
+                              RequestState &requestState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   ch(chEnv.getCH()),
                   routeState(routeState),
                   requestState(requestState),
-                  inputConfig(inputConfig),
                   minCostSearch(inputGraph, fleet, chEnv, routeState, pdDistances, calculator, lastStopBucketsEnv,
-                                requestState, inputConfig),
+                                requestState),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
                   pdDistances(pdDistances),
                   fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, pdDistances, routeState,
-                                   requestState, minCostSearch.getUpperBoundCostWithHardConstraints(), inputConfig) {}
+                                   requestState, minCostSearch.getUpperBoundCostWithHardConstraints()) {}
 
         void tryPickupAfterLastStop() {
 
@@ -139,7 +137,7 @@ namespace karri::PickupAfterLastStopStrategies {
             if (!asgn.vehicle)
                 return;
 
-            const auto totalDetour = asgn.distToPickup + inputConfig.stopTime + asgn.distToDropoff + inputConfig.stopTime;
+            const auto totalDetour = asgn.distToPickup + InputConfig::getInstance().stopTime + asgn.distToDropoff + InputConfig::getInstance().stopTime;
             using time_utils::isServiceTimeConstraintViolated;
             if (!isServiceTimeConstraintViolated(*asgn.vehicle, requestState, totalDetour, routeState)) {
                 // If assignment found by collective search adheres to service time constraint, we have found the
@@ -169,7 +167,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const CH &ch;
         const RouteState &routeState;
         RequestState &requestState;
-        const InputConfig &inputConfig;
 
         MinCostPairAfterLastStopQueryInst minCostSearch;
         VehicleToPDLocQueryT &vehicleToPDLocQuery;

@@ -39,7 +39,7 @@ namespace karri {
         RelevantPDLocsFilter(const Fleet &fleet, const InputGraphT &inputGraph, const CHEnvT &chEnv,
                              const CostCalculator &calculator,
                              RequestState &requestState, const RouteState &routeState,
-                             const InputConfig &inputConfig, const FeasibleDistancesT &feasiblePickupDistances,
+                             const FeasibleDistancesT &feasiblePickupDistances,
                              const FeasibleDistancesT &feasibleDropoffDistances,
                              RelevantPDLocs &relOrdinaryPickups, RelevantPDLocs &relOrdinaryDropoffs,
                              RelevantPDLocs &relPickupsBeforeNextStop, RelevantPDLocs &relDropoffsBeforeNextStop)
@@ -50,7 +50,6 @@ namespace karri {
                   calculator(calculator),
                   requestState(requestState),
                   routeState(routeState),
-                  inputConfig(inputConfig),
                   feasiblePickupDistances(feasiblePickupDistances),
                   feasibleDropoffDistances(feasibleDropoffDistances),
                   relOrdinaryPickups(relOrdinaryPickups),
@@ -216,7 +215,7 @@ namespace karri {
             const auto &p = requestState.pickups[pickupId];
 
             const auto depTimeAtPickup = getActualDepTimeAtPickup(vehId, stopIndex, distFromStopToPickup, p,
-                                                                  requestState, routeState, inputConfig);
+                                                                  requestState, routeState);
             const auto initialPickupDetour = calcInitialPickupDetour(vehId, stopIndex, INVALID_INDEX, depTimeAtPickup,
                                                                      distFromPickupToNextStop, requestState,
                                                                      routeState);
@@ -265,7 +264,7 @@ namespace karri {
             const int initialDropoffDetour = calcInitialDropoffDetour(vehId, stopIndex, distFromStopToDropoff,
                                                                       distFromDropoffToNextStop,
                                                                       isDropoffAtExistingStop,
-                                                                      routeState, inputConfig);
+                                                                      routeState);
             assert(initialDropoffDetour >= 0);
             if (doesDropoffDetourViolateHardConstraints(veh, requestState, stopIndex, initialDropoffDetour,
                                                         routeState))
@@ -301,7 +300,7 @@ namespace karri {
                                         const int minDistFromDropoff) const {
             using namespace time_utils;
             int minInitialDropoffDetour = calcInitialDropoffDetour(veh.vehicleId, stopIndex, minDistToDropoff,
-                                                                   minDistFromDropoff, false, routeState, inputConfig);
+                                                                   minDistFromDropoff, false, routeState);
             minInitialDropoffDetour = std::max(minInitialDropoffDetour, 0);
             return calculator.calcMinKnownDropoffSideCost(veh, stopIndex, minInitialDropoffDetour, 0, requestState);
         }
@@ -332,7 +331,6 @@ namespace karri {
         const CostCalculator &calculator;
         RequestState &requestState;
         const RouteState &routeState;
-        const InputConfig &inputConfig;
 
         const FeasibleDistancesT &feasiblePickupDistances;
         const FeasibleDistancesT &feasibleDropoffDistances;

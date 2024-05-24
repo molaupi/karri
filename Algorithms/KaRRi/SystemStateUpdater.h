@@ -44,14 +44,13 @@ namespace karri {
     public:
 
         SystemStateUpdater(const InputGraphT &inputGraph, RequestState &requestState,
-                           const InputConfig &inputConfig, const CurVehLocsT &curVehLocs,
+                           const CurVehLocsT &curVehLocs,
                            PathTrackerT &pathTracker,
                            RouteState &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
                            LastStopBucketsEnvT &lastStopBucketsEnv,
                            LastStopsAtVertices &lastStopsAtVertices)
                 : inputGraph(inputGraph),
                   requestState(requestState),
-                  inputConfig(inputConfig),
                   curVehLocs(curVehLocs),
                   pathTracker(pathTracker),
                   routeState(routeState),
@@ -354,7 +353,6 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         RequestState &requestState;
-        const InputConfig &inputConfig;
         const CurVehLocsT &curVehLocs;
         PathTrackerT &pathTracker;
 
