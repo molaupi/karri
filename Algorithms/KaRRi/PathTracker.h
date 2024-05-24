@@ -76,8 +76,8 @@ namespace karri {
         // Needs to be called after the insertion is performed on routeState.
         void registerPdEventsForBestAssignment(const int pickupStopId,
                                                const int dropoffStopId) {
-            if (routeState.getMaxStopId() >= eventIndexRange.size()) {
-                eventIndexRange.resize(routeState.getMaxStopId() + 1, {0, 0});
+            if (StopIdManager::getMaxStopId() >= eventIndexRange.size()) {
+                eventIndexRange.resize(StopIdManager::getMaxStopId() + 1, {0, 0});
             }
 
             registerNewPDLocAtStop(pickupStopId, requestState.originalRequest.requestId, PICKUP);

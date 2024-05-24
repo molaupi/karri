@@ -29,7 +29,7 @@
 #include "Algorithms/CH/CHPathUnpacker.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
-#include "Algorithms/KaRRi/RouteStateData.h"
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
 
 namespace karri {
 

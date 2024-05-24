@@ -30,7 +30,7 @@
 #include <cmath>
 
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
-#include "Algorithms/KaRRi/RouteStateData.h"
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Tools/Constants.h"

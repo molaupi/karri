@@ -32,7 +32,7 @@
 #include "DataStructures/Containers/TimestampedVector.h"
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
-#include "Algorithms/KaRRi/RouteStateData.h"
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
 namespace karri {

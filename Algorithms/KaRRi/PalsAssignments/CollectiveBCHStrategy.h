@@ -29,7 +29,7 @@
 #include "MinCostPairAfterLastStopQuery.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
-#include "Algorithms/KaRRi/RouteStateData.h"
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "IndividualBCHStrategy.h"
 

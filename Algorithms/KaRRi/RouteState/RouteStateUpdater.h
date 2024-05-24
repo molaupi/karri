@@ -27,12 +27,16 @@
 
 #include <stack>
 
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
+
 #include "Tools/Constants.h"
+#include "Tools/custom_assertion_levels.h"
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
 #include "DataStructures/Containers/BitVector.h"
 
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
+#include "StopIdManager.h"
 
 namespace karri {
 
@@ -40,13 +44,11 @@ namespace karri {
     class RouteStateUpdater {
 
     public:
-        RouteStateUpdater(const int initialMaxStopId)
-                : unusedStopIds(),
-                  nextUnusedStopId(initialMaxStopId + 1) {}
+        RouteStateUpdater() {}
 
         template<typename RequestStateT>
         std::pair<int, int>
-        insertAssignment(RouteStateData& data, const Assignment &asgn, const RequestStateT &requestState) {
+        insertAssignment(RouteStateData &data, const Assignment &asgn, const RequestStateT &requestState) {
             const auto vehId = asgn.vehicle->vehicleId;
             const auto &pickup = *asgn.pickup;
             const auto &dropoff = *asgn.dropoff;
@@ -65,31 +67,34 @@ namespace karri {
             bool pickupInsertedAsNewStop = false;
             bool dropoffInsertedAsNewStop = false;
 
-            if ((pickupIndex > 0 || data.schedDepTimes[start] > now) && pickup.loc == data.stopLocations[start + pickupIndex]) {
+            if ((pickupIndex > 0 || data.schedDepTimes[start] > now) &&
+                pickup.loc == data.stopLocations[start + pickupIndex]) {
                 KASSERT(start + pickupIndex == end - 1 || pickupIndex == dropoffIndex ||
-                       asgn.distFromPickup ==
-                               data.schedArrTimes[start + pickupIndex + 1] - data.schedDepTimes[start + pickupIndex]);
+                        asgn.distFromPickup ==
+                        data.schedArrTimes[start + pickupIndex + 1] - data.schedDepTimes[start + pickupIndex]);
 
                 // Pickup at existing stop
                 // For pickup at existing stop we don't count another stopTime. The vehicle can depart at the earliest
                 // moment when vehicle and passenger are at the location.
                 data.schedDepTimes[start + pickupIndex] = std::max(data.schedDepTimes[start + pickupIndex],
-                                                              requestState.getPassengerArrAtPickup(pickup.id));
+                                                                   requestState.getPassengerArrAtPickup(pickup.id));
 
                 // If we allow pickupRadius > waitTime, then the passenger may arrive at the pickup location after
                 // the regular max dep time of requestTime + waitTime. In this case, the new latest permissible arrival
                 // time is defined by the passenger arrival time at the pickup, not the maximum wait time.
                 const int psgMaxDepTime =
                         std::max(requestState.getMaxDepTimeAtPickup(), requestState.getPassengerArrAtPickup(pickup.id));
-                data.maxArrTimes[start + pickupIndex] = std::min(data.maxArrTimes[start + pickupIndex], psgMaxDepTime - data.stopTime);
+                data.maxArrTimes[start + pickupIndex] = std::min(data.maxArrTimes[start + pickupIndex],
+                                                                 psgMaxDepTime - data.stopTime);
             } else {
                 // If vehicle is currently idle, the vehicle can leave its current stop at the earliest when the
                 // request is made. In that case, we update the arrival time to count the idling as one stopTime.
-                data.schedDepTimes[end - 1] = std::max(data.schedDepTimes[end - 1], requestState.originalRequest.requestTime);
+                data.schedDepTimes[end - 1] = std::max(data.schedDepTimes[end - 1],
+                                                       requestState.originalRequest.requestTime);
                 data.schedArrTimes[end - 1] = data.schedDepTimes[end - 1] - data.stopTime;
                 ++pickupIndex;
                 ++dropoffIndex;
-                const int unusedStopId = getUnusedStopId();
+                const int unusedStopId = StopIdManager::getUnusedStopId();
                 stableInsertion(vehId, pickupIndex, unusedStopId, data.pos, data.stopIds,
                                 data.stopLocations,
                                 data.schedArrTimes,
@@ -99,11 +104,12 @@ namespace karri {
                                 data.occupancies,
                                 data.numDropoffsPrefixSum,
                                 data.vehWaitTimesUntilDropoffsPrefixSum);
-                data.maxStopId = std::max(data.maxStopId, unusedStopId);
                 data.stopLocations[start + pickupIndex] = pickup.loc;
-                data.schedArrTimes[start + pickupIndex] = data.schedDepTimes[start + pickupIndex - 1] + asgn.distToPickup;
-                data.schedDepTimes[start + pickupIndex] = std::max(data.schedArrTimes[start + pickupIndex] + data.stopTime,
-                                                              requestState.getPassengerArrAtPickup(pickup.id));
+                data.schedArrTimes[start + pickupIndex] =
+                        data.schedDepTimes[start + pickupIndex - 1] + asgn.distToPickup;
+                data.schedDepTimes[start + pickupIndex] = std::max(
+                        data.schedArrTimes[start + pickupIndex] + data.stopTime,
+                        requestState.getPassengerArrAtPickup(pickup.id));
                 data.maxArrTimes[start + pickupIndex] = requestState.getMaxDepTimeAtPickup() - data.stopTime;
                 data.occupancies[start + pickupIndex] = data.occupancies[start + pickupIndex - 1];
                 data.numDropoffsPrefixSum[start + pickupIndex] = data.numDropoffsPrefixSum[start + pickupIndex - 1];
@@ -118,11 +124,11 @@ namespace karri {
 
             if (pickup.loc != dropoff.loc && dropoff.loc == data.stopLocations[start + dropoffIndex]) {
                 data.maxArrTimes[start + dropoffIndex] = std::min(data.maxArrTimes[start + dropoffIndex],
-                                                             requestState.getMaxArrTimeAtDropoff(pickup.id,
-                                                                                                 dropoff.id));
+                                                                  requestState.getMaxArrTimeAtDropoff(pickup.id,
+                                                                                                      dropoff.id));
             } else {
                 ++dropoffIndex;
-                const int unusedStopId = getUnusedStopId();
+                const int unusedStopId = StopIdManager::getUnusedStopId();
                 stableInsertion(vehId, dropoffIndex, unusedStopId, data.pos, data.stopIds,
                                 data.stopLocations,
                                 data.schedArrTimes,
@@ -132,7 +138,6 @@ namespace karri {
                                 data.occupancies,
                                 data.numDropoffsPrefixSum,
                                 data.vehWaitTimesUntilDropoffsPrefixSum);
-                data.maxStopId = std::max(data.maxStopId, unusedStopId);
                 data.stopLocations[start + dropoffIndex] = dropoff.loc;
                 data.schedArrTimes[start + dropoffIndex] =
                         data.schedDepTimes[start + dropoffIndex - 1] + asgn.distToDropoff;
@@ -168,11 +173,13 @@ namespace karri {
                 ++data.numDropoffsPrefixSum[idx];
             }
 
-            const int lastUnchangedPrefixSum = pickupIndex > 0 ? data.vehWaitTimesPrefixSum[start + pickupIndex - 1] : 0;
+            const int lastUnchangedPrefixSum =
+                    pickupIndex > 0 ? data.vehWaitTimesPrefixSum[start + pickupIndex - 1] : 0;
             data.recalculateVehWaitTimesPrefixSum(start + pickupIndex, end - 1, lastUnchangedPrefixSum);
             const int lastUnchangedAtDropoffsPrefixSum =
                     pickupIndex > 0 ? data.vehWaitTimesUntilDropoffsPrefixSum[start + pickupIndex - 1] : 0;
-            data.recalculateVehWaitTimesAtDropoffsPrefixSum(start + pickupIndex, end - 1, lastUnchangedAtDropoffsPrefixSum);
+            data.recalculateVehWaitTimesAtDropoffsPrefixSum(start + pickupIndex, end - 1,
+                                                            lastUnchangedAtDropoffsPrefixSum);
 
             // Update mappings from the stop ids to ids of previous stop, to position in the route, to the leeway and
             // to the vehicle id.
@@ -197,7 +204,8 @@ namespace karri {
                 data.stopIdToVehicleId[data.stopIds[start + dropoffIndex]] = vehId;
                 data.stopIdToIdOfPrevStop[data.stopIds[start + dropoffIndex]] = data.stopIds[start + dropoffIndex - 1];
                 if (start + dropoffIndex != end - 1)
-                    data.stopIdToIdOfPrevStop[data.stopIds[start + dropoffIndex + 1]] = data.stopIds[start + dropoffIndex];
+                    data.stopIdToIdOfPrevStop[data.stopIds[start + dropoffIndex + 1]] = data.stopIds[start +
+                                                                                                     dropoffIndex];
             }
 
             if (pickupInsertedAsNewStop || dropoffInsertedAsNewStop) {
@@ -219,7 +227,7 @@ namespace karri {
             return {pickupIndex, dropoffIndex};
         }
 
-        void removeStartOfCurrentLeg(RouteStateData& data, const int vehId) {
+        void removeStartOfCurrentLeg(RouteStateData &data, const int vehId) {
             KASSERT(vehId >= 0);
             KASSERT(vehId < data.pos.size());
             const auto &start = data.pos[vehId].start;
@@ -230,7 +238,7 @@ namespace karri {
             data.stopIdToPosition[data.stopIds[start]] = INVALID_INDEX;
             removalOfAllCols(data.stopIds[start], data.rangeOfRequestsPickedUpAtStop, data.requestsPickedUpAtStop);
             removalOfAllCols(data.stopIds[start], data.rangeOfRequestsDroppedOffAtStop, data.requestsDroppedOffAtStop);
-            unusedStopIds.push(data.stopIds[start]);
+            StopIdManager::markIdUnused(data.stopIds[start]);
             KASSERT(data.stopIdToIdOfPrevStop[data.stopIds[start]] == INVALID_ID);
             if (data.numStopsOf(vehId) > 1) {
                 data.stopIdToIdOfPrevStop[data.stopIds[start + 1]] = INVALID_ID;
@@ -266,7 +274,7 @@ namespace karri {
             KASSERT(vehId < data.pos.size());
             KASSERT(data.pos[vehId].end - data.pos[vehId].start > 0);
             KASSERT(depTime >= now);
-            const int unusedStopId = getUnusedStopId();
+            const int unusedStopId = StopIdManager::getUnusedStopId();
             stableInsertion(vehId, 1, unusedStopId, data.pos, data.stopIds,
                             data.stopLocations,
                             data.schedArrTimes,
@@ -276,7 +284,6 @@ namespace karri {
                             data.occupancies,
                             data.numDropoffsPrefixSum,
                             data.vehWaitTimesUntilDropoffsPrefixSum);
-            data.maxStopId = std::max(data.maxStopId, unusedStopId);
             const auto start = data.pos[vehId].start;
             const auto end = data.pos[vehId].end;
             data.stopLocations[start + 1] = location;
@@ -317,18 +324,15 @@ namespace karri {
             data.updateMaxLegLength(vehId, 1, 1);
         }
 
-    private:
+//        void moveStartOfCurrentLeg(RouteStateData &data, const int vehId,
+//                                   const int newLocation, const int arrTime, const int depTime) {
+//            KASSERT(vehId >= 0);
+//            KASSERT(vehId < data.pos.size());
+//            KASSERT(data.pos[vehId].end - data.pos[vehId].start > 0);
+//            KASSERT(depTime >= arrTime);
+//
+//
+//        }
 
-        int getUnusedStopId() {
-            if (!unusedStopIds.empty()) {
-                const auto id = unusedStopIds.top();
-                unusedStopIds.pop();
-                return id;
-            }
-            return nextUnusedStopId++;
-        }
-
-        std::stack<int, std::vector<int>> unusedStopIds;
-        int nextUnusedStopId;
     };
 }

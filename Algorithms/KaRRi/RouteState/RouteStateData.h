@@ -33,6 +33,7 @@
 
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
+#include "StopIdManager.h"
 
 namespace karri {
 
@@ -66,14 +67,11 @@ namespace karri {
                   stopIdOfMaxLeeway(INVALID_ID),
                   maxLegLength(0),
                   stopIdOfMaxLegLength(INVALID_ID),
-                  unusedStopIds(),
-                  nextUnusedStopId(fleet.size()),
-                  maxStopId(fleet.size() - 1),
                   stopTime(stopTime) {
             for (auto i = 0; i < fleet.size(); ++i) {
                 pos[i].start = i;
                 pos[i].end = i + 1;
-                stopIds[i] = i;
+                stopIds[i] = StopIdManager::getUnusedStopId();
                 stopIdToVehicleId[i] = i;
                 stopLocations[i] = fleet[i].initialLocation;
                 schedArrTimes[i] = fleet[i].startOfServiceTime;
@@ -84,11 +82,6 @@ namespace karri {
                 vehWaitTimesUntilDropoffsPrefixSum[i] = 0;
                 maxArrTimes[i] = INFTY;
             }
-            maxStopId = fleet.size() - 1;
-        }
-
-        const int &getMaxStopId() const {
-            return maxStopId;
         }
 
         int numStopsOf(const int vehId) const {
@@ -254,17 +247,6 @@ namespace karri {
             const ConstantVectorRange<int> dropoffs = {requestsDroppedOffAtStop.begin() + dropoffsRange.start,
                                                        requestsDroppedOffAtStop.begin() + dropoffsRange.end};
             return {id, arrTime, depTime, occ, pickups, dropoffs};
-        }
-
-        int getUnusedStopId() {
-            if (!unusedStopIds.empty()) {
-                const auto id = unusedStopIds.top();
-                unusedStopIds.pop();
-                assert(stopIdToVehicleId[id] == INVALID_ID);
-                return id;
-            }
-            ++maxStopId;
-            return nextUnusedStopId++;
         }
 
 
@@ -483,10 +465,6 @@ namespace karri {
 
         int maxLegLength;
         int stopIdOfMaxLegLength;
-
-        std::stack<int, std::vector<int>> unusedStopIds;
-        int nextUnusedStopId;
-        int maxStopId;
 
         const int stopTime;
     };

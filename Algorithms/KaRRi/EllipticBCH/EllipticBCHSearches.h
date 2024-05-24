@@ -32,7 +32,7 @@
 #include <DataStructures/Labels/SimdLabelSet.h>
 
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
-#include <Algorithms/KaRRi/RouteStateData.h>
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
 #include "BucketEntryWithLeeway.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Tools/Timer.h"

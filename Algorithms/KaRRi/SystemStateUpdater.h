@@ -25,8 +25,8 @@
 
 #pragma once
 
-#include "Algorithms/KaRRi/RouteStateData.h"
-#include "Algorithms/KaRRi/RouteStateUpdater.h"
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
+#include "Algorithms/KaRRi/RouteState/RouteStateUpdater.h"
 #include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
 #include "PathTracker.h"
 
@@ -56,7 +56,7 @@ namespace karri {
                   curVehLocs(curVehLocs),
                   pathTracker(pathTracker),
                   routeStateData(routeStateData),
-                  routeStateUpdater(routeStateData.getMaxStopId()),
+                  routeStateUpdater(),
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   lastStopBucketsEnv(lastStopBucketsEnv),
                   lastStopsAtVertices(lastStopsAtVertices),

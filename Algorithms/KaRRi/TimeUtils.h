@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "Algorithms/KaRRi/RouteStateData.h"
+#include "Algorithms/KaRRi/RouteState/RouteStateData.h"
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 
