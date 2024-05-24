@@ -44,11 +44,10 @@ namespace karri {
     class RouteStateUpdater {
 
     public:
-        RouteStateUpdater() {}
 
         template<typename RequestStateT>
         std::pair<int, int>
-        insertAssignment(RouteStateData &data, const Assignment &asgn, const RequestStateT &requestState) {
+        static insertAssignment(RouteStateData &data, const Assignment &asgn, const RequestStateT &requestState) {
             const auto vehId = asgn.vehicle->vehicleId;
             const auto &pickup = *asgn.pickup;
             const auto &dropoff = *asgn.dropoff;
@@ -110,7 +109,8 @@ namespace karri {
                 data.schedDepTimes[start + pickupIndex] = std::max(
                         data.schedArrTimes[start + pickupIndex] + InputConfig::getInstance().stopTime,
                         requestState.getPassengerArrAtPickup(pickup.id));
-                data.maxArrTimes[start + pickupIndex] = requestState.getMaxDepTimeAtPickup() - InputConfig::getInstance().stopTime;
+                data.maxArrTimes[start + pickupIndex] =
+                        requestState.getMaxDepTimeAtPickup() - InputConfig::getInstance().stopTime;
                 data.occupancies[start + pickupIndex] = data.occupancies[start + pickupIndex - 1];
                 data.numDropoffsPrefixSum[start + pickupIndex] = data.numDropoffsPrefixSum[start + pickupIndex - 1];
                 pickupInsertedAsNewStop = true;
@@ -141,7 +141,8 @@ namespace karri {
                 data.stopLocations[start + dropoffIndex] = dropoff.loc;
                 data.schedArrTimes[start + dropoffIndex] =
                         data.schedDepTimes[start + dropoffIndex - 1] + asgn.distToDropoff;
-                data.schedDepTimes[start + dropoffIndex] = data.schedArrTimes[start + dropoffIndex] + InputConfig::getInstance().stopTime;
+                data.schedDepTimes[start + dropoffIndex] =
+                        data.schedArrTimes[start + dropoffIndex] + InputConfig::getInstance().stopTime;
                 // compare maxVehArrTime to next stop later
                 data.maxArrTimes[start + dropoffIndex] = requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id);
                 data.occupancies[start + dropoffIndex] = data.occupancies[start + dropoffIndex - 1];
@@ -221,13 +222,20 @@ namespace karri {
             // Remember that request is picked up and dropped of at respective stops:
             insertion(data.stopIds[start + pickupIndex], requestState.originalRequest.requestId,
                       data.rangeOfRequestsPickedUpAtStop, data.requestsPickedUpAtStop);
-            insertion(data.stopIds[start + dropoffIndex], requestState.originalRequest.requestId,
-                      data.rangeOfRequestsDroppedOffAtStop, data.requestsDroppedOffAtStop);
+            const int idxOfDropoffRequestData = insertion(data.stopIds[start + dropoffIndex],
+                                                          requestState.originalRequest.requestId,
+                                                          data.rangeOfRequestsDroppedOffAtStop,
+                                                          data.requestsDroppedOffAtStop,
+                                                          data.maxArrTimesOfRequestsDroppedOffAtStop,
+                                                          data.numRidersOfRequestsDroppedOffAtStop);
+            data.maxArrTimesOfRequestsDroppedOffAtStop[idxOfDropoffRequestData] = requestState.getMaxArrTimeAtDropoff(
+                    pickup.id, dropoff.id);
+            data.numRidersOfRequestsDroppedOffAtStop[idxOfDropoffRequestData] = requestState.originalRequest.numRiders;
 
             return {pickupIndex, dropoffIndex};
         }
 
-        void removeStartOfCurrentLeg(RouteStateData &data, const int vehId) {
+        static void removeStartOfCurrentLeg(RouteStateData &data, const int vehId) {
             KASSERT(vehId >= 0);
             KASSERT(vehId < data.pos.size());
             const auto &start = data.pos[vehId].start;
@@ -238,7 +246,6 @@ namespace karri {
             data.stopIdToPosition[data.stopIds[start]] = INVALID_INDEX;
             removalOfAllCols(data.stopIds[start], data.rangeOfRequestsPickedUpAtStop, data.requestsPickedUpAtStop);
             removalOfAllCols(data.stopIds[start], data.rangeOfRequestsDroppedOffAtStop, data.requestsDroppedOffAtStop);
-            StopIdManager::markIdUnused(data.stopIds[start]);
             KASSERT(data.stopIdToIdOfPrevStop[data.stopIds[start]] == INVALID_ID);
             if (data.numStopsOf(vehId) > 1) {
                 data.stopIdToIdOfPrevStop[data.stopIds[start + 1]] = INVALID_ID;
@@ -268,8 +275,9 @@ namespace karri {
         }
 
         // Creates an intermediate stop between stop 0 and stop 1 for a vehicle reroute at the given location.
-        void createIntermediateStopForReroute(RouteStateData &data, const int vehId, const int location, const int now,
-                                              const int depTime) {
+        static void
+        createIntermediateStopForReroute(RouteStateData &data, const int vehId, const int location, const int now,
+                                         const int depTime) {
             KASSERT(vehId >= 0);
             KASSERT(vehId < data.pos.size());
             KASSERT(data.pos[vehId].end - data.pos[vehId].start > 0);
@@ -323,16 +331,6 @@ namespace karri {
 
             data.updateMaxLegLength(vehId, 1, 1);
         }
-
-//        void moveStartOfCurrentLeg(RouteStateData &data, const int vehId,
-//                                   const int newLocation, const int arrTime, const int depTime) {
-//            KASSERT(vehId >= 0);
-//            KASSERT(vehId < data.pos.size());
-//            KASSERT(data.pos[vehId].end - data.pos[vehId].start > 0);
-//            KASSERT(depTime >= arrTime);
-//
-//
-//        }
 
     };
 }

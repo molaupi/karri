@@ -28,41 +28,44 @@
 #include <vector>
 #include <stack>
 
+namespace karri {
+
 // Manages stop ids, handing out unused IDs for new stops and accepting IDs of deleted stops back for reuse.
 // Implemented as singleton to ensure uniqueness of stop IDs across the entire system.
-class StopIdManager {
+    class StopIdManager {
 
-public:
+    public:
 
-    static int getUnusedStopId() {
-        if (!theInstance().unusedStopIds.empty()) {
-            const auto id = theInstance().unusedStopIds.top();
-            theInstance().unusedStopIds.pop();
-            return id;
+        static int getUnusedStopId() {
+            if (!theInstance().unusedStopIds.empty()) {
+                const auto id = theInstance().unusedStopIds.top();
+                theInstance().unusedStopIds.pop();
+                return id;
+            }
+            return theInstance().nextUnusedStopId++;
         }
-        return theInstance().nextUnusedStopId++;
-    }
 
-    static void markIdUnused(const int stopId) {
-        theInstance().unusedStopIds.push(stopId);
-    }
+        static void markIdUnused(const int stopId) {
+            theInstance().unusedStopIds.push(stopId);
+        }
 
-    static int getMaxStopId() {
-        return theInstance().nextUnusedStopId - 1;
-    }
+        static int getMaxStopId() {
+            return theInstance().nextUnusedStopId - 1;
+        }
 
-private:
+    private:
 
-    static StopIdManager& theInstance()
-    {
-        static StopIdManager instance; // Guaranteed to be destroyed.
-        // Instantiated on first use.
-        return instance;
-    }
+        static StopIdManager &theInstance() {
+            static StopIdManager instance; // Guaranteed to be destroyed.
+            // Instantiated on first use.
+            return instance;
+        }
 
-    StopIdManager() : unusedStopIds(), nextUnusedStopId(0) {}
+        StopIdManager() : unusedStopIds(), nextUnusedStopId(0) {}
 
-    std::stack<int, std::vector<int>> unusedStopIds;
-    int nextUnusedStopId;
+        std::stack<int, std::vector<int>> unusedStopIds;
+        int nextUnusedStopId;
 
-};
+    };
+
+} // end namespace karri

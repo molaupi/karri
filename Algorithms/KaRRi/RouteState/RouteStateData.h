@@ -42,6 +42,8 @@ namespace karri {
     class RouteStateData {
 
         friend class RouteStateUpdater;
+        template<typename, typename>
+        friend class FixedRouteStateUpdater;
 
     public:
 
@@ -457,6 +459,8 @@ namespace karri {
         std::vector<int> requestsPickedUpAtStop;
         std::vector<ValueBlockPosition> rangeOfRequestsDroppedOffAtStop;
         std::vector<int> requestsDroppedOffAtStop;
+        std::vector<int> maxArrTimesOfRequestsDroppedOffAtStop;
+        std::vector<int> numRidersOfRequestsDroppedOffAtStop;
 
 
         // Other data:

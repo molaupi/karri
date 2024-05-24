@@ -55,7 +55,6 @@ namespace karri {
                   curVehLocs(curVehLocs),
                   pathTracker(pathTracker),
                   routeStateData(routeStateData),
-                  routeStateUpdater(),
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   lastStopBucketsEnv(lastStopBucketsEnv),
                   lastStopsAtVertices(lastStopsAtVertices),
@@ -141,7 +140,7 @@ namespace karri {
             const auto depTimeAtLastStopBefore = routeStateData.schedDepTimesFor(vehId)[numStopsBefore - 1];
 
             timer.restart();
-            auto [pickupIndex, dropoffIndex] = routeStateUpdater.insertAssignment(routeStateData, asgn, requestState);
+            auto [pickupIndex, dropoffIndex] = RouteStateUpdater::insertAssignment(routeStateData, asgn, requestState);
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
 
@@ -169,7 +168,8 @@ namespace karri {
             // Update buckets and route state
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
             ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1);
-            routeStateUpdater.removeStartOfCurrentLeg(routeStateData, veh.vehicleId);
+            StopIdManager::markIdUnused(routeStateData.stopIdsFor(veh.vehicleId)[0]);
+            RouteStateUpdater::removeStartOfCurrentLeg(routeStateData, veh.vehicleId);
 
             // If vehicle has become idle, update last stop bucket entries
             if (routeStateData.numStopsOf(veh.vehicleId) == 1) {
@@ -190,7 +190,8 @@ namespace karri {
             lastStopsAtVertices.removeLastStopAt(loc, vehId);
             lastStopBucketsEnv.removeIdleBucketEntries(veh, 0);
 
-            routeStateUpdater.removeStartOfCurrentLeg(routeStateData, vehId);
+            StopIdManager::markIdUnused(routeStateData.stopIdsFor(vehId)[0]);
+            RouteStateUpdater::removeStartOfCurrentLeg(routeStateData, vehId);
         }
 
 
@@ -271,7 +272,7 @@ namespace karri {
             assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
             auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
-            routeStateUpdater.createIntermediateStopForReroute(routeStateData, veh.vehicleId, loc.location, now, loc.depTimeAtHead);
+            RouteStateUpdater::createIntermediateStopForReroute(routeStateData, veh.vehicleId, loc.location, now, loc.depTimeAtHead);
             ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
         }
 
@@ -360,7 +361,6 @@ namespace karri {
 
         // Route state
         RouteStateData &routeStateData;
-        RouteStateUpdater routeStateUpdater;
 
         // Bucket state
         EllipticBucketsEnvT &ellipticBucketsEnv;
