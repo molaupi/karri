@@ -97,11 +97,11 @@ namespace karri {
                 }
                 fixedRouteState.stopIdToPosition[reachedStopId] = 0;
                 fixedRouteState.stopIdToVehicleId[reachedStopId] = vehId;
-                if (end - start > 0)
+                if (end - start > 1)
                     fixedRouteState.stopIdToIdOfPrevStop[fixedRouteState.stopIds[start + 1]] = reachedStopId;
 
-                LIGHT_KASSERT(varRouteState.rangeOfRequestsDroppedOffAtStop[vehId].end ==
-                              varRouteState.rangeOfRequestsDroppedOffAtStop[vehId].start);
+                LIGHT_KASSERT(varRouteState.rangeOfRequestsDroppedOffAtStop[reachedStopId].end ==
+                              varRouteState.rangeOfRequestsDroppedOffAtStop[reachedStopId].start);
 
 
                 int distToStopAfterReached = INFTY;
@@ -111,12 +111,9 @@ namespace karri {
                     distToStopAfterReached =
                             varRouteState.schedArrTimesFor(vehId)[1] - varRouteState.schedDepTimesFor(vehId)[0];
                 } else {
-                    // Otherwise, we need to compute the distance here:
-                    const auto src = ch.rank(inputGraph.edgeHead(fixedRouteState.stopLocations[0]));
-                    const auto tar = ch.rank(inputGraph.edgeTail(fixedRouteState.stopLocations[1]));
-                    const auto offset = inputGraph.travelTime(fixedRouteState.stopLocations[1]);
-                    chQuery.run(src, tar);
-                    distToStopAfterReached = chQuery.getDistance() + offset;
+                    // Otherwise, we need to compute the distance here.
+                    distToStopAfterReached = computeDistanceBetween(fixedRouteState.stopLocations[0],
+                                                                    fixedRouteState.stopLocations[1]);
                 }
 
                 fixedRouteState.propagateSchedArrAndDepForward(start + 1, end, distToStopAfterReached);
@@ -130,15 +127,26 @@ namespace karri {
                 }
             }
 
-
-            // todo: Insert new fixed stops for all requests picked up at reached stop
             const auto &pickupPos = varRouteState.rangeOfRequestsPickedUpAtStop[reachedStopId];
+            std::vector<int> indicesOfInsertedStops;
             for (int i = pickupPos.start; i < pickupPos.end; ++i) {
-                insertion(reachedStopId, varRouteState.requestsPickedUpAtStop[i],
+                const int reqId = varRouteState.requestsPickedUpAtStop[i];
+                insertion(reachedStopId, reqId,
                           fixedRouteState.rangeOfRequestsPickedUpAtStop, fixedRouteState.requestsPickedUpAtStop);
 
-
+                insertFixedStopForDropoffOfPickedUpRequest(fixedRouteState, reqId, vehId, indicesOfInsertedStops);
             }
+
+            fixScheduleAndConstraintsForInsertedFixedStops(fixedRouteState, vehId, indicesOfInsertedStops);
+        }
+
+        void updateForNewPickupAtCurrentStop(RouteStateData &fixedRouteState, const int reqId, const int vehId) {
+            insertion(varRouteState.stopIdsFor(vehId)[0], reqId,
+                      fixedRouteState.rangeOfRequestsPickedUpAtStop, fixedRouteState.requestsPickedUpAtStop);
+
+            std::vector<int> indicesOfInsertedStops;
+            insertFixedStopForDropoffOfPickedUpRequest(fixedRouteState, reqId, vehId, indicesOfInsertedStops);
+            fixScheduleAndConstraintsForInsertedFixedStops(fixedRouteState, vehId, indicesOfInsertedStops);
         }
 
     private:
@@ -180,15 +188,13 @@ namespace karri {
 
             // Find fixed stop before varStopIdx:
             int insertIdx = 0;
-            for (; insertIdx < end - start; ++insertIdx) {
-                const int &stopIdAtInsertIdx = fixedRouteState.stopIds[start + insertIdx];
-                if (varRouteState.stopIdToPosition[stopIdAtInsertIdx] > varStopIdx) {
-                    insertIdx--;
+            for (; insertIdx < end - start - 1; ++insertIdx) {
+                const int &stopIdAtNextIdx = fixedRouteState.stopIds[start + insertIdx + 1];
+                if (varRouteState.stopIdToPosition[stopIdAtNextIdx] > varStopIdx)
                     break;
-                }
             }
             KASSERT(varRouteState.stopIdToPosition[fixedRouteState.stopIds[start + insertIdx]] <= varStopIdx);
-            KASSERT(varRouteState.stopIdToPosition[fixedRouteState.stopIds[start + insertIdx + 1]] > varStopIdx);
+            KASSERT(start + insertIdx + 1 == end || varRouteState.stopIdToPosition[fixedRouteState.stopIds[start + insertIdx + 1]] > varStopIdx);
 
             if (fixedRouteState.stopIds[start + insertIdx] == stopId) {
                 // Stop is already fixed. Only add new dropoff:
@@ -211,9 +217,12 @@ namespace karri {
                 fixedRouteState.stopLocations[start + insertIdx] = varRouteState.stopLocationsFor(vehId)[varStopIdx];
                 fixedRouteState.maxArrTimes[start + insertIdx] = maxArrTimeOfDropoff;
                 fixedRouteState.occupancies[start + insertIdx] = fixedRouteState.occupancies[start + insertIdx - 1];
-                fixedRouteState.numDropoffsPrefixSum[start + insertIdx] = fixedRouteState.numDropoffsPrefixSum[start +
-                                                                                                               insertIdx -
-                                                                                                               1];
+                fixedRouteState.numDropoffsPrefixSum[start + insertIdx] =
+                        fixedRouteState.numDropoffsPrefixSum[start + insertIdx - 1];
+
+                // Fixed route stops only have dropoffs so never need a vehicle wait time
+                fixedRouteState.vehWaitTimesPrefixSum[start] = 0;
+                fixedRouteState.vehWaitTimesUntilDropoffsPrefixSum[start] = 0;
 
                 const auto newMinSize = stopId + 1;
                 if (fixedRouteState.stopIdToIdOfPrevStop.size() < newMinSize) {
@@ -254,14 +263,67 @@ namespace karri {
 
             std::sort(indicesOfInsertedStops.begin(), indicesOfInsertedStops.end());
 
-            // TODO FINISH! Update schedArrTimes, schedDepTimes, maxArrTimes, leeways
-
             const auto &start = fixedRouteState.pos[vehId].start;
             const auto &end = fixedRouteState.pos[vehId].end;
-            int nextInsertedIdx = indicesOfInsertedStops[0];
-            for (int i = start + 1; i < end; ++i) {
+            const auto &stopLocs = fixedRouteState.stopLocations;
+            auto &schedArrTimes = fixedRouteState.schedArrTimes;
+            auto &schedDepTimes = fixedRouteState.schedDepTimes;
+            auto &maxArrTimes = fixedRouteState.maxArrTimes;
+
+            // Assign correct stop positions to all stops after insertions
+            for (int i = start; i < end; ++i) {
+                fixedRouteState.stopIdToPosition[fixedRouteState.stopIds[i]] = i - start;
             }
 
+            // Reconstruct invariant that schedArrTimes[i] - schedDepTimes[i - 1] == dist(stopLocs[i-1], stopLocs[i])
+            int idxInInsertedIndices = 0;
+            int oldDepTimeOfPrevStop = schedDepTimes[start];
+            for (int i = 1; i < end - start; ++i) {
+                if (idxInInsertedIndices < indicesOfInsertedStops.size() &&
+                    i - 1 > indicesOfInsertedStops[idxInInsertedIndices]) {
+                    LIGHT_KASSERT(i == indicesOfInsertedStops[idxInInsertedIndices] + 2);
+                    ++idxInInsertedIndices;
+                }
+
+                // If either stop i - 1 or stop i are newly inserted stops, we need to compute the shortest path
+                // distance between them from scratch. Otherwise, we can read the distance using the invariant of the
+                // old route.
+                int dist = INFTY;
+                if (idxInInsertedIndices < indicesOfInsertedStops.size() &&
+                    (i - 1 == indicesOfInsertedStops[idxInInsertedIndices] ||
+                     i == indicesOfInsertedStops[idxInInsertedIndices])) {
+                    dist = computeDistanceBetween(stopLocs[start + i - 1], stopLocs[start + i]);
+                } else {
+                    dist = schedArrTimes[start + i] - oldDepTimeOfPrevStop;
+                }
+                schedArrTimes[start + i] = schedDepTimes[start + i - 1] + dist;
+
+                // Set dep time of previous stop. Fixed route state only has dropoffs at stops so there are no
+                // vehicle wait times and stop time is always stopTime. Memorize old dep time to read distance from
+                // old route in next iteration (for the case that i and i + 1 are not newly inserted).
+                oldDepTimeOfPrevStop = schedDepTimes[start + i];
+                schedDepTimes[start + i] = schedArrTimes[start + i] + InputConfig::getInstance().stopTime;
+            }
+
+            // Propagate max arrival times backwards
+            for (int l = end - start; l >= 0; --l) {
+                const auto distToNext = schedArrTimes[start + l + 1] - schedDepTimes[start + l];
+                const auto propagatedMaxArrTime = maxArrTimes[l + 1] - distToNext - InputConfig::getInstance().stopTime;
+                maxArrTimes[start + l] = std::min(maxArrTimes[start + l], propagatedMaxArrTime);
+            }
+
+            // Update leeways:
+            fixedRouteState.updateLeeways(vehId);
+        }
+
+        // Computes dist(head(srcLoc), tail(tarLoc)) + l(tarLoc), i.e. the distance between edges srcLoc and tarLoc
+        // where tarLoc needs to be traversed in its entirety.
+        int computeDistanceBetween(const int srcLoc, const int tarLoc) {
+            const auto src = ch.rank(inputGraph.edgeHead(srcLoc));
+            const auto tar = ch.rank(inputGraph.edgeTail(tarLoc));
+            const auto offset = inputGraph.travelTime(tarLoc);
+            chQuery.run(src, tar);
+            return chQuery.getDistance() + offset;
         }
 
         const InputGraphT &inputGraph;

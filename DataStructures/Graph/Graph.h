@@ -44,6 +44,7 @@
 #include "Tools/ContainerHelpers.h"
 #include "Tools/TemplateProgramming.h"
 #include "Tools/Workarounds.h"
+#include "Tools/custom_assertion_levels.h"
 
 namespace impl {
 
@@ -886,16 +887,16 @@ public:
         int numEdges = 0;
         for (int u = 0; u != numVertices(); ++u) {
             // Assert that a valid range of edges is associated with each vertex.
-            assert(firstEdge(u) >= 0);
-            assert(lastEdge(u) <= edgeHeads.size());
-            assert(firstEdge(u) <= lastEdge(u));
+            KASSERT(firstEdge(u) >= 0);
+            KASSERT(lastEdge(u) <= edgeHeads.size());
+            KASSERT(firstEdge(u) <= lastEdge(u));
 
             // Assert that all edges incident on u point to a valid vertex, and that the edge ranges do
             // not overlap.
             for (int e = firstEdge(u); e != lastEdge(u); ++e) {
-                assert(edgeHeads[e] >= 0);
-                assert(edgeHeads[e] < numVertices());
-                assert(!visited[e]);
+                KASSERT(edgeHeads[e] >= 0);
+                KASSERT(edgeHeads[e] < numVertices());
+                KASSERT(!visited[e]);
                 visited[e] = true;
                 ++numEdges;
             }
@@ -903,10 +904,10 @@ public:
 
         // Assert that all unvisited edges are invalid.
         visited.flip();
-        for (int e = visited.firstSetBit(); e != 1; e = visited.nextSetBit(e))
-            assert(edgeHeads[e] == INVALID_EDGE);
+        for (int e = visited.firstSetBit(); e != -1; e = visited.nextSetBit(e))
+            KASSERT(edgeHeads[e] == INVALID_EDGE);
 
-        assert(edgeCount == numEdges);
+        KASSERT(edgeCount == numEdges);
         return true;
     }
 

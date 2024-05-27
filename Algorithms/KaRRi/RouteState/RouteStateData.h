@@ -42,8 +42,10 @@ namespace karri {
     class RouteStateData {
 
         friend class RouteStateUpdater;
+
         template<typename, typename>
-        friend class FixedRouteStateUpdater;
+        friend
+        class FixedRouteStateUpdater;
 
     public:
 
@@ -85,6 +87,9 @@ namespace karri {
                 maxArrTimes[i] = INFTY;
             }
         }
+
+        // Used for initializing fixed route state as copy of variable route state
+        RouteStateData(const RouteStateData &) = default;
 
         int numStopsOf(const int vehId) const {
             assert(vehId >= 0);
@@ -269,7 +274,8 @@ namespace karri {
                 }
 
                 const auto oldMinDepTime = schedDepTimes[l];
-                schedDepTimes[l] = schedArrTimes[l] + InputConfig::getInstance().stopTime; // = max(schedDepTimes[l], schedArrTimes[l] + stopTime);
+                schedDepTimes[l] = schedArrTimes[l] +
+                                   InputConfig::getInstance().stopTime; // = max(schedDepTimes[l], schedArrTimes[l] + stopTime);
                 if (l < toIdx) distPrevToCurrent = schedArrTimes[l + 1] - oldMinDepTime;
             }
         }
@@ -294,7 +300,8 @@ namespace karri {
 
                 // Set leeway of stop, possibly update max leeway
                 const auto leeway =
-                        std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1]) - schedDepTimes[idx] - InputConfig::getInstance().stopTime;
+                        std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1]) - schedDepTimes[idx] -
+                        InputConfig::getInstance().stopTime;
                 assert(leeway >= 0);
                 stopIdToLeeway[stopId] = leeway;
 

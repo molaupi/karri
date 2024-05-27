@@ -267,7 +267,10 @@ namespace karri {
             for (int i = startAfterRemoval; i < endAfterRemoval; ++i) {
                 data.numDropoffsPrefixSum[i] -= numDropoffsAtStart;
                 --data.stopIdToPosition[data.stopIds[i]];
-                KASSERT(data.stopIdToPosition[data.stopIds[i]] == i - startAfterRemoval);
+                KASSERT(data.stopIdToPosition[data.stopIds[i]] == i - startAfterRemoval,
+                        "i: " << i << ", data.stopIds[i]: " << data.stopIds[i]
+                              << ", data.stopIdToPosition[data.stopIds[i]]: "
+                              << data.stopIdToPosition[data.stopIds[i]]);
             }
 
             if (haveToRecomputeMaxLeeway)

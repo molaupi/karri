@@ -99,7 +99,7 @@ namespace karri {
                 const auto vertexOfSpot = forwardGraph.edgeTail(pdLoc.loc);
                 pdLoc.vehDistFromCenter =
                         forwardSearch.getDistance(vertexOfSpot) + forwardGraph.travelTime(pdLoc.loc);
-                assert(pdLoc.vehDistFromCenter < INFTY);
+                KASSERT(pdLoc.vehDistFromCenter < INFTY);
             }
 
 
