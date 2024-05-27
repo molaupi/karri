@@ -26,7 +26,7 @@
 # Executable for P2P Algorithms
 add_executable(RunP2PAlgo RunP2PAlgo.cc)
 target_compile_definitions(RunP2PAlgo PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(RunP2PAlgo ${RoutingKit_LIBRARY})
+target_link_libraries(RunP2PAlgo ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 if(OpenMP_FOUND)
     target_link_libraries(RunP2PAlgo OpenMP::OpenMP_CXX)
 endif()
@@ -35,11 +35,10 @@ endif()
 # Executable for KaRRi Dynamic Taxi Sharing Simulation
 add_executable(karri KaRRi.cpp)
 target_compile_definitions(karri PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(karri ${RoutingKit_LIBRARY})
+target_link_libraries(karri ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 if(OpenMP_FOUND)
     target_link_libraries(karri OpenMP::OpenMP_CXX)
 endif()
-target_link_libraries(karri kassert ${BOOST_LIBRARIES})
 
 # include KaRRi compile time parameters
 include(KaRRI_compile_time_parameters.cmake)
