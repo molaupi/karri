@@ -30,7 +30,7 @@
 #include "Algorithms/Dijkstra/Dijkstra.h"
 #include "Algorithms/KaRRi/LastStopSearches/TentativeLastStopDistances.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
-#include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
+#include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 
 namespace karri::PickupAfterLastStopStrategies {
 

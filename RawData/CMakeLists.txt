@@ -52,7 +52,7 @@ target_link_libraries(TransformLocations ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} k
 
 
 add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc
-        ../Algorithms/KaRRi/LastStopSearches/NoOpLastStopBucketEnvironment.h)
+)
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
 
 add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)

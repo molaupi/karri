@@ -36,7 +36,7 @@
 #include "BucketEntryWithLeeway.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Tools/Timer.h"
-#include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
+#include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 
 namespace karri {
 
@@ -44,6 +44,7 @@ namespace karri {
             typename CHEnvT,
             typename CostFunctionT,
             typename EllipticBucketsEnvT,
+            typename LastStopsAtVerticesT,
             typename FeasibleEllipticDistancesT,
             typename LabelSetT>
     class EllipticBCHSearches {
@@ -194,7 +195,7 @@ namespace karri {
         EllipticBCHSearches(const InputGraphT &inputGraph,
                             const Fleet &fleet,
                             const EllipticBucketsEnvT &ellipticBucketsEnv,
-                            const LastStopsAtVertices &lastStopsAtVertices,
+                            const LastStopsAtVerticesT &lastStopsAtVertices,
                             const CHEnvT &chEnv,
                             const RouteState &routeState,
                             FeasibleEllipticDistancesT &feasibleEllipticPickups,
@@ -371,9 +372,6 @@ namespace karri {
 
                 if constexpr (type == DROPOFF) {
                     // Additionally find dropoffs that coincide with the last stop:
-                    if (!lastStopsAtVertices.isAnyLastStopAtVertex(head))
-                        continue;
-
                     for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(head)) {
                         const auto numStops = routeState.numStopsOf(vehId);
                         if (routeState.stopLocationsFor(vehId)[numStops - 1] == pdLoc.loc) {
@@ -393,7 +391,7 @@ namespace karri {
         RequestState &requestState;
 
         const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
-        const LastStopsAtVertices &lastStopsAtVertices;
+        const LastStopsAtVerticesT &lastStopsAtVertices;
 
         FeasibleEllipticDistancesT &feasibleEllipticPickups;
         FeasibleEllipticDistancesT &feasibleEllipticDropoffs;
