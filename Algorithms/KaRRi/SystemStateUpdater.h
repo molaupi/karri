@@ -278,7 +278,7 @@ namespace karri {
             auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
             RouteStateUpdater::createIntermediateStopForReroute(varRouteStateData, veh.vehicleId, loc.location, now, loc.depTimeAtHead);
-            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
+            ellipticBucketsEnv.generateSourceBucketEntries(veh, 1);
         }
 
 
