@@ -199,7 +199,8 @@ namespace karri {
 
             StopIdManager::markIdUnused(varRouteStateData.stopIdsFor(vehId)[0]);
             RouteStateUpdater::removeStartOfCurrentLeg(varRouteStateData, vehId);
-            fixedRouteStateUpdater.updateForReachedStop(fixedRouteStateData, vehId);
+            KASSERT(fixedRouteStateData.numStopsOf(vehId) == 1);
+            RouteStateUpdater::removeStartOfCurrentLeg(fixedRouteStateData, vehId);
         }
 
 

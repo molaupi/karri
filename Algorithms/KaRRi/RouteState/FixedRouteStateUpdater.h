@@ -116,7 +116,7 @@ namespace karri {
                                                                     fixedRouteState.stopLocations[1]);
                 }
 
-                fixedRouteState.propagateSchedArrAndDepForward(start + 1, end, distToStopAfterReached);
+                fixedRouteState.propagateSchedArrAndDepForward(start + 1, end - 1, distToStopAfterReached);
 
                 fixedRouteState.updateLeeways(vehId);
                 if (distToStopAfterReached >= fixedRouteState.maxLegLength) {
@@ -144,6 +144,17 @@ namespace karri {
             insertion(varRouteState.stopIdsFor(vehId)[0], reqId,
                       fixedRouteState.rangeOfRequestsPickedUpAtStop, fixedRouteState.requestsPickedUpAtStop);
 
+            // Departure time at first stop may have changed due to new pickup
+            const auto& start = fixedRouteState.pos[vehId].start;
+            const auto& end = fixedRouteState.pos[vehId].end;
+            const auto oldDepTime = fixedRouteState.schedDepTimes[start];
+            fixedRouteState.schedDepTimes[start] = varRouteState.schedDepTimesFor(vehId)[0];
+            if (end > start + 1) {
+                const auto distToNext = fixedRouteState.schedArrTimes[start + 1] - oldDepTime;
+                fixedRouteState.propagateSchedArrAndDepForward(start + 1, end - 1, distToNext);
+            }
+
+            // Insert dropoff of new pickup as fixed stop
             std::vector<int> indicesOfInsertedStops;
             insertFixedStopForDropoffOfPickedUpRequest(fixedRouteState, reqId, vehId, indicesOfInsertedStops);
             fixScheduleAndConstraintsForInsertedFixedStops(fixedRouteState, vehId, indicesOfInsertedStops);
