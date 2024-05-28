@@ -222,7 +222,7 @@ namespace karri {
                           StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
                   updateNewScheduleOfNonIdleVehicleSearch(chEnv.getForwardSearch(
                           UpdateNewScheduleOfNonIdleVehicle(bucketContainer, vehicleId, depTimeOfVehAtLastStop,
-                                                        verticesVisitedInSearch, entriesVisitedInSearch))),
+                                                            verticesVisitedInSearch, entriesVisitedInSearch))),
                   updateForVehicleHasBecomeIdleSearch(chEnv.getForwardSearch(
                           UpdateForVehicleHasBecomeIdle(bucketContainer, vehicleId, depTimeOfVehAtLastStop,
                                                         verticesVisitedInSearch, entriesVisitedInSearch))),
@@ -243,7 +243,7 @@ namespace karri {
             generateBucketEntries<true>(veh);
         }
 
-        void generateNonIdleBucketEntries(const Vehicle& veh) {
+        void generateNonIdleBucketEntries(const Vehicle &veh) {
             generateBucketEntries<false>(veh);
         }
 
@@ -287,6 +287,24 @@ namespace karri {
 
         void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
             removeBucketEntries<false>(veh, prevLastStopIdx);
+        }
+
+        // Implement the last stops at vertices interface.
+        std::vector<int> vehiclesWithLastStopAt(const int vertex) const {
+            KASSERT(vertex >= 0 && vertex < inputGraph.numVertices());
+            const auto rank = ch.rank(vertex);
+            std::vector<int> vehIds;
+
+            for (const auto &entry: bucketContainer.getIdleBucketOf(rank)) {
+                if (entry.distToTarget == 0)
+                    vehIds.push_back(entry.targetId);
+            }
+            for (const auto& entry: bucketContainer.getNonIdleBucketOf(rank)) {
+                if (entry.distToTarget == routeState.schedDepTimesFor(entry.targetId)[routeState.numStopsOf(entry.targetId) - 1])
+                    vehIds.push_back(entry.targetId);
+            }
+
+            return vehIds;
         }
 
     private:

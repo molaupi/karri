@@ -418,11 +418,31 @@ int main(int argc, char *argv[]) {
         CostCalculator calc(varRouteState);
         RequestState reqState(calc);
 
-        // Construct Elliptic BCH searches:
+        // Construct Elliptic BCH bucket environment:
         static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
         using EllipticBucketsEnv = EllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
         EllipticBucketsEnv ellipticBucketsEnv(vehicleInputGraph, *vehChEnv, varRouteState,
                                               reqState.stats().updateStats);
+
+        // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
+        // Otherwise, we use a last stop buckets substitute that only stores which vehicles' last stops are at a vertex.
+#if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
+    KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
+
+        static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
+        using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
+                SortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
+                UnsortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
+        >;
+        LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, *vehChEnv, varRouteState,
+                                              reqState.stats().updateStats);
+
+#else
+        using LastStopBucketsEnv = OnlyLastStopsAtVerticesBucketSubstitute;
+        LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, varRouteState, fleet.size());
+#endif
+        // Last stop bucket environment (or substitute) also serves as a source of information on the last stops at vertices.
+        using LastStopAtVerticesInfo = LastStopBucketsEnv;
 
         using EllipticBCHLabelSet = std::conditional_t<KARRI_ELLIPTIC_BCH_USE_SIMD,
                 SimdLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>,
@@ -432,11 +452,9 @@ int main(int argc, char *argv[]) {
         FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(fleet.size(), varRouteState);
 
 
-        LastStopsAtVertices lastStopsAtVertices(vehicleInputGraph.numVertices(), fleet.size());
-
         using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
-                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
-        EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, ellipticBucketsEnv, lastStopsAtVertices,
+                EllipticBucketsEnv, LastStopAtVerticesInfo, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
+        EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, ellipticBucketsEnv, lastStopBucketsEnv,
                                                  *vehChEnv, varRouteState,
                                                  feasibleEllipticPickups, feasibleEllipticDropoffs, reqState);
 
@@ -494,25 +512,6 @@ int main(int argc, char *argv[]) {
                                                       fleet, calc, varRouteState, reqState);
 
 
-        // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
-        // Otherwise, we use no-op last stop buckets.
-
-
-#if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
-    KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
-
-        static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
-        using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
-                SortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
-                UnsortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
-        >;
-        LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, *vehChEnv, varRouteState,
-                                              reqState.stats().updateStats);
-
-#else
-        using LastStopBucketsEnv = NoOpLastStopBucketsEnvironment;
-        LastStopBucketsEnv lastStopBucketsEnv;
-#endif
 
         // Construct PALS strategy and assignment finder:
         using PALSLabelSet = std::conditional_t<KARRI_PALS_USE_SIMD,
@@ -536,8 +535,8 @@ int main(int argc, char *argv[]) {
         PALSStrategy palsStrategy(vehicleInputGraph, revVehicleGraph, fleet, varRouteState, lastStopsAtVertices, calc, pdDistances, reqState);
 #endif
 
-        using PALSInsertionsFinderImpl = PALSAssignmentsFinder<VehicleInputGraph, PDDistancesImpl, PALSStrategy>;
-        PALSInsertionsFinderImpl palsInsertionsFinder(palsStrategy, vehicleInputGraph, fleet, calc, lastStopsAtVertices,
+        using PALSInsertionsFinderImpl = PALSAssignmentsFinder<VehicleInputGraph, PDDistancesImpl, PALSStrategy, LastStopAtVerticesInfo>;
+        PALSInsertionsFinderImpl palsInsertionsFinder(palsStrategy, vehicleInputGraph, fleet, calc, lastStopBucketsEnv,
                                                       varRouteState, pdDistances, reqState);
 
         // Construct DALS strategy and assignment finder:
@@ -602,12 +601,10 @@ int main(int argc, char *argv[]) {
                 FixedRouteStateUpdaterImpl, CurVehLocToPickupSearchesImpl, VehPathTracker, std::ofstream>;
         SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, reqState, curVehLocToPickupSearches,
                                                   pathTracker, varRouteState, fixedRouteState, fixedRouteStateUpdater,
-                                                  ellipticBucketsEnv, lastStopBucketsEnv, lastStopsAtVertices);
+                                                  ellipticBucketsEnv, lastStopBucketsEnv);
 
         // Initialize last stop state for initial locations of vehicles
         for (const auto &veh: fleet) {
-            const auto head = vehicleInputGraph.edgeHead(veh.initialLocation);
-            lastStopsAtVertices.insertLastStopAt(head, veh.vehicleId);
             lastStopBucketsEnv.generateIdleBucketEntries(veh);
         }
 
