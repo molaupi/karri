@@ -112,12 +112,12 @@ using PsgGraphT = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
 
 
 template<typename PsgOsmImporterT>
-void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCategory& isPsgAccessible) {
+void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCategory &isPsgAccessible) {
 
     const auto infile = clp.getValue<std::string>("i");
 
     const bool noVehiclesOnServiceRoads = clp.isSet("no-veh-on-service");
-    const auto isVehicleAccessible = [noVehiclesOnServiceRoads](const OsmRoadCategory& cat) -> bool {
+    const auto isVehicleAccessible = [noVehiclesOnServiceRoads](const OsmRoadCategory &cat) -> bool {
         return !(noVehiclesOnServiceRoads && cat == OsmRoadCategory::SERVICE) && defaultIsVehicleAccessible(cat);
     };
 
@@ -176,17 +176,18 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
     std::cout << "\tReading the input file..." << std::flush;
     auto psgImporter = std::make_unique<PsgOsmImporterT>(isPsgAccessible, isRoutingNodeInUnionOfNetworks);
     auto psgGraph = PsgGraphT::makeGraphUsingImporterRef(infile, *psgImporter);
-    std::cout << "\t done." << std::endl;
+    const int psgOrigNumEdges = psgGraph.numEdges();
+    std::cout << "\t done. (|V| = " << psgGraph.numVertices() << ", |E| = " << psgGraph.numEdges() << ")" << std::endl;
 
     // Read the study area from OSM POLY file.
     const auto areaFileName = clp.getValue<std::string>("b");
-    std::unique_ptr<std::vector<int>> psgGraphToStudyAreaEdgeMap;
+    std::unique_ptr<std::vector<int>> psgToStudyAreaEdgeMap;
     if (!areaFileName.empty()) {
         std::cout << "\tReading inner area from OSM POLY file..." << std::flush;
         Area studyArea;
         studyArea.importFromOsmPolyFile(areaFileName);
         const auto box = studyArea.boundingBox();
-        boost::dynamic_bitset<> inStudyArea(psgGraph.numVertices());
+        BitVector inStudyArea(psgGraph.numVertices());
         ProgressBar vertexInStudyAreaProgress(psgGraph.numVertices());
         FORALL_VERTICES(psgGraph, v) {
             const LatLng ll = psgGraph.latLng(v);
@@ -198,10 +199,28 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
         std::cout << " done.\n";
 
         std::cout << "\tExtracting passenger subgraph within inner area..." << std::flush;
-        psgGraphToStudyAreaEdgeMap = std::make_unique<std::vector<int>>(psgGraph.numEdges(), INVALID_ID);
-        psgGraph.extractVertexInducedSubgraph(inStudyArea, *psgGraphToStudyAreaEdgeMap);
-        std::cout << " done." << std::endl;
+        psgToStudyAreaEdgeMap = std::make_unique<std::vector<int>>(psgOrigNumEdges, INVALID_ID);
+        psgGraph.extractVertexInducedSubgraph(inStudyArea, *psgToStudyAreaEdgeMap);
+        std::cout << "\t done. (|V| = " << psgGraph.numVertices() << ", |E| = " << psgGraph.numEdges() << ")" << std::endl;
     }
+
+    std::cout << "\tRemoving multi-edges..." << std::flush;
+    auto psgToNoMultiEdgesMap = std::make_unique<std::vector<int>>(psgOrigNumEdges, INVALID_ID);
+    psgGraph.extractSubgraphWithoutMultiEdges(*psgToNoMultiEdgesMap);
+    if (psgToStudyAreaEdgeMap) {
+        // Transform mapping from original to study area and study area to graph without multi-edges to direct mapping
+        // from original to graph without multi-edges.
+        // Store direct mapping in origToArea, and swap at the end so psgToNoMultiEdgesMap contains direct mapping.
+        for (int eInOrigGraph = 0; eInOrigGraph < psgOrigNumEdges; ++eInOrigGraph) {
+            const auto eInArea = psgToStudyAreaEdgeMap->at(eInOrigGraph);
+            if (eInArea == INVALID_ID) continue;
+            const auto eInNoMultiEdges = psgToNoMultiEdgesMap->at(eInArea);
+            (*psgToStudyAreaEdgeMap)[eInOrigGraph] = eInNoMultiEdges;
+        }
+        psgToNoMultiEdgesMap = std::move(psgToStudyAreaEdgeMap);
+    }
+    LIGHT_KASSERT(!psgToStudyAreaEdgeMap);
+    std::cout << "\t done. (|V| = " << psgGraph.numVertices() << ", |E| = " << psgGraph.numEdges() << ")" << std::endl;
 
     std::cout << "\tComputing strongly connected components..." << std::flush;
     StronglyConnectedComponents psgScc;
@@ -209,37 +228,33 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
     std::cout << "\t done." << std::endl;
 
     std::cout << "\tExtracting the largest SCC..." << std::flush;
-    auto psgGraphToSccEdgeMap = std::make_unique<std::vector<int>>(psgGraph.numEdges(), INVALID_ID);
-    psgGraph.extractVertexInducedSubgraph(psgScc.getLargestSccAsBitmask(), *psgGraphToSccEdgeMap);
-    if (psgGraphToStudyAreaEdgeMap) {
-        // Transform mapping from original to study area and study area to SCC to direct mapping from original to SCC.
-        // Store direct mapping in origToArea, and swap at the end so psgGraphToSccEdgeMap contains direct mapping.
-        auto& origToArea = *psgGraphToStudyAreaEdgeMap;
-        auto& areaToScc = *psgGraphToSccEdgeMap;
-        for (int eInOrigGraph = 0; eInOrigGraph < psgGraph.numEdges(); ++eInOrigGraph) {
-            const auto eInArea = origToArea[eInOrigGraph];
-            if (eInArea == INVALID_ID) continue;
-            const auto eInScc = areaToScc[eInArea];
-            origToArea[eInOrigGraph] = eInScc;
-        }
-        psgGraphToSccEdgeMap = std::move(psgGraphToStudyAreaEdgeMap);
+    auto psgToSccEdgeMap = std::make_unique<std::vector<int>>(psgOrigNumEdges, INVALID_ID);
+    psgGraph.extractVertexInducedSubgraph(psgScc.getLargestSccAsBitmask(), *psgToSccEdgeMap);
+    // Transform mapping from original to graph without multi-edges and graph without multi-edges to SCC to direct
+    // mapping from original to SCC.
+    // Store direct mapping in origToNoMultiEdges, and swap at the end so psgToSccEdgeMap contains direct mapping.
+    for (int eInOrigGraph = 0; eInOrigGraph < psgOrigNumEdges; ++eInOrigGraph) {
+        const auto eInNoMultiEdges = psgToNoMultiEdgesMap->at(eInOrigGraph);
+        if (eInNoMultiEdges == INVALID_ID) continue;
+        const auto eInScc = psgToSccEdgeMap->at(eInNoMultiEdges);
+        (*psgToNoMultiEdgesMap)[eInOrigGraph] = eInScc;
     }
-    LIGHT_KASSERT(!psgGraphToStudyAreaEdgeMap);
-    std::cout << "\t done." << std::endl;
+    psgToSccEdgeMap = std::move(psgToNoMultiEdgesMap);
+    LIGHT_KASSERT(!psgToNoMultiEdgesMap);
+    std::cout << "\t done. (|V| = " << psgGraph.numVertices() << ", |E| = " << psgGraph.numEdges() << ")" << std::endl;
 
 
     std::cout << "\tStoring relevant OSM mapping..." << std::flush;
-    std::vector<std::pair<uint64_t, uint64_t>> osmWayIdAndHeadVertexId(psgGraph.numEdges());
-    for (int eInOrigGraph = 0; eInOrigGraph < psgGraph.numEdges(); ++eInOrigGraph) {
-        const auto eInScc = psgGraphToSccEdgeMap->at(eInOrigGraph);
-
+    std::vector<std::pair<uint64_t, uint64_t>> osmWayIdAndHeadVertexId(psgOrigNumEdges);
+    for (int eInOrigGraph = 0; eInOrigGraph < psgOrigNumEdges; ++eInOrigGraph) {
+        const auto eInScc = psgToSccEdgeMap->at(eInOrigGraph);
         if (eInScc == INVALID_ID) continue;
-        assert(eInScc >= 0 && eInScc < psgGraph.numEdges());
 
+        LIGHT_KASSERT(eInScc >= 0 && eInScc < psgGraph.numEdges());
         osmWayIdAndHeadVertexId[eInScc] = psgImporter->getOsmIdsForEdgeAndHead(eInOrigGraph);
-        assert(psgGraph.osmNodeId(psgGraph.edgeHead(eInScc)) == osmWayIdAndHeadVertexId[eInScc].second);
+        LIGHT_KASSERT(psgGraph.osmNodeId(psgGraph.edgeHead(eInScc)) == osmWayIdAndHeadVertexId[eInScc].second);
     }
-    psgGraphToSccEdgeMap.reset();
+    psgToSccEdgeMap.reset();
 
     psgImporter->close();
     psgImporter.reset();
@@ -253,7 +268,13 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
     std::cout << "\tRead input file..." << std::flush;
     auto carImporter = VehicleOsmImporter(true, isVehicleAccessible, isRoutingNodeInUnionOfNetworks);
     auto carGraph = CarGraphT::makeGraphUsingImporterRef(infile, carImporter);
-    std::cout << "\t done." << std::endl;
+    const auto carOrigNumEdges = carGraph.numEdges();
+    std::cout << "\t done. (|V| = " << carGraph.numVertices() << ", |E| = " << carGraph.numEdges() << ")" << std::endl;
+
+    std::cout << "\tRemoving multi-edges..." << std::flush;
+    auto carToNoMultiEdgesMap = std::make_unique<std::vector<int>>(carOrigNumEdges, INVALID_ID);
+    carGraph.extractSubgraphWithoutMultiEdges(*carToNoMultiEdgesMap);
+    std::cout << "\t done. (|V| = " << carGraph.numVertices() << ", |E| = " << carGraph.numEdges() << ")" << std::endl;
 
     std::cout << "\tCompute SCCs..." << std::flush;
     StronglyConnectedComponents carScc;
@@ -261,9 +282,20 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
     std::cout << "\t done." << std::endl;
 
     std::cout << "\tExtract largest SCC..." << std::flush;
-    auto carGraphToSccEdgeMap = std::vector<int>(carGraph.numEdges(), INVALID_ID);
-    carGraph.extractVertexInducedSubgraph(carScc.getLargestSccAsBitmask(), carGraphToSccEdgeMap);
-    std::cout << "\t done." << std::endl;
+    auto carToSccEdgeMap = std::make_unique<std::vector<int>>(carOrigNumEdges, INVALID_ID);
+    carGraph.extractVertexInducedSubgraph(carScc.getLargestSccAsBitmask(), *carToSccEdgeMap);
+    // Transform mapping from original to graph without multi-edges and graph without multi-edges to SCC to direct
+    // mapping from original to SCC.
+    // Store direct mapping in origToNoMultiEdges, and swap at the end so psgToSccEdgeMap contains direct mapping.
+    for (int eInOrigGraph = 0; eInOrigGraph < carOrigNumEdges; ++eInOrigGraph) {
+        const auto eInNoMultiEdges = carToNoMultiEdgesMap->at(eInOrigGraph);
+        if (eInNoMultiEdges == INVALID_ID) continue;
+        const auto eInScc = carToSccEdgeMap->at(eInNoMultiEdges);
+        (*carToNoMultiEdgesMap)[eInOrigGraph] = eInScc;
+    }
+    carToSccEdgeMap = std::move(carToNoMultiEdgesMap);
+    LIGHT_KASSERT(!carToNoMultiEdgesMap);
+    std::cout << "\t done. (|V| = " << carGraph.numVertices() << ", |E| = " << carGraph.numEdges() << ")" << std::endl;
 
     std::cout << " done." << std::endl;
 
@@ -273,23 +305,21 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
     uint64_t numEdgesInPsgWithValidMapping = 0;
     FORALL_VALID_EDGES(psgGraph, v, e) {
             const auto cat = psgGraph.osmRoadCategory(e);
-            assert(isPsgAccessible(cat));
+            LIGHT_KASSERT(isPsgAccessible(cat));
             if (isVehicleAccessible(cat)) {
                 const auto [osmWayId, osmHeadNodeId] = osmWayIdAndHeadVertexId[e];
-                const auto eInFullCarGraph = carImporter.getEdgeForOSMIdOfWayAndHead(osmWayId, osmHeadNodeId);
+                const auto eInOrigCarGraph = carImporter.getEdgeForOSMIdOfWayAndHead(osmWayId, osmHeadNodeId);
 
-                if (eInFullCarGraph == MapToEdgeInFullVehAttribute::defaultValue())
+                if (eInOrigCarGraph == MapToEdgeInFullVehAttribute::defaultValue())
                     continue;
+                LIGHT_KASSERT(eInOrigCarGraph < int(carToSccEdgeMap->size()));
 
-                assert(eInFullCarGraph < int(carGraphToSccEdgeMap.size()));
-                const auto eInCarSCC = carGraphToSccEdgeMap[eInFullCarGraph];
-
+                const auto eInCarSCC = carToSccEdgeMap->at(eInOrigCarGraph);
                 if (eInCarSCC == INVALID_ID)
                     continue;
 
-
-                assert(carGraph.latLng(carGraph.edgeHead(eInCarSCC)) == psgGraph.latLng(psgGraph.edgeHead(e)));
-                assert(carGraph.osmNodeId(carGraph.edgeHead(eInCarSCC)) == osmHeadNodeId);
+                LIGHT_KASSERT(carGraph.osmNodeId(carGraph.edgeHead(eInCarSCC)) == osmHeadNodeId);
+                LIGHT_KASSERT(carGraph.latLng(carGraph.edgeHead(eInCarSCC)) == psgGraph.latLng(psgGraph.edgeHead(e)));
                 if (carGraph.osmNodeId(carGraph.edgeHead(eInCarSCC)) != osmHeadNodeId) {
                     auto carGraphHeadOsmNodeId = carGraph.osmNodeId(carGraph.edgeHead(eInCarSCC));
                     throw std::invalid_argument("For way with id " + std::to_string(osmWayId) +
@@ -313,14 +343,14 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
                 carGraph.mapToEdgeInPsg(eInCarSCC) = e;
                 if (psgGraph.mapToEdgeInFullVeh(e) != MapToEdgeInFullVehAttribute::defaultValue())
                     ++numEdgesInPsgWithValidMapping;
-                assert(psgGraph.mapToEdgeInFullVeh(e) < carGraph.numEdges());
+                LIGHT_KASSERT(psgGraph.mapToEdgeInFullVeh(e) < carGraph.numEdges());
             }
 
         }
 
     FORALL_VALID_EDGES(carGraph, v, e) {
-            assert(carGraph.mapToEdgeInPsg(e) == MapToEdgeInPsgAttribute::defaultValue() ||
-                           carGraph.mapToEdgeInPsg(e) < psgGraph.numEdges());
+            LIGHT_KASSERT(carGraph.mapToEdgeInPsg(e) == MapToEdgeInPsgAttribute::defaultValue() ||
+                   carGraph.mapToEdgeInPsg(e) < psgGraph.numEdges());
         }
 
 

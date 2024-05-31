@@ -644,6 +644,41 @@ public:
         return subgraph;
     }
 
+    template<typename EdgeMappingT>
+    void extractSubgraphWithoutMultiEdges(EdgeMappingT &origToNewEdgeMapping) {
+        edgeCount = 0;
+        for (int u = 0; u != numVertices(); ++u) {
+            const auto first = edgeCount;
+            for (int e = firstEdge(u); e != lastEdge(u); ++e) {
+                const int v = edgeHeads[e];
+                // Check if there is already an edge from u to v. For multi-edges, we arbitrarily choose to keep the
+                // first one.
+                bool duplicateEdge = false;
+                for (int f = first; f < edgeCount; ++f) {
+                    if (edgeHeads[f] == v) {
+                        duplicateEdge = true;
+                        break;
+                    }
+                }
+                if (duplicateEdge)
+                    continue;
+                origToNewEdgeMapping[e] = edgeCount;
+                edgeHeads[edgeCount] = v;
+                if (edgeCount != e)
+                    RUN_FORALL(EdgeAttributes::values[edgeCount] = std::move(EdgeAttributes::values[e]));
+                ++edgeCount;
+            }
+
+            outEdges[u].first() = first;
+            if (dynamic)
+                outEdges[u].last() = edgeCount;
+        }
+
+        edgeHeads.resize(edgeCount);
+        RUN_FORALL(EdgeAttributes::values.resize(edgeCount));
+        outEdges.back().last() = edgeCount;
+    }
+
     // Reverses the graph.
     void reverse() {
         *this = getReverseGraph();
