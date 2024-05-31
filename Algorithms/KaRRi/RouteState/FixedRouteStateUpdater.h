@@ -46,13 +46,13 @@ namespace karri {
         // If the reached stop is a variable stop, it becomes fixed.
         // For every pickup performed at the stop, the stops containing the associated dropoffs become fixed as well.
         // In any case, the former previous/current stop in the fixed route is dropped.
-        void updateForReachedStop(RouteStateData &fixedRouteState, int vehId) {
+        // Returns the indices of any newly inserted stops in the fixed route.
+        std::vector<int> updateForReachedStop(RouteStateData &fixedRouteState, int vehId, bool& wasReachedStopFixed) {
             const int reachedStopId = varRouteState.stopIdsFor(vehId)[0];
 
             const auto &start = fixedRouteState.pos[vehId].start;
             const auto &end = fixedRouteState.pos[vehId].end;
-            const bool wasReachedStopFixed =
-                    fixedRouteState.numStopsOf(vehId) > 1 && reachedStopId == fixedRouteState.stopIds[start + 1];
+            wasReachedStopFixed = fixedRouteState.numStopsOf(vehId) > 1 && reachedStopId == fixedRouteState.stopIds[start + 1];
 
             if (wasReachedStopFixed) {
                 RouteStateUpdater::removeStartOfCurrentLeg(fixedRouteState, vehId);
@@ -138,6 +138,8 @@ namespace karri {
             }
 
             fixScheduleAndConstraintsForInsertedFixedStops(fixedRouteState, vehId, indicesOfInsertedStops);
+
+            return indicesOfInsertedStops;
         }
 
         void updateForNewPickupAtCurrentStop(RouteStateData &fixedRouteState, const int reqId, const int vehId) {
