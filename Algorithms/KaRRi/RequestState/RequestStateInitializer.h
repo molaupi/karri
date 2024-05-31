@@ -37,15 +37,13 @@ namespace karri {
     public:
         RequestStateInitializer(const FullVehInputGraphT &fullVehInputGraph, const PsgInputGraphT &psgInputGraph,
                                 const FullVehCHEnvT &fullVehChEnv, const PsgCHEnvT &psgChEnv,
-                                RequestState &requestState, const InputConfig &inputConfig,
-                                VehicleToPDLocQueryT &vehicleToPdLocQuery)
+                                RequestState &requestState, VehicleToPDLocQueryT &vehicleToPdLocQuery)
                 : fullVehInputGraph(fullVehInputGraph), psgInputGraph(psgInputGraph),
                   revPsgGraph(psgInputGraph.getReverseGraph()),
                   fullVehCh(fullVehChEnv.getCH()), psgCh(psgChEnv.getCH()),
                   fullVehChQuery(fullVehChEnv.template getFullCHQuery<>()), psgChQuery(psgChEnv.template getFullCHQuery<>()),
                   requestState(requestState),
-                  inputConfig(inputConfig),
-                  findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph, inputConfig, requestState.pickups,
+                  findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph, requestState.pickups,
                                           requestState.dropoffs),
                   vehicleToPdLocQuery(vehicleToPdLocQuery) {}
 
@@ -95,7 +93,7 @@ namespace karri {
             requestState.stats().initializationStats.computeODDistanceTime = directSearchTime;
 
 
-            if (!inputConfig.alwaysUseVehicle) {
+            if (!InputConfig::getInstance().alwaysUseVehicle) {
                 // Try pseudo-assignment for passenger walking to destination without using vehicle
                 timer.restart();
 
@@ -126,7 +124,6 @@ namespace karri {
         PsgCHQuery psgChQuery;
 
         RequestState &requestState;
-        const InputConfig &inputConfig;
 
         FindPDLocsInRadiusQuery<PsgInputGraphT> findPdLocsInRadiusQuery;
         VehicleToPDLocQueryT &vehicleToPdLocQuery;

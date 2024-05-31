@@ -28,8 +28,7 @@ target_compile_definitions(BuildTrafficFlowBasedSubgraph PRIVATE CSV_IO_NO_THREA
 target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert)
 
 
-add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc
-        ../Algorithms/KaRRi/LastStopSearches/NoOpLastStopBucketEnvironment.h)
+add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc)
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
 
 add_executable(ConvertGraph ConvertGraph.cc)

@@ -76,17 +76,15 @@ namespace karri {
 
         FindPDLocsInRadiusQuery(const PassengerGraphT &forwardPsgGraph,
                                 const PassengerGraphT &reversePsgGraph,
-                                const InputConfig &inputConfig,
                                 std::vector<PDLoc> &pickups,
                                 std::vector<PDLoc> &dropoffs)
                 : forwardGraph(forwardPsgGraph),
                   reverseGraph(reversePsgGraph),
-                  inputConfig(inputConfig),
                   pickups(pickups),
                   dropoffs(dropoffs),
-                  pickupSearch(forwardPsgGraph, {inputConfig.pickupRadius},
+                  pickupSearch(forwardPsgGraph, {InputConfig::getInstance().pickupRadius},
                                {searchSpace}),
-                  dropoffSearch(reversePsgGraph, {inputConfig.dropoffRadius},
+                  dropoffSearch(reversePsgGraph, {InputConfig::getInstance().dropoffRadius},
                                 {searchSpace}),
                   searchSpace(),
                   rand(seed) {}
@@ -108,8 +106,8 @@ namespace karri {
             dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
             turnSearchSpaceIntoDropoffLocations();
 
-            finalizePDLocs(origin, pickups, inputConfig.maxNumPickups);
-            finalizePDLocs(destination, dropoffs, inputConfig.maxNumDropoffs);
+            finalizePDLocs(origin, pickups, InputConfig::getInstance().maxNumPickups);
+            finalizePDLocs(destination, dropoffs, InputConfig::getInstance().maxNumDropoffs);
         }
 
     private:
@@ -117,11 +115,11 @@ namespace karri {
         void turnSearchSpaceIntoPickupLocations() {
             for (const auto &v: searchSpace) {
                 const auto distToV = pickupSearch.getDistance(v);
-                KASSERT(distToV <= inputConfig.pickupRadius);
+                KASSERT(distToV <= InputConfig::getInstance().pickupRadius);
                 FORALL_INCIDENT_EDGES(forwardGraph, v, e) {
                     const int eInReducedVehGraph = forwardGraph.mapToEdgeInReducedVeh(e);
                     if (eInReducedVehGraph == MapToEdgeInReducedVehAttribute::defaultValue() ||
-                        distToV + forwardGraph.travelTime(e) > inputConfig.pickupRadius)
+                        distToV + forwardGraph.travelTime(e) > InputConfig::getInstance().pickupRadius)
                         continue;
 
                     const int eInFullVehGraph = forwardGraph.mapToEdgeInFullVeh(e);
@@ -136,7 +134,7 @@ namespace karri {
         void turnSearchSpaceIntoDropoffLocations() {
             for (const auto &v: searchSpace) {
                 const auto distToV = dropoffSearch.getDistance(v);
-                KASSERT(distToV <= inputConfig.dropoffRadius);
+                KASSERT(distToV <= InputConfig::getInstance().dropoffRadius);
                 FORALL_INCIDENT_EDGES(reverseGraph, v, e) {
                     const auto eInForwGraph = reverseGraph.edgeId(e);
                     const int eInReducedVehGraph = forwardGraph.mapToEdgeInReducedVeh(eInForwGraph);
@@ -223,7 +221,6 @@ namespace karri {
 
         const PassengerGraphT &forwardGraph;
         const PassengerGraphT &reverseGraph;
-        const InputConfig &inputConfig;
         std::vector<PDLoc> &pickups;
         std::vector<PDLoc> &dropoffs;
         PickupSearch pickupSearch;

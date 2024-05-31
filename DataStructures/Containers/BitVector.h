@@ -32,6 +32,7 @@
 
 #include "Tools/Simd/AlignedVector.h"
 #include "Tools/Bitwise.h"
+#include "Tools/custom_assertion_levels.h"
 
 // This class implements a vector of bits. The bits are divided into 64-bit blocks. Different bits
 // can be modified concurrently when they are in different blocks. The first block is aligned on a
@@ -174,6 +175,10 @@ public:
     void flip() {
         for (auto &b: blocks)
             b = ~b;
+
+        // Make sure the unused bits in the last block are set to 0
+        const auto numUnusedBits = (BITS_PER_BLOCK - numBits % BITS_PER_BLOCK) % BITS_PER_BLOCK;
+        blocks.back() &= static_cast<Block>(-1) >> numUnusedBits;
     }
 
 private:

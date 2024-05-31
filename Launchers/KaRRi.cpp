@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
 
 
         // Parse the command-line options.
-        InputConfig inputConfig{};
+        InputConfig &inputConfig = InputConfig::getInstance();
         inputConfig.stopTime = clp.getValue<int>("s", 60) * 10;
         inputConfig.maxWaitTime = clp.getValue<int>("w", 300) * 10;
         inputConfig.pickupRadius = clp.getValue<int>("p-radius", inputConfig.maxWaitTime / 10) * 10;
@@ -310,7 +310,7 @@ int main(int argc, char *argv[]) {
         std::cout << "done.\n";
 
         // Create Route State for empty routes.
-        RouteState routeState(fleet, inputConfig.stopTime);
+        RouteState routeState(fleet);
 
 
 
@@ -340,6 +340,7 @@ int main(int argc, char *argv[]) {
                         std::to_string(maxCapacity) + ")");
             KASSERT(fullVehInputGraph.mapToEdgeInPsg(origin) != MapToEdgeInPsgAttribute::defaultValue());
             KASSERT(fullVehInputGraph.mapToEdgeInPsg(destination) != MapToEdgeInPsgAttribute::defaultValue());
+
             const int requestId = static_cast<int>(requests.size());
             if (numRiders == -1) // If number of riders was not specified, assume one rider
                 numRiders = 1;
@@ -453,14 +454,33 @@ int main(int argc, char *argv[]) {
         using VehicleLocatorImpl = VehicleLocator<RedVehicleInputGraph, RedVehCHEnv>;
         VehicleLocatorImpl locator(redVehInputGraph, *redVehChEnv, routeState);
 
-        CostCalculator calc(routeState, inputConfig);
-        RequestState reqState(calc, inputConfig);
+        CostCalculator calc(routeState);
+        RequestState reqState(calc);
 
-        // Construct Elliptic BCH searches:
+        // Construct Elliptic BCH bucket environment:
         static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
         using EllipticBucketsEnv = EllipticBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
-        EllipticBucketsEnv ellipticBucketsEnv(redVehInputGraph, *redVehChEnv, routeState, inputConfig,
+        EllipticBucketsEnv ellipticBucketsEnv(redVehInputGraph, *redVehChEnv, routeState, reqState.stats().updateStats);
+
+        // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
+        // Otherwise, we use a last stop buckets substitute that only stores which vehicles' last stops are at a vertex.
+#if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
+    KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
+
+        static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
+        using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
+                SortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv>,
+                UnsortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv>
+        >;
+        LastStopBucketsEnv lastStopBucketsEnv(redVehInputGraph, *redVehChEnv, routeState,
                                               reqState.stats().updateStats);
+
+#else
+        using LastStopBucketsEnv = OnlyLastStopsAtVerticesBucketSubstitute;
+        LastStopBucketsEnv lastStopBucketsEnv(redVehInputGraph, routeState, fleet.size());
+#endif
+        // Last stop bucket environment (or substitute) also serves as a source of information on the last stops at vertices.
+        using LastStopAtVerticesInfo = LastStopBucketsEnv;
 
         using EllipticBCHLabelSet = std::conditional_t<KARRI_ELLIPTIC_BCH_USE_SIMD,
                 SimdLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>,
@@ -470,13 +490,11 @@ int main(int argc, char *argv[]) {
         FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(fleet.size(), routeState);
 
 
-        LastStopsAtVertices lastStopsAtVertices(redVehInputGraph.numVertices(), fleet.size());
-
         using EllipticBCHSearchesImpl = EllipticBCHSearches<RedVehicleInputGraph, RedVehCHEnv, CostCalculator::CostFunction,
-                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
-        EllipticBCHSearchesImpl ellipticSearches(redVehInputGraph, fleet, ellipticBucketsEnv, lastStopsAtVertices,
-                                                 *redVehChEnv, routeState,
-                                                 feasibleEllipticPickups, feasibleEllipticDropoffs, reqState);
+                EllipticBucketsEnv, LastStopAtVerticesInfo, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
+        EllipticBCHSearchesImpl ellipticSearches(redVehInputGraph, fleet, ellipticBucketsEnv, lastStopBucketsEnv,
+                                                 *redVehChEnv, routeState, feasibleEllipticPickups,
+                                                 feasibleEllipticDropoffs, reqState);
 
 
         // Construct remaining request state
@@ -486,7 +504,6 @@ int main(int argc, char *argv[]) {
         RelevantPDLocs relDropoffsBeforeNextStop(fleet.size());
         using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, RedVehicleInputGraph, RedVehCHEnv>;
         RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, redVehInputGraph, *redVehChEnv, calc, reqState, routeState,
-                                                      inputConfig,
                                                       feasibleEllipticPickups, feasibleEllipticDropoffs,
                                                       relOrdinaryPickups, relOrdinaryDropoffs, relPickupsBeforeNextStop,
                                                       relDropoffsBeforeNextStop);
@@ -532,26 +549,6 @@ int main(int argc, char *argv[]) {
                                                       relDropoffsBeforeNextStop, pdDistances, curVehLocToPickupSearches,
                                                       fleet, calc, routeState, reqState);
 
-
-        // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
-        // Otherwise, we use no-op last stop buckets.
-
-
-#if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
-    KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
-
-        static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
-        using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
-                SortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv>,
-                UnsortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv>
-        >;
-        LastStopBucketsEnv lastStopBucketsEnv(redVehInputGraph, *redVehChEnv, routeState, reqState.stats().updateStats);
-
-#else
-        using LastStopBucketsEnv = NoOpLastStopBucketsEnvironment;
-        LastStopBucketsEnv lastStopBucketsEnv;
-#endif
-
         // Construct PALS strategy and assignment finder:
         using PALSLabelSet = std::conditional_t<KARRI_PALS_USE_SIMD,
                 SimdLabelSet<KARRI_PALS_LOG_K, ParentInfo::NO_PARENT_INFO>,
@@ -562,21 +559,22 @@ int main(int argc, char *argv[]) {
         // Use Collective-BCH PALS Strategy
         using PALSStrategy = PickupAfterLastStopStrategies::CollectiveBCHStrategy<RedVehicleInputGraph, RedVehCHEnv, LastStopBucketsEnv, VehicleToPDLocQueryImpl, PDDistancesImpl, PALSLabelSet>;
         PALSStrategy palsStrategy(redVehInputGraph, fleet, *redVehChEnv, vehicleToPdLocQuery, lastStopBucketsEnv,
-                                  pdDistances, calc, routeState, reqState, inputConfig);
+                                  pdDistances, calc, routeState, reqState);
 #elif KARRI_PALS_STRATEGY == KARRI_IND
         // Use Individual-BCH PALS Strategy
         using PALSStrategy = PickupAfterLastStopStrategies::IndividualBCHStrategy<RedVehicleInputGraph, RedVehCHEnv, LastStopBucketsEnv, PDDistancesImpl, PALSLabelSet>;
         PALSStrategy palsStrategy(redVehInputGraph, fleet, *redVehChEnv, calc, lastStopBucketsEnv, pdDistances,
-                                  routeState, reqState, reqState.getBestCost(), inputConfig);
+                                  routeState, reqState, reqState.getBestCost());
 #else // KARRI_PALS_STRATEGY == KARRI_DIJ
         // Use Dijkstra PALS Strategy
         using PALSStrategy = PickupAfterLastStopStrategies::DijkstraStrategy<RedVehicleInputGraph, PDDistancesImpl, PALSLabelSet>;
-        PALSStrategy palsStrategy(redVehInputGraph, revRedVehicleGraph, fleet, routeState, lastStopsAtVertices, calc, pdDistances, reqState, inputConfig);
+        PALSStrategy palsStrategy(redVehInputGraph, revRedVehicleGraph, fleet, routeState, lastStopsAtVertices, calc, pdDistances, reqState);
 #endif
 
-        using PALSInsertionsFinderImpl = PALSAssignmentsFinder<RedVehicleInputGraph, PDDistancesImpl, PALSStrategy>;
-        PALSInsertionsFinderImpl palsInsertionsFinder(palsStrategy, redVehInputGraph, fleet, calc, lastStopsAtVertices,
+        using PALSInsertionsFinderImpl = PALSAssignmentsFinder<RedVehicleInputGraph, PDDistancesImpl, PALSStrategy, LastStopAtVerticesInfo>;
+        PALSInsertionsFinderImpl palsInsertionsFinder(palsStrategy, redVehInputGraph, fleet, calc, lastStopBucketsEnv,
                                                       routeState, pdDistances, reqState);
+
 
         // Construct DALS strategy and assignment finder:
 
@@ -584,8 +582,8 @@ int main(int argc, char *argv[]) {
         // Use Collective-BCH DALS Strategy
         using DALSStrategy = DropoffAfterLastStopStrategies::CollectiveBCHStrategy<RedVehicleInputGraph, RedVehCHEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl>;
         DALSStrategy dalsStrategy(redVehInputGraph, fleet, routeState, *redVehChEnv, lastStopBucketsEnv, calc,
-                                  curVehLocToPickupSearches, reqState, relOrdinaryPickups, relPickupsBeforeNextStop,
-                                  inputConfig);
+                                  curVehLocToPickupSearches, reqState, relOrdinaryPickups, relPickupsBeforeNextStop);
+
 #elif KARRI_DALS_STRATEGY == KARRI_IND
         // Use Individual-BCH DALS Strategy
         using DALSLabelSet = std::conditional_t<KARRI_DALS_USE_SIMD,
@@ -609,8 +607,7 @@ int main(int argc, char *argv[]) {
 
         using RequestStateInitializerImpl = RequestStateInitializer<FullVehicleInputGraph, PsgInputGraph, FullVehCHEnv, PsgCHEnv, VehicleToPDLocQueryImpl>;
         RequestStateInitializerImpl requestStateInitializer(fullVehInputGraph, psgInputGraph, *fullVehChEnv, *psgChEnv,
-                                                            reqState, inputConfig, vehicleToPdLocQuery);
-
+                                                            reqState, vehicleToPdLocQuery);
 
         using InsertionFinderImpl = AssignmentFinder<RequestStateInitializerImpl,
                 EllipticBCHSearchesImpl,
@@ -635,20 +632,17 @@ int main(int argc, char *argv[]) {
 
 
         using SystemStateUpdaterImpl = SystemStateUpdater<RedVehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl, VehPathTracker, std::ofstream>;
-        SystemStateUpdaterImpl systemStateUpdater(redVehInputGraph, reqState, inputConfig, curVehLocToPickupSearches,
-                                                  pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv,
-                                                  lastStopsAtVertices);
+        SystemStateUpdaterImpl systemStateUpdater(redVehInputGraph, reqState, curVehLocToPickupSearches,
+                                                  pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
 
         // Initialize last stop state for initial locations of vehicles
         for (const auto &veh: fleet) {
-            const auto head = redVehInputGraph.edgeHead(veh.initialLocation);
-            lastStopsAtVertices.insertLastStopAt(head, veh.vehicleId);
             lastStopBucketsEnv.generateIdleBucketEntries(veh);
         }
 
         // Run simulation:
         using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
-        EventSimulationImpl eventSimulation(fleet, requests, inputConfig.stopTime, insertionFinder, systemStateUpdater,
+        EventSimulationImpl eventSimulation(fleet, requests, insertionFinder, systemStateUpdater,
                                             routeState, true);
         eventSimulation.run();
 
