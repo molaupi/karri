@@ -31,6 +31,7 @@
 #include "Tools/Workarounds.h"
 #include "Tools/Logging/LogManager.h"
 #include "Tools/Timer.h"
+#include "AssignmentFinderResponse.h"
 
 namespace karri {
 
@@ -281,7 +282,7 @@ namespace karri {
 
             const auto &request = requests[reqId];
             const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request);
-            systemStateUpdater.writeBestAssignmentToLogger();
+            systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse);
 
             applyAssignment(asgnFinderResponse, reqId, occTime);
 
@@ -291,7 +292,11 @@ namespace karri {
 
         template<typename AssignmentFinderResponseT>
         void applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, const int reqId, const int occTime) {
-            if (asgnFinderResponse.isNotUsingVehicleBest()) {
+
+            // TODO: this needs to be adapted once we have displacing insertions
+            if (asgnFinderResponse.getBestAsgnType() == NOT_USING_VEHICLE) {
+                // If there is a non-INFTY best cost but no assignment is set, we can assume that direct walking is the
+                // best option for this rider.
                 requestState[reqId] = WALKING_TO_DEST;
                 requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
                 requestData[reqId].depTime = occTime;
@@ -306,24 +311,27 @@ namespace karri {
             requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dropoff
             assert(id == reqId && key == occTime);
 
-            const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
-            if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
+            if (asgnFinderResponse.getBestAsgnType() == NO_ASSIGNMENT) {
+                KASSERT(asgnFinderResponse.getBestCost() == INFTY);
                 requestState[reqId] = FINISHED;
                 systemStateUpdater.writePerformanceLogs();
                 return;
             }
 
+            LIGHT_KASSERT(asgnFinderResponse.getBestAsgnType() == REGULAR, "Unexpected assignment type");
+
+            const auto &asgn = asgnFinderResponse.getBestVarAsgn().asgn();
             requestState[reqId] = ASSIGNED_TO_VEH;
-            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
-            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
+            requestData[reqId].walkingTimeToPickup = asgn.pickup->walkingDist;
+            requestData[reqId].walkingTimeFromDropoff = asgn.dropoff->walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
 
             int pickupStopId, dropoffStopId;
-            systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId);
+            systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId, asgnFinderResponse.getBestVarAsgn());
             systemStateUpdater.writePerformanceLogs();
             assert(pickupStopId >= 0 && dropoffStopId >= 0);
 
-            const auto vehId = bestAsgn.vehicle->vehicleId;
+            const auto vehId = asgn.vehicle->vehicleId;
             switch (vehicleState[vehId]) {
                 case STOPPING:
                     // Update event time to departure time at current stop since it may have changed

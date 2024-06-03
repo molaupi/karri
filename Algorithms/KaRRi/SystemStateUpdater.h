@@ -29,6 +29,7 @@
 #include "Algorithms/KaRRi/RouteState/RouteStateUpdater.h"
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 #include "PathTracker.h"
+#include "AssignmentFinderResponse.h"
 
 namespace karri {
 
@@ -45,7 +46,9 @@ namespace karri {
 
     public:
 
-        SystemStateUpdater(const InputGraphT &inputGraph, RequestState &requestState,
+        SystemStateUpdater(const InputGraphT &inputGraph, const RequestState &requestState,
+                           stats::DispatchingPerformanceStats& dispatchingPerformanceStats,
+                           stats::OsmRoadCategoryStats &chosenPdLocRoadCategoryStats,
                            const CurVehLocsT &curVehLocs,
                            PathTrackerT &pathTracker, RouteStateData &varRouteStateData,
                            RouteStateData &fixedRouteStateData, FixedRouteStateUpdaterT &fixedRouteStateUpdater,
@@ -55,6 +58,8 @@ namespace karri {
                            LastStopBucketsEnvT &fixedLastStopBucketsEnv)
                 : inputGraph(inputGraph),
                   requestState(requestState),
+                  dispatchingPerformanceStats(dispatchingPerformanceStats),
+                  chosenPdLocRoadCategoryStats(chosenPdLocRoadCategoryStats),
                   curVehLocs(curVehLocs),
                   pathTracker(pathTracker),
                   varRouteState(varRouteStateData),
@@ -127,18 +132,20 @@ namespace karri {
                                                                           stats::UpdatePerformanceStats::LOGGER_COLS))) {}
 
 
-        void insertBestAssignment(int &pickupStopId, int &dropoffStopId) {
+        void insertBestAssignment(int &pickupStopId, int &dropoffStopId, const BestAsgn& bestAsgn) {
             Timer timer;
 
-            if (requestState.isNotUsingVehicleBest()) {
+            if (bestAsgn.cost() < INFTY && !bestAsgn.asgn().isValid()) {
+                // If there is a non-INFTY best cost but no assignment is set, we can assume that direct walking is the
+                // best option for this rider.
                 pickupStopId = -1;
                 dropoffStopId = -1;
                 return;
             }
 
-            const auto &asgn = requestState.getBestAssignment();
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup->loc));
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff->loc));
+            const auto &asgn = bestAsgn.asgn();
+            chosenPdLocRoadCategoryStats.incCountForCat(inputGraph.osmRoadCategory(asgn.pickup->loc));
+            chosenPdLocRoadCategoryStats.incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff->loc));
             assert(asgn.vehicle != nullptr);
 
             const auto vehId = asgn.vehicle->vehicleId;
@@ -155,7 +162,7 @@ namespace karri {
                     fixedEllipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(vehId);
             }
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
+            dispatchingPerformanceStats.updateStats.updateRoutesTime += routeUpdateTime;
 
             updateVarBucketStateForInsertedAssignment(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore);
 
@@ -220,70 +227,71 @@ namespace karri {
         }
 
 
-        void writeBestAssignmentToLogger() {
+        template<typename AssignmentFindeResponseT>
+        void writeBestAssignmentToLogger(const AssignmentFindeResponseT& asgnFinderResponse) {
             bestAssignmentsLogger
                     << requestState.originalRequest.requestId << ", "
                     << requestState.originalRequest.requestTime << ", "
                     << requestState.originalReqDirectDist << ", ";
 
-            if (requestState.getBestCost() == INFTY) {
+            if (asgnFinderResponse.getBestAsgnType() == BestAsgnType::NO_ASSIGNMENT) {
                 bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,inf\n";
                 return;
             }
 
-            if (requestState.isNotUsingVehicleBest()) {
+            if (asgnFinderResponse.getBestAsgnType() == BestAsgnType::NOT_USING_VEHICLE) {
                 bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1, true, "
-                                      << requestState.getBestCost() << "\n";
+                                      << asgnFinderResponse.getBestCost() << "\n";
                 return;
             }
 
-            const auto &bestAsgn = requestState.getBestAssignment();
 
-            const auto &vehId = bestAsgn.vehicle->vehicleId;
+            const auto &asgn = asgnFinderResponse.getBestVarAsgn().asgn();
+            const auto &vehId = asgn.vehicle->vehicleId;
             const auto &numStops = varRouteState.numStopsOf(vehId);
             using time_utils::getVehDepTimeAtStopForRequest;
-            const auto &vehDepTimeBeforePickup = getVehDepTimeAtStopForRequest(vehId, bestAsgn.pickupStopIdx,
+            const auto &vehDepTimeBeforePickup = getVehDepTimeAtStopForRequest(vehId, asgn.pickupStopIdx,
                                                                                requestState, varRouteState);
-            const auto &vehDepTimeBeforeDropoff = getVehDepTimeAtStopForRequest(vehId, bestAsgn.dropoffStopIdx,
+            const auto &vehDepTimeBeforeDropoff = getVehDepTimeAtStopForRequest(vehId, asgn.dropoffStopIdx,
                                                                                 requestState, varRouteState);
             bestAssignmentsLogger
                     << vehId << ", "
-                    << bestAsgn.pickupStopIdx << ", "
-                    << bestAsgn.dropoffStopIdx << ", "
-                    << bestAsgn.distToPickup << ", "
-                    << bestAsgn.distFromPickup << ", "
-                    << bestAsgn.distToDropoff << ", "
-                    << bestAsgn.distFromDropoff << ", "
-                    << bestAsgn.pickup->id << ", "
-                    << bestAsgn.pickup->walkingDist << ", "
-                    << bestAsgn.dropoff->id << ", "
-                    << bestAsgn.dropoff->walkingDist << ", "
+                    << asgn.pickupStopIdx << ", "
+                    << asgn.dropoffStopIdx << ", "
+                    << asgn.distToPickup << ", "
+                    << asgn.distFromPickup << ", "
+                    << asgn.distToDropoff << ", "
+                    << asgn.distFromDropoff << ", "
+                    << asgn.pickup->id << ", "
+                    << asgn.pickup->walkingDist << ", "
+                    << asgn.dropoff->id << ", "
+                    << asgn.dropoff->walkingDist << ", "
                     << numStops << ", "
                     << vehDepTimeBeforePickup << ", "
                     << vehDepTimeBeforeDropoff << ", "
                     << "false, "
-                    << requestState.getBestCost() << "\n";
+                    << asgnFinderResponse.getBestCost() << "\n";
         }
 
         void writePerformanceLogs() {
             overallPerfLogger << requestState.originalRequest.requestId << ", "
-                              << requestState.stats().getLoggerRow() << "\n";
+                              << dispatchingPerformanceStats.getLoggerRow() << "\n";
             initializationPerfLogger << requestState.originalRequest.requestId << ", "
-                                     << requestState.stats().initializationStats.getLoggerRow() << "\n";
+                                     << dispatchingPerformanceStats.initializationStats.getLoggerRow() << "\n";
             ellipticBchPerfLogger << requestState.originalRequest.requestId << ", "
-                                  << requestState.stats().ellipticBchStats.getLoggerRow() << "\n";
+                                  << dispatchingPerformanceStats.ellipticBchStats.getLoggerRow() << "\n";
             pdDistancesPerfLogger << requestState.originalRequest.requestId << ", "
-                                  << requestState.stats().pdDistancesStats.getLoggerRow() << "\n";
+                                  << dispatchingPerformanceStats.pdDistancesStats.getLoggerRow() << "\n";
             ordPerfLogger << requestState.originalRequest.requestId << ", "
-                          << requestState.stats().ordAssignmentsStats.getLoggerRow() << "\n";
+                          << dispatchingPerformanceStats.ordAssignmentsStats.getLoggerRow() << "\n";
             pbnsPerfLogger << requestState.originalRequest.requestId << ", "
-                           << requestState.stats().pbnsAssignmentsStats.getLoggerRow() << "\n";
+                           << dispatchingPerformanceStats.pbnsAssignmentsStats.getLoggerRow() << "\n";
             palsPerfLogger << requestState.originalRequest.requestId << ", "
-                           << requestState.stats().palsAssignmentsStats.getLoggerRow() << "\n";
+                           << dispatchingPerformanceStats.palsAssignmentsStats.getLoggerRow() << "\n";
             dalsPerfLogger << requestState.originalRequest.requestId << ", "
-                           << requestState.stats().dalsAssignmentsStats.getLoggerRow() << "\n";
+                           << dispatchingPerformanceStats.dalsAssignmentsStats.getLoggerRow() << "\n";
             updatePerfLogger << requestState.originalRequest.requestId << ", "
-                             << requestState.stats().updateStats.getLoggerRow() << "\n";
+                             << dispatchingPerformanceStats.updateStats.getLoggerRow() << "\n";
         }
 
     private:
@@ -420,7 +428,10 @@ namespace karri {
         }
 
         const InputGraphT &inputGraph;
-        RequestState &requestState;
+        const RequestState &requestState;
+        stats::DispatchingPerformanceStats& dispatchingPerformanceStats;
+        stats::OsmRoadCategoryStats& chosenPdLocRoadCategoryStats;
+
         const CurVehLocsT &curVehLocs;
         PathTrackerT &pathTracker;
 

@@ -198,14 +198,16 @@ namespace karri {
                             const LastStopsAtVerticesT &lastStopsAtVertices,
                             const CHEnvT &chEnv,
                             const RouteStateData &routeState,
+                            const RequestState &requestState,
+                            stats::EllipticBCHPerformanceStats &stats,
                             FeasibleEllipticDistancesT &feasibleEllipticPickups,
-                            FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
-                            RequestState &requestState)
+                            FeasibleEllipticDistancesT &feasibleEllipticDropoffs)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   ch(chEnv.getCH()),
                   routeState(routeState),
                   requestState(requestState),
+                  stats(stats),
                   sourceBuckets(ellipticBucketsEnv.getSourceBuckets()),
                   lastStopsAtVertices(lastStopsAtVertices),
                   feasibleEllipticPickups(feasibleEllipticPickups),
@@ -224,30 +226,30 @@ namespace karri {
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
-        void run() {
+        void run(const int &costUpperBound) {
 
             // Run for pickups:
             Timer timer;
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticPickups);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticPickups);
-            runBCHSearchesFromAndTo(requestState.pickups);
+            runBCHSearchesFromAndTo(requestState.pickups, costUpperBound);
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ellipticBchStats.pickupTime += pickupTime;
-            requestState.stats().ellipticBchStats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
-            requestState.stats().ellipticBchStats.pickupNumVerticesSettled += totalNumVerticesSettled;
-            requestState.stats().ellipticBchStats.pickupNumEntriesScanned += totalNumEntriesScanned;
+            stats.pickupTime += pickupTime;
+            stats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
+            stats.pickupNumVerticesSettled += totalNumVerticesSettled;
+            stats.pickupNumEntriesScanned += totalNumEntriesScanned;
 
             // Run for dropoffs:
             timer.restart();
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
 
-            runBCHSearchesFromAndTo(requestState.dropoffs);
+            runBCHSearchesFromAndTo(requestState.dropoffs, costUpperBound);
             const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
-            requestState.stats().ellipticBchStats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
-            requestState.stats().ellipticBchStats.dropoffNumVerticesSettled += totalNumVerticesSettled;
-            requestState.stats().ellipticBchStats.dropoffNumEntriesScanned += totalNumEntriesScanned;
+            stats.dropoffTime += dropoffTime;
+            stats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
+            stats.dropoffNumVerticesSettled += totalNumVerticesSettled;
+            stats.dropoffNumEntriesScanned += totalNumEntriesScanned;
         }
 
         // Initialize searches for new request
@@ -264,7 +266,7 @@ namespace karri {
             feasibleEllipticDropoffs.init(requestState.numDropoffs(), dropoffsAtExistingStops, inputGraph);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ellipticBchStats.initializationTime += time;
+            stats.initializationTime += time;
         }
 
     private:
@@ -273,7 +275,7 @@ namespace karri {
         friend UpdateDistancesToPDLocs;
 
         template<typename SpotContainerT>
-        void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs) {
+        void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs, const int &costUpperBound) {
 
             numSearchesRun = 0;
             numTimesStoppingCriterionMet = 0;
@@ -286,7 +288,7 @@ namespace karri {
             // than the best known and add the maximum leg length since a distance to a PD loc dist cannot lead to a
             // better assignment than the best known if dist - max leg length > max allowed detour).
             const int maxDistBasedOnVehCost = CostFunctionT::calcMinDistFromOrToPDLocSuchThatVehCostReachesMinCost(
-                    requestState.getBestCost(), routeState.getMaxLegLength());
+                    costUpperBound, routeState.getMaxLegLength());
             distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
 
             // Process in batches of size K
@@ -388,7 +390,8 @@ namespace karri {
         const Fleet &fleet;
         const CH &ch;
         const RouteStateData &routeState;
-        RequestState &requestState;
+        const RequestState &requestState;
+        stats::EllipticBCHPerformanceStats &stats;
 
         const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
         const LastStopsAtVerticesT &lastStopsAtVertices;

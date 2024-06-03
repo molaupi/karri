@@ -44,10 +44,12 @@ namespace karri::PDDistanceQueryStrategies {
 
         CHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
                     PDDistances<LabelSetT> &distances,
-                    RequestState &requestState)
+                    RequestState &requestState,
+                    stats::PDDistancesPerformanceStats& stats)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   requestState(requestState),
+                  stats(stats),
                   distances(distances),
                   query(chEnv.template getFullCHQuery<LabelSetT>()) {}
 
@@ -86,7 +88,7 @@ namespace karri::PDDistanceQueryStrategies {
             requestState.minDirectPDDist = distances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
+            stats.pickupBchSearchTime += pickupSearchesTime;
         }
 
         void init() {
@@ -94,7 +96,7 @@ namespace karri::PDDistanceQueryStrategies {
             distances.clear();
             distances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime += time;
+            stats.initializationTime += time;
         }
 
     private:
@@ -115,6 +117,7 @@ namespace karri::PDDistanceQueryStrategies {
         const InputGraphT &inputGraph;
         const CH &ch;
         RequestState &requestState;
+        stats::PDDistancesPerformanceStats& stats;
 
         PDDistances<LabelSetT> &distances;
 

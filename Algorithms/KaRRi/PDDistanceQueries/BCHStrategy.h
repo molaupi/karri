@@ -137,10 +137,12 @@ namespace karri::PDDistanceQueryStrategies {
         BCHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
                     PDDistances<LabelSetT> &distances,
                     RequestState &requestState,
+                    stats::PDDistancesPerformanceStats& stats,
                     VehicleToPDLocQueryT &vehicleToPDLocQuery)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   requestState(requestState),
+                  stats(stats),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
                   distances(distances),
                   dropoffBuckets(inputGraph.numVertices()),
@@ -191,7 +193,7 @@ namespace karri::PDDistanceQueryStrategies {
 
 
             const int64_t initTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime += initTime;
+            stats.initializationTime += initTime;
             timer.restart();
 
             // Fill dropoff buckets:
@@ -220,7 +222,7 @@ namespace karri::PDDistanceQueryStrategies {
             }
 
             const int64_t dropoffBucketEntryGenTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.dropoffBucketEntryGenTime = dropoffBucketEntryGenTime;
+            stats.dropoffBucketEntryGenTime = dropoffBucketEntryGenTime;
             timer.restart();
 
             // Run pickup searches against dropoff buckets:
@@ -253,7 +255,7 @@ namespace karri::PDDistanceQueryStrategies {
             requestState.minDirectPDDist = distances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
+            stats.pickupBchSearchTime += pickupSearchesTime;
         }
 
         void init() {
@@ -261,7 +263,7 @@ namespace karri::PDDistanceQueryStrategies {
             distances.clear();
             distances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime += time;
+            stats.initializationTime += time;
         }
 
     private:
@@ -274,6 +276,7 @@ namespace karri::PDDistanceQueryStrategies {
         const InputGraphT &inputGraph;
         const CH &ch;
         RequestState &requestState;
+        stats::PDDistancesPerformanceStats& stats;
         VehicleToPDLocQueryT &vehicleToPDLocQuery;
 
         PDDistances<LabelSetT> &distances;

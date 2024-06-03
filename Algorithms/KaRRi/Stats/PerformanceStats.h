@@ -30,6 +30,9 @@
 namespace karri::stats {
 
     struct InitializationPerformanceStats {
+
+        InitializationPerformanceStats() = default;
+
         int64_t findPDLocsInRadiusTime;
         int64_t findVehicleToPdLocsDistancesTime;
         int64_t notUsingVehicleTime;
@@ -69,6 +72,9 @@ namespace karri::stats {
 
 
     struct EllipticBCHPerformanceStats {
+
+        EllipticBCHPerformanceStats() = default;
+
         int64_t initializationTime;
         int64_t pickupTime;
         int64_t dropoffTime;
@@ -126,6 +132,9 @@ namespace karri::stats {
     };
 
     struct PDDistancesPerformanceStats {
+
+        PDDistancesPerformanceStats() = default;
+
         int64_t initializationTime;
         int64_t dropoffBucketEntryGenTime;
         int64_t pickupBchSearchTime;
@@ -159,6 +168,9 @@ namespace karri::stats {
     };
 
     struct OrdAssignmentsPerformanceStats {
+
+        OrdAssignmentsPerformanceStats() = default;
+
         int64_t initializationTime;
 
         int64_t numRelevantStopsForPickups;
@@ -216,6 +228,8 @@ namespace karri::stats {
     };
 
     struct PbnsAssignmentsPerformanceStats {
+        PbnsAssignmentsPerformanceStats() = default;
+
         int64_t initializationTime;
 
         int64_t numRelevantStopsForPickups;
@@ -282,6 +296,8 @@ namespace karri::stats {
     };
 
     struct PalsAssignmentsPerformanceStats {
+
+        PalsAssignmentsPerformanceStats() = default;
 
         int64_t initializationTime;
 
@@ -385,6 +401,8 @@ namespace karri::stats {
 
     struct DalsAssignmentsPerformanceStats {
 
+        DalsAssignmentsPerformanceStats() = default;
+
         int64_t initializationTime;
 
         int64_t numEdgeRelaxationsInSearchGraph;
@@ -464,6 +482,8 @@ namespace karri::stats {
     };
 
     struct UpdatePerformanceStats {
+
+        UpdatePerformanceStats() = default;
 
         int64_t elliptic_generate_numVerticesInSearchSpace;
         int64_t elliptic_generate_numEntriesInserted;
@@ -547,6 +567,8 @@ namespace karri::stats {
     };
 
     struct DispatchingPerformanceStats {
+
+        DispatchingPerformanceStats() = default;
 
         int32_t numPickups;
         int32_t numDropoffs;

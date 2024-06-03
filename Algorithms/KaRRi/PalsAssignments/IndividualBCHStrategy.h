@@ -159,7 +159,8 @@ namespace karri::PickupAfterLastStopStrategies {
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const PDDistancesT &pdDistances,
                               const RouteStateData &routeState,
-                              RequestState &requestState,
+                              const RequestState &requestState,
+                              stats::PalsAssignmentsPerformanceStats& stats,
                               const int &bestCostBeforeQuery)
                 : inputGraph(inputGraph),
                   fleet(fleet),
@@ -167,15 +168,16 @@ namespace karri::PickupAfterLastStopStrategies {
                   pdDistances(pdDistances),
                   routeState(routeState),
                   requestState(requestState),
+                  stats(stats),
                   bestCostBeforeQuery(bestCostBeforeQuery),
                   distances(fleet.size()),
                   search(lastStopBucketsEnv, distances, chEnv, routeState, vehiclesSeenForPickups,
                          PickupAfterLastStopPruner(*this, calculator)),
                   vehiclesSeenForPickups(fleet.size()) {}
 
-        void tryPickupAfterLastStop() {
+        void tryPickupAfterLastStop(BestAsgn& bestAsgn) {
             runBchSearches();
-            enumerateAssignments();
+            enumerateAssignments(bestAsgn);
         }
 
     private:
@@ -189,15 +191,15 @@ namespace karri::PickupAfterLastStopStrategies {
                 runSearchesForPickupBatch(i);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().palsAssignmentsStats.searchTime += searchTime;
-            requestState.stats().palsAssignmentsStats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations;
-            requestState.stats().palsAssignmentsStats.numVerticesOrLabelsSettled += totalNumVerticesSettled;
-            requestState.stats().palsAssignmentsStats.numEntriesOrLastStopsScanned += totalNumEntriesScanned;
-            requestState.stats().palsAssignmentsStats.numCandidateVehicles += vehiclesSeenForPickups.size();
+            stats.searchTime += searchTime;
+            stats.numEdgeRelaxationsInSearchGraph += totalNumEdgeRelaxations;
+            stats.numVerticesOrLabelsSettled += totalNumVerticesSettled;
+            stats.numEntriesOrLastStopsScanned += totalNumEntriesScanned;
+            stats.numCandidateVehicles += vehiclesSeenForPickups.size();
         }
 
         // Enumerate assignments with pickup after last stop
-        void enumerateAssignments() {
+        void enumerateAssignments(BestAsgn& bestAsgn) {
             using namespace time_utils;
 
 
@@ -235,7 +237,7 @@ namespace karri::PickupAfterLastStopStrategies {
                                                                                              asgn.pickup->walkingDist,
                                                                                              0,
                                                                                              requestState);
-                    if (minCost > requestState.getBestCost())
+                    if (minCost > bestAsgn.cost())
                         continue;
 
                     for (auto &d: requestState.dropoffs) {
@@ -244,14 +246,14 @@ namespace karri::PickupAfterLastStopStrategies {
                         // Try inserting pair with pickup after last stop:
                         ++numAssignmentsTried;
                         asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
-                        requestState.tryAssignment(asgn);
+                        bestAsgn.tryAssignment(asgn);
                     }
                 }
             }
 
             const int64_t tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
-            requestState.stats().palsAssignmentsStats.tryAssignmentsTime += tryAssignmentsTime;
+            stats.numAssignmentsTried += numAssignmentsTried;
+            stats.tryAssignmentsTime += tryAssignmentsTime;
         }
 
 
@@ -300,7 +302,8 @@ namespace karri::PickupAfterLastStopStrategies {
         const CostCalculator &calculator;
         const PDDistancesT &pdDistances;
         const RouteStateData &routeState;
-        RequestState &requestState;
+        const RequestState &requestState;
+        stats::PalsAssignmentsPerformanceStats& stats;
         const int &bestCostBeforeQuery;
 
         int upperBoundCost;

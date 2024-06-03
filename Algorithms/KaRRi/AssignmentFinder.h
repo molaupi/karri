@@ -29,6 +29,7 @@
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Tools/Timer.h"
+#include "Algorithms/KaRRi/RequestState/BestAsgn.h"
 
 namespace karri {
 
@@ -37,6 +38,7 @@ namespace karri {
     // of a vehicle and a pickup and dropoff location, according to the current state of all vehicle routes.
     template<
             typename RequestStateInitializerT,
+            typename AssignmentFinderResponseT,
             typename EllipticBCHSearchesT,
             typename PDDistanceSearchesT,
             typename OrdAssignmentsT,
@@ -50,6 +52,7 @@ namespace karri {
     public:
 
         AssignmentFinder(RequestState &requestState,
+                         AssignmentFinderResponseT assignmentFinderResponse,
                          RequestStateInitializerT &requestStateInitializer,
                          EllipticBCHSearchesT &ellipticBchSearches,
                          PDDistanceSearchesT &pdDistanceSearches,
@@ -59,6 +62,7 @@ namespace karri {
                          DalsAssignmentsT &dalsAssignments,
                          RelevantPDLocsFilterT &relevantPdLocsFilter)
                 : reqState(requestState),
+                  asgnFinderResponse(assignmentFinderResponse),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
                   pdDistanceSearches(pdDistanceSearches),
@@ -68,42 +72,44 @@ namespace karri {
                   dalsAssignments(dalsAssignments),
                   relevantPdLocsFilter(relevantPdLocsFilter) {}
 
-        const RequestState &findBestAssignment(const Request &req) {
+        const AssignmentFinderResponseT &findBestAssignment(const Request &req) {
 
-            // Initialize finder for this request:
+            // Initialize for this request:
             initializeForRequest(req);
+            auto &bestAsgn = asgnFinderResponse.getBestVarAsgn();
 
             // Compute PD distances:
             pdDistanceSearches.run();
 
             // Try PALS assignments:
-            palsAssignments.findAssignments();
+            palsAssignments.findAssignments(bestAsgn);
 
             // Run elliptic BCH searches:
-            ellipticBchSearches.run();
+            ellipticBchSearches.run(bestAsgn.cost());
 
             // Filter feasible PD-locations between ordinary stops:
-            relevantPdLocsFilter.filterOrdinary();
+            relevantPdLocsFilter.filterOrdinary(bestAsgn.cost());
 
             // Try ordinary assignments:
-            ordAssignments.findAssignments();
+            ordAssignments.findAssignments(bestAsgn);
 
             // Filter feasible PD-locations before next stops:
-            relevantPdLocsFilter.filterBeforeNextStop();
+            relevantPdLocsFilter.filterBeforeNextStop(bestAsgn.cost());
 
             // Try DALS assignments:
-            dalsAssignments.findAssignments();
+            dalsAssignments.findAssignments(bestAsgn);
 
             // Try PBNS assignments:
-            pbnsAssignments.findAssignments();
+            pbnsAssignments.findAssignments(bestAsgn);
 
-            return reqState;
+            return asgnFinderResponse;
         }
 
     private:
 
         void initializeForRequest(const Request &req) {
             requestStateInitializer.initializeRequestState(req);
+            asgnFinderResponse.initForRequest();
 
             // Initialize components according to new request state:
             ellipticBchSearches.init();
@@ -115,6 +121,8 @@ namespace karri {
         }
 
         RequestState &reqState;
+        AssignmentFinderResponseT asgnFinderResponse;
+
         RequestStateInitializerT &requestStateInitializer;
         EllipticBCHSearchesT &ellipticBchSearches; // Elliptic BCH searches that find distances between existing stops and PD-locations (except after last stop).
         PDDistanceSearchesT &pdDistanceSearches; // PD-distance searches that compute distances from pickups to dropoffs.

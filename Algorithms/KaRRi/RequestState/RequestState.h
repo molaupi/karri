@@ -38,17 +38,15 @@
 
 namespace karri {
 
-// Holds information relating to a specific request like its pickups and dropoffs and the best known assignment.
+// Holds information relating to a specific request like its pickups and dropoffs.
     struct RequestState {
 
-        RequestState(const CostCalculator &calculator)
+        RequestState()
                 : originalRequest(),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
                   pickups(),
-                  dropoffs(),
-                  calculator(calculator) {}
-
+                  dropoffs() {}
 
         ~RequestState() {
             auto &roadCatLogger = LogManager<std::ofstream>::getLogger(karri::stats::OsmRoadCategoryStats::LOGGER_NAME,
@@ -63,6 +61,8 @@ namespace karri {
         Request originalRequest;
         int originalReqDirectDist;
         int minDirectPDDist;
+
+        int directWalkingDist;
 
         std::vector<PDLoc> pickups;
         std::vector<PDLoc> dropoffs;
@@ -105,62 +105,6 @@ namespace karri {
             return originalRequest.requestTime + InputConfig::getInstance().maxWaitTime;
         }
 
-        // Information about best known assignment for current request
-
-        const Assignment &getBestAssignment() const {
-            return bestAssignment;
-        }
-
-        const int &getBestCost() const {
-            return bestCost;
-        }
-
-        bool isNotUsingVehicleBest() const {
-            return notUsingVehicleIsBest;
-        }
-
-        const int &getNotUsingVehicleDist() const {
-            return notUsingVehicleDist;
-        }
-
-        bool tryAssignment(const Assignment &asgn) {
-            const auto cost = calculator.calc(asgn, *this);
-            return tryAssignmentWithKnownCost(asgn, cost);
-        }
-
-        bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
-            assert(calculator.calc(asgn, *this) == cost);
-
-            if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
-                                    breakCostTie(asgn, bestAssignment)))) {
-
-                bestAssignment = asgn;
-                bestCost = cost;
-                notUsingVehicleIsBest = false;
-                notUsingVehicleDist = INFTY;
-                return true;
-            }
-            return false;
-        }
-
-        void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
-            const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this);
-            if (cost < bestCost) {
-                bestAssignment = Assignment();
-                bestCost = cost;
-                notUsingVehicleIsBest = true;
-                notUsingVehicleDist = notUsingVehDist;
-            }
-        }
-
-        stats::DispatchingPerformanceStats &stats() {
-            return perfStats;
-        }
-
-        const stats::DispatchingPerformanceStats &stats() const {
-            return perfStats;
-        }
-
         stats::OsmRoadCategoryStats &allPDLocsRoadCategoryStats() {
             return allPDLocsRoadCatStats;
         }
@@ -170,32 +114,16 @@ namespace karri {
         }
 
         void reset() {
-            perfStats.clear();
-
             originalRequest = {};
             originalReqDirectDist = INFTY;
             minDirectPDDist = INFTY;
             pickups.clear();
             dropoffs.clear();
-
-            bestAssignment = Assignment();
-            bestCost = INFTY;
-            notUsingVehicleIsBest = false;
-            notUsingVehicleDist = INFTY;
+            directWalkingDist = INFTY;
         }
 
     private:
-
-        stats::DispatchingPerformanceStats perfStats;
         stats::OsmRoadCategoryStats allPDLocsRoadCatStats;
         stats::OsmRoadCategoryStats chosenPDLocsRoadCatStats;
-
-        const CostCalculator &calculator;
-
-        // Information about best known assignment for current request
-        Assignment bestAssignment;
-        int bestCost;
-        bool notUsingVehicleIsBest;
-        int notUsingVehicleDist;
     };
 }

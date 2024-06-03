@@ -57,27 +57,27 @@ namespace karri::PickupAfterLastStopStrategies {
                               const CHEnvT &chEnv,
                               VehicleToPDLocQueryT &vehicleToPDLocQuery,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              PDDistancesT &pdDistances,
+                              const PDDistancesT &pdDistances,
                               const CostCalculator &calculator,
                               const RouteStateData &routeState,
-                              RequestState &requestState)
+                              const RequestState &requestState,
+                              stats::PalsAssignmentsPerformanceStats& stats)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   ch(chEnv.getCH()),
                   routeState(routeState),
                   requestState(requestState),
+                  stats(stats),
                   minCostSearch(inputGraph, fleet, chEnv, routeState, pdDistances, calculator, lastStopBucketsEnv,
                                 requestState),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
                   pdDistances(pdDistances),
                   fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, pdDistances, routeState,
-                                   requestState, minCostSearch.getUpperBoundCostWithHardConstraints()) {}
+                                   requestState, stats, minCostSearch.getUpperBoundCostWithHardConstraints()) {}
 
-        void tryPickupAfterLastStop() {
+        void tryPickupAfterLastStop(BestAsgn& bestAsgn) {
 
-
-            auto &stats = requestState.stats().palsAssignmentsStats;
             Timer timer;
 
 
@@ -86,7 +86,7 @@ namespace karri::PickupAfterLastStopStrategies {
             int costLowerBound = calculator.calcCostLowerBoundForPickupAfterLastStopIndependentOfVehicle(0,
                                                                                                          requestState.minDirectPDDist,
                                                                                                          requestState);
-            if (costLowerBound > requestState.getBestCost())
+            if (costLowerBound > bestAsgn.cost())
                 return;
 
 
@@ -115,7 +115,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_initializationTime += colInitTime;
             stats.collective_numPromisingDropoffs += promisingDropoffIds.size();
 
-            minCostSearch.run(promisingDropoffIds, requestState.getBestCost());
+            minCostSearch.run(promisingDropoffIds, bestAsgn.cost());
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.searchTime += searchTime;
@@ -143,7 +143,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 // If assignment found by collective search adheres to service time constraint, we have found the
                 // best PALS assignment.
                 assert(calculator.calc(asgn, requestState) == minCost);
-                requestState.tryAssignmentWithKnownCost(asgn, minCost);
+                bestAsgn.tryAssignmentWithKnownCost(asgn, minCost);
 
                 const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
                 stats.tryAssignmentsTime += tryAssignmentsTime;
@@ -156,7 +156,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_usedFallback = true;
 
             // Otherwise fall back to computing distances explicitly:
-            fallbackStrategy.tryPickupAfterLastStop();
+            fallbackStrategy.tryPickupAfterLastStop(bestAsgn);
         }
 
     private:
@@ -166,12 +166,13 @@ namespace karri::PickupAfterLastStopStrategies {
         const CostCalculator &calculator;
         const CH &ch;
         const RouteStateData &routeState;
-        RequestState &requestState;
+        const RequestState &requestState;
+        stats::PalsAssignmentsPerformanceStats& stats;
 
         MinCostPairAfterLastStopQueryInst minCostSearch;
         VehicleToPDLocQueryT &vehicleToPDLocQuery;
 
-        PDDistancesT &pdDistances;
+        const PDDistancesT &pdDistances;
 
 
         FallbackIndividualBCHStrategy fallbackStrategy;

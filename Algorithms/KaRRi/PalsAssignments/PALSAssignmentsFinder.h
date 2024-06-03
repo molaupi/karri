@@ -29,6 +29,7 @@
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
+#include "Algorithms/KaRRi/RequestState/BestAsgn.h"
 
 namespace karri {
 
@@ -40,7 +41,8 @@ namespace karri {
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
                               const CostCalculator &calculator, const LastStopsAtVerticesT &lastStopsAtVertices,
-                              const RouteStateData &routeState, const PDDistancesT &pdDistances, RequestState &requestState)
+                              const RouteStateData &routeState, const PDDistancesT &pdDistances,
+                              const RequestState &requestState, stats::PalsAssignmentsPerformanceStats &stats)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
@@ -48,11 +50,12 @@ namespace karri {
                   lastStopsAtVertices(lastStopsAtVertices),
                   routeState(routeState),
                   pdDistances(pdDistances),
-                  requestState(requestState) {}
+                  requestState(requestState),
+                  stats(stats) {}
 
-        void findAssignments() {
-            findAssignmentsWherePickupCoincidesWithLastStop();
-            strategy.tryPickupAfterLastStop();
+        void findAssignments(BestAsgn &bestAsgn) {
+            findAssignmentsWherePickupCoincidesWithLastStop(bestAsgn);
+            strategy.tryPickupAfterLastStop(bestAsgn);
         }
 
         void init() {
@@ -63,7 +66,7 @@ namespace karri {
 
         // Simple case for pickups that coincide with last stops of vehicles is the same regardless of strategy, so it
         // is treated here.
-        void findAssignmentsWherePickupCoincidesWithLastStop() {
+        void findAssignmentsWherePickupCoincidesWithLastStop(BestAsgn& bestAsgn) {
             int numInsertionsForCoinciding = 0;
             int numCandidateVehiclesForCoinciding = 0;
             Timer timer;
@@ -83,7 +86,7 @@ namespace karri {
                     // Calculate lower bound on insertion cost with this pickup and vehicle
                     const auto lowerBoundCost = calculator.calcCostLowerBoundForPickupAfterLastStop(
                             fleet[vehId], *asgn.pickup, 0, requestState.minDirectPDDist, requestState);
-                    if (lowerBoundCost > requestState.getBestCost())
+                    if (lowerBoundCost > bestAsgn.cost())
                         continue;
 
                     // If necessary, check paired insertion with each dropoff
@@ -95,15 +98,15 @@ namespace karri {
                         asgn.dropoff = &d;
                         asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                         ++numInsertionsForCoinciding;
-                        requestState.tryAssignment(asgn);
+                        bestAsgn.tryAssignment(asgn);
                     }
                 }
             }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().palsAssignmentsStats.pickupAtLastStop_tryAssignmentsTime += time;
-            requestState.stats().palsAssignmentsStats.pickupAtLastStop_numCandidateVehicles += numCandidateVehiclesForCoinciding;
-            requestState.stats().palsAssignmentsStats.pickupAtLastStop_numAssignmentsTried += numInsertionsForCoinciding;
+            stats.pickupAtLastStop_tryAssignmentsTime += time;
+            stats.pickupAtLastStop_numCandidateVehicles += numCandidateVehiclesForCoinciding;
+            stats.pickupAtLastStop_numAssignmentsTried += numInsertionsForCoinciding;
         }
 
         StrategyT &strategy;
@@ -114,7 +117,8 @@ namespace karri {
         const LastStopsAtVerticesT &lastStopsAtVertices;
         const RouteStateData &routeState;
         const PDDistancesT &pdDistances;
-        RequestState &requestState;
+        const RequestState &requestState;
+        stats::PalsAssignmentsPerformanceStats &stats;
 
     };
 }

@@ -86,6 +86,11 @@ namespace karri {
         int distFromPickup = 0; // Distance from pickup to next stop (or 0 if pickupStopIdx == dropoffStopIdx)
         int distToDropoff = 0; // Distance from previous stop to dropoff (or from pickup to dropoff if pickupStopIdx == dropoffStopIdx)
         int distFromDropoff = 0; // Distance from dropoff to next stop (or 0 if there is no next stop)
+
+        // Returns true if the assignment is valid, i.e., vehicle, pickup, and dropoff are set.
+        bool isValid() const {
+            return vehicle && pickup && dropoff;
+        }
     };
 
     // Criterion to make decision between two assignments with the same cost deterministic.
