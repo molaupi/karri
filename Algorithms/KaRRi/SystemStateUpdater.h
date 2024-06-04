@@ -170,8 +170,8 @@ namespace karri {
             // intermediate stop at its current location representing the rerouting.
             if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 && varRouteState.schedDepTimesFor(vehId)[0] <
                                                                  requestState.originalRequest.requestTime) {
-                createIntermediateStopStopAtCurrentLocationForReroute(*asgn.vehicle,
-                                                                      requestState.originalRequest.requestTime);
+                createIntermediateStopAtCurrentLocationForReroute(*asgn.vehicle,
+                                                                  requestState.originalRequest.requestTime);
                 ++pickupIndex;
                 ++dropoffIndex;
             }
@@ -184,6 +184,8 @@ namespace karri {
         }
 
         void notifyStopStarted(const Vehicle &veh) {
+
+            const int stopIdOfReached = varRouteState.stopIdsFor(veh.vehicleId)[1];
 
             // Update buckets and route state
             varEllipticBucketsEnv.deleteSourceBucketEntries(veh.vehicleId, 0);
@@ -301,7 +303,7 @@ namespace karri {
         // first stop, i.e. dist(s[i], s[i+1]) = schedArrTime(s[i+1]) - schedDepTime(s[i]).
         // Intermediate stop gets an arrival time equal to the request time so the stop is reached immediately,
         // making it the new stop 0. Thus, we do not need to compute target bucket entries for the stop.
-        void createIntermediateStopStopAtCurrentLocationForReroute(const Vehicle &veh, const int now) {
+        void createIntermediateStopAtCurrentLocationForReroute(const Vehicle &veh, const int now) {
             KASSERT(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
             auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
@@ -347,23 +349,27 @@ namespace karri {
             }
         }
 
-        void updateFixedBucketStateForReachedStop(const Vehicle &veh, const std::vector<int> &indicesOfNewStops,
+        void updateFixedBucketStateForReachedStop(const Vehicle &veh, const std::vector<int> &indicesOfNewStopsForDropoffs,
                                                   const bool wasReachedStopFixed, const int depTimeAtLastStopBefore) {
             const auto &vehId = veh.vehicleId;
+            const int numStopsWithNewDropoffs = fixedRouteState.numStopsOf(vehId);
+            const int numStopsBefore = numStopsWithNewDropoffs - indicesOfNewStopsForDropoffs.size();
             if (wasReachedStopFixed) {
                 fixedEllipticBucketsEnv.deleteTargetBucketEntries(vehId, 0);
-            } else {
+            } else if (numStopsBefore > 1) {
+                // Only generate source bucket entries if the reached stop would not be the last stop without its
+                // associated new dropoffs
                 fixedEllipticBucketsEnv.generateSourceBucketEntries(vehId, 0);
             }
 
-            if (fixedRouteState.numStopsOf(veh.vehicleId) == 1) {
-                KASSERT(indicesOfNewStops.empty());
+            if (numStopsWithNewDropoffs == 1) {
+                KASSERT(indicesOfNewStopsForDropoffs.empty());
                 fixedLastStopBucketsEnv.updateBucketEntries(veh, 0);
                 return;
             }
 
             generateBucketStateForNewStops(fixedRouteState, fixedEllipticBucketsEnv, fixedLastStopBucketsEnv, veh,
-                                           indicesOfNewStops);
+                                           indicesOfNewStopsForDropoffs);
 
             // If we use buckets sorted by remaining leeway, we have to update the leeway of all
             // entries for stops of this vehicle.
@@ -374,12 +380,11 @@ namespace karri {
 
             // If last stop does not change but departure time at last stop does change, update last stop bucket entries
             // accordingly.
-            const auto &numStops = fixedRouteState.numStopsOf(vehId);
-            const auto depTimeAtLastStopAfter = fixedRouteState.schedDepTimesFor(vehId)[numStops - 1];
+            const auto depTimeAtLastStopAfter = fixedRouteState.schedDepTimesFor(vehId)[numStopsWithNewDropoffs - 1];
             const bool depTimeAtLastChanged = depTimeAtLastStopAfter != depTimeAtLastStopBefore;
 
-            if ((indicesOfNewStops.empty() || indicesOfNewStops.back() < numStops - 1) && depTimeAtLastChanged) {
-                fixedLastStopBucketsEnv.updateBucketEntries(veh, numStops - 1);
+            if ((indicesOfNewStopsForDropoffs.empty() || indicesOfNewStopsForDropoffs.back() < numStopsWithNewDropoffs - 1) && depTimeAtLastChanged) {
+                fixedLastStopBucketsEnv.updateBucketEntries(veh, numStopsWithNewDropoffs - 1);
             }
         }
 

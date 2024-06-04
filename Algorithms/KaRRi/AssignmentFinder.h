@@ -57,12 +57,12 @@ namespace karri {
 
         AssignmentFinder(RequestState &requestState,
                          AssignmentFinderResponseT assignmentFinderResponse,
-                         RouteStateData &varRouteState,
+                         const RouteStateData &varRouteState,
                          const EllipticBucketsEnvT &varEllipticBuckets,
                          const PALSPrecomputedLastStopInfoT &varPalsPrecomputedLastStopInfo,
                          const DALSPrecomputedLastStopInfoT &varDalsPrecomputedLastStopInfo,
                          const LastStopsAtVerticesInfoT &varLastStopsAtVerticesInfo,
-                         RouteStateData &fixedRouteState,
+                         const RouteStateData &fixedRouteState,
                          const EllipticBucketsEnvT &fixedEllipticBuckets,
                          const PALSPrecomputedLastStopInfoT &fixedPalsPrecomputedLastStopInfo,
                          const DALSPrecomputedLastStopInfoT &fixedDalsPrecomputedLastStopInfo,
@@ -111,6 +111,21 @@ namespace karri {
             findBestAssignment(asgnFinderResponse.getBestRegularAsgn(), varRouteState, varEllipticBuckets,
                                varPalsPrecomputedLastStopInfo, varDalsPrecomputedLastStopInfo,
                                varLastStopsAtVerticesInfo);
+
+            // Find the best displacing assignment:
+            asgnFinderResponse.initDisplacing();
+            findBestAssignment(asgnFinderResponse.getBestDisplacingAsgn(), fixedRouteState, fixedEllipticBuckets,
+                               fixedPalsPrecomputedLastStopInfo, fixedDalsPrecomputedLastStopInfo,
+                               fixedLastStopsAtVerticesInfo);
+            if (asgnFinderResponse.getBestDisplacingAsgn().cost() < asgnFinderResponse.getBestRegularAsgn().cost()) {
+                std::cout << "Request " << req.requestId <<  ": displacing cost = "
+                          << asgnFinderResponse.getBestDisplacingAsgn().cost()
+                          << " < regular cost = "
+                          << asgnFinderResponse.getBestRegularAsgn().cost() << ".\n";
+            }
+
+            // TODO: Remove this once we can handle displacing assignments.
+            asgnFinderResponse.initDisplacing();
 
 
             return asgnFinderResponse;
