@@ -61,6 +61,7 @@ namespace karri::PickupAfterLastStopStrategies {
             bool STALL_LABELS = false>
     class MinCostPairAfterLastStopQuery {
 
+        using LastStopBuckets = typename LastStopBucketsEnvT::BucketContainer;
         using BucketContainer = LabelBucketContainer<PDPairAfterLastStopLabel>;
 
         using PDDistanceLabel = typename DirectSearchesT::DistanceLabel;
@@ -71,19 +72,13 @@ namespace karri::PickupAfterLastStopStrategies {
     public:
 
         MinCostPairAfterLastStopQuery(const InputGraphT &inputGraph, const Fleet &fleet,
-                                      const CHEnvT &chEnv,
-                                      const RouteStateData &routeState, const DirectSearchesT &directSearches,
-                                      const CostCalculator &calculator,
-                                      const LastStopBucketsEnvT &lastStopBucketsEnv,
+                                      const CHEnvT &chEnv, const DirectSearchesT &directSearches,
                                       const RequestState &requestState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   queryGraph(ch.downwardGraph()),
                   oppositeGraph(ch.upwardGraph()),
                   fleet(fleet),
-                  routeState(routeState),
-                  calculator(calculator),
-                  lastStopBuckets(lastStopBucketsEnv.getBuckets()),
                   directSearches(directSearches),
                   requestState(requestState),
                   reverseLabelBuckets(inputGraph.numVertices()),
@@ -93,7 +88,8 @@ namespace karri::PickupAfterLastStopStrategies {
                   bestCostWithoutConstraints(INFTY),
                   bestAsgn() {}
 
-        void run(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost) {
+        void run(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost, const RouteStateData& routeState,
+                 const LastStopBuckets& lastStopBuckets) {
 
             Timer timer;
 
@@ -108,7 +104,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 const bool unpruned = settleNextLabel(v, label);
                 if (unpruned) {
                     ++numLabelsRelaxed;
-                    scanVehicleBucket(v, label);
+                    scanVehicleBucket(v, label, routeState, lastStopBuckets);
                 }
             }
 
@@ -290,7 +286,7 @@ namespace karri::PickupAfterLastStopStrategies {
             // pickup1 == pickup2 and label1.distToPickup == label2.distToPickup => domination only depends on the part
             // after the pickup, i.e. direct distance and walking distance from dropoff:
 
-            using F = CostCalculator::CostFunction;
+            using F = Calc::CostFunction;
             const auto maxDetourDiff = label1.directDistance - label2.directDistance;
             const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
             const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
@@ -315,7 +311,7 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &dropoff2 = requestState.dropoffs[dropoffId2];
             auto walkDiff = PDDistanceLabel(dropoff1.walkingDist - dropoff2.walkingDist);
 
-            using F = CostCalculator::CostFunction;
+            using F = Calc::CostFunction;
             PDDistanceLabel maxDetourDiff = distancesToDropoff1 - distancesToDropoff2;
             PDDistanceLabel maxTripDiff = maxDetourDiff + walkDiff;
 
@@ -345,7 +341,7 @@ namespace karri::PickupAfterLastStopStrategies {
             const int minVehTimeTillDepAtPickup = label.distToPickup + InputConfig::getInstance().stopTime;
             const int minPsgTimeTillDepAtPickup = std::max(label.distToPickup + InputConfig::getInstance().stopTime,
                                                            pickup.walkingDist);
-            return calculator.calcCostForPairedAssignmentAfterLastStop(minVehTimeTillDepAtPickup,
+            return Calc::calcCostForPairedAssignmentAfterLastStop(minVehTimeTillDepAtPickup,
                                                                        minPsgTimeTillDepAtPickup,
                                                                        label.directDistance, pickup.walkingDist,
                                                                        dropoff.walkingDist, requestState);
@@ -515,7 +511,7 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &pickup2 = requestState.pickups[label2.pickupId];
             const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
-            using F = CostCalculator::CostFunction;
+            using F = Calc::CostFunction;
             const auto maxDepTimeDiff = std::max(label1.distToPickup + InputConfig::getInstance().stopTime, pickup1.walkingDist) -
                                         (label2.distToPickup + InputConfig::getInstance().stopTime);
             const auto maxDetourDiff = maxDepTimeDiff + label1.directDistance - label2.directDistance;
@@ -533,7 +529,8 @@ namespace karri::PickupAfterLastStopStrategies {
             return maxCostDiff < 0;
         }
 
-        void scanVehicleBucket(const int rank, const PDPairAfterLastStopLabel &label) {
+        void scanVehicleBucket(const int rank, const PDPairAfterLastStopLabel &label, const RouteStateData& routeState,
+                               const LastStopBuckets& lastStopBuckets) {
 
             const auto& pickup = requestState.pickups[label.pickupId];
             const auto& dropoff = requestState.dropoffs[label.dropoffId];
@@ -553,7 +550,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 for (const auto &entry: bucket) {
                     ++numEntriesScannedInBucket;
                     const int fullDistToPickup = entry.distToTarget + label.distToPickup;
-                    tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn);
+                    tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn, routeState);
                 }
             } else {
 
@@ -575,13 +572,13 @@ namespace karri::PickupAfterLastStopStrategies {
                     //  (This is not the case for non-idle vehicles as their detour may still differ and that has an
                     //  effect beyond the arrival time, too, so the vehicle-independent lower bound is different.)
                     const auto vehTimeTillDepAtPickup = fullDistToPickup + InputConfig::getInstance().stopTime;
-                    const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
+                    const auto lowerBoundCostForEarlyBreak = Calc::calcCostForPairedAssignmentAfterLastStop(
                             vehTimeTillDepAtPickup, std::max(pickup.walkingDist, vehTimeTillDepAtPickup),
                             directDist, pickup.walkingDist, dropoff.walkingDist, requestState);
                     if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
                         break;
 
-                    tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn);
+                    tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn, routeState);
                 }
 
                 // Scan non-idle bucket. Sorted by arrival time at vertex, stop early if arrival time does not permit a
@@ -597,7 +594,7 @@ namespace karri::PickupAfterLastStopStrategies {
                     const int minPsgTimeTillDepAtPickup = std::max(
                             vehArrTimeAtPickup + InputConfig::getInstance().stopTime - requestState.originalRequest.requestTime,
                             pickup.walkingDist);
-                    const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
+                    const auto lowerBoundCostForEarlyBreak = Calc::calcCostForPairedAssignmentAfterLastStop(
                             minVehTimeTillDepAtPickup, minPsgTimeTillDepAtPickup,
                             directDist, pickup.walkingDist, dropoff.walkingDist, requestState);
                     if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
@@ -608,14 +605,14 @@ namespace karri::PickupAfterLastStopStrategies {
                     const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1];
                     const int fullDistToPickup = vehArrTimeAtPickup -  depTimeAtLastStop;
 
-                    tryTentativeAssignment(vehId, fullDistToPickup, asgn);
+                    tryTentativeAssignment(vehId, fullDistToPickup, asgn, routeState);
                 }
             }
 
             numEntriesScanned += numEntriesScannedInBucket;
         }
 
-        inline void tryTentativeAssignment(const int vehId, const int fullDistToPickup, Assignment& asgn) {
+        inline void tryTentativeAssignment(const int vehId, const int fullDistToPickup, Assignment& asgn, const RouteStateData& routeState) {
 
             const int &numStops = routeState.numStopsOf(vehId);
             asgn.vehicle = &fleet[vehId];
@@ -627,7 +624,7 @@ namespace karri::PickupAfterLastStopStrategies {
             // If all promising dropoffs violate the service time constraint but there is an unpromising dropoff
             // that does not, then we have to still register the vehicle as seen in order to later be able to find
             // out that a PALS assignment better than the upper bound cost may exist.
-            const auto costIgnoringHardConstraints = calculator.calcWithoutHardConstraints(asgn, requestState);
+            const auto costIgnoringHardConstraints = Calc::calcWithoutHardConstraints(asgn, requestState, routeState);
 
             assert(bestCostWithoutConstraints <= upperBoundCostWithConstraints);
             if (costIgnoringHardConstraints > bestCostWithoutConstraints)
@@ -647,7 +644,7 @@ namespace karri::PickupAfterLastStopStrategies {
             // pickup. Therefore, the cost with hard constraints and fullDistToPickup is an upper bound on the
             // actual cost of an assignment with this vehicle, pickup and dropoff. This is also an upper bound on
             // the cost of the best assignment. We can use this upper bound to prune the search.
-            const auto costWithHardConstraints = calculator.calc(asgn, requestState);
+            const auto costWithHardConstraints = Calc::calc(asgn, requestState, routeState);
             upperBoundCostWithConstraints = std::min(upperBoundCostWithConstraints, costWithHardConstraints);
         }
 
@@ -656,9 +653,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const CH::SearchGraph &queryGraph;
         const CH::SearchGraph &oppositeGraph;
         const Fleet &fleet;
-        const RouteStateData &routeState;
-        const CostCalculator &calculator;
-        const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
         const DirectSearchesT &directSearches;
         const RequestState &requestState;
 

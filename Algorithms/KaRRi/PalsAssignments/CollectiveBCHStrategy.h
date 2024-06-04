@@ -56,37 +56,37 @@ namespace karri::PickupAfterLastStopStrategies {
                               const Fleet &fleet,
                               const CHEnvT &chEnv,
                               VehicleToPDLocQueryT &vehicleToPDLocQuery,
-                              const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const PDDistancesT &pdDistances,
-                              const CostCalculator &calculator,
-                              const RouteStateData &routeState,
                               const RequestState &requestState,
-                              stats::PalsAssignmentsPerformanceStats& stats)
+                              stats::PalsAssignmentsPerformanceStats &stats)
                 : inputGraph(inputGraph),
                   fleet(fleet),
-                  calculator(calculator),
                   ch(chEnv.getCH()),
-                  routeState(routeState),
                   requestState(requestState),
                   stats(stats),
-                  minCostSearch(inputGraph, fleet, chEnv, routeState, pdDistances, calculator, lastStopBucketsEnv,
-                                requestState),
+                  minCostSearch(inputGraph, fleet, chEnv, pdDistances, requestState),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
                   pdDistances(pdDistances),
-                  fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, pdDistances, routeState,
-                                   requestState, stats, minCostSearch.getUpperBoundCostWithHardConstraints()) {}
+                  fallbackStrategy(inputGraph, fleet, chEnv, pdDistances, requestState, stats) {}
 
-        void tryPickupAfterLastStop(BestAsgn& bestAsgn) {
+
+        // Interface shared between all PALS strategies.
+        // CollectiveBCHStrategy uses buckets so expects last stop buckets as PrecomputedLastStopInfo.
+        using PrecomputedLastStopInfo = typename LastStopBucketsEnvT::BucketContainer;
+
+        void
+        tryPickupAfterLastStop(BestAsgn &bestAsgn, const int &initialUpperBoundCost, const RouteStateData &routeState,
+                               const PrecomputedLastStopInfo &lastStopBuckets) {
 
             Timer timer;
 
 
             // Find out if any pickup after any last stop can plausibly lead to a better assignment than the best known.
             // First lower bound: Only the minimum PD distance
-            int costLowerBound = calculator.calcCostLowerBoundForPickupAfterLastStopIndependentOfVehicle(0,
-                                                                                                         requestState.minDirectPDDist,
-                                                                                                         requestState);
-            if (costLowerBound > bestAsgn.cost())
+            int costLowerBound = Calc::calcCostLowerBoundForPickupAfterLastStopIndependentOfVehicle(0,
+                                                                                                    requestState.minDirectPDDist,
+                                                                                                    requestState);
+            if (costLowerBound > initialUpperBoundCost)
                 return;
 
 
@@ -100,7 +100,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
                 for (const auto &dropoff: requestState.dropoffs) {
                     if (dropoff.walkingDist <= dropoff.vehDistToCenter ||
-                        calculator.isDropoffCostPromisingForAfterLastStop(dropoff, requestState)) {
+                        Calc::isDropoffCostPromisingForAfterLastStop(dropoff, requestState)) {
                         promisingDropoffIds.push_back(dropoff.id);
                     }
                 }
@@ -115,7 +115,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_initializationTime += colInitTime;
             stats.collective_numPromisingDropoffs += promisingDropoffIds.size();
 
-            minCostSearch.run(promisingDropoffIds, bestAsgn.cost());
+            minCostSearch.run(promisingDropoffIds, initialUpperBoundCost, routeState, lastStopBuckets);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.searchTime += searchTime;
@@ -137,13 +137,14 @@ namespace karri::PickupAfterLastStopStrategies {
             if (!asgn.vehicle)
                 return;
 
-            const auto totalDetour = asgn.distToPickup + InputConfig::getInstance().stopTime + asgn.distToDropoff + InputConfig::getInstance().stopTime;
+            const auto totalDetour = asgn.distToPickup + InputConfig::getInstance().stopTime + asgn.distToDropoff +
+                                     InputConfig::getInstance().stopTime;
             using time_utils::isServiceTimeConstraintViolated;
             if (!isServiceTimeConstraintViolated(*asgn.vehicle, requestState, totalDetour, routeState)) {
                 // If assignment found by collective search adheres to service time constraint, we have found the
                 // best PALS assignment.
-                assert(calculator.calc(asgn, requestState) == minCost);
-                bestAsgn.tryAssignmentWithKnownCost(asgn, minCost);
+                KASSERT(Calc::calc(asgn, requestState, routeState) == minCost);
+                bestAsgn.tryAssignmentWithKnownCost(asgn, minCost, routeState);
 
                 const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
                 stats.tryAssignmentsTime += tryAssignmentsTime;
@@ -156,18 +157,17 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_usedFallback = true;
 
             // Otherwise fall back to computing distances explicitly:
-            fallbackStrategy.tryPickupAfterLastStop(bestAsgn);
+            fallbackStrategy.tryPickupAfterLastStop(bestAsgn, minCostSearch.getUpperBoundCostWithHardConstraints(),
+                                                    routeState, lastStopBuckets);
         }
 
     private:
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const CostCalculator &calculator;
         const CH &ch;
-        const RouteStateData &routeState;
         const RequestState &requestState;
-        stats::PalsAssignmentsPerformanceStats& stats;
+        stats::PalsAssignmentsPerformanceStats &stats;
 
         MinCostPairAfterLastStopQueryInst minCostSearch;
         VehicleToPDLocQueryT &vehicleToPDLocQuery;

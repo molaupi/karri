@@ -39,6 +39,10 @@ namespace karri {
     template<
             typename RequestStateInitializerT,
             typename AssignmentFinderResponseT,
+            typename EllipticBucketsEnvT,
+            typename PALSPrecomputedLastStopInfoT,
+            typename DALSPrecomputedLastStopInfoT,
+            typename LastStopsAtVerticesInfoT,
             typename EllipticBCHSearchesT,
             typename PDDistanceSearchesT,
             typename OrdAssignmentsT,
@@ -53,6 +57,16 @@ namespace karri {
 
         AssignmentFinder(RequestState &requestState,
                          AssignmentFinderResponseT assignmentFinderResponse,
+                         RouteStateData &varRouteState,
+                         const EllipticBucketsEnvT &varEllipticBuckets,
+                         const PALSPrecomputedLastStopInfoT &varPalsPrecomputedLastStopInfo,
+                         const DALSPrecomputedLastStopInfoT &varDalsPrecomputedLastStopInfo,
+                         const LastStopsAtVerticesInfoT &varLastStopsAtVerticesInfo,
+                         RouteStateData &fixedRouteState,
+                         const EllipticBucketsEnvT &fixedEllipticBuckets,
+                         const PALSPrecomputedLastStopInfoT &fixedPalsPrecomputedLastStopInfo,
+                         const DALSPrecomputedLastStopInfoT &fixedDalsPrecomputedLastStopInfo,
+                         const LastStopsAtVerticesInfoT &fixedLastStopsAtVerticesInfo,
                          RequestStateInitializerT &requestStateInitializer,
                          EllipticBCHSearchesT &ellipticBchSearches,
                          PDDistanceSearchesT &pdDistanceSearches,
@@ -63,6 +77,16 @@ namespace karri {
                          RelevantPDLocsFilterT &relevantPdLocsFilter)
                 : reqState(requestState),
                   asgnFinderResponse(assignmentFinderResponse),
+                  varRouteState(varRouteState),
+                  varEllipticBuckets(varEllipticBuckets),
+                  varPalsPrecomputedLastStopInfo(varPalsPrecomputedLastStopInfo),
+                  varDalsPrecomputedLastStopInfo(varDalsPrecomputedLastStopInfo),
+                  varLastStopsAtVerticesInfo(varLastStopsAtVerticesInfo),
+                  fixedRouteState(fixedRouteState),
+                  fixedEllipticBuckets(fixedEllipticBuckets),
+                  fixedPalsPrecomputedLastStopInfo(fixedPalsPrecomputedLastStopInfo),
+                  fixedDalsPrecomputedLastStopInfo(fixedDalsPrecomputedLastStopInfo),
+                  fixedLastStopsAtVerticesInfo(fixedLastStopsAtVerticesInfo),
                   requestStateInitializer(requestStateInitializer),
                   ellipticBchSearches(ellipticBchSearches),
                   pdDistanceSearches(pdDistanceSearches),
@@ -75,53 +99,81 @@ namespace karri {
         const AssignmentFinderResponseT &findBestAssignment(const Request &req) {
 
             // Initialize for this request:
-            initializeForRequest(req);
-            auto &bestAsgn = asgnFinderResponse.getBestVarAsgn();
+            requestStateInitializer.initializeRequestState(req);
+            asgnFinderResponse.initNotUsingVehicle();
 
             // Compute PD distances:
+            pdDistanceSearches.init();
             pdDistanceSearches.run();
 
-            // Try PALS assignments:
-            palsAssignments.findAssignments(bestAsgn);
+            // Find the best regular assignment:
+            asgnFinderResponse.initRegular();
+            findBestAssignment(asgnFinderResponse.getBestRegularAsgn(), varRouteState, varEllipticBuckets,
+                               varPalsPrecomputedLastStopInfo, varDalsPrecomputedLastStopInfo,
+                               varLastStopsAtVerticesInfo);
 
-            // Run elliptic BCH searches:
-            ellipticBchSearches.run(bestAsgn.cost());
-
-            // Filter feasible PD-locations between ordinary stops:
-            relevantPdLocsFilter.filterOrdinary(bestAsgn.cost());
-
-            // Try ordinary assignments:
-            ordAssignments.findAssignments(bestAsgn);
-
-            // Filter feasible PD-locations before next stops:
-            relevantPdLocsFilter.filterBeforeNextStop(bestAsgn.cost());
-
-            // Try DALS assignments:
-            dalsAssignments.findAssignments(bestAsgn);
-
-            // Try PBNS assignments:
-            pbnsAssignments.findAssignments(bestAsgn);
 
             return asgnFinderResponse;
         }
 
     private:
 
-        void initializeForRequest(const Request &req) {
-            requestStateInitializer.initializeRequestState(req);
-            asgnFinderResponse.initForRequest();
+        void findBestAssignment(BestAsgn &bestAsgn, const RouteStateData &routeState,
+                                const EllipticBucketsEnvT &ellipticBucketsEnv,
+                                const PALSPrecomputedLastStopInfoT &palsPrecomputedLastStopInfo,
+                                const DALSPrecomputedLastStopInfoT &dalsPrecomputedLastStopInfo,
+                                const LastStopsAtVerticesInfoT &lastStopsAtVerticesInfo) {
 
-            // Initialize components according to new request state:
-            ellipticBchSearches.init();
-            pdDistanceSearches.init();
-            ordAssignments.init();
-            pbnsAssignments.init();
-            palsAssignments.init();
-            dalsAssignments.init();
+            initializeComponents(routeState, ellipticBucketsEnv, lastStopsAtVerticesInfo);
+
+            // Try PALS assignments:
+            palsAssignments.findAssignments(bestAsgn, routeState, palsPrecomputedLastStopInfo, lastStopsAtVerticesInfo);
+
+            // Run elliptic BCH searches:
+            ellipticBchSearches.run(bestAsgn.cost(), routeState, ellipticBucketsEnv.getSourceBuckets(),
+                                    ellipticBucketsEnv.getTargetBuckets());
+
+            // Filter feasible PD-locations between ordinary stops:
+            relevantPdLocsFilter.filterOrdinary(bestAsgn.cost(), routeState);
+
+            // Try ordinary assignments:
+            ordAssignments.findAssignments(bestAsgn, routeState);
+
+            // Filter feasible PD-locations before next stops:
+            relevantPdLocsFilter.filterBeforeNextStop(bestAsgn.cost(), routeState);
+
+            // Try DALS assignments:
+            dalsAssignments.findAssignments(bestAsgn, routeState, dalsPrecomputedLastStopInfo);
+
+            // Try PBNS assignments:
+            pbnsAssignments.findAssignments(bestAsgn, routeState);
+        }
+
+        void
+        initializeComponents(const RouteStateData &routeState,
+                             const EllipticBucketsEnvT &ellipticBucketsEnv,
+                             const LastStopsAtVerticesInfoT &lastStopsAtVertices) {
+            ellipticBchSearches.init(routeState, ellipticBucketsEnv.getSourceBuckets(), lastStopsAtVertices);
+            ordAssignments.init(routeState);
+            pbnsAssignments.init(routeState);
+            palsAssignments.init(routeState);
+            dalsAssignments.init(routeState);
         }
 
         RequestState &reqState;
         AssignmentFinderResponseT asgnFinderResponse;
+
+        const RouteStateData &varRouteState;
+        const EllipticBucketsEnvT &varEllipticBuckets;
+        const PALSPrecomputedLastStopInfoT &varPalsPrecomputedLastStopInfo;
+        const DALSPrecomputedLastStopInfoT &varDalsPrecomputedLastStopInfo;
+        const LastStopsAtVerticesInfoT &varLastStopsAtVerticesInfo;
+
+        const RouteStateData &fixedRouteState;
+        const EllipticBucketsEnvT &fixedEllipticBuckets;
+        const PALSPrecomputedLastStopInfoT &fixedPalsPrecomputedLastStopInfo;
+        const DALSPrecomputedLastStopInfoT &fixedDalsPrecomputedLastStopInfo;
+        const LastStopsAtVerticesInfoT &fixedLastStopsAtVerticesInfo;
 
         RequestStateInitializerT &requestStateInitializer;
         EllipticBCHSearchesT &ellipticBchSearches; // Elliptic BCH searches that find distances between existing stops and PD-locations (except after last stop).

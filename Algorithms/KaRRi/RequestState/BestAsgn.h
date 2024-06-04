@@ -35,10 +35,9 @@ namespace karri {
     class BestAsgn {
 
     public:
-        BestAsgn(const CostCalculator &calculator, const RequestState& requestState)
+        BestAsgn(const RequestState& requestState)
                 : bestAssignment(),
                   bestCost(-1),
-                  calculator(calculator),
                   requestState(requestState) {}
 
         ~BestAsgn() {}
@@ -56,13 +55,13 @@ namespace karri {
             return bestCost;
         }
 
-        bool tryAssignment(const Assignment &asgn) {
-            const auto cost = calculator.calc(asgn, requestState);
-            return tryAssignmentWithKnownCost(asgn, cost);
+        bool tryAssignment(const Assignment &asgn, const RouteStateData& routeState) {
+            const auto cost = Calc::calc(asgn, requestState, routeState);
+            return tryAssignmentWithKnownCost(asgn, cost, routeState);
         }
 
-        bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
-            KASSERT(calculator.calc(asgn, requestState) == cost);
+        bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost, const RouteStateData& routeState) {
+            KASSERT(Calc::calc(asgn, requestState, routeState) == cost);
 
             if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
                                                      breakCostTie(asgn, bestAssignment)))) {
@@ -85,7 +84,6 @@ namespace karri {
 
         Assignment bestAssignment;
         int bestCost;
-        const CostCalculator &calculator;
         const RequestState& requestState;
 
     };

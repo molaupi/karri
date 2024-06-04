@@ -40,25 +40,25 @@ namespace karri {
     public:
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
-                              const CostCalculator &calculator, const LastStopsAtVerticesT &lastStopsAtVertices,
-                              const RouteStateData &routeState, const PDDistancesT &pdDistances,
+                              const PDDistancesT &pdDistances,
                               const RequestState &requestState, stats::PalsAssignmentsPerformanceStats &stats)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
-                  calculator(calculator),
-                  lastStopsAtVertices(lastStopsAtVertices),
-                  routeState(routeState),
                   pdDistances(pdDistances),
                   requestState(requestState),
                   stats(stats) {}
 
-        void findAssignments(BestAsgn &bestAsgn) {
-            findAssignmentsWherePickupCoincidesWithLastStop(bestAsgn);
-            strategy.tryPickupAfterLastStop(bestAsgn);
+        // lastStopInfo may be last stop buckets for BCH-based strategies or information about last stops at vertices
+        // in the case of the Dijkstra strategy
+        void findAssignments(BestAsgn &bestAsgn, const RouteStateData &routeState,
+                             const typename StrategyT::PrecomputedLastStopInfo &lastStopInfo,
+                             const LastStopsAtVerticesT& lastStopsAtVertices) {
+            findAssignmentsWherePickupCoincidesWithLastStop(bestAsgn, routeState, lastStopsAtVertices);
+            strategy.tryPickupAfterLastStop(bestAsgn, bestAsgn.cost(), routeState, lastStopInfo);
         }
 
-        void init() {
+        void init(const RouteStateData &) {
             // no op
         }
 
@@ -66,7 +66,8 @@ namespace karri {
 
         // Simple case for pickups that coincide with last stops of vehicles is the same regardless of strategy, so it
         // is treated here.
-        void findAssignmentsWherePickupCoincidesWithLastStop(BestAsgn& bestAsgn) {
+        void findAssignmentsWherePickupCoincidesWithLastStop(BestAsgn &bestAsgn, const RouteStateData &routeState,
+                                                             const LastStopsAtVerticesT& lastStopsAtVertices) {
             int numInsertionsForCoinciding = 0;
             int numCandidateVehiclesForCoinciding = 0;
             Timer timer;
@@ -84,8 +85,8 @@ namespace karri {
                         continue;
 
                     // Calculate lower bound on insertion cost with this pickup and vehicle
-                    const auto lowerBoundCost = calculator.calcCostLowerBoundForPickupAfterLastStop(
-                            fleet[vehId], *asgn.pickup, 0, requestState.minDirectPDDist, requestState);
+                    const auto lowerBoundCost = Calc::calcCostLowerBoundForPickupAfterLastStop(
+                            fleet[vehId], *asgn.pickup, 0, requestState.minDirectPDDist, requestState, routeState);
                     if (lowerBoundCost > bestAsgn.cost())
                         continue;
 
@@ -98,7 +99,7 @@ namespace karri {
                         asgn.dropoff = &d;
                         asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                         ++numInsertionsForCoinciding;
-                        bestAsgn.tryAssignment(asgn);
+                        bestAsgn.tryAssignment(asgn, routeState);
                     }
                 }
             }
@@ -113,9 +114,6 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const CostCalculator &calculator;
-        const LastStopsAtVerticesT &lastStopsAtVertices;
-        const RouteStateData &routeState;
         const PDDistancesT &pdDistances;
         const RequestState &requestState;
         stats::PalsAssignmentsPerformanceStats &stats;

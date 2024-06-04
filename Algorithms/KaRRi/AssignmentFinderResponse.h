@@ -44,22 +44,28 @@ namespace karri {
     public:
 
         AssignmentFinderResponse(const VehInputGraphT &vehInputGraph, const PsgInputGraphT &psgInputGraph,
-                                 const CostCalculator &calculator, const RequestState &requestState)
+                                 const RequestState &requestState)
                 : vehInputGraph(vehInputGraph), psgInputGraph(psgInputGraph), requestState(requestState),
-                  bestVarAsgn(calculator, requestState) {}
+                  bestRegularAsgn(requestState), bestDisplacingAsgn(requestState) {}
 
-        void initForRequest() {
-            bestVarAsgn.reset();
-
+        void initNotUsingVehicle() {
             // Compute direct walking cost:
             const int destPsgTravelTime = psgInputGraph.travelTime(
                     vehInputGraph.toPsgEdge(requestState.originalRequest.destination));
-            const int cost = CostCalculator::calcCostForNotUsingVehicle(requestState.directWalkingDist, destPsgTravelTime,
-                                                                        requestState);
+            const int cost = Calc::calcCostForNotUsingVehicle(requestState.directWalkingDist, destPsgTravelTime,
+                                                              requestState);
             notUsingVehicleCost = cost;
+        }
 
+        void initRegular() {
+            bestRegularAsgn.reset();
             // Direct walking cost is an upper bound for the cost of any assignment.
-            bestVarAsgn.setExternalCostUpperBound(cost);
+            bestRegularAsgn.setExternalCostUpperBound(notUsingVehicleCost);
+        }
+
+        void initDisplacing() {
+            bestDisplacingAsgn.reset();
+            bestDisplacingAsgn.setExternalCostUpperBound(std::min(bestRegularAsgn.cost(), notUsingVehicleCost));
         }
 
         BestAsgnType getBestAsgnType() const {
@@ -72,19 +78,27 @@ namespace karri {
         }
 
         int getBestCost() const {
-            return std::min(bestVarAsgn.cost(), notUsingVehicleCost);
+            return std::min(bestRegularAsgn.cost(), notUsingVehicleCost);
         }
 
         const int &getNotUsingVehicleDist() const {
             return requestState.directWalkingDist;
         }
 
-        BestAsgn &getBestVarAsgn() {
-            return bestVarAsgn;
+        BestAsgn &getBestRegularAsgn() {
+            return bestRegularAsgn;
         }
 
-        const BestAsgn &getBestVarAsgn() const {
-            return bestVarAsgn;
+        const BestAsgn &getBestRegularAsgn() const {
+            return bestRegularAsgn;
+        }
+
+        BestAsgn &getBestDisplacingAsgn() {
+            return bestDisplacingAsgn;
+        }
+
+        const BestAsgn &getBestDisplacingAsgn() const {
+            return bestDisplacingAsgn;
         }
 
     private:
@@ -93,7 +107,8 @@ namespace karri {
         const PsgInputGraphT &psgInputGraph;
         const RequestState &requestState;
 
-        BestAsgn bestVarAsgn;
+        BestAsgn bestRegularAsgn;
+        BestAsgn bestDisplacingAsgn;
         int notUsingVehicleCost;
 
     };

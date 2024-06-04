@@ -32,7 +32,6 @@ namespace karri::DropoffAfterLastStopStrategies {
             typename DijLabelSet,
             typename LastStopsAtVerticesT>
     struct DijkstraStrategy {
-
     private:
 
         static constexpr int K = DijLabelSet::K;
@@ -42,17 +41,15 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         struct TryToInsertDropoffAfterLastStop {
             TryToInsertDropoffAfterLastStop(DijkstraStrategy &strategy,
-                                            const CostCalculator &calculator,
                                             const RequestState &requestState)
                     : strategy(strategy),
-                      calculator(calculator),
                       requestState(requestState) {}
 
             template<typename DistLabelContainerT>
             bool operator()(const int v, DistanceLabel &distFromV, const DistLabelContainerT & /*distLabels*/) {
-
                 const DistanceLabel minCosts =
-                        calculator.calcKVehicleIndependentCostLowerBoundsForDALSWithKnownMinDistToDropoff<DijLabelSet>(distFromV, 0, 0, requestState);
+                        Calc::calcKVehicleIndependentCostLowerBoundsForDALSWithKnownMinDistToDropoff<DijLabelSet>(
+                                distFromV, 0, 0, requestState);
                 const LabelMask bestCostExceeded = strategy.curBestCostAsLabel < minCosts;
                 if (allSet(bestCostExceeded))
                     return true;
@@ -63,7 +60,6 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         private:
             DijkstraStrategy &strategy;
-            const CostCalculator &calculator;
             const RequestState &requestState;
         };
 
@@ -72,10 +68,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         DijkstraStrategy(const InputGraphT &inputGraph,
                          const InputGraphT &reverseGraph,
                          const Fleet &fleet,
-                         const CostCalculator &calculator,
                          CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
-                         const RouteStateData &routeState,
-                         const LastStopsAtVerticesT &lastStopsAtVertices,
                          const RequestState &requestState,
                          stats::DalsAssignmentsPerformanceStats &stats,
                          const RelevantPDLocs &relevantOrdinaryPickups,
@@ -84,17 +77,19 @@ namespace karri::DropoffAfterLastStopStrategies {
                   requestState(requestState),
                   stats(stats),
                   fleet(fleet),
-                  routeState(routeState),
-                  lastStopsAtVertices(lastStopsAtVertices),
-                  calculator(calculator),
                   curVehLocToPickupSearches(curVehLocToPickupSearches),
                   relevantOrdinaryPickups(relevantOrdinaryPickups),
                   relevantPickupsBeforeNextStop(relevantPickupsBeforeNextStop),
                   pickupsToTryBeforeNextStop(),
-                  dijSearchToDropoff(reverseGraph, {*this, calculator, requestState}),
+                  dijSearchToDropoff(reverseGraph, {*this, requestState}),
                   vehiclesSeen(fleet.size()) {}
 
-        void tryDropoffAfterLastStop(BestAsgn &bestAsgn) {
+        // Interface shared between all DALS strategies.
+        // DijkstraStrategy does not use buckets but only information on which last stops are at a scanned vertex.
+        using PrecomputedLastStopInfo = LastStopsAtVerticesT;
+
+        void tryDropoffAfterLastStop(BestAsgn &bestAsgn, const RouteStateData &pRouteState,
+                                     const PrecomputedLastStopInfo& pLastStopsAtVertices) {
 
             vehiclesSeen.clear();
             tryAssignmentsTime = 0;
@@ -105,6 +100,8 @@ namespace karri::DropoffAfterLastStopStrategies {
             int numEdgeRelaxations = 0;
             int numVerticesSettled = 0;
 
+            routeState = &pRouteState;
+            lastStopsAtVertices = &pLastStopsAtVertices;
 
             const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
                                            curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
@@ -173,8 +170,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                                             BestAsgn &bestAsgn) {
             using namespace time_utils;
 
+            KASSERT(routeState, "Route state must be set before calling this function.");
 
-            if (!lastStopsAtVertices.isAnyLastStopAtVertex(v))
+            if (!lastStopsAtVertices->isAnyLastStopAtVertex(v))
                 return;
 
             Timer timer;
@@ -182,12 +180,12 @@ namespace karri::DropoffAfterLastStopStrategies {
             Assignment asgn;
             auto &dropoffIndex = asgn.dropoffStopIdx;
 
-            for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(v)) {
+            for (const auto &vehId: lastStopsAtVertices->vehiclesWithLastStopAt(v)) {
                 ++numLastStopsVisited;
 
-                const auto occupancies = routeState.occupanciesFor(vehId);
+                const auto occupancies = routeState->occupanciesFor(vehId);
                 asgn.vehicle = &fleet[vehId];
-                dropoffIndex = routeState.numStopsOf(vehId) - 1;
+                dropoffIndex = routeState->numStopsOf(vehId) - 1;
 
                 if (relevantOrdinaryPickups.hasRelevantSpotsFor(vehId)) {
                     vehiclesSeen.insert(vehId);
@@ -217,7 +215,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                             asgn.distToPickup = entry.distToPDLoc;
                             asgn.distFromPickup = entry.distFromPDLocToNextStop;
 
-                            bestAsgn.tryAssignment(asgn);
+                            bestAsgn.tryAssignment(asgn, *routeState);
                             ++numAssignmentsTried;
                         }
                     }
@@ -252,17 +250,17 @@ namespace karri::DropoffAfterLastStopStrategies {
                                 if (asgn.distToPickup >= INFTY)
                                     continue;
 
-                                bestAsgn.tryAssignment(asgn);
+                                bestAsgn.tryAssignment(asgn, *routeState);
                                 ++numAssignmentsTried;
                             } else {
                                 // If we don't know that distance, we set dist to pickup to a lower bound not taking into
                                 // account the path via the current vehicle location first.
                                 asgn.distToPickup = entry.distToPDLoc;
 
-                                const auto cost = calculator.calc(asgn, requestState);
+                                const auto cost = Calc::calc(asgn, requestState, *routeState);
                                 if (cost < bestAsgn.cost() || (cost == bestAsgn.cost() &&
                                                                breakCostTie(asgn,
-                                                                                   bestAsgn.asgn()))) {
+                                                                            bestAsgn.asgn()))) {
                                     // In this case, we need the exact distance to the pickup via the current location of the
                                     // vehicle. We postpone computation of that distance to be able to bundle it with the
                                     // computation of distances to other pickups via the vehicle location. Then all remaining
@@ -283,7 +281,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                                 continue;
 
                             asgn.distFromPickup = pair.second;
-                            bestAsgn.tryAssignment(asgn);
+                            bestAsgn.tryAssignment(asgn, *routeState);
                             ++numAssignmentsTried;
                         }
                     }
@@ -302,10 +300,11 @@ namespace karri::DropoffAfterLastStopStrategies {
         const RequestState &requestState;
         stats::DalsAssignmentsPerformanceStats &stats;
 
+        // Pointers to routeState and lastStopsAtVertices are used since we cannot pass them through the Dijkstra search.
+        RouteStateData const *routeState;
+        LastStopsAtVerticesT const *lastStopsAtVertices;
+
         const Fleet &fleet;
-        const RouteStateData &routeState;
-        const LastStopsAtVerticesT &lastStopsAtVertices;
-        const CostCalculator &calculator;
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         const RelevantPDLocs &relevantOrdinaryPickups;
         const RelevantPDLocs &relevantPickupsBeforeNextStop;

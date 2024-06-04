@@ -320,14 +320,14 @@ namespace karri {
 
             LIGHT_KASSERT(asgnFinderResponse.getBestAsgnType() == REGULAR, "Unexpected assignment type");
 
-            const auto &asgn = asgnFinderResponse.getBestVarAsgn().asgn();
+            const auto &asgn = asgnFinderResponse.getBestRegularAsgn().asgn();
             requestState[reqId] = ASSIGNED_TO_VEH;
             requestData[reqId].walkingTimeToPickup = asgn.pickup->walkingDist;
             requestData[reqId].walkingTimeFromDropoff = asgn.dropoff->walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
 
             int pickupStopId, dropoffStopId;
-            systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId, asgnFinderResponse.getBestVarAsgn());
+            systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId, asgnFinderResponse.getBestRegularAsgn());
             systemStateUpdater.writePerformanceLogs();
             assert(pickupStopId >= 0 && dropoffStopId >= 0);
 

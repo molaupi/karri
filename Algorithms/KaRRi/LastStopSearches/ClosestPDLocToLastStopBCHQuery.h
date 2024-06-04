@@ -50,10 +50,8 @@ namespace karri {
 
         ClosestPDLocToLastStopBCHQuery(const InputGraphT &inputGraph, const int fleetSize,
                                        const CHEnvT &chEnv,
-                                       const LastStopBucketsT &lastStopBuckets,
                                        PruningCriterion pruningCriterion = {}) :
                 inputGraph(inputGraph),
-                lastStopBuckets(lastStopBuckets),
                 ch(chEnv.getCH()),
                 search(ch.downwardGraph(), {}, pruningCriterion),
                 idOfClosestSpotToRank(ch.downwardGraph().numVertices()),
@@ -61,7 +59,7 @@ namespace karri {
                 distVehToClosestSpot(fleetSize) {}
 
         template<typename PDLocsT>
-        void run(const PDLocsT &pdLocs) {
+        void run(const PDLocsT &pdLocs, const LastStopBucketsT& lastStopBuckets) {
 
             Timer timer;
 
@@ -71,7 +69,7 @@ namespace karri {
             while (!search.queue.empty()) {
                 const auto v = search.settleNextVertex();
                 idOfClosestSpotToRank[v] = idOfClosestSpotToRank[search.parent.getVertex(v)];
-                scanVehicleBucketAtRank(v);
+                scanVehicleBucketAtRank(v, lastStopBuckets);
             }
 
             runTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -136,7 +134,7 @@ namespace karri {
             }
         }
 
-        void scanVehicleBucketAtRank(const int v) {
+        void scanVehicleBucketAtRank(const int v, const LastStopBucketsT& lastStopBuckets) {
             const auto idOfSpotClosestToV = idOfClosestSpotToRank[v];
             const auto distVToSpot = search.getDistance(v);
             auto bucket = lastStopBuckets.getUnsortedBucketOf(v);
@@ -152,7 +150,6 @@ namespace karri {
         }
 
         const InputGraphT &inputGraph;
-        const LastStopBucketsT &lastStopBuckets;
         const CH &ch;
 
         using Search = Dijkstra<typename CH::SearchGraph, typename CH::Weight, LabelSet, dij::NoCriterion, PruningCriterion>;

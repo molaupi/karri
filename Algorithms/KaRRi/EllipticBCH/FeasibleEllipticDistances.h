@@ -51,16 +51,15 @@ namespace karri {
 
     public:
 
-        explicit FeasibleEllipticDistances(const int fleetSize, const RouteStateData &routeState)
-                : routeState(routeState),
-                  startOfRangeInValueArray(fleetSize),
+        explicit FeasibleEllipticDistances(const int fleetSize)
+                : startOfRangeInValueArray(fleetSize),
                   vehiclesWithRelevantPDLocs(fleetSize),
                   minDistToPDLoc(fleetSize),
                   minDistFromPDLocToNextStop(fleetSize) {}
 
         template<typename PDLocsAtExistingStopsT, typename InputGraphT>
         void init(const int newNumPDLocs, const PDLocsAtExistingStopsT &pdLocsAtExistingStops,
-                  const InputGraphT &inputGraph) {
+                  const InputGraphT &inputGraph, const RouteStateData& routeState) {
             numLabelsPerStop = newNumPDLocs / K + (newNumPDLocs % K != 0);
 
             if (StopIdManager::getMaxStopId() >= startOfRangeInValueArray.size()) {
@@ -88,12 +87,12 @@ namespace karri {
                 const auto &stopId = routeState.stopIdsFor(vehId)[pdLocAtExistingStop.stopIndex];
                 const auto &stopVertex = inputGraph.edgeHead(
                         routeState.stopLocationsFor(vehId)[pdLocAtExistingStop.stopIndex]);
-                allocateEntriesFor(stopId);
+                allocateEntriesFor(stopId, vehId);
 
                 DistanceLabel zeroLabel = INFTY;
                 zeroLabel[pdLocAtExistingStop.pdId % K] = 0;
                 const auto firstIdInBatch = (pdLocAtExistingStop.pdId / K) * K;
-                updateDistanceFromStopToPDLoc(stopId, firstIdInBatch, zeroLabel, stopVertex);
+                updateDistanceFromStopToPDLoc(stopId, vehId, firstIdInBatch, zeroLabel, stopVertex);
 
                 const auto lengthOfLegStartingHere = time_utils::calcLengthOfLegStartingAt(
                         pdLocAtExistingStop.stopIndex, pdLocAtExistingStop.vehId, routeState);
@@ -104,16 +103,16 @@ namespace karri {
         }
 
         // Allocate entries for the given stop if none exist already.
-        void preallocateEntriesFor(const int stopId) {
+        void preallocateEntriesFor(const int stopId, const RouteStateData &routeState) {
             if (!hasPotentiallyRelevantPDLocs(stopId))
-                allocateEntriesFor(stopId);
+                allocateEntriesFor(stopId, routeState.vehicleIdOf(stopId));
         }
 
         // Updates the distance from stop to the PD loc. Distance is written if there are
         // entries for the stop already or dynamic allocation of entries is allowed.
         // Returns mask indicating where the distance has been improved (all false if we don't know the stop and dynamic
         // allocation is not allowed).
-        LabelMask updateDistanceFromStopToPDLoc(const int stopId, const unsigned int firstPDLocId,
+        LabelMask updateDistanceFromStopToPDLoc(const int stopId, const int vehId, const unsigned int firstPDLocId,
                                                 const DistanceLabel newDistToPDLoc, const int meetingVertex) {
             assert(stopId >= 0 && stopId <= StopIdManager::getMaxStopId());
             assert(firstPDLocId < numLabelsPerStop * K);
@@ -122,7 +121,7 @@ namespace karri {
 
             // If no entries exist yet for this stop, perform the allocation.
             if (startOfRangeInValueArray[stopId] == INVALID_INDEX) {
-                allocateEntriesFor(stopId);
+                allocateEntriesFor(stopId, vehId);
             }
 
             // Write values for new entry and set pointer from PD loc to the entries
@@ -245,11 +244,11 @@ namespace karri {
 
     private:
 
-        void allocateEntriesFor(const int stopId) {
+        void allocateEntriesFor(const int stopId, const int vehId) {
             assert(startOfRangeInValueArray[stopId] == INVALID_INDEX);
             const auto curNumLabels = distToRelevantPDLocs.size();
             startOfRangeInValueArray[stopId] = curNumLabels;
-            vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
+            vehiclesWithRelevantPDLocs.insert(vehId);
             distToRelevantPDLocs.insert(distToRelevantPDLocs.end(), numLabelsPerStop, DistanceLabel(INFTY));
             distFromRelevantPDLocsToNextStop.insert(distFromRelevantPDLocsToNextStop.end(),
                                                     numLabelsPerStop, DistanceLabel(INFTY));
@@ -262,8 +261,6 @@ namespace karri {
             minDistToPDLoc[stopId] = INFTY;
             minDistFromPDLocToNextStop[stopId] = INFTY;
         }
-
-        const RouteStateData &routeState;
 
         int numLabelsPerStop{};
 

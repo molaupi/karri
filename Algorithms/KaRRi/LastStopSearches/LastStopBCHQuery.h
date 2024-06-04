@@ -62,12 +62,12 @@ namespace karri {
                 int numEntriesScannedHere = 0;
 
                 if constexpr (!LastStopBucketsEnvT::SORTED) {
-                    auto bucket = search.bucketContainer.getBucketOf(v);
+                    auto bucket = search.bucketContainer->getBucketOf(v);
                     for (const auto &entry: bucket) {
                         ++numEntriesScannedHere;
 
                         const int &vehId = entry.targetId;
-                        if (!search.pruner.isVehicleEligible(vehId))
+                        if (!search.pruner.isVehicleEligible(vehId, search.curRouteState))
                             continue;
 
                         const DistanceLabel distViaV = distFromV + DistanceLabel(entry.distToTarget);
@@ -76,42 +76,42 @@ namespace karri {
                 } else {
 
                     if constexpr (PrunerT::INCLUDE_IDLE_VEHICLES) {
-                        auto idleBucket = search.bucketContainer.getIdleBucketOf(v);
+                        auto idleBucket = search.bucketContainer->getIdleBucketOf(v);
 
                         for (const auto &entry: idleBucket) {
                             ++numEntriesScannedHere;
 
                             const int &vehId = entry.targetId;
-                            assert(search.routeState.numStopsOf(vehId) == 1);
+                            KASSERT(search.curRouteState->numStopsOf(vehId) == 1);
                             const DistanceLabel distFromLastStopToV = entry.distToTarget;
                             const DistanceLabel distViaV = distFromLastStopToV + distFromV;
                             const auto atLeastAsGoodAsCurBest = ~search.pruner.doesDistanceNotAdmitBestAsgn(distViaV, true);
                             if (!anySet(atLeastAsGoodAsCurBest))
                                 break;
 
-                            if (!search.pruner.isVehicleEligible(vehId))
+                            if (!search.pruner.isVehicleEligible(vehId, *search.curRouteState))
                                 continue;
 
                             tryUpdatingDistance(vehId, distViaV);
                         }
                     }
 
-                    auto nonIdleBucket = search.bucketContainer.getNonIdleBucketOf(v);
+                    auto nonIdleBucket = search.bucketContainer->getNonIdleBucketOf(v);
                     for (const auto& entry : nonIdleBucket) {
                         ++numEntriesScannedHere;
                         const int& vehId = entry.targetId;
-                        assert(search.routeState.numStopsOf(vehId) > 1);
+                        KASSERT(search.curRouteState->numStopsOf(vehId) > 1);
                         const DistanceLabel arrTimeAtV = entry.distToTarget;
                         const DistanceLabel arrTimeAtPDLoc = arrTimeAtV + distFromV;
                         const auto atLeastAsGoodAsCurBest = ~search.pruner.doesArrTimeNotAdmitBestAsgn(arrTimeAtPDLoc,distFromV);
                         if (!anySet(atLeastAsGoodAsCurBest))
                             break;
 
-                        if (!search.pruner.isVehicleEligible(vehId))
+                        if (!search.pruner.isVehicleEligible(vehId, *search.curRouteState))
                             continue;
 
 
-                        const auto depTimeAtLastStop = search.routeState.schedDepTimesFor(vehId)[search.routeState.numStopsOf(vehId) - 1];
+                        const auto depTimeAtLastStop = search.curRouteState->schedDepTimesFor(vehId)[search.curRouteState->numStopsOf(vehId) - 1];
                         const auto distViaV = arrTimeAtPDLoc - depTimeAtLastStop;
                         tryUpdatingDistance(vehId, distViaV);
                     }
@@ -133,11 +133,11 @@ namespace karri {
                 if (!anySet(mask))
                     return;
 
-                mask &= ~search.pruner.isWorseThanBestKnownVehicleDependent(vehId, distToPDLoc);
+                mask &= ~search.pruner.isWorseThanBestKnownVehicleDependent(vehId, distToPDLoc, *search.curRouteState);
                 if (anySet(mask)) { // if any search requires updates, update the right ones according to mask
                     search.tentativeDistances.setDistancesForCurBatchIf(vehId, distToPDLoc, mask);
                     search.vehiclesSeen.insert(vehId);
-                    search.pruner.updateUpperBoundCost(vehId, distToPDLoc);
+                    search.pruner.updateUpperBoundCost(vehId, distToPDLoc, *search.curRouteState);
                 }
             }
 
@@ -163,18 +163,15 @@ namespace karri {
     public:
 
         LastStopBCHQuery(
-                const LastStopBucketsEnvT &lastStopBucketsEnv,
                 TentativeLastStopDistances <LabelSetT> &tentativeLastStopDistances,
                 const CHEnvT &chEnv,
-                const RouteStateData& routeState,
                 Subset &vehiclesSeen,
                 PrunerT pruner)
                 : upwardSearch(chEnv.template getReverseSearch<ScanSortedBucket, StopLastStopBCH, LabelSetT>(
                 ScanSortedBucket(*this), StopLastStopBCH(*this))),
                   pruner(pruner),
                   ch(chEnv.getCH()),
-                  bucketContainer(lastStopBucketsEnv.getBuckets()),
-                  routeState(routeState),
+                  bucketContainer(nullptr),
                   tentativeDistances(tentativeLastStopDistances),
                   vehiclesSeen(vehiclesSeen),
                   numVerticesSettled(0),
@@ -188,6 +185,14 @@ namespace karri {
             std::transform(sources.begin(), sources.end(), sources_ranks.begin(),
                            [&](const int v) { return ch.rank(v); });
             upwardSearch.runWithOffset(sources_ranks, offsets);
+        }
+
+        void setCurRouteState(const RouteStateData& routeState) {
+            curRouteState = &routeState;
+        }
+
+        void setCurBucketContainer(const typename LastStopBucketsEnvT::BucketContainer& newBucketContainer) {
+            bucketContainer = &newBucketContainer;
         }
 
         int getNumEdgeRelaxations() const {
@@ -208,8 +213,8 @@ namespace karri {
         PrunerT pruner;
 
         const CH &ch;
-        const typename LastStopBucketsEnvT::BucketContainer &bucketContainer;
-        const RouteStateData& routeState;
+        typename LastStopBucketsEnvT::BucketContainer const * bucketContainer;
+        RouteStateData const *curRouteState;
 
         TentativeLastStopDistances <LabelSetT> &tentativeDistances;
 

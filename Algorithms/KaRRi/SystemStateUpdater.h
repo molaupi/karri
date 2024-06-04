@@ -246,7 +246,7 @@ namespace karri {
             }
 
 
-            const auto &asgn = asgnFinderResponse.getBestVarAsgn().asgn();
+            const auto &asgn = asgnFinderResponse.getBestRegularAsgn().asgn();
             const auto &vehId = asgn.vehicle->vehicleId;
             const auto &numStops = varRouteState.numStopsOf(vehId);
             using time_utils::getVehDepTimeAtStopForRequest;

@@ -45,16 +45,14 @@ namespace karri::PickupAfterLastStopStrategies {
 
         struct TryToInsertPickupAfterLastStop {
             TryToInsertPickupAfterLastStop(DijkstraStrategy &strategy,
-                                           const CostCalculator &calculator,
                                            const RequestState &requestState)
                     : strategy(strategy),
-                      calculator(calculator),
                       requestState(requestState) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int v, DistLabelT &distFromV, const DistLabelContainerT & /*distLabels*/) {
 
-                const DistanceLabel costLowerBound = calculator.calcCostLowerBoundForKPickupsAfterLastStopIndependentOfVehicle(
+                const DistanceLabel costLowerBound = Calc::calcCostLowerBoundForKPickupsAfterLastStopIndependentOfVehicle(
                         distFromV, DistanceLabel(requestState.minDirectPDDist), requestState);
                 const LabelMask bestCostExceeded = DistanceLabel(strategy.upperBoundCost) < costLowerBound;
                 if (allSet(bestCostExceeded))
@@ -67,7 +65,6 @@ namespace karri::PickupAfterLastStopStrategies {
         private:
 
             DijkstraStrategy &strategy;
-            const CostCalculator &calculator;
             const RequestState &requestState;
         };
 
@@ -76,35 +73,35 @@ namespace karri::PickupAfterLastStopStrategies {
         DijkstraStrategy(const InputGraphT &inputGraph,
                          const InputGraphT &reverseGraph,
                          const Fleet &fleet,
-                         const RouteStateData &routeState,
-                         const LastStopsAtVerticesT &lastStopsAtVertices,
-                         const CostCalculator &calculator,
                          const PDDistancesT &pdDistances,
                          const RequestState &requestState,
-                         stats::PalsAssignmentsPerformanceStats& stats)
+                         stats::PalsAssignmentsPerformanceStats &stats)
                 : inputGraph(inputGraph),
                   reverseGraph(reverseGraph),
                   requestState(requestState),
                   stats(stats),
                   pdDistances(pdDistances),
-                  calculator(calculator),
                   fleet(fleet),
-                  routeState(routeState),
-                  lastStopsAtVertices(lastStopsAtVertices),
-                  dijSearchToPickup(reverseGraph, {*this, calculator, requestState}),
+                  dijSearchToPickup(reverseGraph, {*this, requestState}),
                   lastStopDistances(fleet.size()),
                   vehiclesSeen(fleet.size()) {}
 
-        void tryPickupAfterLastStop(BestAsgn& bestAsgn) {
-            runDijkstraSearches(bestAsgn);
-            enumerateAssignments(bestAsgn);
+        // Interface shared between all DALS strategies.
+        // DijkstraStrategy does not use buckets but only information on which last stops are at a scanned vertex.
+        using PrecomputedLastStopInfo = LastStopsAtVerticesT;
+
+        void tryPickupAfterLastStop(BestAsgn &bestAsgn, const int& initialUpperBoundCost, const RouteStateData &routeState,
+                                    const PrecomputedLastStopInfo& pLastStopsAtVertices) {
+            runDijkstraSearches(initialUpperBoundCost, pLastStopsAtVertices);
+            enumerateAssignments(bestAsgn, routeState);
         }
 
     private:
 
-        void runDijkstraSearches(BestAsgn& bestAsgn) {
+        void runDijkstraSearches(const int& initialUpperBoundCost, const PrecomputedLastStopInfo& pLastStopsAtVertices) {
             numLastStopsVisited = 0;
-            upperBoundCost = bestAsgn.cost();
+            upperBoundCost = initialUpperBoundCost;
+            lastStopsAtVertices = &pLastStopsAtVertices;
             const int numBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
             lastStopDistances.init(numBatches);
             vehiclesSeen.clear();
@@ -130,7 +127,7 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Enumerate PALS assignments:
-        void enumerateAssignments(BestAsgn& bestAsgn) {
+        void enumerateAssignments(BestAsgn &bestAsgn, const RouteStateData &routeState) {
             using namespace time_utils;
             int numAssignmentsTried = 0;
             Timer timer;
@@ -160,12 +157,11 @@ namespace karri::PickupAfterLastStopStrategies {
                     const auto psgTimeTillDepAtThisPickup =
                             depTimeAtThisPickup - requestState.originalRequest.requestTime;
                     const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);
-                    const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
+                    const auto minCost = Calc::calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
                                                                                              psgTimeTillDepAtThisPickup,
                                                                                              minDirectDistForThisPickup,
                                                                                              asgn.pickup->walkingDist,
-                                                                                             0,
-                                                                                             requestState);
+                                                                                             0, requestState);
                     if (minCost > bestAsgn.cost())
                         continue;
 
@@ -176,7 +172,7 @@ namespace karri::PickupAfterLastStopStrategies {
                         // Try inserting pair with pickup after last stop:
                         ++numAssignmentsTried;
                         asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
-                        bestAsgn.tryAssignment(asgn);
+                        bestAsgn.tryAssignment(asgn, routeState);
                     }
                 }
             }
@@ -212,25 +208,25 @@ namespace karri::PickupAfterLastStopStrategies {
 
         void updateDistancesForLastStopsAt(const int v, const DistanceLabel &distFromV) {
 
-            if (!lastStopsAtVertices.isAnyLastStopAtVertex(v))
+            if (!lastStopsAtVertices->isAnyLastStopAtVertex(v))
                 return;
 
             const auto minCost =
-                    calculator.calcLowerBoundCostForKPairedAssignmentsAfterLastStop<DijLabelSet>(distFromV,
-                                                                                                 curMinDirectDistances,
-                                                                                                 curWalkingDists,
-                                                                                                 requestState);
+                    Calc::calcLowerBoundCostForKPairedAssignmentsAfterLastStop<DijLabelSet>(distFromV,
+                                                                                            curMinDirectDistances,
+                                                                                            curWalkingDists,
+                                                                                            requestState);
             LabelMask notExceedingUpperBound = ~(DistanceLabel(upperBoundCost) < minCost);
 
             if (!anySet(notExceedingUpperBound))
                 return;
 
-            for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(v)) {
+            for (const auto &vehId: lastStopsAtVertices->vehiclesWithLastStopAt(v)) {
                 ++numLastStopsVisited;
                 lastStopDistances.setDistancesForCurBatchIf(vehId, distFromV, notExceedingUpperBound);
                 vehiclesSeen.insert(vehId);
 
-                const DistanceLabel cost = calculator.calcUpperBoundCostForKPairedAssignmentsAfterLastStop<DijLabelSet>(
+                const DistanceLabel cost = Calc::calcUpperBoundCostForKPairedAssignmentsAfterLastStop<DijLabelSet>(
                         fleet[vehId], distFromV, curPassengerArrTimesAtPickups,
                         curDistancesToDest, curWalkingDists, requestState);
 
@@ -241,7 +237,11 @@ namespace karri::PickupAfterLastStopStrategies {
         const InputGraphT &inputGraph;
         const InputGraphT &reverseGraph;
         const RequestState &requestState;
-        stats::PalsAssignmentsPerformanceStats& stats;
+        stats::PalsAssignmentsPerformanceStats &stats;
+
+        // Pointer to lastStopsAtVertices is used since we cannot pass it through the Dijkstra search to
+        // updateDistanceForLastStopsAt().
+        LastStopsAtVerticesT const *lastStopsAtVertices;
 
         std::array<unsigned int, K> curPickupIds;
         DistanceLabel curWalkingDists;
@@ -253,10 +253,7 @@ namespace karri::PickupAfterLastStopStrategies {
         int numLastStopsVisited;
 
         const PDDistancesT &pdDistances;
-        const CostCalculator &calculator;
         const Fleet &fleet;
-        const RouteStateData &routeState;
-        const LastStopsAtVerticesT &lastStopsAtVertices;
 
 
         Dijkstra<InputGraphT, TravelTimeAttribute, DijLabelSet, TryToInsertPickupAfterLastStop> dijSearchToPickup;

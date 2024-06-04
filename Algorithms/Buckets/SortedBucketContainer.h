@@ -35,18 +35,18 @@ class SortedBucketContainer {
 
 public:
 
-    using SortedBucket = ConstantVectorRange<BucketEntryT>;
+    using Bucket = ConstantVectorRange<BucketEntryT>;
 
     explicit SortedBucketContainer(const int numVertices)
             : numEntriesVisited(0), comp(), bucketPositions(numVertices) {}
 
 
     // Returns the bucket of the specified vertex, sorted in ascending order according to BucketEntryComparatorT.
-    SortedBucket getBucketOf(const int v) const {
+    Bucket getBucketOf(const int v) const {
         assert(v >= 0);
         assert(v < bucketPositions.size());
         const auto &pos = bucketPositions[v];
-        return SortedBucket(entries.begin() + pos.start, entries.begin() + pos.end);
+        return Bucket(entries.begin() + pos.start, entries.begin() + pos.end);
     }
 
     // Inserts the given entry into the bucket of the specified vertex.

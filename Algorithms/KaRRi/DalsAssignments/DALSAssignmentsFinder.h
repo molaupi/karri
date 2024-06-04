@@ -32,13 +32,16 @@ namespace karri {
 
     public:
 
-        DALSAssignmentsFinder(StrategyT &strategy) : strategy(strategy) {}
+        explicit DALSAssignmentsFinder(StrategyT &strategy) : strategy(strategy) {}
 
-        void findAssignments(BestAsgn& bestAsgn) {
-            strategy.tryDropoffAfterLastStop(bestAsgn);
+        // lastStopInfo may be last stop buckets for BCH-based strategies or information about last stops at vertices
+        // in the case of the Dijkstra strategy
+        void findAssignments(BestAsgn& bestAsgn, const RouteStateData& routeState,
+                             const typename StrategyT::PrecomputedLastStopInfo& lastStopInfo) {
+            strategy.tryDropoffAfterLastStop(bestAsgn, routeState, lastStopInfo);
         }
 
-        void init() {
+        void init(const RouteStateData&) {
             // no op
         }
 

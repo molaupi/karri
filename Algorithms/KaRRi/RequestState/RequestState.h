@@ -32,8 +32,6 @@
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Tools/Simd/AlignedVector.h"
-#include "DataStructures/Containers/Subset.h"
-#include "Algorithms/KaRRi/CostCalculator.h"
 #include "Algorithms/KaRRi/RequestState/FindPDLocsInRadiusQuery.h"
 
 namespace karri {
@@ -47,15 +45,6 @@ namespace karri {
                   minDirectPDDist(-1),
                   pickups(),
                   dropoffs() {}
-
-        ~RequestState() {
-            auto &roadCatLogger = LogManager<std::ofstream>::getLogger(karri::stats::OsmRoadCategoryStats::LOGGER_NAME,
-                                                                       "type," +
-                                                                       karri::stats::OsmRoadCategoryStats::getLoggerCols());
-            roadCatLogger << "all_pd_locs, " << allPDLocsRoadCatStats.getLoggerRow() << "\n";
-            roadCatLogger << "chosen_pd_locs, " << chosenPDLocsRoadCatStats.getLoggerRow() << "\n";
-        }
-
 
         // Information about current request itself
         Request originalRequest;
@@ -105,14 +94,6 @@ namespace karri {
             return originalRequest.requestTime + InputConfig::getInstance().maxWaitTime;
         }
 
-        stats::OsmRoadCategoryStats &allPDLocsRoadCategoryStats() {
-            return allPDLocsRoadCatStats;
-        }
-
-        stats::OsmRoadCategoryStats &chosenPDLocsRoadCategoryStats() {
-            return chosenPDLocsRoadCatStats;
-        }
-
         void reset() {
             originalRequest = {};
             originalReqDirectDist = INFTY;
@@ -121,9 +102,5 @@ namespace karri {
             dropoffs.clear();
             directWalkingDist = INFTY;
         }
-
-    private:
-        stats::OsmRoadCategoryStats allPDLocsRoadCatStats;
-        stats::OsmRoadCategoryStats chosenPDLocsRoadCatStats;
     };
 }
