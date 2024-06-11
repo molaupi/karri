@@ -818,8 +818,8 @@ public:
     void exportTo(const std::string & baseOutName, ExporterT& ex) const {
         ex.setBaseOutName(baseOutName);
         ex.writeTopology(outEdges, edgeHeads);
-        RUN_FORALL(ex.template writeAttribute<true>(VertexAttributes::values, use(VertexAttributes::NAME)));
-        RUN_FORALL(ex.template writeAttribute<false>(EdgeAttributes::values, use(EdgeAttributes::NAME)));
+        RUN_FORALL(ex.template writeAttribute(VertexAttributes::values, use(VertexAttributes::NAME)));
+        RUN_FORALL(ex.template writeAttribute(EdgeAttributes::values, use(EdgeAttributes::NAME)));
     }
 
     // Reads a graph from a binary file. Attributes that are present in the file, but not associated

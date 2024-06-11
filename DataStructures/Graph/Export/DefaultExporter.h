@@ -36,6 +36,6 @@ public:
     template<typename OutEdgeRangesT, typename EdgeHeadsT>
     void writeTopology(const OutEdgeRangesT &, const EdgeHeadsT &) {}
 
-    template<bool, typename T>
+    template<typename T>
     void writeAttribute(const T &, const std::string &) {}
 };

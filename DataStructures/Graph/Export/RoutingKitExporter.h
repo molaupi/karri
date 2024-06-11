@@ -48,8 +48,7 @@ public:
     }
 
     // Overload for POD attribute types
-    template<bool IsVertexAttr,
-            typename AttrType,
+    template<typename AttrType,
             typename = std::enable_if<std::is_pod_v<AttrType>>>
     void
     writeAttribute(const AlignedVector<AttrType> &values, const std::string &attrName) {
@@ -58,13 +57,10 @@ public:
         const auto &outName = baseOutName + attrName;
         // RoutingKit::save_vector expects vector with default allocator so transform it.
         std::vector<AttrType> transformed(values.begin(), values.end());
-        if constexpr (IsVertexAttr)
-            transformed.push_back(AttrType()); // RoutingKit expects vertex attribute vectors to have length n + 1
         RoutingKit::save_vector(outName, transformed);
     }
 
     // Overload for LatLng attribute type
-    template<bool IsVertexAttr = true>
     void writeAttribute(const AlignedVector<LatLng> &values, const std::string &attrName) {
         if (contains(attrsToIgnore.begin(), attrsToIgnore.end(), attrName))
             return;
@@ -74,10 +70,6 @@ public:
             lng[i] = static_cast<float>(values[i].lngInDeg());
             lat[i] = static_cast<float>(values[i].latInDeg());
         }
-        if constexpr (IsVertexAttr) {
-            lng.push_back(0.0f); // RoutingKit expects vertex attribute vectors to have length n + 1
-            lat.push_back(0.0f);
-        }
         const auto &lngOutName = baseOutName + attrName + ".longitude";
         const auto &latOutName = baseOutName + attrName + ".latitude";
         RoutingKit::save_vector(lngOutName, lng);
@@ -85,7 +77,6 @@ public:
     }
 
     // Overload for Point attribute type
-    template<bool IsVertexAttr = true>
     void writeAttribute(const AlignedVector<Point> &values, const std::string &attrName) {
         if (contains(attrsToIgnore.begin(), attrsToIgnore.end(), attrName))
             return;
@@ -95,10 +86,6 @@ public:
             x[i] = values[i].x();
             y[i] = values[i].y();
         }
-        if constexpr (IsVertexAttr) {
-            x.push_back(0); // RoutingKit expects vertex attribute vectors to have length n + 1
-            y.push_back(0);
-        }
         const auto &xOutName = baseOutName + attrName + ".x";
         const auto &yOutName = baseOutName + attrName + ".y";
         RoutingKit::save_vector(xOutName, x);
@@ -106,21 +93,18 @@ public:
     }
 
     // Overload for OsmRoadCategory attribute type
-    template<bool IsVertexAttr = false>
     void writeAttribute(const AlignedVector<OsmRoadCategory> &values, const std::string &attrName) {
         if (contains(attrsToIgnore.begin(), attrsToIgnore.end(), attrName))
             return;
         std::vector<std::string> roadCatNames(values.size());
         for (int i = 0; i < values.size(); ++i)
             roadCatNames[i] = nameOfOsmRoadCategory(values[i]);
-        if constexpr (IsVertexAttr)
-            roadCatNames.emplace_back(""); // RoutingKit expects vertex attribute vectors to have length n + 1
         const auto &outName = baseOutName + "." + attrName;
         RoutingKit::save_vector(outName, roadCatNames);
     }
 
     // Overload for std::pair<T1, T2> attribute type
-    template<bool IsVertexAttr, typename T1, typename T2>
+    template<typename T1, typename T2>
     void writeAttribute(const AlignedVector<std::pair<T1, T2>> &values, const std::string &attrName) {
         if (contains(attrsToIgnore.begin(), attrsToIgnore.end(), attrName))
             return;
@@ -133,12 +117,11 @@ public:
         }
         const auto &firstName = attrName + ".first";
         const auto &secondName = attrName + ".second";
-        writeAttribute<IsVertexAttr>(first, firstName);
-        writeAttribute<IsVertexAttr>(second, secondName);
+        writeAttribute(first, firstName);
+        writeAttribute(second, secondName);
     }
 
     // Overload for XatfRoadCategoryTypeAttribute
-    template<bool = false>
     void writeAttribute(const AlignedVector<XatfRoadCategory> &, const std::string &attrName) {
         if (contains(attrsToIgnore.begin(), attrsToIgnore.end(), attrName))
             return;
@@ -146,7 +129,6 @@ public:
     }
 
     // Overload for RoadGeometryAttribute
-    template<bool = false>
     void writeAttribute(const AlignedVector<std::vector<LatLng>> &, const std::string &attrName) {
         if (contains(attrsToIgnore.begin(), attrsToIgnore.end(), attrName))
             return;
@@ -158,10 +140,9 @@ private:
     template<typename OutEdgeRangesT>
     void writeFirstOut(const OutEdgeRangesT &outEdgeRanges) {
         const auto &outName = baseOutName + "first_out";
-        std::vector<unsigned> firstOut(outEdgeRanges.size() + 1);
-        firstOut[0] = 0;
+        std::vector<unsigned> firstOut(outEdgeRanges.size());
         for (int v = 0; v < outEdgeRanges.size(); ++v)
-            firstOut[v + 1] = static_cast<unsigned>(outEdgeRanges[v].last());
+            firstOut[v] = static_cast<unsigned>(outEdgeRanges[v].first());
         RoutingKit::save_vector(outName, firstOut);
     }
 
