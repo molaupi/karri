@@ -79,30 +79,30 @@ namespace traffic_flow_subnetwork {
             std::cout << "\tMax: " << maxFlow << "\n";
 
             // Compute maximum rank needed:
-            const int maxRankForPickups = findMaxRankNeededForPickups(edgesInOrder, flows);
-            const int maxRankForDropoffs = findMaxRankNeededForDropoffs(edgesInOrder, flows);
-            const int maxRankNeeded = std::max(maxRankForPickups, maxRankForDropoffs);
+            int maxNeededRank = -1;
+            findMaxRankNeededForPickups(edgesInOrder, flows, maxNeededRank);
+            findMaxRankNeededForDropoffs(edgesInOrder, flows, maxNeededRank);
 
             // Return all edges with rank smaller than (i.e. flow larger than) maximum rank:
-            edgesInOrder.resize(maxRankNeeded + 1);
+            edgesInOrder.resize(maxNeededRank + 1);
             return edgesInOrder;
         }
 
 
     private:
 
-        int findMaxRankNeededForPickups(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows) {
+        void findMaxRankNeededForPickups(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows,
+                                         int &maxNeededRank) {
             std::cout << "Finding covering pickup edges... " << std::flush;
-            const int rank = findMaxNeededRank<karri::PICKUP>(descendingFlowOrder, flows);
+            findMaxNeededRank<karri::PICKUP>(descendingFlowOrder, flows, maxNeededRank);
             std::cout << " done." << std::endl;
-            return rank;
         }
 
-        int findMaxRankNeededForDropoffs(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows) {
+        void findMaxRankNeededForDropoffs(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows,
+                                          int &maxNeededRank) {
             std::cout << "Finding covering dropoff edges... " << std::flush;
-            const int rank = findMaxNeededRank<karri::DROPOFF>(descendingFlowOrder, flows);
+            findMaxNeededRank<karri::DROPOFF>(descendingFlowOrder, flows, maxNeededRank);
             std::cout << " done." << std::endl;
-            return rank;
         }
 
         // Given a descending (!) order of edges by flow, this returns a rank in that order s.t. all edges with larger
@@ -111,67 +111,89 @@ namespace traffic_flow_subnetwork {
         // May change the flow order in the tail range of zero flow edges to pick a better cover with a smaller number
         // of edges.
         template<karri::PDLocType type>
-        int findMaxNeededRank(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows) {
+        void
+        findMaxNeededRank(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows, int &maxNeededRank) {
+
+            if (maxNeededRank == descendingFlowOrder.size())
+                return;
 
             markSharedEdgesToBeCovered();
             std::cout << "Num edges to cover: " << numEdgesYetToBeCovered << std::endl;
             progressBar.init(numEdgesYetToBeCovered);
 
             auto &search = type == karri::PICKUP ? pickupSearch : dropoffSearch;
+            search.distanceLabels.init();
+
+            // For edges up to known lower bound maxNeededRank, we simply add the edges and all surrounding edges.
+            // If this already covers all locations, maxNeededRank is not increased and we are done.
+            for (int rank = 0; rank <= maxNeededRank; ++rank) {
+                const auto &eInVeh = descendingFlowOrder[rank];
+                coverEdgesSurroundingEdge<type>(eInVeh);
+                if (numEdgesYetToBeCovered == 0)
+                    return;
+            }
+
+            // If we have not yet covered all locations, we need to find more edges to cover the remaining locations,
+            // increasing the maximum rank needed.
+            ++maxNeededRank;
+            bool reachedZeroFlow = false;
+            for (; maxNeededRank < descendingFlowOrder.size(); ++maxNeededRank) {
+                const auto &eInVeh = descendingFlowOrder[maxNeededRank];
+
+                // If we have already exceeded the known minimum needed maximum rank, and we have reached edges with
+                // flow 0, we can reorder the remaining zero flow edges to potentially find a better cover.
+                if (flows[eInVeh] == 0 && !reachedZeroFlow) {
+                    reachedZeroFlow = true;
+                    reorderZeroFlowEdges<type>(descendingFlowOrder, maxNeededRank);
+                }
+
+                coverEdgesSurroundingEdge<type>(eInVeh);
+                if (numEdgesYetToBeCovered == 0)
+                    return;
+            }
+            std::cout << " (Uncovered edges: " << numEdgesYetToBeCovered << ")";
+            LIGHT_KASSERT(false);
+        }
+
+        template<karri::PDLocType type>
+        void coverEdgesSurroundingEdge(const int eInVeh) {
+
+            const int eInForwPsgGraph = vehGraph.mapToEdgeInPsg(eInVeh);
+            if (eInForwPsgGraph == MapToEdgeInPsgAttribute::defaultValue())
+                return;
+
+            if (edgeYetToBeCovered[eInForwPsgGraph]) {
+                edgeYetToBeCovered[eInForwPsgGraph] = false;
+                --numEdgesYetToBeCovered;
+            }
+
+            auto &search = type == karri::PICKUP ? pickupSearch : dropoffSearch;
             static constexpr SearchDirection dir =
                     type == karri::PICKUP ? SearchDirection::REVERSE : SearchDirection::FORWARD;
 
-            search.distanceLabels.init();
-            int rank = 0;
-            bool reachedZeroFlow = false;
-            for (; rank < descendingFlowOrder.size(); ++rank) {
-                if (numEdgesYetToBeCovered == 0)
+            const int s = type == karri::PICKUP ? forwardPsgGraph.edgeTail(eInForwPsgGraph)
+                                                : forwardPsgGraph.edgeHead(eInForwPsgGraph);
+            const int offset = type == karri::PICKUP ? forwardPsgGraph.travelTime(eInForwPsgGraph) : 0;
+            if (search.distanceLabels[s][0] <= offset)
+                return;
+
+            // Find all edges e s.t. if there is an origin/destination of a taxi sharing request at e,
+            // eInForwPsgGraph can serve as a pickup/dropoff location for that request (i.e. eInForwPsgGraph is
+            // within the walking radius from e/to e).
+            // We do not clear the distance labels in between searches since every edge only needs to be covered by
+            // one search. The search spaces become bounded voronoi cells with centers at every source used so far.
+            search.queue.clear();
+            search.distanceLabels[s][0] = offset;
+            search.queue.insert(s, offset);
+            int v, distToV;
+            while (!search.queue.empty()) {
+                search.queue.min(v, distToV);
+                KASSERT(search.distanceLabels[v][0] == distToV);
+                if (distToV > walkRadius)
                     break;
-
-                const auto &eInVeh = descendingFlowOrder[rank];
-                if (!reachedZeroFlow && flows[eInVeh] == 0) {
-                    reachedZeroFlow = true;
-                    reorderZeroFlowEdges<type>(descendingFlowOrder, rank);
-                    if (rank == descendingFlowOrder.size())
-                        break;
-                }
-
-                const int eInForwPsgGraph = vehGraph.mapToEdgeInPsg(eInVeh);
-                if (eInForwPsgGraph == MapToEdgeInPsgAttribute::defaultValue())
-                    continue;
-
-                if (edgeYetToBeCovered[eInForwPsgGraph]) {
-                    edgeYetToBeCovered[eInForwPsgGraph] = false;
-                    --numEdgesYetToBeCovered;
-                }
-
-                const int s = type == karri::PICKUP ? forwardPsgGraph.edgeTail(eInForwPsgGraph)
-                                                    : forwardPsgGraph.edgeHead(eInForwPsgGraph);
-                const int offset = type == karri::PICKUP ? forwardPsgGraph.travelTime(eInForwPsgGraph) : 0;
-                if (search.distanceLabels[s][0] <= offset)
-                    continue;
-
-                // Find all edges e s.t. if there is an origin/destination of a taxi sharing request at e,
-                // eInForwPsgGraph can serve as a pickup/dropoff location for that request (i.e. eInForwPsgGraph is
-                // within the walking radius from e/to e).
-                // We do not clear the distance labels in between searches since every edge only needs to be covered by
-                // one search. The search spaces become bounded voronoi cells with centers at every source used so far.
-                search.queue.clear();
-                search.distanceLabels[s][0] = offset;
-                search.queue.insert(s, offset);
-                int v, distToV;
-                while (!search.queue.empty()) {
-                    search.queue.min(v, distToV);
-                    KASSERT(search.distanceLabels[v][0] == distToV);
-                    if (distToV > walkRadius)
-                        break;
-                    markIncidentEdgesCovered<dir>(v, distToV);
-                    search.settleNextVertex();
-                }
+                markIncidentEdgesCovered<dir>(v, distToV);
+                search.settleNextVertex();
             }
-            if (numEdgesYetToBeCovered > 0)
-                std::cout << " (Uncovered edges: " << numEdgesYetToBeCovered << ")";
-            return rank - 1;
         }
 
         // If the construction of a cover by picking edges in descending order of flows reaches edges with flow 0,

@@ -158,27 +158,30 @@ namespace karri::PDDistanceQueryStrategies {
             dropoffBuckets.init(numDropoffSearches);
 
 
-            // Compute upper bound on every PD distance by adding the longest vehicle distance from any pickup to the
-            // origin, the distance from the origin to the destination, and the longest distance from the destination
-            // to any dropoff (all in the full vehicle graph).
-            int maxPickupToOriginVehDist = 0;
-            for (const auto &pickup: requestState.pickups) {
-                KASSERT(pickup.vehDistToCenter != INFTY);
-                maxPickupToOriginVehDist = std::max(maxPickupToOriginVehDist, pickup.vehDistToCenter);
-            }
+//            // Compute upper bound on every PD distance by adding the longest vehicle distance from any pickup to the
+//            // origin, the distance from the origin to the destination, and the longest distance from the destination
+//            // to any dropoff (all in the full vehicle graph).
+//            int maxPickupToOriginVehDist = 0;
+//            for (const auto &pickup: requestState.pickups) {
+//                KASSERT(pickup.vehDistToCenter != INFTY);
+//                maxPickupToOriginVehDist = std::max(maxPickupToOriginVehDist, pickup.vehDistToCenter);
+//            }
+//
+//            int maxDestToDropoffVehDist = 0;
+//            for (const auto &dropoff: requestState.dropoffs) {
+//                KASSERT(dropoff.vehDistFromCenter != INFTY);
+//                maxDestToDropoffVehDist = std::max(maxDestToDropoffVehDist, dropoff.vehDistFromCenter);
+//            }
+//
+//            if (maxPickupToOriginVehDist >= INFTY || maxDestToDropoffVehDist >= INFTY) {
+//                upperBoundDirectPDDist = INFTY;
+//            } else {
+//                upperBoundDirectPDDist = maxPickupToOriginVehDist + requestState.directDistInFullVeh +
+//                                         maxDestToDropoffVehDist; // read by stopping criterion of searches
+//            }
 
-            int maxDestToDropoffVehDist = 0;
-            for (const auto &dropoff: requestState.dropoffs) {
-                KASSERT(dropoff.vehDistFromCenter != INFTY);
-                maxDestToDropoffVehDist = std::max(maxDestToDropoffVehDist, dropoff.vehDistFromCenter);
-            }
+            upperBoundDirectPDDist = INFTY;
 
-            if (maxPickupToOriginVehDist >= INFTY || maxDestToDropoffVehDist >= INFTY) {
-                upperBoundDirectPDDist = INFTY;
-            } else {
-                upperBoundDirectPDDist = maxPickupToOriginVehDist + requestState.directDistInFullVeh +
-                                         maxDestToDropoffVehDist; // read by stopping criterion of searches
-            }
 
 
             const int64_t initTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -250,7 +253,7 @@ namespace karri::PDDistanceQueryStrategies {
         void init() {
             Timer timer;
             distances.clear();
-            distances.updateDistanceIfSmaller(0, 0, requestState.directDistInFullVeh);
+//            distances.updateDistanceIfSmaller(0, 0, requestState.directDistInFullVeh);
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.initializationTime += time;
         }

@@ -88,6 +88,7 @@ namespace karri {
             const auto target = fullVehCh.rank(fullVehInputGraph.edgeTail(req.destination));
             fullVehChQuery.run(source, target);
             requestState.directDistInFullVeh = fullVehChQuery.getDistance() + fullVehInputGraph.travelTime(req.destination);
+            KASSERT(requestState.directDistInFullVeh < INFTY);
 
             const auto directSearchTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().initializationStats.computeODDistanceTime = directSearchTime;

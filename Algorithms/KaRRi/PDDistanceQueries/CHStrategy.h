@@ -84,7 +84,7 @@ namespace karri::PDDistanceQueryStrategies {
         void init() {
             Timer timer;
             distances.clear();
-            distances.updateDistanceIfSmaller(0, 0, requestState.directDistInFullVeh);
+//            distances.updateDistanceIfSmaller(0, 0, requestState.directDistInFullVeh);
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.initializationTime += time;
         }

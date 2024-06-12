@@ -94,7 +94,7 @@ namespace traffic_flow_subnetwork {
             std::cout << "\t|V| = " << out.numVertices() << std::endl;
             std::cout << "\t|E| = " << out.numEdges() << std::endl;
             std::cout << "\tNumber of SCCs: " << initialNumComponents << std::endl;
-            std::cout << "\tSize of largest SCC: " << scc.getLargestSccAsBitmask().count() << std::endl;
+            std::cout << "\tSize of largest SCC: " << scc.getLargestSccAsBitmask().cardinality() << std::endl;
 
             using Path = std::vector<int>;
 
@@ -392,7 +392,7 @@ namespace traffic_flow_subnetwork {
 
         bool hasOneScc(const OutGraph &out) {
             scc.run(out);
-            return scc.getLargestSccAsBitmask().count() == out.numVertices();
+            return scc.getLargestSccAsBitmask().cardinality() == out.numVertices();
         }
 
         const InGraph &in;
