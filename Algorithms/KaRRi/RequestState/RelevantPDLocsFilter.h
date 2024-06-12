@@ -204,18 +204,21 @@ namespace karri {
                                      const int distFromStopToPickup,
                                      const int distFromPickupToNextStop,
                                      const int& bestKnownCost,
-                                     const RouteStateData& routeState) const {
+                                     const RouteStateData& routeState) {
             using namespace time_utils;
 
             const int &vehId = veh.vehicleId;
 
-            assert(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <=
+            KASSERT(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <=
                    veh.capacity);
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
-            assert(distFromStopToPickup + distFromPickupToNextStop >=
-                   calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
+            KASSERT(distFromStopToPickup + distFromPickupToNextStop >=
+                   calcLengthOfLegStartingAt(stopIndex, vehId, routeState),
+                   "distFromStopToPickup = " << distFromStopToPickup << " (should be: " << recomputeDistToPDLocDirectly(vehId, stopIndex, requestState.pickups[pickupId].loc, routeState) << ")" <<
+                   ", distFromPickupToNextStop = " << distFromPickupToNextStop << " (should be: " << recomputeDistFromPDLocDirectly(vehId, stopIndex + 1, requestState.pickups[pickupId].loc, routeState) << ")" <<
+                   ", leg length = " << calcLengthOfLegStartingAt(stopIndex, vehId, routeState) << " (should be: " << recomputeLegLengthDirectly(vehId, stopIndex, routeState) << ")");
 
             const auto &p = requestState.pickups[pickupId];
 
@@ -329,6 +332,16 @@ namespace karri {
             auto src = ch.rank(inputGraph.edgeHead(pdLocLocation));
             auto tar = ch.rank(inputGraph.edgeTail(routeState.stopLocationsFor(vehId)[stopIdxAfter]));
             auto offset = inputGraph.travelTime(routeState.stopLocationsFor(vehId)[stopIdxAfter]);
+
+            chQuery.run(src, tar);
+            return chQuery.getDistance() + offset;
+        }
+
+        int recomputeLegLengthDirectly(const int vehId, const int stopIdx,
+                                           const RouteStateData& routeState) {
+            auto src = ch.rank(inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[stopIdx]));
+            auto tar = ch.rank(inputGraph.edgeTail(routeState.stopLocationsFor(vehId)[stopIdx + 1]));
+            auto offset = inputGraph.travelTime(routeState.stopLocationsFor(vehId)[stopIdx + 1]);
 
             chQuery.run(src, tar);
             return chQuery.getDistance() + offset;
