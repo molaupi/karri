@@ -168,12 +168,10 @@ int main(int argc, char *argv[]) {
         inputConfig.alpha = clp.getValue<double>("a", 1.7);
         inputConfig.beta = clp.getValue<int>("b", 120) * 10;
         const auto fullVehicleNetworkFileName = clp.getValue<std::string>("full-veh-g");
-        const auto redVehicleNetworkFileName = clp.getValue<std::string>("red-veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");
         const auto requestFileName = clp.getValue<std::string>("r");
         const auto fullVehHierarchyFileName = clp.getValue<std::string>("full-veh-h");
-        const auto redVehHierarchyFileName = clp.getValue<std::string>("red-veh-h");
         const auto psgHierarchyFileName = clp.getValue<std::string>("psg-h");
         const auto vehSepDecompFileName = clp.getValue<std::string>("veh-d");
         const auto psgSepDecompFileName = clp.getValue<std::string>("psg-d");
@@ -209,27 +207,46 @@ int main(int argc, char *argv[]) {
             }
         std::cout << "done.\n";
 
-        // Read the reduced vehicle network from file.
-        std::cout << "Reading reduced vehicle network from file... " << std::flush;
         using RedVehicleEdgeAttributes = EdgeAttrs<
                 EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, MapToEdgeInPsgAttribute, MapToEdgeInFullVehAttribute, OsmRoadCategoryAttribute>;
         using RedVehicleInputGraph = StaticGraph<VertexAttributes, RedVehicleEdgeAttributes>;
-        std::ifstream redVehicleNetworkFile(redVehicleNetworkFileName, std::ios::binary);
-        if (!redVehicleNetworkFile.good())
-            throw std::invalid_argument("file not found -- '" + redVehicleNetworkFileName + "'");
-        RedVehicleInputGraph redVehInputGraph(redVehicleNetworkFile);
-        redVehicleNetworkFile.close();
+        std::unique_ptr<RedVehicleInputGraph> redVehInputGraphPtr;
+        if (!clp.isSet("red-veh-g")) {
+            std::cout << "Using full vehicle network as reduced vehicle network.\n";
+            // If no reduced vehicle network is given, we use the full vehicle network as reduced vehicle network.
+            redVehInputGraphPtr = std::make_unique<RedVehicleInputGraph>(fullVehInputGraph);
+            FORALL_VALID_EDGES((*redVehInputGraphPtr), v, e) {
+                    redVehInputGraphPtr->mapToEdgeInFullVeh(e) = e;
+                }
+            FORALL_VALID_EDGES(fullVehInputGraph, v, e) {
+                    fullVehInputGraph.mapToEdgeInReducedVeh(e) = e;
+                }
+        } else {
+            // Read the reduced vehicle network from file.
+            std::cout << "Reading reduced vehicle network from file... " << std::flush;
+            const auto redVehicleNetworkFileName = clp.getValue<std::string>("red-veh-g");
+            std::ifstream redVehicleNetworkFile(redVehicleNetworkFileName, std::ios::binary);
+            if (!redVehicleNetworkFile.good())
+                throw std::invalid_argument("file not found -- '" + redVehicleNetworkFileName + "'");
+            redVehInputGraphPtr = std::make_unique<RedVehicleInputGraph>(redVehicleNetworkFile);
+            redVehicleNetworkFile.close();
 
-        if (redVehInputGraph.numEdges() == 0)
-            throw std::invalid_argument("Reduced vehicle input graph cannot have zero edges.");
-        FORALL_VALID_EDGES(redVehInputGraph, v, e) {
-                LIGHT_KASSERT(redVehInputGraph.edgeId(e) == EdgeIdAttribute::defaultValue());
-                redVehInputGraph.edgeTail(e) = v;
-                redVehInputGraph.edgeId(e) = e;
-                LIGHT_KASSERT(redVehInputGraph.mapToEdgeInFullVeh(e) != MapToEdgeInFullVehAttribute::defaultValue());
-                LIGHT_KASSERT(fullVehInputGraph.mapToEdgeInReducedVeh(redVehInputGraph.mapToEdgeInFullVeh(e)) == e, "mapToEdgeInFullVeh(e) = " << redVehInputGraph.mapToEdgeInFullVeh(e));
-            }
-        std::cout << "done.\n";
+            if (redVehInputGraphPtr->numEdges() == 0)
+                throw std::invalid_argument("Reduced vehicle input graph cannot have zero edges.");
+            FORALL_VALID_EDGES((*redVehInputGraphPtr), v, e) {
+                    LIGHT_KASSERT(redVehInputGraphPtr->edgeId(e) == EdgeIdAttribute::defaultValue());
+                    redVehInputGraphPtr->edgeTail(e) = v;
+                    redVehInputGraphPtr->edgeId(e) = e;
+                    LIGHT_KASSERT(redVehInputGraphPtr->mapToEdgeInFullVeh(e) != MapToEdgeInFullVehAttribute::defaultValue());
+                    LIGHT_KASSERT(fullVehInputGraph.mapToEdgeInReducedVeh(redVehInputGraphPtr->mapToEdgeInFullVeh(e)) == e, "mapToEdgeInFullVeh(e) = " << redVehInputGraphPtr->mapToEdgeInFullVeh(e));
+                }
+            std::cout << "done.\n";
+        }
+
+        const auto& redVehInputGraph = *redVehInputGraphPtr;
+        const auto revFullVehicleGraph = fullVehInputGraph.getReverseGraph();
+        const auto revRedVehicleGraph = redVehInputGraph.getReverseGraph();
+        unused(revRedVehicleGraph);
 
         // Read the passenger network from file.
         std::cout << "Reading passenger network from file... " << std::flush;
@@ -249,6 +266,12 @@ int main(int argc, char *argv[]) {
                 psgInputGraph.edgeId(e) = e;
 
                 const int eInFullVehGraph = psgInputGraph.mapToEdgeInFullVeh(e);
+                // If there is no explicit reduced vehicle network, we use the full vehicle network as reduced vehicle network. Set the mapping accordingly.
+                if (!clp.isSet("red-veh-g"))
+                    psgInputGraph.mapToEdgeInReducedVeh(e) = eInFullVehGraph;
+
+
+
                 if (eInFullVehGraph != MapToEdgeInFullVehAttribute::defaultValue()) {
                     ++numEdgesWithMappingToCar;
                     LIGHT_KASSERT(eInFullVehGraph < fullVehInputGraph.numEdges());
@@ -414,13 +437,14 @@ int main(int argc, char *argv[]) {
         // Prepare full vehicle CH environment
         using RedVehCHEnv = CHEnvironment<RedVehicleInputGraph, TravelTimeAttribute>;
         std::unique_ptr<RedVehCHEnv> redVehChEnv;
-        if (redVehHierarchyFileName.empty()) {
+        if (!clp.isSet("red-veh-g") || !clp.isSet("red-veh-h")) {
             std::cout << "Building reduced vehicle CH... " << std::flush;
             redVehChEnv = std::make_unique<RedVehCHEnv>(redVehInputGraph);
             std::cout << "done.\n";
         } else {
             // Read the CH from file.
             std::cout << "Reading reduced vehicle CH from file... " << std::flush;
+            const auto redVehHierarchyFileName = clp.getValue<std::string>("red-veh-h");
             std::ifstream redVehHierarchyFile(redVehHierarchyFileName, std::ios::binary);
             if (!redVehHierarchyFile.good())
                 throw std::invalid_argument("file not found -- '" + redVehHierarchyFileName + "'");
@@ -509,9 +533,6 @@ int main(int argc, char *argv[]) {
                                                       relDropoffsBeforeNextStop);
 
 
-        const auto revRedVehicleGraph = redVehInputGraph.getReverseGraph();
-        unused(revRedVehicleGraph);
-        const auto revFullVehicleGraph = fullVehInputGraph.getReverseGraph();
         using VehicleToPDLocQueryImpl = VehicleToPDLocQuery<FullVehicleInputGraph>;
         VehicleToPDLocQueryImpl vehicleToPdLocQuery(fullVehInputGraph, revFullVehicleGraph);
 
