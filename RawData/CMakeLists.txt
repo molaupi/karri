@@ -27,18 +27,21 @@ add_executable(BuildTrafficFlowBasedSubgraph BuildTrafficFlowBasedSubgraph.cc)
 target_compile_definitions(BuildTrafficFlowBasedSubgraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert)
 
-
 add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc)
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(CheckExistingAttributesInNetworkFile ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(ConvertGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 
-
 add_executable(FlowsRoutingKitToCsv FlowsRoutingKitToCsv.cc)
 target_compile_definitions(FlowsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(FlowsRoutingKitToCsv ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+
+add_executable(GenerateGeoJsonForFlows GenerateGeoJsonForFlows.cc)
+target_compile_definitions(GenerateGeoJsonForFlows PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateGeoJsonForFlows PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
 
 add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
 target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
