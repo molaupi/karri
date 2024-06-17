@@ -73,6 +73,11 @@ namespace karri {
             // Initialize finder for this request:
             initializeForRequest(req);
 
+            // If there are no pickups or no dropoffs, no vehicle assignment is possible. In this case we return the
+            // walking pseudo-assignment if possible or no assignment otherwise.
+            if (reqState.numPickups() == 0 || reqState.numDropoffs() == 0)
+                return reqState;
+
             // Compute PD distances:
             pdDistanceSearches.run();
 
@@ -104,6 +109,8 @@ namespace karri {
 
         void initializeForRequest(const Request &req) {
             requestStateInitializer.initializeRequestState(req);
+            if (reqState.numPickups() == 0 || reqState.numDropoffs() == 0)
+                return;
 
             // Initialize components according to new request state:
             ellipticBchSearches.init();

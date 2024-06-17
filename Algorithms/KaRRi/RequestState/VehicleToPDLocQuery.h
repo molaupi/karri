@@ -76,6 +76,9 @@ namespace karri {
         template<typename VectorT>
         void runForward(const int center, VectorT &pdLocs) {
 
+            if (pdLocs.empty())
+                return;
+
             Timer timer;
 
             const auto s = forwardGraph.edgeHead(center);
@@ -109,6 +112,9 @@ namespace karri {
         // to the center. Stores the found distances in the vehDistToCenter field of each PD loc.
         template<typename VectorT>
         void runReverse(const int center, VectorT &pdLocs) {
+
+            if (pdLocs.empty())
+                return;
 
             Timer timer;
 

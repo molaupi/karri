@@ -200,7 +200,7 @@ namespace karri {
             }
 
             if (requestState.isNotUsingVehicleBest()) {
-                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1, true, "
+                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,true,"
                                       << requestState.getBestCost() << "\n";
                 return;
             }

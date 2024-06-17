@@ -208,7 +208,6 @@ namespace karri {
         }
 
         static bool sanityCheckPDLocs(const std::vector<PDLoc> &pdLocs, const PassengerGraphT& psgGraph) {
-            if (pdLocs.empty()) return false;
             for (int i = 0; i < pdLocs.size(); ++i) {
                 if (pdLocs[i].id != i) return false;
                 if (pdLocs[i].vehDistToCenter != INFTY) return false;

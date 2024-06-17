@@ -61,6 +61,23 @@ namespace karri {
             assert(psgInputGraph.mapToEdgeInFullVeh(fullVehInputGraph.mapToEdgeInPsg(req.destination)) == req.destination);
             const auto destInPsgGraph = fullVehInputGraph.mapToEdgeInPsg(req.destination);
 
+            if (!InputConfig::getInstance().alwaysUseVehicle) {
+                // Try pseudo-assignment for passenger walking to destination without using vehicle
+                timer.restart();
+
+                const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
+                const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
+                const int destOffset = psgInputGraph.travelTime(destInPsgGraph);
+                psgChQuery.run(originHeadRank, destTailRank);
+                const auto totalDist = psgChQuery.getDistance() + destOffset;
+                requestState.tryNotUsingVehicleAssignment(totalDist, destOffset);
+
+                const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
+                requestState.stats().initializationStats.notUsingVehicleTime = notUsingVehiclesTime;
+            }
+
+            // Find PDLocs in radius
+            timer.restart();
             findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph);
 
             // Log road categories of PDLocs
@@ -73,9 +90,15 @@ namespace karri {
             requestState.stats().initializationStats.findPDLocsInRadiusTime = findHaltingSpotsTime;
             requestState.stats().numPickups = requestState.numPickups();
             requestState.stats().numDropoffs = requestState.numDropoffs();
-            timer.restart();
+
+            // If there are no pickups or dropoffs, we can skip the rest of the initialization as no vehicle
+            // assignment is possible
+            if (requestState.numPickups() == 0 || requestState.numDropoffs() == 0)
+                return;
 
             // Precalculate the vehicle distances from pickups to origin and from destination to dropoffs for upper bounds on PD distances
+            timer.restart();
+
             vehicleToPdLocQuery.runReverse(req.origin, requestState.pickups);
             vehicleToPdLocQuery.runForward(req.destination, requestState.dropoffs);
 
@@ -92,22 +115,6 @@ namespace karri {
 
             const auto directSearchTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().initializationStats.computeODDistanceTime = directSearchTime;
-
-
-            if (!InputConfig::getInstance().alwaysUseVehicle) {
-                // Try pseudo-assignment for passenger walking to destination without using vehicle
-                timer.restart();
-
-                const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
-                const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
-                const int destOffset = psgInputGraph.travelTime(destInPsgGraph);
-                psgChQuery.run(originHeadRank, destTailRank);
-                const auto totalDist = psgChQuery.getDistance() + destOffset;
-                requestState.tryNotUsingVehicleAssignment(totalDist, destOffset);
-
-                const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
-                requestState.stats().initializationStats.notUsingVehicleTime = notUsingVehiclesTime;
-            }
         }
 
 
