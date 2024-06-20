@@ -294,6 +294,14 @@ public:
         return result;
     }
 
+    int countEdgesBetween(const int tail, const int head) const {
+        int n = 0;
+        for (int e = firstEdge(tail); e != lastEdge(tail); ++e)
+            if (edgeHead(e) == head)
+                ++n;
+        return n;
+    }
+
     // Ensures that the graph can hold at least the specified number of vertices and edges without
     // requiring reallocation.
     void reserve(const int numVertices, const int numEdges) {

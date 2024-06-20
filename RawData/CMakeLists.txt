@@ -25,7 +25,7 @@
 
 add_executable(BuildTrafficFlowBasedSubgraph BuildTrafficFlowBasedSubgraph.cc)
 target_compile_definitions(BuildTrafficFlowBasedSubgraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert)
+target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert ${RoutingKit_LIBRARY} kassert)
 
 add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc)
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)

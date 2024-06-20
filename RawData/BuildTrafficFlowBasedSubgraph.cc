@@ -47,8 +47,9 @@
 #include "Tools/Logging/LogManager.h"
 #include "Tools/custom_assertion_levels.h"
 
-#include "BuildTrafficFlowBasedSubgraph/KeptEdgesFinder.h"
-#include "BuildTrafficFlowBasedSubgraph/KeptEdgesConnecter.h"
+#include "BuildTrafficFlowBasedSubgraph/KeptHighFlowEdgesFinder.h"
+#include "BuildTrafficFlowBasedSubgraph/KeptHighRankVerticesFinder.h"
+#include "BuildTrafficFlowBasedSubgraph/SubgraphConnector.h"
 #include "DataStructures/Graph/Attributes/MapToEdgeInReducedVehAttribute.h"
 
 inline void printUsage() {
@@ -70,6 +71,49 @@ inline void printUsage() {
               "  -help                  display this help and exit\n";
 }
 
+template<typename ...VertexAttributes, typename ...EdgeAttributes>
+DynamicGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>>
+getInitialEdgeInducedSubGraph(const StaticGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>> &in,
+                              const std::vector<int> &keptEdges,
+                              std::vector<int> &inToOutVertexIds) {
+    DynamicGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>> out(in.numVertices(), in.numEdges());
+
+    // Add vertices and memorize mapping from old to new vertex IDs.
+    for (const auto &e: keptEdges) {
+        const int u = in.edgeTail(e);
+        LIGHT_KASSERT(u >= 0 && u < inToOutVertexIds.size());
+        if (inToOutVertexIds[u] == INVALID_VERTEX) {
+            inToOutVertexIds[u] = out.appendVertex();
+            RUN_FORALL(out.template get<VertexAttributes>(
+                    inToOutVertexIds[u]) = in.template get<VertexAttributes>(u));
+        }
+
+        const int v = in.edgeHead(e);
+        LIGHT_KASSERT(v >= 0 && v < inToOutVertexIds.size());
+        if (inToOutVertexIds[v] == INVALID_VERTEX) {
+            inToOutVertexIds[v] = out.appendVertex();
+            RUN_FORALL(out.template get<VertexAttributes>(
+                    inToOutVertexIds[v]) = in.template get<VertexAttributes>(v));
+        }
+    }
+
+    // Add edges. (Mapping from old to new edge IDs will be computed later since they change in eventual
+    // defragmentation).
+    for (const auto &e: keptEdges) {
+        LIGHT_KASSERT(in.containsEdge(in.edgeTail(e), in.edgeHead(e)));
+        const auto u = inToOutVertexIds[in.edgeTail(e)];
+        const auto v = inToOutVertexIds[in.edgeHead(e)];
+        LIGHT_KASSERT(u != INVALID_VERTEX && v != INVALID_VERTEX);
+        LIGHT_KASSERT(out.countEdgesBetween(u, v) < in.countEdgesBetween(in.edgeTail(e), in.edgeHead(e)));
+        const int idx = out.insertEdge(u, v);
+        RUN_FORALL(out.template get<EdgeAttributes>(idx) = in.template get<EdgeAttributes>(e));
+        out.edgeTail(idx) = u;
+        LIGHT_KASSERT(out.edgeId(idx) == e);
+    }
+
+    return out;
+}
+
 
 int main(int argc, char *argv[]) {
     try {
@@ -84,9 +128,13 @@ int main(int argc, char *argv[]) {
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const int radius = clp.getValue<int>("rho", 300) * 10;
-        const auto flowsFileName = clp.getValue<std::string>("f");
         const auto requestFileName = clp.getValue<std::string>("r");
         auto outputFileName = clp.getValue<std::string>("o");
+
+        if ((clp.isSet("f") && clp.isSet("ch")) || (!clp.isSet("f") && !clp.isSet("ch"))) {
+            std::cerr << "Exactly one of -f or -ch must be set." << std::endl;
+            return EXIT_FAILURE;
+        }
 
         LogManager<std::ofstream>::setBaseFileName(outputFileName + ".");
 
@@ -146,48 +194,95 @@ int main(int argc, char *argv[]) {
         const auto revPsgGraph = psgInputGraph.getReverseGraph();
         std::cout << "done.\n";
 
-        // Read the flow data from file.
-        std::cout << "Reading flow data from file... " << std::flush;
-        std::vector<int> trafficFlows;
-        int flow;
-        io::CSVReader<1, io::trim_chars<' '>> flowsFileReader(flowsFileName);
-        flowsFileReader.read_header(io::ignore_no_column, "flow");
-        while (flowsFileReader.read_row(flow)) {
-            if (flow < 0)
-                throw std::invalid_argument("invalid flow -- '" + std::to_string(flow) + "'");
-            trafficFlows.push_back(flow);
-        }
-        if (trafficFlows.size() != vehicleInputGraph.numEdges())
-            throw std::invalid_argument("Number of given traffic flows (" + std::to_string(trafficFlows.size())
-                                        + ") is not equal to number of edges in vehicle input graph ("
-                                        + std::to_string(vehicleInputGraph.numEdges()) + ")!");
-        std::cout << "done.\n";
 
-
-        std::cout << "Number of edges in the original vehicle network: " << vehicleInputGraph.numEdges() << std::endl;
+        std::cout << "Number of vertices in the original passenger network: " << psgInputGraph.numVertices()
+                  << std::endl;
+        std::cout << "Number of edges in the original vehicle network: " << vehicleInputGraph.numEdges()
+                  << std::endl;
         int numPsgAccessible = 0;
-        FORALL_EDGES(vehicleInputGraph, e)
-            numPsgAccessible += vehicleInputGraph.mapToEdgeInPsg(e) !=
-                                MapToEdgeInPsgAttribute::defaultValue();
+        FORALL_EDGES(vehicleInputGraph, e)numPsgAccessible += vehicleInputGraph.mapToEdgeInPsg(e) !=
+                                                              MapToEdgeInPsgAttribute::defaultValue();
         std::cout << "\tamong these passenger accessible: " << numPsgAccessible << std::endl;
 
+
         namespace tfs = traffic_flow_subnetwork;
-        std::cout << "Finding high-flow edges to cover network in meeting points... " << std::endl;
-        tfs::KeptEdgesFinder<VehicleInputGraph, PsgInputGraph> keptEdgesFinder(vehicleInputGraph, psgInputGraph,
-                                                                               revPsgGraph, radius);
-        auto edges = keptEdgesFinder.findKeptEdges(trafficFlows);
-        std::cout << "done." << std::endl;
 
-        std::cout << "Number of edges that need to be kept: " << edges.size() << std::endl;
-        int numNeededPsgAccessible = std::count_if(edges.begin(), edges.end(), [&](const int &e) {
-            return vehicleInputGraph.mapToEdgeInPsg(e) != MapToEdgeInPsgAttribute::defaultValue();
-        });
-        std::cout << "\tamong these passenger accessible: " << numNeededPsgAccessible << std::endl;
+        using SubGraph = DynamicGraph<VertexAttributes, VehicleInputEdgeAttributes>;
+        std::unique_ptr<SubGraph> subGraphPtr;
+        std::vector<int> fullToSubgraphVertexIds(vehicleInputGraph.numVertices(), INVALID_VERTEX);
+        if (clp.isSet("f")) {
 
-        tfs::KeptEdgesConnector<VertexAttributes, VehicleInputEdgeAttributes, TravelTimeAttribute> keptEdgesConnector(
-                vehicleInputGraph);
-        std::vector<int> subGraphToFullVertexIds;
-        auto subGraph = keptEdgesConnector.connectEdges(edges, subGraphToFullVertexIds);
+            const auto flowsFileName = clp.getValue<std::string>("f");
+
+            // Read the flow data from file.
+            std::cout << "Reading flow data from file... " << std::flush;
+            std::vector<int> trafficFlows;
+            int flow;
+            io::CSVReader<1, io::trim_chars<' '>> flowsFileReader(flowsFileName);
+            flowsFileReader.read_header(io::ignore_no_column, "flow");
+            while (flowsFileReader.read_row(flow)) {
+                if (flow < 0)
+                    throw std::invalid_argument("invalid flow -- '" + std::to_string(flow) + "'");
+                trafficFlows.push_back(flow);
+            }
+            if (trafficFlows.size() != vehicleInputGraph.numEdges())
+                throw std::invalid_argument("Number of given traffic flows (" + std::to_string(trafficFlows.size())
+                                            + ") is not equal to number of edges in vehicle input graph ("
+                                            + std::to_string(vehicleInputGraph.numEdges()) + ")!");
+            std::cout << "done.\n";
+
+            std::cout << "Finding high-flow edges to cover network in meeting points... " << std::endl;
+            tfs::KeptHighFlowEdgesFinder<VehicleInputGraph, PsgInputGraph>
+                    keptEdgesFinder(vehicleInputGraph, psgInputGraph, revPsgGraph, radius);
+            auto edges = keptEdgesFinder.findKeptEdges(trafficFlows);
+            std::cout << "done." << std::endl;
+
+            std::cout << "Number of edges that need to be kept: " << edges.size() << std::endl;
+            int numNeededPsgAccessible = std::count_if(edges.begin(), edges.end(), [&](const int &e) {
+                return vehicleInputGraph.mapToEdgeInPsg(e) != MapToEdgeInPsgAttribute::defaultValue();
+            });
+            std::cout << "\tamong these passenger accessible: " << numNeededPsgAccessible << std::endl;
+
+            std::cout << "Constructing initial sub-network... " << std::flush;
+            // Get edge-induced subgraph
+            subGraphPtr = std::make_unique<SubGraph>(
+                    getInitialEdgeInducedSubGraph(vehicleInputGraph, edges, fullToSubgraphVertexIds));
+            KASSERT(subGraphPtr->validate());
+            std::cout << " done." << std::endl;
+        } else if (clp.isSet("ch")) {
+
+            std::cout << "Finding high-rank vertices to cover network in meeting points... " << std::endl;
+            tfs::KeptHighRankVerticesFinder<VehicleInputGraph, PsgInputGraph>
+                    keptVerticesFinder(vehicleInputGraph, psgInputGraph, revPsgGraph, radius);
+            BitVector isVertexKept = keptVerticesFinder.findKeptVertices();
+            std::cout << "done." << std::endl;
+
+            std::cout << "Number of vertices that need to be kept: " << isVertexKept.cardinality() << std::endl;
+
+            std::cout << "Constructing initial sub-network... " << std::flush;
+            // Get vertex-induced subgraph
+            subGraphPtr = std::make_unique<SubGraph>(vehicleInputGraph.getVertexInducedSubgraph(isVertexKept));
+            KASSERT(subGraphPtr->validate());
+
+            // Compute full-to-subgraph vertex ID mapping.
+            int nextId = 0;
+            for (int v = isVertexKept.firstSetBit(); v != -1; v = isVertexKept.nextSetBit(v))
+                fullToSubgraphVertexIds[v] = nextId++;
+            std::cout << " done." << std::endl;
+        }
+
+        // Compute out-to-in vertex ID mapping.
+        auto &subGraph = *subGraphPtr;
+        std::vector<int> subGraphToFullVertexIds(subGraph.numVertices(), INVALID_VERTEX);
+        for (int vIn = 0; vIn < vehicleInputGraph.numVertices(); ++vIn) {
+            const auto &vOut = fullToSubgraphVertexIds[vIn];
+            if (vOut != INVALID_VERTEX)
+                subGraphToFullVertexIds[vOut] = vIn;
+        }
+
+        tfs::SubgraphConnector<VertexAttributes, VehicleInputEdgeAttributes, TravelTimeAttribute>
+                connector(vehicleInputGraph);
+        connector.connect(subGraph, fullToSubgraphVertexIds, subGraphToFullVertexIds);
         LIGHT_KASSERT(subGraph.isDefrag());
         LIGHT_KASSERT(subGraphToFullVertexIds.size() == subGraph.numVertices());
         std::cout << "Generated connected sub-network: " << std::endl;
@@ -227,8 +322,8 @@ int main(int argc, char *argv[]) {
             }
 
         FORALL_VALID_EDGES(psgOutputGraph, uPsg, ePsg) {
-            // Since multiple psg edges may map to the same vehicle edge, we have to iterate through the psg edges
-            // to construct the new mappings to the reduced vehicle network.
+                // Since multiple psg edges may map to the same vehicle edge, we have to iterate through the psg edges
+                // to construct the new mappings to the reduced vehicle network.
                 const int eFull = psgOutputGraph.mapToEdgeInFullVeh(ePsg);
                 if (eFull != MapToEdgeInFullVehAttribute::defaultValue()) {
                     LIGHT_KASSERT(eFull >= 0 && eFull < fullVehOutputGraph.numEdges());
@@ -238,7 +333,7 @@ int main(int argc, char *argv[]) {
                         psgOutputGraph.mapToEdgeInReducedVeh(ePsg) = eRed;
                     }
                 }
-        }
+            }
 
         // Validate mappings:
         FORALL_EDGES(fullVehOutputGraph, eFull) {

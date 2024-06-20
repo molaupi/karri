@@ -29,20 +29,24 @@
 #include <cstdint>
 #include <random>
 #include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 #include "Algorithms/Dijkstra/Dijkstra.h"
+#include "Algorithms/CH/CH.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Tools/CommandLine/ProgressBar.h"
 
+
 namespace traffic_flow_subnetwork {
 
-
-// This class finds the edges that are kept in the vehicle network for a traffic flow based subnetwork.
+// This class finds high ranked vertices in a vehicle network that cover all locations of an associated passenger
+// network for pickups, dropoffs.
     template<typename VehGraphT,
             typename PsgGraphT,
             typename WeightT = TravelTimeAttribute
     >
-    class KeptEdgesFinder {
+    class KeptHighRankVerticesFinder {
+
 
     private:
 
@@ -51,70 +55,57 @@ namespace traffic_flow_subnetwork {
 
     public:
 
-        KeptEdgesFinder(const VehGraphT &vehGraph, const PsgGraphT &forwardPsgGraph, const PsgGraphT &reversePsgGraph,
-                        const int walkRadius)
-                : vehGraph(vehGraph), forwardPsgGraph(forwardPsgGraph), reversePsgGraph(reversePsgGraph),
+        KeptHighRankVerticesFinder(const VehGraphT &vehGraph, const PsgGraphT &forwardPsgGraph,
+                                   const PsgGraphT &reversePsgGraph,
+                                   const int walkRadius)
+                : vehGraph(vehGraph), revVehGraph(vehGraph.getReverseGraph()),
+                  forwardPsgGraph(forwardPsgGraph), reversePsgGraph(reversePsgGraph),
                   walkRadius(walkRadius), edgeYetToBeCovered(forwardPsgGraph.numEdges()), numEdgesYetToBeCovered(),
                   pickupSearch(reversePsgGraph),
                   dropoffSearch(forwardPsgGraph) {}
 
-        // Computes a set of edges that should be kept in the vehicle subnetwork to still cover all potential taxi
+        // Computes a set of vertices that should be kept in the vehicle subnetwork to still cover all potential taxi
         // sharing requests with possible pickup and dropoff location.
-        std::vector<int> findKeptEdges(const std::vector<int> &flows) {
+        BitVector findKeptVertices() {
 
-            // Compute order of vehicle network edges by descending flow:
-            std::vector<int> edgesInOrder(flows.size());
-            std::iota(edgesInOrder.begin(), edgesInOrder.end(), 0);
-            std::sort(edgesInOrder.begin(), edgesInOrder.end(),
-                      [&flows](const auto &e1, const auto &e2) { return flows[e1] > flows[e2]; });
-
-            // Gather flow statistics
-            const int minFlow = flows[edgesInOrder.back()];
-            const int numEqMin = std::count(flows.begin(), flows.end(), minFlow);
-            const int maxFlow = flows[edgesInOrder.front()];
-            const int medianFlow = flows[edgesInOrder[edgesInOrder.size() / 2]];
-            std::cout << "Flows: \n";
-            std::cout << "\tMin: " << minFlow << " (Number of elements that = min: " << numEqMin << ")\n";
-            std::cout << "\tMed: " << medianFlow << "\n";
-            std::cout << "\tMax: " << maxFlow << "\n";
+            // Compute vehicle CH:
+            std::cout << "Building CH... " << std::flush;
+            CH ch;
+            ch.preprocess<WeightT, VehGraphT>(vehGraph);
+            std::cout << "done.\n";
 
             // Compute maximum rank needed:
-            int maxNeededRank = -1;
-            findMaxRankNeededForPickups(edgesInOrder, flows, maxNeededRank);
-            findMaxRankNeededForDropoffs(edgesInOrder, flows, maxNeededRank);
+            int minNeededCHRank = vehGraph.numVertices() - 1;
+            findMinCHRankNeededForPickups(ch, minNeededCHRank);
+            findMinCHRankNeededForDropoffs(ch, minNeededCHRank);
 
-            // Return all edges with rank smaller than (i.e. flow larger than) maximum rank:
-            edgesInOrder.resize(maxNeededRank + 1);
-            return edgesInOrder;
+            BitVector vertexNeeded(vehGraph.numVertices());
+            for (int rank = 0; rank <= minNeededCHRank; ++rank)
+                vertexNeeded[ch.contractionOrder(rank)] = true;
+
+            return vertexNeeded;
         }
 
 
     private:
 
-        void findMaxRankNeededForPickups(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows,
-                                         int &maxNeededRank) {
+        void findMinCHRankNeededForPickups(const CH &ch, int &minNeededCHRank) {
             std::cout << "Finding covering pickup edges... " << std::flush;
-            findMaxNeededRank<karri::PICKUP>(descendingFlowOrder, flows, maxNeededRank);
+            findMinNeededCHRank<karri::PICKUP>(ch, minNeededCHRank);
             std::cout << " done." << std::endl;
         }
 
-        void findMaxRankNeededForDropoffs(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows,
-                                          int &maxNeededRank) {
+        void findMinCHRankNeededForDropoffs(const CH &ch, int &minNeededCHRank) {
             std::cout << "Finding covering dropoff edges... " << std::flush;
-            findMaxNeededRank<karri::DROPOFF>(descendingFlowOrder, flows, maxNeededRank);
+            findMinNeededCHRank<karri::DROPOFF>(ch, minNeededCHRank);
             std::cout << " done." << std::endl;
         }
 
-        // Given a descending (!) order of edges by flow, this returns a rank in that order s.t. all edges with larger
-        // rank (i.e. smaller flow) do not need to be considered to cover the whole network with pickups/dropoffs.
-        //
-        // May change the flow order in the tail range of zero flow edges to pick a better cover with a smaller number
-        // of edges.
         template<karri::PDLocType type>
         void
-        findMaxNeededRank(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows, int &maxNeededRank) {
+        findMinNeededCHRank(const CH &ch, int &minNeededCHRank) {
 
-            if (maxNeededRank == descendingFlowOrder.size())
+            if (minNeededCHRank == 0)
                 return;
 
             markSharedEdgesToBeCovered();
@@ -124,30 +115,21 @@ namespace traffic_flow_subnetwork {
             auto &search = type == karri::PICKUP ? pickupSearch : dropoffSearch;
             search.distanceLabels.init();
 
-            // For edges up to known lower bound maxNeededRank, we simply add the edges and all surrounding edges.
-            // If this already covers all locations, maxNeededRank is not increased and we are done.
-            for (int rank = 0; rank <= maxNeededRank; ++rank) {
-                const auto &eInVeh = descendingFlowOrder[rank];
-                coverEdgesSurroundingEdge<type>(eInVeh);
+            // For vertices up to known upper bound minNeededCHRank, we simply add all surrounding edges.
+            // If this already covers all locations, minNeededCHRank is not decreasing and we are done.
+            for (int rank = vehGraph.numVertices() - 1; rank >= minNeededCHRank; --rank) {
+                const int v = ch.contractionOrder(rank);
+                coverEdgesSurroundingEdge<type>(v);
                 if (numEdgesYetToBeCovered == 0)
                     return;
             }
 
             // If we have not yet covered all locations, we need to find more edges to cover the remaining locations,
             // increasing the maximum rank needed.
-            ++maxNeededRank;
-            bool reachedZeroFlow = false;
-            for (; maxNeededRank < descendingFlowOrder.size(); ++maxNeededRank) {
-                const auto &eInVeh = descendingFlowOrder[maxNeededRank];
-
-                // If we have already exceeded the known minimum needed maximum rank, and we have reached edges with
-                // flow 0, we can reorder the remaining zero flow edges to potentially find a better cover.
-                if (flows[eInVeh] == 0 && !reachedZeroFlow) {
-                    reachedZeroFlow = true;
-                    reorderZeroFlowEdges<type>(descendingFlowOrder, maxNeededRank);
-                }
-
-                coverEdgesSurroundingEdge<type>(eInVeh);
+            --minNeededCHRank;
+            for (; minNeededCHRank >= 0; --minNeededCHRank) {
+                const int v = ch.contractionOrder(minNeededCHRank);
+                coverEdgesSurroundingEdge<type>(v);
                 if (numEdgesYetToBeCovered == 0)
                     return;
             }
@@ -156,10 +138,35 @@ namespace traffic_flow_subnetwork {
         }
 
         template<karri::PDLocType type>
-        void coverEdgesSurroundingEdge(const int eInVeh) {
+        void coverEdgesSurroundingEdge(const int u) {
 
-            const int eInForwPsgGraph = vehGraph.mapToEdgeInPsg(eInVeh);
-            if (eInForwPsgGraph == MapToEdgeInPsgAttribute::defaultValue())
+            // Use shortest passenger-accessible incident edge of u as potential pickup/dropoff center of search
+            // (if any exist).
+            int eInForwPsgGraph = INVALID_EDGE;
+            int lengthOfEInForwPsgGraph = INFTY;
+            if (type == karri::PICKUP) {
+                FORALL_INCIDENT_EDGES(revVehGraph, u, e) {
+                    const auto &eInPsg = revVehGraph.mapToEdgeInPsg(e);
+                    if (eInPsg != MapToEdgeInPsgAttribute::defaultValue()) {
+                        if (forwardPsgGraph.template get<WeightT>(eInPsg) < lengthOfEInForwPsgGraph) {
+                            lengthOfEInForwPsgGraph = forwardPsgGraph.template get<WeightT>(eInPsg);
+                            eInForwPsgGraph = eInPsg;
+                        }
+                    }
+                }
+            } else {
+                FORALL_INCIDENT_EDGES(vehGraph, u, e) {
+                    const auto &eInPsg = vehGraph.mapToEdgeInPsg(e);
+                    if (eInPsg != MapToEdgeInPsgAttribute::defaultValue()) {
+                        if (forwardPsgGraph.template get<WeightT>(eInPsg) < lengthOfEInForwPsgGraph) {
+                            lengthOfEInForwPsgGraph = forwardPsgGraph.template get<WeightT>(eInPsg);
+                            eInForwPsgGraph = eInPsg;
+                        }
+                    }
+                }
+            }
+
+            if (eInForwPsgGraph == INVALID_EDGE)
                 return;
 
             if (edgeYetToBeCovered[eInForwPsgGraph]) {
@@ -173,18 +180,17 @@ namespace traffic_flow_subnetwork {
 
             const int s = type == karri::PICKUP ? forwardPsgGraph.edgeTail(eInForwPsgGraph)
                                                 : forwardPsgGraph.edgeHead(eInForwPsgGraph);
-            const int offset = type == karri::PICKUP ? forwardPsgGraph.travelTime(eInForwPsgGraph) : 0;
+            const int offset = type == karri::PICKUP ? lengthOfEInForwPsgGraph : 0;
             if (search.distanceLabels[s][0] <= offset)
                 return;
 
             // Find all edges e s.t. if there is an origin/destination of a taxi sharing request at e,
-            // eInForwPsgGraph can serve as a pickup/dropoff location for that request (i.e. eInForwPsgGraph is
-            // within the walking radius from e/to e).
+            // s can serve as a pickup/dropoff location for that request (i.e. s is within the walking radius from e/to e).
             // We do not clear the distance labels in between searches since every edge only needs to be covered by
             // one search. The search spaces become bounded voronoi cells with centers at every source used so far.
             search.queue.clear();
-            search.distanceLabels[s][0] = offset;
-            search.queue.insert(s, offset);
+            search.distanceLabels[s][0] = 0;
+            search.queue.insert(s, 0);
             int v, distToV;
             while (!search.queue.empty()) {
                 search.queue.min(v, distToV);
@@ -194,41 +200,6 @@ namespace traffic_flow_subnetwork {
                 markIncidentEdgesCovered<dir>(v, distToV);
                 search.settleNextVertex();
             }
-        }
-
-        // If the construction of a cover by picking edges in descending order of flows reaches edges with flow 0,
-        // we use heuristically reorder all zero flow edges, making sure to favor those edges as sources who have
-        // not been covered themselves.
-        template<karri::PDLocType type>
-        void reorderZeroFlowEdges(std::vector<int> &descendingFlowOrder, const int startRank) {
-
-            // Remove zero flow edges that are not passenger-accessible as they cannot serve as sources for searches:
-            const auto &isNotPsgAcc = [&](const int &e) -> bool {
-                return vehGraph.mapToEdgeInPsg(e) == MapToEdgeInPsgAttribute::defaultValue();
-            };
-            descendingFlowOrder.erase(
-                    std::remove_if(descendingFlowOrder.begin() + startRank, descendingFlowOrder.end(), isNotPsgAcc),
-                    descendingFlowOrder.end());
-
-            // Sort zero flow edges by how far away they are from previous sources in descending order.
-            const auto cmpCurSearchDist = [&](const int &e1, const int &e2) {
-                const int e1InForwPsg = vehGraph.mapToEdgeInPsg(e1);
-                const int e2InForwPsg = vehGraph.mapToEdgeInPsg(e2);
-                LIGHT_KASSERT(!isNotPsgAcc(e1) && !isNotPsgAcc(e2));
-
-                if constexpr (type == karri::PICKUP) {
-                    const int dist1 = pickupSearch.distanceLabels[forwardPsgGraph.edgeHead(e1InForwPsg)][0];
-                    const int dist2 = pickupSearch.distanceLabels[forwardPsgGraph.edgeHead(e2InForwPsg)][0];
-                    return dist1 > dist2;
-                }
-                // type == DROPOFF:
-                const int dist1 = dropoffSearch.distanceLabels[forwardPsgGraph.edgeTail(e1InForwPsg)][0] +
-                                  forwardPsgGraph.template get<WeightT>(e1InForwPsg);
-                const int dist2 = dropoffSearch.distanceLabels[forwardPsgGraph.edgeTail(e2InForwPsg)][0] +
-                                  forwardPsgGraph.template get<WeightT>(e2InForwPsg);
-                return dist1 > dist2;
-            };
-            std::sort(descendingFlowOrder.begin() + startRank, descendingFlowOrder.end(), cmpCurSearchDist);
         }
 
         // Mark all edges that are accessible in both networks to be found since all of these are eligible origin
@@ -280,6 +251,7 @@ namespace traffic_flow_subnetwork {
         }
 
         const VehGraphT &vehGraph;
+        const VehGraphT revVehGraph;
         const PsgGraphT &forwardPsgGraph;
         const PsgGraphT &reversePsgGraph;
         const int walkRadius;
@@ -294,4 +266,5 @@ namespace traffic_flow_subnetwork {
 
     };
 
-} // end namespace
+} // traffic_flow_subnetwork
+

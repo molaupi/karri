@@ -41,58 +41,52 @@
 namespace traffic_flow_subnetwork {
 
     template<typename VertexAttributes, typename EdgeAttributes, typename WeightT>
-    class KeptEdgesConnector;
+    class SubgraphConnector;
 
-    // This class takes the edges for a traffic flow based subnetwork returned by the KeptEdgesFinder and connects them
-    // to a strongly connected subnetwork of the original road network.
+    // This class takes a subnetwork of a known network and adds edges to the subnetwork until it consists
+    // of only a single strongly connected component.
     template<typename ...VertexAttributes, typename ...EdgeAttributes, typename WeightT>
-    class KeptEdgesConnector<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>, WeightT> {
+    class SubgraphConnector<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>, WeightT> {
 
-        using InGraph = StaticGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>>;
-        using OutGraph = DynamicGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>>;
+        using FullGraph = StaticGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>>;
+        using SubGraph = DynamicGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>>;
 
-        using Search = Dijkstra<InGraph, WeightT, BasicLabelSet<0, ParentInfo::FULL_PARENT_INFO>>;
+        using Search = Dijkstra<FullGraph, WeightT, BasicLabelSet<0, ParentInfo::FULL_PARENT_INFO>>;
 
     public:
 
-        KeptEdgesConnector(const InGraph &in) : in(in), scc(), inEdgesIntroduced(in.numEdges()), search(in) {}
+        explicit SubgraphConnector(const FullGraph &full) : full(full), scc(), inEdgesIntroduced(full.numEdges()), search(full) {}
 
-        OutGraph connectEdges(std::vector<int> &keptEdges, std::vector<int> &outToInVertexIds) {
+        void connect(SubGraph &subGraph,
+                     std::vector<int> &fullToSubVertexIds,
+                     std::vector<int> &subToFullVertexIds) {
 
+            subGraph.validate();
+
+            // Used for validating that no duplicate edges are inserted later. subGraph.edgeId(e) is the edge ID in the
+            // full graph.
             inEdgesIntroduced.clear();
-
-            // Get edge-induced subgraph
-            std::vector<int> inToOutVertexIds(in.numVertices(), INVALID_VERTEX);
-            auto out = getInitialOutGraph(keptEdges, inToOutVertexIds);
-            KASSERT(out.validate());
-
-            // Compute out-to-in vertex ID mapping.
-            outToInVertexIds.clear();
-            outToInVertexIds.resize(out.numVertices(), INVALID_VERTEX);
-            for (int vIn = 0; vIn < in.numVertices(); ++vIn) {
-                const auto &vOut = inToOutVertexIds[vIn];
-                if (vOut != INVALID_VERTEX)
-                    outToInVertexIds[vOut] = vIn;
-            }
-
+            FORALL_VALID_EDGES(subGraph, v, e) {
+                    inEdgesIntroduced.insert(subGraph.edgeId(e));
+                }
 
             // Compute SCCs of subgraph induced by kept edges.
-            scc.run(out);
+            scc.run(subGraph);
             std::vector<int> components = scc.getStronglyConnectedComponents();
             std::unordered_map<int, int> reprToComp;
 
             // Initially, components[v] stores the representative vertex of the component that contains v. We map this
             // to a component ID by mapping the N unique representatives to component IDs [0, N).
             int initialNumComponents = 0;
-            for (int v = 0; v < out.numVertices(); ++v) {
+            for (int v = 0; v < subGraph.numVertices(); ++v) {
                 auto &r = components[v];
                 if (reprToComp.find(r) == reprToComp.end())
                     reprToComp[r] = initialNumComponents++;
                 r = reprToComp[r];
             }
             std::cout << "Subgraph induced by kept edges:" << std::endl;
-            std::cout << "\t|V| = " << out.numVertices() << std::endl;
-            std::cout << "\t|E| = " << out.numEdges() << std::endl;
+            std::cout << "\t|V| = " << subGraph.numVertices() << std::endl;
+            std::cout << "\t|E| = " << subGraph.numEdges() << std::endl;
             std::cout << "\tNumber of SCCs: " << initialNumComponents << std::endl;
             std::cout << "\tSize of largest SCC: " << scc.getLargestSccAsBitmask().cardinality() << std::endl;
 
@@ -110,7 +104,7 @@ namespace traffic_flow_subnetwork {
             // according path.
             for (int c = 0; c < initialNumComponents; ++c) {
                 findClosestNeighborComponent(c, touched[c], inPathToTouched[c],
-                                             out, outToInVertexIds, inToOutVertexIds, components);
+                                             subGraph, subToFullVertexIds, fullToSubVertexIds, components);
             }
             LIGHT_KASSERT(!contains(touched.begin(), touched.end(), INVALID_VERTEX));
 
@@ -186,13 +180,14 @@ namespace traffic_flow_subnetwork {
                         LIGHT_KASSERT(curCycle.front() == expandedCompId);
 
                         // Insert the Dijkstra paths into the subnetwork:
-                        insertPathsIntoSubnetwork(out, curCycle, inPathToTouched, inToOutVertexIds, outToInVertexIds);
+                        insertPathsIntoSubnetwork(subGraph, curCycle, inPathToTouched, fullToSubVertexIds,
+                                                  subToFullVertexIds);
 
                         // Store representative of new vertices (new vertices are added at end with incremental IDs):
-                        components.resize(out.numVertices(), expandedCompId);
+                        components.resize(subGraph.numVertices(), expandedCompId);
 
                         // Update the components of existing vertices to merged component:
-                        for (int v = 0; v < out.numVertices(); ++v)
+                        for (int v = 0; v < subGraph.numVertices(); ++v)
                             if (contains(curCycle.begin(), curCycle.end(), components[v]))
                                 components[v] = expandedCompId;
 
@@ -223,8 +218,8 @@ namespace traffic_flow_subnetwork {
                 if (numComponents > 1) {
                     // Compute new neighbor information for those components that have been expanded by a cycle collapse:
                     for (const auto &c: expandedComponents) {
-                        findClosestNeighborComponent(c, touched[c], inPathToTouched[c], out, outToInVertexIds,
-                                                     inToOutVertexIds, components);
+                        findClosestNeighborComponent(c, touched[c], inPathToTouched[c], subGraph, subToFullVertexIds,
+                                                     fullToSubVertexIds, components);
                     }
                 }
 
@@ -232,79 +227,23 @@ namespace traffic_flow_subnetwork {
             }
             std::cout << " done." << std::endl;
 
-            LIGHT_KASSERT(hasOneScc(out));
+            LIGHT_KASSERT(hasOneScc(subGraph));
             std::cout << "Connected subnetwork in " << iteration << " iterations." << std::endl;
 
-            out.defrag();
-            return out;
+            subGraph.defrag();
         }
 
 
     private:
 
-        template<typename GraphT>
-        static int countEdgesBetween(const GraphT &graph, const int u, const int v) {
-            int n = 0;
-            FORALL_INCIDENT_EDGES(graph, u, e) {
-                if (graph.edgeHead(e) == v)
-                    ++n;
-            }
-            return n;
-        }
-
-        OutGraph getInitialOutGraph(const std::vector<int> &keptEdges,
-                                    std::vector<int> &inToOutVertexIds) {
-            OutGraph out(in.numVertices(), in.numEdges());
-
-            // Add vertices and memorize mapping from old to new vertex IDs.
-            for (const auto &e: keptEdges) {
-                const int u = in.edgeTail(e);
-                LIGHT_KASSERT(u >= 0 && u < inToOutVertexIds.size());
-                if (inToOutVertexIds[u] == INVALID_VERTEX) {
-                    inToOutVertexIds[u] = out.appendVertex();
-                    RUN_FORALL(out.template get<VertexAttributes>(
-                            inToOutVertexIds[u]) = in.template get<VertexAttributes>(u));
-                }
-
-                const int v = in.edgeHead(e);
-                LIGHT_KASSERT(v >= 0 && v < inToOutVertexIds.size());
-                if (inToOutVertexIds[v] == INVALID_VERTEX) {
-                    inToOutVertexIds[v] = out.appendVertex();
-                    RUN_FORALL(out.template get<VertexAttributes>(
-                            inToOutVertexIds[v]) = in.template get<VertexAttributes>(v));
-                }
-            }
-
-            // Add edges. (Mapping from old to new edge IDs will be computed later since they change in eventual
-            // defragmentation).
-            for (const auto &e: keptEdges) {
-                bool noDuplicate = inEdgesIntroduced.insert(e);
-                LIGHT_KASSERT(noDuplicate);
-                LIGHT_KASSERT(in.containsEdge(in.edgeTail(e), in.edgeHead(e)));
-                const auto u = inToOutVertexIds[in.edgeTail(e)];
-                const auto v = inToOutVertexIds[in.edgeHead(e)];
-                LIGHT_KASSERT(u != INVALID_VERTEX && v != INVALID_VERTEX);
-                LIGHT_KASSERT(countEdgesBetween(out, u, v) < countEdgesBetween(in, in.edgeTail(e), in.edgeHead(e)));
-                const int idx = out.insertEdge(u, v);
-                RUN_FORALL(out.template get<EdgeAttributes>(idx) = in.template get<EdgeAttributes>(e));
-                out.edgeTail(idx) = u;
-                LIGHT_KASSERT(out.edgeId(idx) == e);
-                if (e == 170009) {
-                    std::cout << "seen 170009 before. Idx of according edge in out: " << idx << std::endl;
-                }
-            }
-
-            return out;
-        }
-
         void findClosestNeighborComponent(const int c, int &neighborC, std::vector<int> &pathToNeighborC,
-                                          const OutGraph &out, const std::vector<int> &outToInVertexIds,
+                                          const SubGraph &subGraph, const std::vector<int> &outToInVertexIds,
                                           const std::vector<int> &inToOutVertexIds,
                                           const std::vector<int> &components) {
             // Root search at all vertices in SCC
             search.distanceLabels.init();
             search.queue.clear();
-            for (int v = 0; v < out.numVertices(); ++v) {
+            for (int v = 0; v < subGraph.numVertices(); ++v) {
                 if (components[v] == c) {
                     const auto &vIn = outToInVertexIds[v];
                     search.distanceLabels[vIn][0] = 0;
@@ -330,11 +269,11 @@ namespace traffic_flow_subnetwork {
             }
             LIGHT_KASSERT(neighborC >= 0 && neighborC != c);
             LIGHT_KASSERT(!pathToNeighborC.empty());
-            LIGHT_KASSERT(components[inToOutVertexIds[in.edgeHead(pathToNeighborC.back())]] == neighborC);
-            LIGHT_KASSERT(components[inToOutVertexIds[in.edgeTail(pathToNeighborC.front())]] == c);
+            LIGHT_KASSERT(components[inToOutVertexIds[full.edgeHead(pathToNeighborC.back())]] == neighborC);
+            LIGHT_KASSERT(components[inToOutVertexIds[full.edgeTail(pathToNeighborC.front())]] == c);
         }
 
-        void insertPathsIntoSubnetwork(OutGraph &out,
+        void insertPathsIntoSubnetwork(SubGraph &subGraph,
                                        const std::vector<int> &pathIndices,
                                        const std::vector<std::vector<int>> &paths,
                                        std::vector<int> &inToOutVertexIds,
@@ -345,33 +284,33 @@ namespace traffic_flow_subnetwork {
                 LIGHT_KASSERT(idx >= 0 && idx < paths.size());
                 // p is a vector of edges in the input network that we need to insert into the output subnetwork.
                 const auto &p = paths[idx];
-                LIGHT_KASSERT(inToOutVertexIds[in.edgeTail(p.front())] != INVALID_VERTEX);
-                LIGHT_KASSERT(inToOutVertexIds[in.edgeHead(p.back())] != INVALID_VERTEX);
+                LIGHT_KASSERT(inToOutVertexIds[full.edgeTail(p.front())] != INVALID_VERTEX);
+                LIGHT_KASSERT(inToOutVertexIds[full.edgeHead(p.back())] != INVALID_VERTEX);
 
                 // Add vertices on path:
                 for (int i = 0; i < p.size() - 1; ++i) {
-                    const int v = in.edgeHead(p[i]);
+                    const int v = full.edgeHead(p[i]);
                     LIGHT_KASSERT(v >= 0 && v < inToOutVertexIds.size());
                     if (inToOutVertexIds[v] != INVALID_VERTEX)
                         continue; // vertex was introduced by previously inserted path in same call to this method
-                    const int newOutV = out.appendVertex();
+                    const int newOutV = subGraph.appendVertex();
                     inToOutVertexIds[v] = newOutV;
                     if (outToInVertexIds.size() < newOutV + 1)
                         outToInVertexIds.resize(newOutV + 1, INVALID_VERTEX);
                     outToInVertexIds[newOutV] = v;
-                    RUN_FORALL(out.template get<VertexAttributes>(newOutV) = in.template get<VertexAttributes>(v));
+                    RUN_FORALL(subGraph.template get<VertexAttributes>(newOutV) = full.template get<VertexAttributes>(v));
                 }
 
                 // Add edges on path:
                 for (const auto &e: p) {
-                    LIGHT_KASSERT(in.containsEdge(in.edgeTail(e), in.edgeHead(e)));
-                    const auto u = inToOutVertexIds[in.edgeTail(e)];
-                    const auto v = inToOutVertexIds[in.edgeHead(e)];
+                    LIGHT_KASSERT(full.containsEdge(full.edgeTail(e), full.edgeHead(e)));
+                    const auto u = inToOutVertexIds[full.edgeTail(e)];
+                    const auto v = inToOutVertexIds[full.edgeHead(e)];
                     LIGHT_KASSERT(u != INVALID_VERTEX && v != INVALID_VERTEX);
 
                     bool eAlreadyInOut = false;
-                    FORALL_INCIDENT_EDGES(out, u, eOut) {
-                        if (out.edgeId(eOut) == e) {
+                    FORALL_INCIDENT_EDGES(subGraph, u, eOut) {
+                        if (subGraph.edgeId(eOut) == e) {
                             eAlreadyInOut = true;
                             break;
                         }
@@ -381,21 +320,21 @@ namespace traffic_flow_subnetwork {
 
                     bool noDuplicate = inEdgesIntroduced.insert(e);
                     LIGHT_KASSERT(noDuplicate);
-                    LIGHT_KASSERT(countEdgesBetween(out, u, v) < countEdgesBetween(in, in.edgeTail(e), in.edgeHead(e)));
-                    const int outEdgeIdx = out.insertEdge(u, v);
-                    RUN_FORALL(out.template get<EdgeAttributes>(outEdgeIdx) = in.template get<EdgeAttributes>(e));
-                    out.edgeTail(outEdgeIdx) = u;
-                    LIGHT_KASSERT(out.edgeId(outEdgeIdx) == e);
+                    LIGHT_KASSERT(subGraph.countEdgesBetween(u, v) < full.countEdgesBetween(full.edgeTail(e), full.edgeHead(e)));
+                    const int outEdgeIdx = subGraph.insertEdge(u, v);
+                    RUN_FORALL(subGraph.template get<EdgeAttributes>(outEdgeIdx) = full.template get<EdgeAttributes>(e));
+                    subGraph.edgeTail(outEdgeIdx) = u;
+                    LIGHT_KASSERT(subGraph.edgeId(outEdgeIdx) == e);
                 }
             }
         }
 
-        bool hasOneScc(const OutGraph &out) {
-            scc.run(out);
-            return scc.getLargestSccAsBitmask().cardinality() == out.numVertices();
+        bool hasOneScc(const SubGraph &subGraph) {
+            scc.run(subGraph);
+            return scc.getLargestSccAsBitmask().cardinality() == subGraph.numVertices();
         }
 
-        const InGraph &in;
+        const FullGraph &full;
         StronglyConnectedComponents scc;
 
         Subset inEdgesIntroduced;
