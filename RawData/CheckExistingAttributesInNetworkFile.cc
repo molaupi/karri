@@ -41,6 +41,8 @@
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
 #include "DataStructures/Graph/Attributes/SequentialVertexIdAttribute.h"
 #include "DataStructures/Graph/Attributes/VertexIdAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInReducedVehAttribute.h"
 
 inline void printUsage() {
     std::cout <<
@@ -68,6 +70,9 @@ int main(int argc, char *argv[]) {
                 EdgeTailAttribute,
                 FreeFlowSpeedAttribute,
                 LengthAttribute,
+                MapToEdgeInFullVehAttribute,
+                MapToEdgeInPsgAttribute,
+                MapToEdgeInReducedVehAttribute,
                 NumLanesAttribute,
                 OsmRoadCategoryAttribute,
                 RoadGeometryAttribute,
@@ -109,6 +114,12 @@ int main(int argc, char *argv[]) {
             std::cout << "Has FreeFlowSpeedAttribute." << std::endl;
         if (inputGraph.get<LengthAttribute>(0) != LengthAttribute::defaultValue())
             std::cout << "Has LengthAttribute." << std::endl;
+        if (inputGraph.get<MapToEdgeInFullVehAttribute>(0) != MapToEdgeInFullVehAttribute::defaultValue())
+            std::cout << "Has MapToEdgeInFullVehAttribute." << std::endl;
+        if (inputGraph.get<MapToEdgeInPsgAttribute>(0) != MapToEdgeInPsgAttribute::defaultValue())
+            std::cout << "Has MapToEdgeInPsgAttribute." << std::endl;
+        if (inputGraph.get<MapToEdgeInReducedVehAttribute>(0) != MapToEdgeInReducedVehAttribute::defaultValue())
+            std::cout << "Has MapToEdgeInReducedVehAttribute." << std::endl;
         if (inputGraph.get<NumLanesAttribute>(0) != NumLanesAttribute::defaultValue())
             std::cout << "Has NumLanesAttribute." << std::endl;
         if (inputGraph.get<OsmRoadCategoryAttribute>(0) != OsmRoadCategoryAttribute::defaultValue())
