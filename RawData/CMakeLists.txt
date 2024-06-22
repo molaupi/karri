@@ -31,6 +31,10 @@ add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNet
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(CheckExistingAttributesInNetworkFile ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 
+add_executable(ComputeFreeFlowFlows ComputeFreeFlowFlows.cc)
+target_compile_definitions(ComputeFreeFlowFlows PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(ComputeFreeFlowFlows ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(ConvertGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
