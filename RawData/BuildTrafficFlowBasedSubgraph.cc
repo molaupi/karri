@@ -195,7 +195,7 @@ int main(int argc, char *argv[]) {
         std::cout << "done.\n";
 
 
-        std::cout << "Number of vertices in the original passenger network: " << psgInputGraph.numVertices()
+        std::cout << "Number of vertices in the original vehicle network: " << vehicleInputGraph.numVertices()
                   << std::endl;
         std::cout << "Number of edges in the original vehicle network: " << vehicleInputGraph.numEdges()
                   << std::endl;

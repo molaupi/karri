@@ -84,7 +84,7 @@ namespace traffic_flow_subnetwork {
                     reprToComp[r] = initialNumComponents++;
                 r = reprToComp[r];
             }
-            std::cout << "Subgraph induced by kept edges:" << std::endl;
+            std::cout << "Subgraph induced by kept edges/vertices:" << std::endl;
             std::cout << "\t|V| = " << subGraph.numVertices() << std::endl;
             std::cout << "\t|E| = " << subGraph.numEdges() << std::endl;
             std::cout << "\tNumber of SCCs: " << initialNumComponents << std::endl;

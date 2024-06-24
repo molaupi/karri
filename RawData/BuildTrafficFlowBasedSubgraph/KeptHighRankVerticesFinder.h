@@ -80,7 +80,7 @@ namespace traffic_flow_subnetwork {
             findMinCHRankNeededForDropoffs(ch, minNeededCHRank);
 
             BitVector vertexNeeded(vehGraph.numVertices());
-            for (int rank = 0; rank <= minNeededCHRank; ++rank)
+            for (int rank = minNeededCHRank; rank < vehGraph.numVertices(); ++rank)
                 vertexNeeded[ch.contractionOrder(rank)] = true;
 
             return vertexNeeded;
@@ -133,73 +133,75 @@ namespace traffic_flow_subnetwork {
                 if (numEdgesYetToBeCovered == 0)
                     return;
             }
-            std::cout << " (Uncovered edges: " << numEdgesYetToBeCovered << ")";
+            std::cout << " (Uncovered edges: " << numEdgesYetToBeCovered << ")" << std::endl;
+            for (int i = edgeYetToBeCovered.firstSetBit(); i != -1; i = edgeYetToBeCovered.nextSetBit(i)) {
+                std::cout << "Edge " << i << " not covered. "
+                          << "Traveltime: " << forwardPsgGraph.template get<WeightT>(i)
+                          << ", Head OSM ID: " << forwardPsgGraph.osmNodeId(forwardPsgGraph.edgeHead(i))
+                          << ", Tail OSM ID: " << forwardPsgGraph.osmNodeId(forwardPsgGraph.edgeTail(i))
+                          << std::endl;
+            }
             LIGHT_KASSERT(false);
         }
 
         template<karri::PDLocType type>
         void coverEdgesSurroundingEdge(const int u) {
 
-            // Use shortest passenger-accessible incident edge of u as potential pickup/dropoff center of search
+            // Use every passenger-accessible incident edge of u as potential pickup/dropoff center of search
             // (if any exist).
-            int eInForwPsgGraph = INVALID_EDGE;
-            int lengthOfEInForwPsgGraph = INFTY;
+            std::vector<int> incPsgAccEdges;
             if (type == karri::PICKUP) {
                 FORALL_INCIDENT_EDGES(revVehGraph, u, e) {
                     const auto &eInPsg = revVehGraph.mapToEdgeInPsg(e);
-                    if (eInPsg != MapToEdgeInPsgAttribute::defaultValue()) {
-                        if (forwardPsgGraph.template get<WeightT>(eInPsg) < lengthOfEInForwPsgGraph) {
-                            lengthOfEInForwPsgGraph = forwardPsgGraph.template get<WeightT>(eInPsg);
-                            eInForwPsgGraph = eInPsg;
-                        }
-                    }
+                    if (eInPsg != MapToEdgeInPsgAttribute::defaultValue())
+                        incPsgAccEdges.push_back(eInPsg);
                 }
             } else {
                 FORALL_INCIDENT_EDGES(vehGraph, u, e) {
                     const auto &eInPsg = vehGraph.mapToEdgeInPsg(e);
-                    if (eInPsg != MapToEdgeInPsgAttribute::defaultValue()) {
-                        if (forwardPsgGraph.template get<WeightT>(eInPsg) < lengthOfEInForwPsgGraph) {
-                            lengthOfEInForwPsgGraph = forwardPsgGraph.template get<WeightT>(eInPsg);
-                            eInForwPsgGraph = eInPsg;
-                        }
-                    }
+                    if (eInPsg != MapToEdgeInPsgAttribute::defaultValue())
+                        incPsgAccEdges.push_back(eInPsg);
                 }
             }
 
-            if (eInForwPsgGraph == INVALID_EDGE)
+            if (incPsgAccEdges.empty())
                 return;
 
-            if (edgeYetToBeCovered[eInForwPsgGraph]) {
-                edgeYetToBeCovered[eInForwPsgGraph] = false;
-                --numEdgesYetToBeCovered;
+            for (const auto e : incPsgAccEdges) {
+
+                if (edgeYetToBeCovered[e]) {
+                    edgeYetToBeCovered[e] = false;
+                    --numEdgesYetToBeCovered;
+                }
+
+                auto &search = type == karri::PICKUP ? pickupSearch : dropoffSearch;
+                static constexpr SearchDirection dir =
+                        type == karri::PICKUP ? SearchDirection::REVERSE : SearchDirection::FORWARD;
+
+                const int s = type == karri::PICKUP ? forwardPsgGraph.edgeTail(e)
+                                                    : forwardPsgGraph.edgeHead(e);
+                const int offset = type == karri::PICKUP ? forwardPsgGraph.template get<WeightT>(e) : 0;
+                if (search.distanceLabels[s][0] <= offset)
+                    continue;
+
+                // Find all edges e s.t. if there is an origin/destination of a taxi sharing request at e,
+                // s can serve as a pickup/dropoff location for that request (i.e. s is within the walking radius from e/to e).
+                // We do not clear the distance labels in between searches since every edge only needs to be covered by
+                // one search. The search spaces become bounded voronoi cells with centers at every source used so far.
+                search.queue.clear();
+                search.distanceLabels[s][0] = 0;
+                search.queue.insert(s, 0);
+                int v, distToV;
+                while (!search.queue.empty()) {
+                    search.queue.min(v, distToV);
+                    KASSERT(search.distanceLabels[v][0] == distToV);
+                    if (distToV > walkRadius)
+                        break;
+                    markIncidentEdgesCovered<dir>(v, distToV);
+                    search.settleNextVertex();
+                }
             }
 
-            auto &search = type == karri::PICKUP ? pickupSearch : dropoffSearch;
-            static constexpr SearchDirection dir =
-                    type == karri::PICKUP ? SearchDirection::REVERSE : SearchDirection::FORWARD;
-
-            const int s = type == karri::PICKUP ? forwardPsgGraph.edgeTail(eInForwPsgGraph)
-                                                : forwardPsgGraph.edgeHead(eInForwPsgGraph);
-            const int offset = type == karri::PICKUP ? lengthOfEInForwPsgGraph : 0;
-            if (search.distanceLabels[s][0] <= offset)
-                return;
-
-            // Find all edges e s.t. if there is an origin/destination of a taxi sharing request at e,
-            // s can serve as a pickup/dropoff location for that request (i.e. s is within the walking radius from e/to e).
-            // We do not clear the distance labels in between searches since every edge only needs to be covered by
-            // one search. The search spaces become bounded voronoi cells with centers at every source used so far.
-            search.queue.clear();
-            search.distanceLabels[s][0] = 0;
-            search.queue.insert(s, 0);
-            int v, distToV;
-            while (!search.queue.empty()) {
-                search.queue.min(v, distToV);
-                KASSERT(search.distanceLabels[v][0] == distToV);
-                if (distToV > walkRadius)
-                    break;
-                markIncidentEdgesCovered<dir>(v, distToV);
-                search.settleNextVertex();
-            }
         }
 
         // Mark all edges that are accessible in both networks to be found since all of these are eligible origin
