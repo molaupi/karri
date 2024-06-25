@@ -38,37 +38,9 @@ $binaryDir/RawData/DrawRandomDepartureTimes -p $inputDir/ODPairs/${reqBaseName}_
 minDepTime=$(awk -F',' 'BEGIN { min=100000000 } NR>1 && $3 < min { min=$3} END { print min }' ${requestsFile}.csv)
 maxDepTime=$(awk -F',' 'BEGIN { max=0 } NR>1 && $3 > max { max=$3} END { print max }' ${requestsFile}.csv)
 startOfServiceTime=$minDepTime
-let "endOfServiceTime=$maxDepTime + 2*$meanTripTimeInOriginalRequests" # vehicles operate up to 2*meanTripTime after last request
+let "endOfServiceTime=$maxDepTime + 3*$meanTripTimeInOriginalRequests/10" # vehicles operate up to 3*meanTripTime after last request (factor 10 for conversion from tenth of seconds to seconds)
+echo $endOfServiceTime
 veh_nums=(1000 2000 3000 4000)
 for numVehicles in ${veh_nums[@]}; do
   $binaryDir/RawData/GenerateRandomVehicles -n $numVehicles -start $startOfServiceTime -end $endOfServiceTime -c 4 -g $inputDir/Graphs/${veh_name}.gr.bin -a $inputDir/Boundaries/${fullNetworkName}_Inner.poly -o $inputDir/Vehicles/${fullNetworkName}_${numVehicles}
 done
-
-
-
-
-##########################
-## Setting Up Input Data #
-##########################
-#
-#name=${instanceName}_${passengerMode}
-#veh_name=${name}_veh
-#psg_name=${name}_psg
-#
-## For a more precise mapping of edges in the vehicle and passenger networks, remove -no-union-nodes flag.
-## Leads to larger vehicle network with many vertices of degree 2, though.
-#$binaryDir/RawData/OsmToCarAndPassengerGraph -psg-mode ${passengerMode} -no-union-nodes -no-veh-on-service -b $boundariesDir/${networkName}_Inner.poly -a lat_lng osm_node_id capacity free_flow_speed length num_lanes osm_road_category road_geometry speed_limit travel_time -i $inputGraph -co $inputDir/Graphs/${veh_name} -po $inputDir/Graphs/${psg_name}
-#$binaryDir/RawData/GenerateRandomVehicles -n $numVehicles -g $inputDir/Graphs/${veh_name}.gr.bin -a $boundariesDir/${networkName}_Inner.poly -o $inputDir/Vehicles/${name}
-#$binaryDir/RawData/GenerateODPairs -n $numRequests -d $meanTripTime -geom -psg -g $inputDir/Graphs/${veh_name}.gr.bin -a $boundariesDir/${networkName}_Inner.poly -o $inputDir/ODPairs/${name}_OD.csv
-#$binaryDir/RawData/TransformLocations -src-g $inputDir/Graphs/${veh_name}.gr.bin -tar-g $inputDir/Graphs/${veh_name}.gr.bin -psg -p $inputDir/ODPairs/${name}_OD.csv -in-repr vertex-id -out-repr edge-id -o $inputDir/ODPairs/${name}_OD.csv
-#$binaryDir/RawData/DrawRandomDepartureTimes -p $inputDir/ODPairs/${name}_OD.csv -t $refRequestFile -t-col-name ${refRequestFileTimeColName} -o $inputDir/Requests/${name}
-##rm $inputDir/ODPairs/${name}_OD.csv
-#
-############################
-## Preprocessing the Graph #
-############################
-#
-#echo "Constructing CHs..."
-#$binaryDir/Launchers/RunP2PAlgo -a CH -g $inputDir/Graphs/${veh_name}.gr.bin -o $inputDir/CHs/${veh_name}_time
-#$binaryDir/Launchers/RunP2PAlgo -a CH -g $inputDir/Graphs/${psg_name}.gr.bin -o $inputDir/CHs/${psg_name}_time
-#echo "done."
