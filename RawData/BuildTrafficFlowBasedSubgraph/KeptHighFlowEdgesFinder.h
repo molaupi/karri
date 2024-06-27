@@ -33,6 +33,7 @@
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Tools/CommandLine/ProgressBar.h"
+#include "DataStructures/Containers/Subset.h"
 
 namespace traffic_flow_subnetwork {
 
@@ -52,15 +53,17 @@ namespace traffic_flow_subnetwork {
     public:
 
         KeptHighFlowEdgesFinder(const VehGraphT &vehGraph, const PsgGraphT &forwardPsgGraph, const PsgGraphT &reversePsgGraph,
-                                const int walkRadius)
+                                const int walkRadius, const double flowGoodEnoughFactor)
                 : vehGraph(vehGraph), forwardPsgGraph(forwardPsgGraph), reversePsgGraph(reversePsgGraph),
-                  walkRadius(walkRadius), edgeYetToBeCovered(forwardPsgGraph.numEdges()), numEdgesYetToBeCovered(),
+                  walkRadius(walkRadius), flowGoodEnoughFactor(flowGoodEnoughFactor),
+                  edgeYetToBeCovered(forwardPsgGraph.numEdges()), numEdgesYetToBeCovered(),
+                  bestReachableFlow(forwardPsgGraph.numEdges()),
                   pickupSearch(reversePsgGraph),
                   dropoffSearch(forwardPsgGraph) {}
 
         // Computes a set of edges that should be kept in the vehicle subnetwork to still cover all potential taxi
         // sharing requests with possible pickup and dropoff location.
-        std::vector<int> findKeptEdges(const std::vector<int> &flows) {
+        Subset findKeptEdges(const std::vector<int> &flows) {
 
             // Compute order of vehicle network edges by descending flow:
             std::vector<int> edgesInOrder(flows.size());
@@ -79,29 +82,28 @@ namespace traffic_flow_subnetwork {
             std::cout << "\tMax: " << maxFlow << "\n";
 
             // Compute maximum rank needed:
-            int maxNeededRank = -1;
-            findMaxRankNeededForPickups(edgesInOrder, flows, maxNeededRank);
-            findMaxRankNeededForDropoffs(edgesInOrder, flows, maxNeededRank);
+            Subset keptEdges(vehGraph.numEdges());
+            bool reorderedZeroFlowEdges = false;
+            findMaxRankNeededForPickups(edgesInOrder, flows, keptEdges, reorderedZeroFlowEdges);
+            findMaxRankNeededForDropoffs(edgesInOrder, flows, keptEdges, reorderedZeroFlowEdges);
 
-            // Return all edges with rank smaller than (i.e. flow larger than) maximum rank:
-            edgesInOrder.resize(maxNeededRank + 1);
-            return edgesInOrder;
+            return keptEdges;
         }
 
 
     private:
 
         void findMaxRankNeededForPickups(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows,
-                                         int &maxNeededRank) {
+                                         Subset& keptEdges, bool& reorderedZeroFlowEdges) {
             std::cout << "Finding covering pickup edges... " << std::flush;
-            findMaxNeededRank<karri::PICKUP>(descendingFlowOrder, flows, maxNeededRank);
+            findMaxNeededRank<karri::PICKUP>(descendingFlowOrder, flows, keptEdges, reorderedZeroFlowEdges);
             std::cout << " done." << std::endl;
         }
 
         void findMaxRankNeededForDropoffs(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows,
-                                          int &maxNeededRank) {
+                                          Subset& keptEdges, bool& reorderedZeroFlowEdges) {
             std::cout << "Finding covering dropoff edges... " << std::flush;
-            findMaxNeededRank<karri::DROPOFF>(descendingFlowOrder, flows, maxNeededRank);
+            findMaxNeededRank<karri::DROPOFF>(descendingFlowOrder, flows, keptEdges, reorderedZeroFlowEdges);
             std::cout << " done." << std::endl;
         }
 
@@ -112,9 +114,9 @@ namespace traffic_flow_subnetwork {
         // of edges.
         template<karri::PDLocType type>
         void
-        findMaxNeededRank(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows, int &maxNeededRank) {
+        findMaxNeededRank(std::vector<int> &descendingFlowOrder, const std::vector<int> &flows, Subset& keptEdges, bool& reorderedZeroFlowEdges) {
 
-            if (maxNeededRank == descendingFlowOrder.size())
+            if (keptEdges.size() == descendingFlowOrder.size())
                 return;
 
             markSharedEdgesToBeCovered();
@@ -124,30 +126,30 @@ namespace traffic_flow_subnetwork {
             auto &search = type == karri::PICKUP ? pickupSearch : dropoffSearch;
             search.distanceLabels.init();
 
-            // For edges up to known lower bound maxNeededRank, we simply add the edges and all surrounding edges.
+            // For edges that are already in keptEdges, we simply add the edges and all surrounding edges.
             // If this already covers all locations, maxNeededRank is not increased and we are done.
-            for (int rank = 0; rank <= maxNeededRank; ++rank) {
-                const auto &eInVeh = descendingFlowOrder[rank];
-                coverEdgesSurroundingEdge<type>(eInVeh);
+            for (const auto& e : keptEdges) {
+                coverEdgesSurroundingEdge<type>(e, flows[e]);
                 if (numEdgesYetToBeCovered == 0)
                     return;
             }
 
-            // If we have not yet covered all locations, we need to find more edges to cover the remaining locations,
-            // increasing the maximum rank needed.
-            ++maxNeededRank;
-            bool reachedZeroFlow = false;
-            for (; maxNeededRank < descendingFlowOrder.size(); ++maxNeededRank) {
-                const auto &eInVeh = descendingFlowOrder[maxNeededRank];
+            // If we have not yet covered all locations, we need to find more edges to cover the remaining locations.
+            for (int i = 0; i < descendingFlowOrder.size(); ++i) {
+                const auto &eInVeh = descendingFlowOrder[i];
+                if (keptEdges.contains(eInVeh))
+                    continue;
 
                 // If we have already exceeded the known minimum needed maximum rank, and we have reached edges with
                 // flow 0, we can reorder the remaining zero flow edges to potentially find a better cover.
-                if (flows[eInVeh] == 0 && !reachedZeroFlow) {
-                    reachedZeroFlow = true;
-                    reorderZeroFlowEdges<type>(descendingFlowOrder, maxNeededRank);
+                if (flows[eInVeh] == 0 && !reorderedZeroFlowEdges) {
+                    reorderedZeroFlowEdges = true;
+                    reorderZeroFlowEdges<type>(descendingFlowOrder, i);
                 }
 
-                coverEdgesSurroundingEdge<type>(eInVeh);
+                const bool keepEdge = coverEdgesSurroundingEdge<type>(eInVeh, flows[eInVeh]);
+                if (keepEdge)
+                    keptEdges.insert(eInVeh);
                 if (numEdgesYetToBeCovered == 0)
                     return;
             }
@@ -155,33 +157,39 @@ namespace traffic_flow_subnetwork {
             LIGHT_KASSERT(false);
         }
 
+        // Returns whether eInVeh should be kept.
         template<karri::PDLocType type>
-        void coverEdgesSurroundingEdge(const int eInVeh) {
+        bool coverEdgesSurroundingEdge(const int eInVeh, const int flowOnE) {
+            bool isGoodEnoughFlowForAnyReachable = false;
+            bool anyNewEdgeCovered = false;
 
             const int eInForwPsgGraph = vehGraph.mapToEdgeInPsg(eInVeh);
             if (eInForwPsgGraph == MapToEdgeInPsgAttribute::defaultValue())
-                return;
+                return true; // Always keep passenger inaccessible edges.
 
             if (edgeYetToBeCovered[eInForwPsgGraph]) {
                 edgeYetToBeCovered[eInForwPsgGraph] = false;
                 --numEdgesYetToBeCovered;
+                ++progressBar;
+                LIGHT_KASSERT(bestReachableFlow[eInForwPsgGraph] == -1);
+                bestReachableFlow[eInForwPsgGraph] = flowOnE;
+                isGoodEnoughFlowForAnyReachable = true;
+                anyNewEdgeCovered = true;
             }
+
 
             auto &search = type == karri::PICKUP ? pickupSearch : dropoffSearch;
             static constexpr SearchDirection dir =
                     type == karri::PICKUP ? SearchDirection::REVERSE : SearchDirection::FORWARD;
 
-            const int s = type == karri::PICKUP ? forwardPsgGraph.edgeTail(eInForwPsgGraph)
-                                                : forwardPsgGraph.edgeHead(eInForwPsgGraph);
-            const int offset = type == karri::PICKUP ? forwardPsgGraph.travelTime(eInForwPsgGraph) : 0;
-            if (search.distanceLabels[s][0] <= offset)
-                return;
 
             // Find all edges e s.t. if there is an origin/destination of a taxi sharing request at e,
             // eInForwPsgGraph can serve as a pickup/dropoff location for that request (i.e. eInForwPsgGraph is
             // within the walking radius from e/to e).
-            // We do not clear the distance labels in between searches since every edge only needs to be covered by
-            // one search. The search spaces become bounded voronoi cells with centers at every source used so far.
+            const int s = type == karri::PICKUP ? forwardPsgGraph.edgeTail(eInForwPsgGraph)
+                                                : forwardPsgGraph.edgeHead(eInForwPsgGraph);
+            const int offset = type == karri::PICKUP ? forwardPsgGraph.travelTime(eInForwPsgGraph) : 0;
+            search.distanceLabels.init();
             search.queue.clear();
             search.distanceLabels[s][0] = offset;
             search.queue.insert(s, offset);
@@ -191,9 +199,10 @@ namespace traffic_flow_subnetwork {
                 KASSERT(search.distanceLabels[v][0] == distToV);
                 if (distToV > walkRadius)
                     break;
-                markIncidentEdgesCovered<dir>(v, distToV);
+                markIncidentEdgesCovered<dir>(v, distToV, flowOnE, isGoodEnoughFlowForAnyReachable, anyNewEdgeCovered);
                 search.settleNextVertex();
             }
+            return isGoodEnoughFlowForAnyReachable;
         }
 
         // If the construction of a cover by picking edges in descending order of flows reaches edges with flow 0,
@@ -240,25 +249,30 @@ namespace traffic_flow_subnetwork {
                 numEdgesYetToBeCovered = 0;
             }
 
+            for (int e = 0; e < forwardPsgGraph.numEdges(); ++e) {
+                bestReachableFlow[e] = INFTY;
+            }
+
             FORALL_EDGES(vehGraph, e) {
                 KASSERT(vehGraph.mapToEdgeInPsg(e) == MapToEdgeInPsgAttribute::defaultValue() ||
                         forwardPsgGraph.mapToEdgeInFullVeh(vehGraph.mapToEdgeInPsg(e)) == e);
                 const auto eInForwPsgGraph = vehGraph.mapToEdgeInPsg(e);
                 if (eInForwPsgGraph != MapToEdgeInPsgAttribute::defaultValue()) {
                     edgeYetToBeCovered[eInForwPsgGraph] = true;
+                    bestReachableFlow[eInForwPsgGraph] = -1;
                     ++numEdgesYetToBeCovered;
                 }
             }
         }
 
+        // Returns whether the flow on the covering edge was within a factor of FLOW_GOOD_ENOUGH_FACTOR of the best
+        // known reachable flow for any incident edge of v.
         template<SearchDirection dir>
-        void markIncidentEdgesCovered(const int v, const int distToV) {
+        bool markIncidentEdgesCovered(const int v, const int distToV, const int flowOnCoveringEdge, bool& isGoodEnoughFlowForAny, bool& anyNewEdgeCovered) {
             KASSERT(numEdgesYetToBeCovered == edgeYetToBeCovered.cardinality());
             const auto &searchGraph = dir == SearchDirection::FORWARD ? forwardPsgGraph : reversePsgGraph;
             FORALL_INCIDENT_EDGES(searchGraph, v, e) {
                 const int eInPsgForwGraph = searchGraph.edgeId(e);
-                if (!edgeYetToBeCovered[eInPsgForwGraph])
-                    continue;
                 int distInForw = distToV;
                 // Head of the edge in forward graph counts so in reverse search we do not need to consider
                 // length of edge itself.
@@ -266,10 +280,18 @@ namespace traffic_flow_subnetwork {
                     distInForw += searchGraph.template get<WeightT>(e);
                 if (distInForw > walkRadius)
                     continue;
+                if (static_cast<double>(flowOnCoveringEdge) * flowGoodEnoughFactor > static_cast<double>(bestReachableFlow[eInPsgForwGraph]))
+                    isGoodEnoughFlowForAny = true;
+                if (!edgeYetToBeCovered[eInPsgForwGraph])
+                    continue;
                 edgeYetToBeCovered[eInPsgForwGraph] = false;
                 --numEdgesYetToBeCovered;
+                LIGHT_KASSERT(bestReachableFlow[eInPsgForwGraph] == -1);
+                bestReachableFlow[eInPsgForwGraph] = flowOnCoveringEdge;
+                anyNewEdgeCovered = true;
                 ++progressBar;
             }
+            return isGoodEnoughFlowForAny;
         }
 
         // Sets all flags in edgeYetToBeCovered to false.
@@ -283,9 +305,11 @@ namespace traffic_flow_subnetwork {
         const PsgGraphT &forwardPsgGraph;
         const PsgGraphT &reversePsgGraph;
         const int walkRadius;
+        const double flowGoodEnoughFactor;
 
         BitVector edgeYetToBeCovered;
         int numEdgesYetToBeCovered;
+        std::vector<int> bestReachableFlow;
 
         PickupSearch pickupSearch;
         DropoffSearch dropoffSearch;

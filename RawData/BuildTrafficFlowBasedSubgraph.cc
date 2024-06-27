@@ -67,6 +67,7 @@ inline void printUsage() {
               "  -psg-g <file>          passenger road (and path) network in binary format.\n"
               "  -f <file>              traffic flows in the vehicle network as single column CSV file\n"
               "  -rho <radius>          passenger moving radius (dflt: 300)\n"
+              "  -flow-fac <factor>     an edge e is kept if a psg edge can reach it whose best reachable edge has flow at most factor times the flow of e\n"
               "  -o <file>              path to output files without file extension\n"
               "  -help                  display this help and exit\n";
 }
@@ -74,7 +75,7 @@ inline void printUsage() {
 template<typename ...VertexAttributes, typename ...EdgeAttributes>
 DynamicGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>>
 getInitialEdgeInducedSubGraph(const StaticGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>> &in,
-                              const std::vector<int> &keptEdges,
+                              const Subset &keptEdges,
                               std::vector<int> &inToOutVertexIds) {
     DynamicGraph<VertexAttrs<VertexAttributes...>, EdgeAttrs<EdgeAttributes...>> out(in.numVertices(), in.numEdges());
 
@@ -128,6 +129,7 @@ int main(int argc, char *argv[]) {
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const int radius = clp.getValue<int>("rho", 300) * 10;
+        const double flowGoodEnoughFactor = clp.getValue<double>("flow-fac", 2.0);
         const auto requestFileName = clp.getValue<std::string>("r");
         auto outputFileName = clp.getValue<std::string>("o");
 
@@ -233,9 +235,12 @@ int main(int argc, char *argv[]) {
 
             std::cout << "Finding high-flow edges to cover network in meeting points... " << std::endl;
             tfs::KeptHighFlowEdgesFinder<VehicleInputGraph, PsgInputGraph>
-                    keptEdgesFinder(vehicleInputGraph, psgInputGraph, revPsgGraph, radius);
+                    keptEdgesFinder(vehicleInputGraph, psgInputGraph, revPsgGraph, radius, flowGoodEnoughFactor);
             auto edges = keptEdgesFinder.findKeptEdges(trafficFlows);
-            std::cout << "done." << std::endl;
+            int smallestFlowInc = INFTY;
+            for (const auto &e: edges)
+                smallestFlowInc = std::min(smallestFlowInc, trafficFlows[e]);
+            std::cout << "done. Smallest flow included: " << smallestFlowInc << std::endl;
 
             std::cout << "Number of edges that need to be kept: " << edges.size() << std::endl;
             int numNeededPsgAccessible = std::count_if(edges.begin(), edges.end(), [&](const int &e) {
