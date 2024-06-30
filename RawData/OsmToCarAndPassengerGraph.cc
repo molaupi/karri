@@ -303,55 +303,58 @@ void generateGraphs(const CommandLineParser &clp, const IsRoadAccessibleByCatego
 
     std::cout << "Map shared edges..." << std::flush;
     uint64_t numEdgesInPsgWithValidMapping = 0;
-    FORALL_VALID_EDGES(psgGraph, v, e) {
-            const auto cat = psgGraph.osmRoadCategory(e);
-            LIGHT_KASSERT(isPsgAccessible(cat));
-            if (isVehicleAccessible(cat)) {
-                const auto [osmWayId, osmHeadNodeId] = osmWayIdAndHeadVertexId[e];
-                const auto eInOrigCarGraph = carImporter.getEdgeForOSMIdOfWayAndHead(osmWayId, osmHeadNodeId);
 
-                if (eInOrigCarGraph == MapToEdgeInFullVehAttribute::defaultValue())
+    // Map edges in graphs to one another by checking each possible pair of edges in either graph.
+    FORALL_VALID_EDGES(psgGraph,v,e) {
+            psgGraph.mapToEdgeInFullVeh(e) = MapToEdgeInFullVehAttribute::defaultValue();
+        }
+    FORALL_VALID_EDGES(carGraph,v,e) {
+            carGraph.mapToEdgeInPsg(e) = MapToEdgeInPsgAttribute::defaultValue();
+        }
+    numEdgesInPsgWithValidMapping = 0;
+    ProgressBar remappingProgress(psgGraph.numVertices());
+    FORALL_VERTICES(psgGraph, psgTail) {
+            const auto psgTailOsmNodeId = psgGraph.osmNodeId(psgTail);
+            FORALL_VERTICES(carGraph, vehTail) {
+                const auto vehTailOsmNodeId = carGraph.osmNodeId(vehTail);
+                if (psgTailOsmNodeId != vehTailOsmNodeId)
                     continue;
-                LIGHT_KASSERT(eInOrigCarGraph < int(carToSccEdgeMap->size()));
+                FORALL_INCIDENT_EDGES(psgGraph, psgTail, psgE) {
+                        const auto psgHead = psgGraph.edgeHead(psgE);
+                        const auto psgHeadOsmNodeId = psgGraph.osmNodeId(psgHead);
+                        FORALL_INCIDENT_EDGES(carGraph, vehTail, vehE) {
+                                const auto vehHead = carGraph.edgeHead(vehE);
+                                const auto vehHeadOsmNodeId = carGraph.osmNodeId(vehHead);
+                                if (psgHeadOsmNodeId != vehHeadOsmNodeId)
+                                    continue;
+                                psgGraph.mapToEdgeInFullVeh(psgE) = vehE;
+                                carGraph.mapToEdgeInPsg(vehE) = psgE;
+                                ++numEdgesInPsgWithValidMapping;
+                            }
+                    }
 
-                const auto eInCarSCC = carToSccEdgeMap->at(eInOrigCarGraph);
-                if (eInCarSCC == INVALID_ID)
-                    continue;
-
-                LIGHT_KASSERT(carGraph.osmNodeId(carGraph.edgeHead(eInCarSCC)) == osmHeadNodeId);
-                LIGHT_KASSERT(carGraph.latLng(carGraph.edgeHead(eInCarSCC)) == psgGraph.latLng(psgGraph.edgeHead(e)));
-                if (carGraph.osmNodeId(carGraph.edgeHead(eInCarSCC)) != osmHeadNodeId) {
-                    auto carGraphHeadOsmNodeId = carGraph.osmNodeId(carGraph.edgeHead(eInCarSCC));
-                    throw std::invalid_argument("For way with id " + std::to_string(osmWayId) +
-                                                " the car graph has head at osm node id " +
-                                                std::to_string(carGraphHeadOsmNodeId) +
-                                                " and the psg graph has head at osm node id " +
-                                                std::to_string(osmHeadNodeId));
                 }
-
-
-                const auto &psgLatLng = psgGraph.latLng(psgGraph.edgeHead(e));
-                const auto &carLatLng = carGraph.latLng(carGraph.edgeHead(eInCarSCC));
-                if (psgLatLng.latitude() != carLatLng.latitude() || psgLatLng.longitude() != carLatLng.longitude())
-                    throw std::invalid_argument(
-                            "Edge heads of edges in passenger and vehicle network are at different coordinates. Coordinates in psg network = " +
-                            latLngForCsv(psgLatLng) + ", Coordinates in veh network = " +
-                            latLngForCsv(carLatLng));
-
-
-                psgGraph.mapToEdgeInFullVeh(e) = eInCarSCC;
-                carGraph.mapToEdgeInPsg(eInCarSCC) = e;
-                if (psgGraph.mapToEdgeInFullVeh(e) != MapToEdgeInFullVehAttribute::defaultValue())
-                    ++numEdgesInPsgWithValidMapping;
-                LIGHT_KASSERT(psgGraph.mapToEdgeInFullVeh(e) < carGraph.numEdges());
+            ++remappingProgress;
             }
 
-        }
+            // verify mapping
+    FORALL_VALID_EDGES(psgGraph, v, e) {
+            const int eInVehGraph = psgGraph.mapToEdgeInFullVeh(e);
+            if (eInVehGraph != MapToEdgeInFullVehAttribute::defaultValue()) {
+                LIGHT_KASSERT(eInVehGraph < carGraph.numEdges());
 
-    FORALL_VALID_EDGES(carGraph, v, e) {
-            LIGHT_KASSERT(carGraph.mapToEdgeInPsg(e) == MapToEdgeInPsgAttribute::defaultValue() ||
-                   carGraph.mapToEdgeInPsg(e) < psgGraph.numEdges());
+                // Vehicle edge has to map back to some psg edge (not necessarily the same one) and has to have the
+                // same head node.
+                LIGHT_KASSERT(carGraph.mapToEdgeInPsg(eInVehGraph) != MapToEdgeInPsgAttribute::defaultValue());
+                LIGHT_KASSERT(psgGraph.latLng(psgGraph.edgeHead(e)).latitude() ==
+                              carGraph.latLng(
+                                      carGraph.edgeHead(psgGraph.mapToEdgeInFullVeh(e))).latitude());
+                LIGHT_KASSERT(
+                        psgGraph.latLng(psgGraph.edgeHead(e)).longitude() == carGraph.latLng(
+                                carGraph.edgeHead(psgGraph.mapToEdgeInFullVeh(e))).longitude());
+            }
         }
+    std::cout << "Mapping contains " << numEdgesInPsgWithValidMapping << " valid mappings from passenger to vehicle edges.\n";
 
 
     std::cout << " done." << std::endl;

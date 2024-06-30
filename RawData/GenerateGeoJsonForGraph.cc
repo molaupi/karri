@@ -28,6 +28,8 @@
 #include "DataStructures/Geometry/LatLng.h"
 #include "DataStructures/Containers/BitVector.h"
 #include "DataStructures/Graph/Attributes/LatLngAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
 #include "DataStructures/Graph/Graph.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
@@ -42,12 +44,15 @@ inline void printUsage() {
               "  -g <file>         input road network in binary format.\n"
               "  -edges            If set, outputs edges instead of vertices.\n"
               "  -p <[0,1]>        only outputs <[0,1]> * 100 % of vertices or edges (dflt: 1)\n"
+              "  -non-psg          If set, outputs only passenger-inaccessible edges.\n"
+              "  -non-veh          If set, outputs only vehicle-inaccessible edges.\n"
               "  -o <file>         place GeoJSON in <file>\n"
               "  -help             display this help and exit\n";
 }
 
 template<typename InputGraphT>
-nlohmann::json generateGeoJsonObjectForEdges(const InputGraphT &inputGraph, const double ratio) {
+nlohmann::json generateGeoJsonObjectForEdges(const InputGraphT &inputGraph, const double ratio, const bool nonPsg, const bool nonVeh) {
+    LIGHT_KASSERT(!(nonVeh && nonPsg));
     // Construct the needed path GeoJSON objects
     nlohmann::json topGeoJson;
     topGeoJson["type"] = "GeometryCollection";
@@ -56,6 +61,11 @@ nlohmann::json generateGeoJsonObjectForEdges(const InputGraphT &inputGraph, cons
     int numEdgesOutput = 0;
     int numEdgesToOutput = inputGraph.numEdges() * ratio;
     FORALL_VALID_EDGES(inputGraph, v, e) {
+
+            if (nonPsg && inputGraph.mapToEdgeInPsg(e) != MapToEdgeInPsgAttribute::defaultValue())
+                continue;
+            if (nonVeh && inputGraph.mapToEdgeInFullVeh(e) != MapToEdgeInFullVehAttribute::defaultValue())
+                continue;
 
             // Construct edge feature
             nlohmann::json edgeFeature;
@@ -119,10 +129,12 @@ int main(int argc, char *argv[]) {
 
         const bool outputEdges = clp.isSet("edges");
         const double ratio = clp.getValue<double>("p", 1.0);
+        const bool nonPsg = clp.isSet("non-psg");
+        const bool nonVeh = clp.isSet("non-veh");
 
         // Read the source network from file.
         std::cout << "Reading source network from file... " << std::flush;
-        using InputGraph = StaticGraph<VertexAttrs<LatLngAttribute>, EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute>>;
+        using InputGraph = StaticGraph<VertexAttrs<LatLngAttribute>, EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, MapToEdgeInPsgAttribute, MapToEdgeInFullVehAttribute>>;
         std::ifstream inputGraphFile(inputGraphFileName, std::ios::binary);
         if (!inputGraphFile.good())
             throw std::invalid_argument("file not found -- '" + inputGraphFileName + "'");
@@ -134,7 +146,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Generating GeoJson object ..." << std::flush;
         nlohmann::json geoJson;
         if (outputEdges) {
-            geoJson = generateGeoJsonObjectForEdges(inputGraph, ratio);
+            geoJson = generateGeoJsonObjectForEdges(inputGraph, ratio, nonPsg, nonVeh);
         } else {
             geoJson = generateGeoJsonObjectForVertices(inputGraph, ratio);
         }
