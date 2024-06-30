@@ -69,7 +69,7 @@ namespace karri {
             Timer timer;
 
             Assignment asgn;
-            asgn.distToPickup = 0;
+            asgn.costToPickup = 0;
             for (const auto &p: requestState.pickups) {
                 asgn.pickup = &p;
 
@@ -93,7 +93,7 @@ namespace karri {
 
                     for (const auto &d: requestState.dropoffs) {
                         asgn.dropoff = &d;
-                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.costToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                         ++numInsertionsForCoinciding;
                         requestState.tryAssignment(asgn);
                     }

@@ -23,6 +23,10 @@
 # SOFTWARE.
 # ******************************************************************************
 
+add_executable(AddStaTraversalCost AddStaTraversalCost.cc)
+target_compile_definitions(AddStaTraversalCost PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(AddStaTraversalCost PRIVATE kassert ${RoutingKit_LIBRARY} kassert)
+
 add_executable(BuildTrafficFlowBasedSubgraph BuildTrafficFlowBasedSubgraph.cc)
 target_compile_definitions(BuildTrafficFlowBasedSubgraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert ${RoutingKit_LIBRARY} kassert)

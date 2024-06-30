@@ -50,6 +50,7 @@
 #include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
 #include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBucketsEnvironment.h"
+#include "Algorithms/KaRRi/EllipticBCH/RadiusEllipticBucketsEnvironment.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
 #include "Algorithms/KaRRi/CostCalculator.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
@@ -61,6 +62,7 @@
 #include "Algorithms/KaRRi/PalsAssignments/PALSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/DalsAssignments/DALSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/LastStopSearches/SortedLastStopBucketsEnvironment.h"
+#include "Algorithms/KaRRi/LastStopSearches/SimpleSortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/LastStopSearches/UnsortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
@@ -483,7 +485,7 @@ int main(int argc, char *argv[]) {
 
         // Construct Elliptic BCH bucket environment:
         static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
-        using EllipticBucketsEnv = EllipticBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
+        using EllipticBucketsEnv = RadiusEllipticBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
         EllipticBucketsEnv ellipticBucketsEnv(redVehInputGraph, *redVehChEnv, routeState, reqState.stats().updateStats);
 
         // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
@@ -493,7 +495,7 @@ int main(int argc, char *argv[]) {
 
         static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
         using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
-                SortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv>,
+                SimpleSortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv>,
                 UnsortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv>
         >;
         LastStopBucketsEnv lastStopBucketsEnv(redVehInputGraph, *redVehChEnv, routeState,

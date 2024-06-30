@@ -41,8 +41,10 @@ namespace karri {
         struct RelevantPDLoc {
             int stopIndex;
             unsigned int pdId;
-            int distToPDLoc;
-            int distFromPDLocToNextStop;
+            int costToPDLoc;
+            int costFromPDLocToNextStop;
+            int travelTimeToPDLoc;
+            int travelTimeFromPDLoc;
         };
 
         using RelevantPDLocVector = AlignedVector<RelevantPDLoc>;

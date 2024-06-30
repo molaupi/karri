@@ -42,7 +42,6 @@ namespace karri {
 
     template<typename InputGraphT,
             typename CHEnvT,
-            typename CostFunctionT,
             typename EllipticBucketsEnvT,
             typename LastStopsAtVerticesT,
             typename FeasibleEllipticDistancesT,
@@ -56,57 +55,72 @@ namespace karri {
         using DistanceLabel = typename LabelSetT::DistanceLabel;
         using LabelMask = typename LabelSetT::LabelMask;
 
+        using TravelTimes = StampedDistanceLabelContainer<DistanceLabel>;
+
 
         using Buckets = typename EllipticBucketsEnvT::BucketContainer;
 
-        struct StopBCHQuery {
-
-            StopBCHQuery(const int &distUpperBound, int &numTimesStoppingCriterionMet)
-                    : distUpperBound(distUpperBound),
-                      numTimesStoppingCriterionMet(numTimesStoppingCriterionMet) {}
+        struct StopIfCostUpperBoundExceeded {
+            StopIfCostUpperBoundExceeded(const int &costUpperBound) : costUpperBound(costUpperBound) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
-            bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
-                const LabelMask distExceedsUpperBound = distToV > DistanceLabel(distUpperBound);
-                const bool stop = allSet(distExceedsUpperBound);
-                numTimesStoppingCriterionMet += stop;
-                return stop;
+            bool operator()(const int, DistLabelT &costToV, const DistLabelContainerT & /*distLabels*/) {
+                return allSet(costToV > costUpperBound);
+            }
+
+            const int &costUpperBound;
+        };
+
+
+        struct PruneIfTravelTimeExceedsMaxLeeway {
+
+            PruneIfTravelTimeExceedsMaxLeeway(const int &travelTimeUpperBound, TravelTimes &travelTimes)
+                    : travelTimeUpperBound(travelTimeUpperBound), travelTimes(travelTimes) {}
+
+            template<typename DistLabelT, typename DistLabelContainerT>
+            bool operator()(const int v, DistLabelT &, const DistLabelContainerT & /*distLabels*/) {
+                const LabelMask distExceedsUpperBound = travelTimes[v] > DistanceLabel(travelTimeUpperBound);
+                const bool prune = allSet(distExceedsUpperBound);
+                return prune;
             }
 
         private:
-            const int &distUpperBound;
-            int &numTimesStoppingCriterionMet;
+            const int &travelTimeUpperBound;
+            TravelTimes &travelTimes;
         };
 
 
         template<typename UpdateDistancesT>
         struct ScanOrdinaryBucket {
             explicit ScanOrdinaryBucket(const Buckets &buckets, UpdateDistancesT &updateDistances,
+                                        const TravelTimes& travelTimes,
                                         int &numEntriesVisited, int &numEntriesVisitedWithDistSmallerLeeway)
                     : buckets(buckets),
                       updateDistances(updateDistances),
+                      travelTimes(travelTimes),
                       numEntriesVisited(numEntriesVisited),
                       numEntriesVisitedWithDistSmallerLeeway(numEntriesVisitedWithDistSmallerLeeway) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
-            bool operator()(const int v, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
+            bool operator()(const int v, DistLabelT &costToV, const DistLabelContainerT & /*distLabels*/) {
 
                 for (const auto &entry: buckets.getBucketOf(v)) {
                     ++numEntriesVisited;
-                    const auto distViaV = distToV + entry.distToTarget;
 
                     if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
                         // Entries in a bucket are ordered by the remaining leeway, i.e. the leeway minus the distance from/to
                         // the stop to/from this vertex.
-                        // If all distances break the remaining leeway for this entry, then they also break the remaining leeway
-                        // of the rest of the entries in this bucket, and we can stop scanning the bucket.
-                        if (allSet(entry.leeway < distViaV))
+                        // If all travel times break the remaining leeway for this entry, then they also break the
+                        // remaining leeway of the rest of the entries in this bucket, and we can stop scanning the bucket.
+                        if (allSet(entry.leeway < travelTimes[v]))
                             break;
                     }
 
                     // Otherwise, check if the tentative distances needs to be updated.
+                    const auto costViaV = costToV + entry.distToTarget;
+                    const auto travelTimeViaV = travelTimes[v] + entry.travelTime;
                     ++numEntriesVisitedWithDistSmallerLeeway;
-                    updateDistances(v, entry, distViaV);
+                    updateDistances(v, entry.targetId, costViaV, travelTimeViaV);
                 }
 
                 return false;
@@ -115,8 +129,24 @@ namespace karri {
         private:
             const Buckets &buckets;
             UpdateDistancesT &updateDistances;
+            const TravelTimes& travelTimes;
             int &numEntriesVisited;
             int &numEntriesVisitedWithDistSmallerLeeway;
+        };
+
+        struct UpdateTravelTimeCallback {
+
+            UpdateTravelTimeCallback(const typename CH::SearchGraph &searchGraph,
+                                     TravelTimes &travelTimes) : searchGraph(searchGraph), travelTimes(travelTimes) {}
+
+            template<typename LabelMaskT, typename DistanceLabelContainerT>
+            void operator()(const int v, const int w, const int e, const LabelMaskT &improved,
+                            const DistanceLabelContainerT &) {
+                travelTimes[w].setIf(travelTimes[v] + searchGraph.travelTime(e), improved);
+            }
+
+            const CH::SearchGraph &searchGraph;
+            TravelTimes &travelTimes;
         };
 
 
@@ -124,12 +154,15 @@ namespace karri {
 
             UpdateDistancesToPDLocs() : curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
-            LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
-                                 const DistanceLabel &distsToPDLocs) {
+            LabelMask operator()(const int meetingVertex, const int &stopId,
+                                 const DistanceLabel &costsToPDLocs,
+                                 const DistanceLabel& travelTimesToPDLocs) {
 
                 assert(curFeasible);
-                return curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, curFirstIdOfBatch,
-                                                                  distsToPDLocs, meetingVertex);
+                return curFeasible->updateDistanceFromStopToPDLoc(stopId, curFirstIdOfBatch,
+                                                                  costsToPDLocs,
+                                                                  travelTimesToPDLocs,
+                                                                  meetingVertex);
             }
 
 
@@ -151,10 +184,11 @@ namespace karri {
             UpdateDistancesFromPDLocs(const RouteState &routeState)
                     : routeState(routeState), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
-            LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
-                                 const DistanceLabel &distsFromPDLocs) {
+            LabelMask operator()(const int meetingVertex, const int &stopId,
+                                 const DistanceLabel &costsFromPDLocs,
+                                 const DistanceLabel& travelTimesFromPDLocs) {
 
-                const auto &prevStopId = routeState.idOfPreviousStopOf(entry.targetId);
+                const auto &prevStopId = routeState.idOfPreviousStopOf(stopId);
 
                 // If the given stop is the first stop in the vehicle's route, there is no previous stop.
                 if (prevStopId == INVALID_ID)
@@ -162,7 +196,9 @@ namespace karri {
 
                 assert(curFeasible);
                 return curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, curFirstIdOfBatch,
-                                                                      distsFromPDLocs, meetingVertex);
+                                                                      costsFromPDLocs,
+                                                                      travelTimesFromPDLocs,
+                                                                      meetingVertex);
             }
 
             void setCurFeasible(FeasibleEllipticDistancesT *const newCurFeasible) {
@@ -190,6 +226,9 @@ namespace karri {
             int stopIndex = INVALID_INDEX;
         };
 
+        using ToQuery = typename CHEnvT::template UpwardSearch<dij::CompoundCriterion<PruneIfTravelTimeExceedsMaxLeeway, ScanSourceBuckets>, StopIfCostUpperBoundExceeded, UpdateTravelTimeCallback, LabelSetT>;
+        using FromQuery = typename CHEnvT::template UpwardSearch<dij::CompoundCriterion<PruneIfTravelTimeExceedsMaxLeeway, ScanTargetBuckets>, StopIfCostUpperBoundExceeded, UpdateTravelTimeCallback, LabelSetT>;
+
     public:
 
         EllipticBCHSearches(const InputGraphT &inputGraph,
@@ -210,17 +249,25 @@ namespace karri {
                   lastStopsAtVertices(lastStopsAtVertices),
                   feasibleEllipticPickups(feasibleEllipticPickups),
                   feasibleEllipticDropoffs(feasibleEllipticDropoffs),
-                  distUpperBound(INFTY),
+                  costUpperBound(INFTY),
+                  travelTimeUpperBound(INFTY),
                   updateDistancesToPdLocs(),
                   updateDistancesFromPdLocs(routeState),
-                  toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
-                          ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
-                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
-                  fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
-                          ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
-                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
+                  toQuery(chEnv.template getReverseSearch<dij::CompoundCriterion<PruneIfTravelTimeExceedsMaxLeeway, ScanSourceBuckets>, StopIfCostUpperBoundExceeded, UpdateTravelTimeCallback, LabelSetT>(
+                          {PruneIfTravelTimeExceedsMaxLeeway(travelTimeUpperBound, travelTimes),
+                           ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
+                                             travelTimes, totalNumEntriesScanned,
+                                             totalNumEntriesScannedWithDistSmallerLeeway)},
+                          StopIfCostUpperBoundExceeded(costUpperBound, numTimesStoppingCriterionMet),
+                          UpdateTravelTimeCallback(ch.downwardGraph(), travelTimes))),
+                  fromQuery(
+                          chEnv.template getForwardSearch<dij::CompoundCriterion<PruneIfTravelTimeExceedsMaxLeeway, ScanTargetBuckets>, StopIfCostUpperBoundExceeded, LabelSetT>(
+                                  {PruneIfTravelTimeExceedsMaxLeeway(travelTimeUpperBound, travelTimes),
+                                  ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
+                                                    travelTimes, totalNumEntriesScanned,
+                                                    totalNumEntriesScannedWithDistSmallerLeeway)},
+                                  StopIfCostUpperBoundExceeded(costUpperBound, numTimesStoppingCriterionMet),
+                                  UpdateTravelTimeCallback(ch.upwardGraph(), travelTimes))) {}
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
@@ -281,13 +328,8 @@ namespace karri {
             totalNumVerticesSettled = 0;
             totalNumEntriesScanned = 0;
 
-            // Set an upper bound distance for the searches comprised of the maximum leeway or an upper bound based on the
-            // current best costs (we compute the maximum detour that would still allow an assignment with costs smaller
-            // than the best known and add the maximum leg length since a distance to a PD loc dist cannot lead to a
-            // better assignment than the best known if dist - max leg length > max allowed detour).
-            const int maxDistBasedOnVehCost = CostFunctionT::calcMinDistFromOrToPDLocSuchThatVehCostReachesMinCost(
-                    requestState.getBestCost(), routeState.getMaxLegLength());
-            distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
+
+            travelTimeUpperBound = routeState.getMaxLeeway();
 
             // Process in batches of size K
             for (int i = 0; i < pdLocs.size(); i += K) {
@@ -306,6 +348,7 @@ namespace karri {
 
             std::array<int, K> pdLocHeads;
 
+            travelTimes.init();
             for (unsigned int i = 0; i < K; ++i) {
                 int location;
                 if (startId + i < endId) {
@@ -314,6 +357,7 @@ namespace karri {
                     location = pdLocs[startId].loc; // Fill rest of a partial batch with copies of the first PD loc
                 }
                 pdLocHeads[i] = ch.rank(inputGraph.edgeHead(location));
+                travelTimes[pdLocHeads[i]][i] = 0;
             }
 
             updateDistancesFromPdLocs.setCurFirstIdOfBatch(startId);
@@ -329,9 +373,10 @@ namespace karri {
                                      const SpotContainerT &pdLocs) {
             assert(endId > startId && endId - startId <= K);
 
-            std::array<int, K> travelTimes;
+            std::array<int, K> offsets;
             std::array<int, K> pdLocTails;
 
+            travelTimes.init();
             for (int i = 0; i < K; ++i) {
                 int location;
                 if (startId + i < endId) {
@@ -339,12 +384,13 @@ namespace karri {
                 } else {
                     location = pdLocs[startId].loc; // Fill rest of a partial batch with copies of the first PD loc
                 }
-                travelTimes[i] = inputGraph.travelTime(location);
+                offsets[i] = inputGraph.traversalCost(location);
                 pdLocTails[i] = ch.rank(inputGraph.edgeTail(location));
+                travelTimes[pdLocTails[i]][i] = inputGraph.travelTime(location);
             }
 
             updateDistancesToPdLocs.setCurFirstIdOfBatch(startId);
-            toQuery.runWithOffset(pdLocTails, travelTimes);
+            toQuery.runWithOffset(pdLocTails, offsets);
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += toQuery.getNumEdgeRelaxations();
@@ -396,11 +442,14 @@ namespace karri {
         FeasibleEllipticDistancesT &feasibleEllipticPickups;
         FeasibleEllipticDistancesT &feasibleEllipticDropoffs;
 
-        int distUpperBound;
+        int costUpperBound;
+        int travelTimeUpperBound;
+
+        TravelTimes travelTimes;
         UpdateDistancesToPDLocs updateDistancesToPdLocs;
         UpdateDistancesFromPDLocs updateDistancesFromPdLocs;
-        typename CHEnvT::template UpwardSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT> toQuery;
-        typename CHEnvT::template UpwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT> fromQuery;
+        ToQuery toQuery;
+        FromQuery fromQuery;
 
         int numSearchesRun;
         int numTimesStoppingCriterionMet;

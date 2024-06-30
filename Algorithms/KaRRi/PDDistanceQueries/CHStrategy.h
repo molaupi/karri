@@ -49,7 +49,8 @@ namespace karri::PDDistanceQueryStrategies {
                   ch(chEnv.getCH()),
                   requestState(requestState),
                   distances(distances),
-                  query(chEnv.template getFullCHQuery<LabelSetT>()) {}
+                  query(chEnv.template getFullCHQuery<LabelSetT>()),
+                  unpacker(chEnv.getCH()) {}
 
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
@@ -75,7 +76,8 @@ namespace karri::PDDistanceQueryStrategies {
                 runWithAllDropoffs(pickupHeadRanks, requestState.numPickups() / K * K);
             }
 
-            requestState.minDirectPDDist = distances.getMinDirectDistance();
+            requestState.minDirectPDCost = distances.getMinCost();
+            requestState.minDirectPDTravelTime = distances.getMinTravelTime();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
@@ -100,7 +102,17 @@ namespace karri::PDDistanceQueryStrategies {
 
                 query.run(pickupHeadRanks, dropoffTailRank);
                 const DistanceLabel dist = query.getAllDistances() + DistanceLabel(offset);
-                distances.updateDistanceBatchIfSmaller(firstPickupIdInBatch, d.id, dist);
+
+                // Unpack path to find travel time along SP according to traversal cost
+                DistanceLabel travelTime = 0;
+                for (int i = 0; i < K; ++i) {
+                    path.clear();
+                    unpacker.unpackUpDownPath(query.getUpEdgePath(i), query.getDownEdgePath(i), path);
+                    for (const auto& e : path)
+                        travelTime[i] += inputGraph.travelTime(e);
+                }
+
+                distances.updateDistanceBatchIfSmaller(firstPickupIdInBatch, d.id, dist, travelTime);
             }
         }
 
@@ -111,6 +123,8 @@ namespace karri::PDDistanceQueryStrategies {
         PDDistances<LabelSetT> &distances;
 
         typename CHEnvT::template FullCHQuery<LabelSetT> query;
+        CHPathUnpacker unpacker;
+        std::vector<int> path;
     };
 
 }

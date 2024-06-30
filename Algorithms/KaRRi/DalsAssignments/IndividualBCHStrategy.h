@@ -224,11 +224,11 @@ namespace karri::DropoffAfterLastStopStrategies {
                 for (const auto &dropoff: requestState.dropoffs) {
                     asgn.dropoff = &dropoff;
 
-                    asgn.distToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
-                    if (asgn.distToDropoff >= INFTY)
+                    asgn.costToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
+                    if (asgn.costToDropoff >= INFTY)
                         continue; // no need to check pickup before next stop
 
-                    assert(asgn.distToDropoff >= 0 && asgn.distToDropoff < INFTY);
+                    assert(asgn.costToDropoff >= 0 && asgn.costToDropoff < INFTY);
                     int curPickupIndex = numStops - 1;
                     auto pickupIt = relevantPickupsInRevOrder.begin();
                     for (; pickupIt < relevantPickupsInRevOrder.end(); ++pickupIt) {
@@ -245,7 +245,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                                                                routeState.schedArrTimesFor(vehId)[entry.stopIndex + 1];
 
                             const auto minCostFromHere = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
-                                    asgn.dropoff->walkingDist, asgn.distToDropoff, minTripTimeToLastStop, requestState);
+                                    asgn.dropoff->walkingDist, asgn.costToDropoff, minTripTimeToLastStop, requestState);
                             if (minCostFromHere > requestState.getBestCost())
                                 break;
 
@@ -257,8 +257,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                             continue;
                         ++numAssignmentsTried;
                         asgn.pickupStopIdx = entry.stopIndex;
-                        asgn.distToPickup = entry.distToPDLoc;
-                        asgn.distFromPickup = entry.distFromPDLocToNextStop;
+                        asgn.costToPickup = entry.distToPDLoc;
+                        asgn.costFromPickup = entry.distFromPDLocToNextStop;
                         requestState.tryAssignment(asgn);
                     }
 
@@ -297,22 +297,22 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                 for (auto &entry: relevantPickupsBeforeNextStop.relevantSpotsFor(vehId)) {
                     asgn.pickup = &requestState.pickups[entry.pdId];
-                    asgn.distFromPickup = entry.distFromPDLocToNextStop;
+                    asgn.costFromPickup = entry.distFromPDLocToNextStop;
                     for (const auto &dropoff: requestState.dropoffs) {
                         asgn.dropoff = &dropoff;
                         if (asgn.pickup->loc == asgn.dropoff->loc)
                             continue;
 
-                        asgn.distToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
-                        if (asgn.distToDropoff >= INFTY)
+                        asgn.costToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
+                        if (asgn.costToDropoff >= INFTY)
                             continue;
 
                         if (curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id)) {
-                            asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
+                            asgn.costToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
                             requestState.tryAssignment(asgn);
                             ++numAssignmentsTried;
                         } else {
-                            asgn.distToPickup = entry.distToPDLoc;
+                            asgn.costToPickup = entry.distToPDLoc;
                             const auto lowerBoundCost = calculator.calc(asgn, requestState);
                             if (lowerBoundCost < requestState.getBestCost() ||
                                 (lowerBoundCost == requestState.getBestCost() &&
@@ -321,8 +321,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                                 // vehicle. We postpone computation of that distance to be able to bundle it with the
                                 // computation of distances to other pickups via the vehicle location. Then all remaining
                                 // assignments with this pickup can be tried with the exact distance later.
-                                curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id, asgn.distToPickup);
-                                pbnsContinuations.push_back({asgn.pickup->id, asgn.distFromPickup, dropoff.id});
+                                curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id, asgn.costToPickup);
+                                pbnsContinuations.push_back({asgn.pickup->id, asgn.costFromPickup, dropoff.id});
                                 break;
                             }
                         }
@@ -336,20 +336,20 @@ namespace karri::DropoffAfterLastStopStrategies {
                     assert(continuation.fromDropoffID >= 0 && continuation.fromDropoffID < requestState.numDropoffs());
                     asgn.pickup = &requestState.pickups[continuation.pickupID];
 
-                    asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId,
+                    asgn.costToPickup = curVehLocToPickupSearches.getDistance(vehId,
                                                                               continuation.pickupID);
-                    if (asgn.distToPickup >= INFTY)
+                    if (asgn.costToPickup >= INFTY)
                         continue;
 
-                    asgn.distFromPickup = continuation.distFromPickup;
+                    asgn.costFromPickup = continuation.costFromPickup;
                     for (int dropoffID = continuation.fromDropoffID;
                          dropoffID < requestState.numDropoffs(); ++dropoffID) {
                         asgn.dropoff = &requestState.dropoffs[dropoffID];
                         if (asgn.pickup->loc == asgn.dropoff->loc)
                             continue;
 
-                        asgn.distToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
-                        if (asgn.distToDropoff >= INFTY)
+                        asgn.costToDropoff = getDistanceToDropoff(vehId, asgn.dropoff->id);
+                        if (asgn.costToDropoff >= INFTY)
                             continue;
 
                         ++numAssignmentsTried;

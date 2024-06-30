@@ -28,7 +28,8 @@ namespace karri {
 
     struct BucketEntryWithLeeway {
         int targetId = INVALID_ID; // stop id
-        int distToTarget = INFTY;
+        int distToTarget = INFTY; // cost from vertex to target, shortest path distance according to traversal cost
+        int travelTimeToTarget = INFTY; // travel time to entry, secondary, not necessarily shortest path distance
         int leeway = 0;
 
         friend bool operator==(const BucketEntryWithLeeway &e1, const BucketEntryWithLeeway &e2) {

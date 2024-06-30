@@ -42,56 +42,86 @@ namespace karri {
         PDDistances(const RequestState &requestState) : requestState(requestState) {}
 
         void clear() {
-            minDirectDist = INFTY;
+            minCost = INFTY;
+            minTravelTime = INFTY;
             const int numLabelsPerDropoff = (requestState.numPickups() / K + (requestState.numPickups() % K != 0));
             const int numNeededLabels = numLabelsPerDropoff * requestState.numDropoffs();
-            distances.clear();
-            distances.resize(numNeededLabels, DistanceLabel(INFTY));
+            costs.clear();
+            travelTimes.clear();
+            costs.resize(numNeededLabels, DistanceLabel(INFTY));
+            travelTimes.resize(numNeededLabels, DistanceLabel(INFTY));
 
 
-            // minDirectDistancesPerPickup has one entry per pickup. Initialize to INFTY.
-            minDirectDistancesPerPickup.clear();
-            minDirectDistancesPerPickup.resize(numLabelsPerDropoff, DistanceLabel(INFTY));
+            // minCostPerPickup has one entry per pickup. Initialize to INFTY.
+            minCostPerPickup.clear();
+            minCostPerPickup.resize(numLabelsPerDropoff, DistanceLabel(INFTY));
         }
 
+        // Get total traversal cost of shortest path between pickup and dropoff according to traversal costs.
         // IDs refer to the indices in the vectors of pickups/dropoffs given at the last initialize() call.
-        int getDirectDistance(const unsigned int pickupId, const unsigned int dropoffId) const {
+        int getCost(const unsigned int pickupId, const unsigned int dropoffId) const {
             assert(pickupId < requestState.numPickups());
             assert(dropoffId < requestState.numDropoffs());
-            const int res = labelFor(pickupId, dropoffId)[pickupId % K];
+            const int res = costLabelFor(pickupId, dropoffId)[pickupId % K];
             assert(res < INFTY);
             return res;
         }
 
-        int getDirectDistance(const PDLoc &pickup, const PDLoc &dropoff) const {
-            return getDirectDistance(pickup.id, dropoff.id);
+        // Get total traversal cost of shortest path between pickup and dropoff according to traversal costs.
+        int getCost(const PDLoc &pickup, const PDLoc &dropoff) const {
+            return getCost(pickup.id, dropoff.id);
         }
 
-        const DistanceLabel &getDirectDistancesForBatchOfPickups(const unsigned int firstPickupIdInBatch,
+        // Get total travel time of shortest path between pickup and dropoff according to traversal costs.
+        int getTravelTime(const unsigned int pickupId, const unsigned int dropoffId) const {
+            assert(pickupId < requestState.numPickups());
+            assert(dropoffId < requestState.numDropoffs());
+            const int res = travelTimeLabelFor(pickupId, dropoffId)[pickupId % K];
+            assert(res < INFTY);
+            return res;
+        }
+
+        // Get total travel time of shortest path between pickup and dropoff according to traversal costs.
+        int getTravelTime(const PDLoc &pickup, const PDLoc &dropoff) const {
+            return getCost(pickup.id, dropoff.id);
+        }
+
+        const DistanceLabel &getCostsForBatchOfPickups(const unsigned int firstPickupIdInBatch,
                                                                  const unsigned int &dropoffId) const {
-            return labelFor(firstPickupIdInBatch, dropoffId);
+            return costLabelFor(firstPickupIdInBatch, dropoffId);
         }
 
-        const int &getMinDirectDistance() const {
-            return minDirectDist;
+        const DistanceLabel &getTravelTimesForBatchOfPickups(const unsigned int firstPickupIdInBatch,
+                                                       const unsigned int &dropoffId) const {
+            return travelTimeLabelFor(firstPickupIdInBatch, dropoffId);
         }
 
-        int getMinDirectDistanceForPickup(const int pickupId) const {
-            return minDirectDistancesPerPickup[pickupId / K][pickupId % K];
+        const int &getMinCost() const {
+            return minCost;
+        }
+
+        const int &getMinTravelTime() const {
+            return minTravelTime;
+        }
+
+        int getMinCostForPickup(const int pickupId) const {
+            return minCostPerPickup[pickupId / K][pickupId % K];
         }
 
         // Compares a current PD-distance to the given distance and updates the distances if the given distances are smaller.
-        void updateDistanceIfSmaller(const unsigned int pickupId, const unsigned int dropoffId, const int dist) {
+        void updateDistanceIfSmaller(const unsigned int pickupId, const unsigned int dropoffId, const int cost, const int travelTime) {
             const auto offsetInBatch = pickupId % K;
-            auto &label = labelFor(pickupId, dropoffId);
-            if (dist < label[offsetInBatch]) {
-                label[offsetInBatch] = dist;
-                minDirectDist = std::min(minDirectDist, dist);
+            auto &label = costLabelFor(pickupId, dropoffId);
+            if (cost < label[offsetInBatch]) {
+                label[offsetInBatch] = cost;
+                travelTimeLabelFor(pickupId, dropoffId)[offsetInBatch] = travelTime;
+                minCost = std::min(minCost, cost);
+                minTravelTime = std::min(minTravelTime, travelTimeLabelFor(pickupId, dropoffId)[offsetInBatch]);
 
-                if (dist < minDirectDistancesPerPickup[pickupId / K][offsetInBatch]) {
-                    minDirectDistancesPerPickup[pickupId / K][offsetInBatch] = dist;
+                if (cost < minCostPerPickup[pickupId / K][offsetInBatch]) {
+                    minCostPerPickup[pickupId / K][offsetInBatch] = cost;
                 }
-                assert(minDirectDist <= minDirectDistancesPerPickup[pickupId / K].horizontalMin());
+                assert(minDirectDist <= minCostPerPickup[pickupId / K].horizontalMin());
             }
         }
 
@@ -99,34 +129,50 @@ namespace karri {
         // ones for which the given distances are smaller.
         // Batch consists of K subsequent pickup IDs and is defined by the first ID in the batch.
         void updateDistanceBatchIfSmaller(const unsigned int firstPickupId, const unsigned int dropoffId,
-                                          const DistanceLabel &dist) {
-            auto &label = labelFor(firstPickupId, dropoffId);
-            const auto smaller = dist < label;
+                                          const DistanceLabel &cost, const DistanceLabel& travelTime) {
+            auto &label = costLabelFor(firstPickupId, dropoffId);
+            const auto smaller = cost < label;
             if (anySet(smaller)) {
-                label.setIf(dist, smaller);
-                minDirectDist = std::min(minDirectDist, dist.horizontalMin());
-                minDirectDistancesPerPickup[firstPickupId / K].min(dist);
-                assert(minDirectDist <= minDirectDistancesPerPickup[firstPickupId / K].horizontalMin());
+                label.setIf(cost, smaller);
+                travelTimeLabelFor(firstPickupId, dropoffId).setIf(travelTime, smaller);
+                minCost = std::min(minCost, cost.horizontalMin());
+                minTravelTime = std::min(minTravelTime, travelTimeLabelFor(firstPickupId, dropoffId).horizontalMin());
+                minCostPerPickup[firstPickupId / K].min(cost);
+                assert(minDirectDist <= minCostPerPickup[firstPickupId / K].horizontalMin());
             }
         }
 
 
     private:
 
-        DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId) {
-            return distances[(pickupId / K) * requestState.numDropoffs() + dropoffId];
+        inline int idxFor(const unsigned int pickupId, const unsigned int dropoffId) const {
+            return (pickupId / K) * requestState.numDropoffs() + dropoffId;
         }
 
-        const DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId) const {
-            return distances[(pickupId / K) * requestState.numDropoffs() + dropoffId];
+        DistanceLabel &costLabelFor(const unsigned int pickupId, const unsigned int dropoffId) {
+            return costs[idxFor(pickupId, dropoffId)];
+        }
+
+        const DistanceLabel &costLabelFor(const unsigned int pickupId, const unsigned int dropoffId) const {
+            return costs[idxFor(pickupId, dropoffId)];
+        }
+
+        DistanceLabel &travelTimeLabelFor(const unsigned int pickupId, const unsigned int dropoffId) {
+            return travelTimes[idxFor(pickupId, dropoffId)];
+        }
+
+        const DistanceLabel &travelTimeLabelFor(const unsigned int pickupId, const unsigned int dropoffId) const {
+            return travelTimes[idxFor(pickupId, dropoffId)];
         }
 
         const RequestState &requestState;
 
         // Distances are stored as vectors of size K (DistanceLabel).
         // ceil(numPickups / K) labels per dropoff, sequentially arranged by increasing dropoffId.
-        AlignedVector<DistanceLabel> distances;
-        int minDirectDist;
-        AlignedVector<DistanceLabel> minDirectDistancesPerPickup;
+        AlignedVector<DistanceLabel> costs; // Total traversal costs of shortest paths according to traversal costs.
+        AlignedVector<DistanceLabel> travelTimes; // Total travel times of shortest paths according to traversal costs.
+        int minCost;
+        int minTravelTime;
+        AlignedVector<DistanceLabel> minCostPerPickup;
     };
 }

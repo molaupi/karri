@@ -113,7 +113,7 @@ namespace karri::PickupAfterLastStopStrategies {
             if (!asgn.vehicle)
                 return;
 
-            const auto totalDetour = asgn.distToPickup + InputConfig::getInstance().stopTime + asgn.distToDropoff + InputConfig::getInstance().stopTime;
+            const auto totalDetour = asgn.costToPickup + InputConfig::getInstance().stopTime + asgn.costToDropoff + InputConfig::getInstance().stopTime;
             using time_utils::isServiceTimeConstraintViolated;
             if (!isServiceTimeConstraintViolated(*asgn.vehicle, requestState, totalDetour, routeState)) {
                 // If assignment found by collective search adheres to service time constraint, we have found the

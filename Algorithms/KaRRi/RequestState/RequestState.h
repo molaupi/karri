@@ -62,7 +62,8 @@ namespace karri {
         // Information about current request itself
         Request originalRequest;
         int directDistInFullVeh;
-        int minDirectPDDist;
+        int minDirectPDCost;
+        int minDirectPDTravelTime;
 
         std::vector<PDLoc> pickups;
         std::vector<PDLoc> dropoffs;
@@ -141,16 +142,6 @@ namespace karri {
                 return true;
             }
             return false;
-        }
-
-        void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
-            const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this);
-            if (cost < bestCost) {
-                bestAssignment = Assignment();
-                bestCost = cost;
-                notUsingVehicleIsBest = true;
-                notUsingVehicleDist = notUsingVehDist;
-            }
         }
 
         stats::DispatchingPerformanceStats &stats() {

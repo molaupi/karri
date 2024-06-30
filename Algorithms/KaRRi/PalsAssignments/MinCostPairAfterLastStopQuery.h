@@ -37,12 +37,14 @@ namespace karri::PickupAfterLastStopStrategies {
     struct PDPairAfterLastStopLabel {
         int pickupId = INVALID_ID;
         int dropoffId = INVALID_ID;
-        int directDistance = INFTY; // Stored so it only has to be retrieved from direct distances once
-        int distToPickup = INFTY;
+        int directCost = INFTY; // Stored so it only has to be retrieved from direct distances once
+        int directTravelTime = INFTY;
+        int costToPickup = INFTY;
+        int travelTimeToPickup = INFTY;
 
         friend bool operator==(const PDPairAfterLastStopLabel &label1, const PDPairAfterLastStopLabel &label2) {
             return label1.pickupId == label2.pickupId && label1.dropoffId == label2.dropoffId &&
-                   label1.distToPickup == label2.distToPickup;
+                   label1.costToPickup == label2.costToPickup;
         }
     };
 
@@ -194,11 +196,14 @@ namespace karri::PickupAfterLastStopStrategies {
                 // For each pickup in batch (using batched operations): Find dropoffs for which an initial label with
                 // this pickup and dropoff needs to be created.
                 dropoffIdsForInitialLabels.clear();
-                directDistsForInitialLabels.clear();
+                directCostsForInitialLabels.clear();
+                directTravelTimesForInitialLabels.clear();
                 for (const auto &dropoff: requestState.dropoffs) {
-                    const auto &directDistBatch = directSearches.getDirectDistancesForBatchOfPickups(
+                    const auto &directCostBatch = directSearches.getCostsForBatchOfPickups(
                             pickupBatchIdx * PD_K, dropoff.id);
-                    checkDropoffForInitialLabelWithGivenPickupBatch(dropoff, directDistBatch);
+                    const auto &directTravelTimeBatch = directSearches.getTravelTimesForBatchOfPickups(
+                            pickupBatchIdx * PD_K, dropoff.id);
+                    checkDropoffForInitialLabelWithGivenPickupBatch(dropoff, directCostBatch, directTravelTimeBatch);
                 }
 
                 // For each pickup in batch (non-batched): Generate necessary initial labels.
@@ -206,15 +211,19 @@ namespace karri::PickupAfterLastStopStrategies {
                                          pickupBatchIdx * PD_K + idxInBatch < requestState.numPickups(); ++idxInBatch) {
                     const auto &pickup = requestState.pickups[pickupBatchIdx * PD_K + idxInBatch];
                     const auto tail = ch.rank(inputGraph.edgeTail(pickup.loc));
-                    const auto pickupOffset = inputGraph.travelTime(pickup.loc);
+                    const auto pickupCostOffset = inputGraph.traversalCost(pickup.loc);
+                    const auto pickupTravelTimeOffset = inputGraph.travelTime(pickup.loc);
 
                     for (int i = 0; i < dropoffIdsForInitialLabels.size(); ++i) {
-                        const int directDist = directDistsForInitialLabels[i][idxInBatch];
-                        if (directDist == INVALID_DIST)
+                        const int directCost = directCostsForInitialLabels[i][idxInBatch];
+                        if (directCost == INVALID_DIST)
                             continue;
 
+                        const int directTravelTime = directTravelTimesForInitialLabels[i][idxInBatch];
+
                         const auto &dropoff = requestState.dropoffs[dropoffIdsForInitialLabels[i]];
-                        PDPairAfterLastStopLabel initialLabel = {pickup.id, dropoff.id, directDist, pickupOffset};
+                        PDPairAfterLastStopLabel initialLabel = {pickup.id, dropoff.id, directCost, directTravelTime,
+                                                                 pickupCostOffset, pickupTravelTimeOffset};
                         ++numInitialLabelsGenerated;
 
                         // Check for domination between pairs with pickup at the same vertex and insert into the bucket at the
@@ -238,41 +247,53 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         void checkDropoffForInitialLabelWithGivenPickupBatch(const PDLoc &dropoff,
-                                                             const PDDistanceLabel &distancesToDropoff) {
+                                                             const PDDistanceLabel &costsToDropoff,
+                                                             const PDDistanceLabel &travelTimesToDropoff) {
             static const PDDistanceLabel INVALID_DIST_LABEL = PDDistanceLabel(INVALID_DIST);
             static const auto inftyLabel = PDDistanceLabel(INFTY);
-            PDLabelMask isNewDominated = distancesToDropoff >= inftyLabel;
+            PDLabelMask isNewDominated = costsToDropoff >= inftyLabel;
             for (int i = 0; i < dropoffIdsForInitialLabels.size(); ++i) {
                 isNewDominated |= batchInitialLabelDominates(dropoffIdsForInitialLabels[i],
-                                                             directDistsForInitialLabels[i],
-                                                             dropoff.id, distancesToDropoff);
+                                                             directCostsForInitialLabels[i],
+                                                             directTravelTimesForInitialLabels[i],
+                                                             dropoff.id,
+                                                             costsToDropoff,
+                                                             travelTimesToDropoff);
                 if (allSet(isNewDominated))
                     return;
             }
 
             int i = 0;
             while (i < dropoffIdsForInitialLabels.size()) {
-                const auto newDominates = batchInitialLabelDominates(dropoff.id, distancesToDropoff,
+                const auto newDominates = batchInitialLabelDominates(dropoff.id, costsToDropoff,
+                                                                     travelTimesToDropoff,
                                                                      dropoffIdsForInitialLabels[i],
-                                                                     directDistsForInitialLabels[i]);
+                                                                     directCostsForInitialLabels[i],
+                                                                     directTravelTimesForInitialLabels[i]);
                 if (allSet(newDominates)) {
                     // If new label dominates existing label for every pickup in the batch, remove the entire existing
                     // label by swapping it to the end and popping it.
                     std::swap(dropoffIdsForInitialLabels[i], dropoffIdsForInitialLabels.back());
                     dropoffIdsForInitialLabels.pop_back();
-                    std::swap(directDistsForInitialLabels[i], directDistsForInitialLabels.back());
-                    directDistsForInitialLabels.pop_back();
+                    std::swap(directCostsForInitialLabels[i], directCostsForInitialLabels.back());
+                    directCostsForInitialLabels.pop_back();
+                    std::swap(directTravelTimesForInitialLabels[i], directTravelTimesForInitialLabels.back());
+                    directTravelTimesForInitialLabels.pop_back();
                 } else {
                     // Otherwise, set label to invalid values everywhere where new label dominates existing label and
                     // continue with next label.
-                    directDistsForInitialLabels[i].setIf(INVALID_DIST_LABEL, newDominates);
+                    directCostsForInitialLabels[i].setIf(INVALID_DIST_LABEL, newDominates);
+                    directTravelTimesForInitialLabels[i].setIf(INVALID_DIST_LABEL, newDominates);
                     ++i;
                 }
             }
             dropoffIdsForInitialLabels.push_back(dropoff.id);
-            auto distancesWhereNotDominated = distancesToDropoff;
-            distancesWhereNotDominated.setIf(INVALID_DIST_LABEL, isNewDominated);
-            directDistsForInitialLabels.push_back(distancesWhereNotDominated);
+            auto costsWhereNotDominated = costsToDropoff;
+            costsWhereNotDominated.setIf(INVALID_DIST_LABEL, isNewDominated);
+            directCostsForInitialLabels.push_back(costsWhereNotDominated);
+            auto travelTimesWhereNotDominated = travelTimesToDropoff;
+            travelTimesWhereNotDominated.setIf(INVALID_DIST_LABEL, isNewDominated);
+            directTravelTimesForInitialLabels.push_back(travelTimesWhereNotDominated);
         }
 
         bool initialLabelDominates(const PDPairAfterLastStopLabel &label1, const PDPairAfterLastStopLabel &label2) {
@@ -283,29 +304,28 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
             assert(dropoff1.id != dropoff2.id);
-            if (pickup1.id != pickup2.id || label1.distToPickup != label2.distToPickup)
+            if (pickup1.id != pickup2.id || label1.costToPickup != label2.costToPickup)
                 return false;
 
-            // pickup1 == pickup2 and label1.distToPickup == label2.distToPickup => domination only depends on the part
+            // pickup1 == pickup2 and label1.costToPickup == label2.costToPickup => domination only depends on the part
             // after the pickup, i.e. direct distance and walking distance from dropoff:
 
             using F = CostCalculator::CostFunction;
-            const auto maxDetourDiff = label1.directDistance - label2.directDistance;
+            const auto maxDetourDiff = label1.directTravelTime - label2.directTravelTime;
             const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
-            const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
             const auto maxTripVioDiff = F::TRIP_VIO_WEIGHT * std::max(maxTripDiff, 0);
 
-            const auto maxCostDiff = F::VEH_WEIGHT * maxDetourDiff +
-                                     F::PSG_WEIGHT * maxTripDiff +
-                                     F::WALK_WEIGHT * walkDiff +
+            const auto maxCostDiff = F::VEH_WEIGHT * (label1.directCost - label2.directCost) +
                                      maxTripVioDiff;
             return maxCostDiff < 0;
         }
 
         PDLabelMask batchInitialLabelDominates(const unsigned int dropoffId1,
-                                               const PDDistanceLabel &distancesToDropoff1,
+                                               const PDDistanceLabel &costsToDropoff1,
+                                               const PDDistanceLabel &travelTimesToDropoff1,
                                                const unsigned int dropoffId2,
-                                               const PDDistanceLabel &distancesToDropoff2) {
+                                               const PDDistanceLabel &costsToDropoff2,
+                                               const PDDistanceLabel &travelTimesToDropoff2) {
             static const PDDistanceLabel INVALID_DIST_LABEL = PDDistanceLabel(INVALID_DIST);
             static const PDDistanceLabel ZERO_DIST_LABEL = PDDistanceLabel(0);
 
@@ -315,39 +335,32 @@ namespace karri::PickupAfterLastStopStrategies {
             auto walkDiff = PDDistanceLabel(dropoff1.walkingDist - dropoff2.walkingDist);
 
             using F = CostCalculator::CostFunction;
-            PDDistanceLabel maxDetourDiff = distancesToDropoff1 - distancesToDropoff2;
+            PDDistanceLabel maxDetourDiff = travelTimesToDropoff1 - travelTimesToDropoff2;
             PDDistanceLabel maxTripDiff = maxDetourDiff + walkDiff;
-
             PDDistanceLabel maxTripVioDiff = maxTripDiff;
             maxTripVioDiff.max(ZERO_DIST_LABEL);
             maxTripVioDiff.multiplyWithScalar(F::TRIP_VIO_WEIGHT);
 
-            maxDetourDiff.multiplyWithScalar(F::VEH_WEIGHT);
-            maxTripDiff.multiplyWithScalar(F::PSG_WEIGHT);
-            walkDiff.multiplyWithScalar(F::WALK_WEIGHT);
+            PDDistanceLabel maxTraversalCostDiff = costsToDropoff1 - costsToDropoff2;
+            maxTraversalCostDiff.multiplyWithScalar(F::VEH_WEIGHT);
 
-            const auto maxCostDiff = maxDetourDiff +
-                                     maxTripDiff +
-                                     walkDiff +
-                                     maxTripVioDiff;
+            const auto maxCostDiff = maxTraversalCostDiff + maxTripVioDiff;
 
-            // Construct mask that is set wherever distancesToDropoff1 is INVALID_DIST
-            const PDLabelMask invalidMask = distancesToDropoff1 == INVALID_DIST_LABEL;
-
+            // Construct mask that is set wherever costsToDropoff1 is INVALID_DIST
+            const PDLabelMask invalidMask = costsToDropoff1 == INVALID_DIST_LABEL;
             return ~invalidMask & (maxCostDiff < ZERO_DIST_LABEL);
         }
 
 
         int lowerBoundCostOfLabel(const PDPairAfterLastStopLabel &label) const {
-            const auto &pickup = requestState.pickups[label.pickupId];
-            const auto &dropoff = requestState.dropoffs[label.dropoffId];
-            const int minVehTimeTillDepAtPickup = label.distToPickup + InputConfig::getInstance().stopTime;
-            const int minPsgTimeTillDepAtPickup = std::max(label.distToPickup + InputConfig::getInstance().stopTime,
-                                                           pickup.walkingDist);
-            return calculator.calcCostForPairedAssignmentAfterLastStop(minVehTimeTillDepAtPickup,
-                                                                       minPsgTimeTillDepAtPickup,
-                                                                       label.directDistance, pickup.walkingDist,
-                                                                       dropoff.walkingDist, requestState);
+            const int minWaitVioCost = CostCalculator::CostFunction::calcWaitViolationCost(
+                    requestState.originalRequest.requestTime + label.travelTimeToPickup, requestState);
+            const int minTripTime =
+                    label.travelTimeToPickup + InputConfig::getInstance().stopTime + label.directTravelTime +
+                    requestState.dropoffs[label.dropoffId].walkingDist;
+            const int minTripVioCost = CostCalculator::CostFunction::calcTripTimeViolationCost(minTripTime,
+                                                                                               requestState);
+            return label.costToPickup + label.directCost + minWaitVioCost + minTripVioCost;
         }
 
         // Settles the global label with minimum cost lower bound. Sets labelAtV to the closed label and v to the vertex
@@ -369,7 +382,8 @@ namespace karri::PickupAfterLastStopStrategies {
                     const auto w = queryGraph.edgeHead(e);
                     if (w == v) continue;
                     PDPairAfterLastStopLabel labelViaV = labelAtV;
-                    labelViaV.distToPickup += queryGraph.template get<CH::Weight>(e);
+                    labelViaV.costToPickup += queryGraph.template get<CH::Weight>(e);
+                    labelViaV.travelTimeToPickup += queryGraph.travelTime(e);
 
                     // Check whether the lower bound of this label exceeds the current upper bound for the cost of any
                     // assignment
@@ -478,7 +492,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 // Check if labelAtW is dominated by any closed labels at w.
                 for (const auto &closedLabel: bucketAtW.closed()) {
                     auto closedLabelAtV = closedLabel;
-                    closedLabelAtV.distToPickup += oppositeGraph.template get<CH::Weight>(e);
+                    closedLabelAtV.costToPickup += oppositeGraph.template get<CH::Weight>(e);
 
                     if (dominates(closedLabelAtV, label)) {
                         return true;
@@ -488,7 +502,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 // Check if labelAtW is dominated by any open labels at vertex.
                 for (const auto &openLabel: bucketAtW.open()) {
                     auto openLabelAtV = openLabel;
-                    openLabelAtV.distToPickup += oppositeGraph.template get<CH::Weight>(e);
+                    openLabelAtV.costToPickup += oppositeGraph.template get<CH::Weight>(e);
                     if (dominates(openLabelAtV, label)) {
                         return true;
                     }
@@ -507,43 +521,42 @@ namespace karri::PickupAfterLastStopStrategies {
             ++numDominationRelationTests;
 
             if (label1.pickupId == label2.pickupId)
-                return label1.dropoffId == label2.dropoffId && label1.distToPickup <= label2.distToPickup;
+                return label1.dropoffId == label2.dropoffId && label1.costToPickup <= label2.costToPickup;
 
             const auto &pickup1 = requestState.pickups[label1.pickupId];
             const auto &dropoff1 = requestState.dropoffs[label1.dropoffId];
-            const auto &pickup2 = requestState.pickups[label2.pickupId];
             const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
             using F = CostCalculator::CostFunction;
-            const auto maxDepTimeDiff = std::max(label1.distToPickup + InputConfig::getInstance().stopTime, pickup1.walkingDist) -
-                                        (label2.distToPickup + InputConfig::getInstance().stopTime);
-            const auto maxDetourDiff = maxDepTimeDiff + label1.directDistance - label2.directDistance;
+            const auto maxDepTimeDiff =
+                    std::max(label1.travelTimeToPickup + InputConfig::getInstance().stopTime, pickup1.walkingDist) -
+                    (label2.travelTimeToPickup + InputConfig::getInstance().stopTime);
+            const auto maxDetourDiff = maxDepTimeDiff + label1.directTravelTime - label2.directTravelTime;
             const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
-            const auto walkDiff =
-                    pickup1.walkingDist + dropoff1.walkingDist - pickup2.walkingDist - dropoff2.walkingDist;
 
             const auto maxWaitVioDiff = F::WAIT_VIO_WEIGHT * std::max(maxDepTimeDiff, 0);
             const auto maxTripVioDiff = F::TRIP_VIO_WEIGHT * std::max(maxTripDiff, 0);
 
-            const auto maxCostDiff = F::VEH_WEIGHT * maxDetourDiff +
-                                     F::PSG_WEIGHT * maxTripDiff +
-                                     F::WALK_WEIGHT * walkDiff +
+            const auto maxCostDiff = F::VEH_WEIGHT * (label1.costToPickup + label1.directCost -
+                                                      label2.costToPickup - label2.directCost) +
                                      maxWaitVioDiff + maxTripVioDiff;
             return maxCostDiff < 0;
         }
 
         void scanVehicleBucket(const int rank, const PDPairAfterLastStopLabel &label) {
 
-            const auto& pickup = requestState.pickups[label.pickupId];
-            const auto& dropoff = requestState.dropoffs[label.dropoffId];
-            const auto &directDist = label.directDistance;
+            const auto &pickup = requestState.pickups[label.pickupId];
+            const auto &dropoff = requestState.dropoffs[label.dropoffId];
 
             Assignment asgn;
-            asgn.distFromPickup = 0;
-            asgn.distFromDropoff = 0;
+            asgn.costFromPickup = 0;
+            asgn.costFromDropoff = 0;
+            asgn.travelTimeFromPickup = 0;
+            asgn.travelTimeFromDropoff = 0;
             asgn.pickup = &pickup;
             asgn.dropoff = &dropoff;
-            asgn.distToDropoff = directDist;
+            asgn.costToDropoff = label.directCost;
+            asgn.travelTimeToDropoff = label.directTravelTime;
 
             int numEntriesScannedInBucket = 0;
 
@@ -551,76 +564,42 @@ namespace karri::PickupAfterLastStopStrategies {
                 auto bucket = lastStopBuckets.getUnsortedBucketOf(rank);
                 for (const auto &entry: bucket) {
                     ++numEntriesScannedInBucket;
-                    const int fullDistToPickup = entry.distToTarget + label.distToPickup;
-                    tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn);
+                    const int fullCostToPickup = entry.distToTarget + label.costToPickup;
+                    const int fullTravelTime = entry.travelTimeToTarget + label.travelTimeToPickup;
+                    tryTentativeAssignment(entry.targetId, fullCostToPickup, fullTravelTime, asgn);
                 }
             } else {
 
-                auto [idleBucket, nonIdleBucket] = lastStopBuckets.getIdleAndNonIdleBucketOf(rank);
 
-                // Scan idle bucket. Sorted by distance, stop early if distance does not permit a better insertion than
+                // Scan sorted bucket. Sorted by distance, stop early if distance does not permit a better insertion than
                 // one already seen.
-                for (const auto &entry: idleBucket) {
+                for (const auto &entry: lastStopBuckets.getBucketOf(rank)) {
                     ++numEntriesScannedInBucket;
-                    const int fullDistToPickup = entry.distToTarget + label.distToPickup;
-                    // Vehicles are ordered by distToTarget, i.e. once we scan a vehicle where the lower bound cost
-                    // based on the vehicle distance to the pickup (i.e. irrespective of possible vehicle waiting for
-                    // the passenger at the pickup) is larger than the best known assignment cost, the rest of the
-                    // vehicles in the bucket will also be worse since lowerBoundCostForEarlyBreak monotonously grows
-                    // with the vehicles (given constant pickup and dropoff).
-                    // todo: For idle vehicles this cost is the same as the cost without hard constraints calculated
-                    //  later, i.e. the tentative cost with fullDistToPickup is already vehicle-independent so it
-                    //  could be used for both checking for new best insertion and stopping bucket scan early.
-                    //  (This is not the case for non-idle vehicles as their detour may still differ and that has an
-                    //  effect beyond the arrival time, too, so the vehicle-independent lower bound is different.)
-                    const auto vehTimeTillDepAtPickup = fullDistToPickup + InputConfig::getInstance().stopTime;
-                    const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
-                            vehTimeTillDepAtPickup, std::max(pickup.walkingDist, vehTimeTillDepAtPickup),
-                            directDist, pickup.walkingDist, dropoff.walkingDist, requestState);
-                    if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
+                    const int fullCostToPickup = entry.distToTarget + label.costToPickup;
+                    // Vehicles are ordered by distToTarget, i.e. the cost from the last stop to v.
+                    // Thus, fullCostToPickup + label.directCost increases monotonously with every scanned entry.
+                    // Once we scan an entry for which the upperBoundCost is exceeded, all remaining entries will also
+                    // exceed it, and we can stop scanning the bucket.
+                    if (fullCostToPickup + label.directCost > upperBoundCostWithConstraints)
                         break;
 
-                    tryTentativeAssignment(entry.targetId, fullDistToPickup, asgn);
-                }
-
-                // Scan non-idle bucket. Sorted by arrival time at vertex, stop early if arrival time does not permit a
-                // better insertion than one already seen.
-                for (const auto &entry: nonIdleBucket) {
-                    ++numEntriesScannedInBucket;
-                    const int vehArrTimeAtPickup = entry.distToTarget + label.distToPickup;
-
-                    // We compute a vehicle-independent lower bound on the cost of any insertion for which the vehicle
-                    // arrives at v at the earliest at entry.distOrArrTime. Since entries are ordered by the arrival
-                    // time at v, we can stop scanning entries if the lower bound exceeds the best known cost.
-                    const int minVehTimeTillDepAtPickup = label.distToPickup + InputConfig::getInstance().stopTime;
-                    const int minPsgTimeTillDepAtPickup = std::max(
-                            vehArrTimeAtPickup + InputConfig::getInstance().stopTime - requestState.originalRequest.requestTime,
-                            pickup.walkingDist);
-                    const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
-                            minVehTimeTillDepAtPickup, minPsgTimeTillDepAtPickup,
-                            directDist, pickup.walkingDist, dropoff.walkingDist, requestState);
-                    if (lowerBoundCostForEarlyBreak > upperBoundCostWithConstraints)
-                        break;
-
-                    const int &vehId = entry.targetId;
-                    const int &numStops = routeState.numStopsOf(vehId);
-                    const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1];
-                    const int fullDistToPickup = vehArrTimeAtPickup -  depTimeAtLastStop;
-
-                    tryTentativeAssignment(vehId, fullDistToPickup, asgn);
+                    const int fullTravelTime = entry.travelTimeToTarget + label.travelTimeToPickup;
+                    tryTentativeAssignment(entry.targetId, fullCostToPickup, fullTravelTime, asgn);
                 }
             }
 
             numEntriesScanned += numEntriesScannedInBucket;
         }
 
-        inline void tryTentativeAssignment(const int vehId, const int fullDistToPickup, Assignment& asgn) {
+        inline void tryTentativeAssignment(const int vehId, const int fullCostToPickup,
+                                           const int fullTravelTimeToPickup, Assignment &asgn) {
 
             const int &numStops = routeState.numStopsOf(vehId);
             asgn.vehicle = &fleet[vehId];
             asgn.pickupStopIdx = numStops - 1;
             asgn.dropoffStopIdx = numStops - 1;
-            asgn.distToPickup = fullDistToPickup;
+            asgn.costToPickup = fullCostToPickup;
+            asgn.travelTimeToPickup = fullTravelTimeToPickup;
 
             // Have to ignore service time hard constraint since we only search for promising dropoffs.
             // If all promising dropoffs violate the service time constraint but there is an unpromising dropoff
@@ -684,7 +663,8 @@ namespace karri::PickupAfterLastStopStrategies {
         int64_t runTime;
 
         std::vector<unsigned int> dropoffIdsForInitialLabels;
-        std::vector<PDDistanceLabel> directDistsForInitialLabels;
+        std::vector<PDDistanceLabel> directCostsForInitialLabels;
+        std::vector<PDDistanceLabel> directTravelTimesForInitialLabels;
 
 
     };

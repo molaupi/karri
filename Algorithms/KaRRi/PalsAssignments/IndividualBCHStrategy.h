@@ -219,8 +219,8 @@ namespace karri::PickupAfterLastStopStrategies {
 
                 for (auto &p: requestState.pickups) {
                     asgn.pickup = &p;
-                    asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
-                    if (asgn.distToPickup >= INFTY)
+                    asgn.costToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
+                    if (asgn.costToPickup >= INFTY)
                         continue;
 
                     // Compute cost lower bound for this pickup specifically
@@ -245,7 +245,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
                         // Try inserting pair with pickup after last stop:
                         ++numAssignmentsTried;
-                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.costToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                         requestState.tryAssignment(asgn);
                     }
                 }

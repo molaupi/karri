@@ -53,27 +53,27 @@ namespace karri {
             assert(dropoffStopIdx >= 0);
         }
 
-        Assignment(const Vehicle *vehicle,
-                   const PDLoc *pickup,
-                   const PDLoc *dropoff,
-                   const int pickupStopIdx, const int dropoffStopIdx, const int distToPickup,
-                   const int distFromPickup, const int distToDropoff, const int distFromDropoff)
-                : vehicle(vehicle),
-                  pickup(pickup),
-                  dropoff(dropoff),
-                  pickupStopIdx(pickupStopIdx),
-                  dropoffStopIdx(dropoffStopIdx),
-                  distToPickup(distToPickup),
-                  distFromPickup(distFromPickup),
-                  distToDropoff(distToDropoff),
-                  distFromDropoff(distFromDropoff) {
-            assert(pickupStopIdx >= 0);
-            assert(dropoffStopIdx >= 0);
-            assert(distToPickup >= 0);
-            assert(distFromPickup >= 0);
-            assert(distToDropoff >= 0);
-            assert(distFromDropoff >= 0);
-        }
+//        Assignment(const Vehicle *vehicle,
+//                   const PDLoc *pickup,
+//                   const PDLoc *dropoff,
+//                   const int pickupStopIdx, const int dropoffStopIdx, const int distToPickup,
+//                   const int distFromPickup, const int distToDropoff, const int distFromDropoff)
+//                : vehicle(vehicle),
+//                  pickup(pickup),
+//                  dropoff(dropoff),
+//                  pickupStopIdx(pickupStopIdx),
+//                  dropoffStopIdx(dropoffStopIdx),
+//                  costToPickup(distToPickup),
+//                  costFromPickup(distFromPickup),
+//                  costToDropoff(distToDropoff),
+//                  costFromDropoff(distFromDropoff) {
+//            assert(pickupStopIdx >= 0);
+//            assert(dropoffStopIdx >= 0);
+//            assert(distToPickup >= 0);
+//            assert(distFromPickup >= 0);
+//            assert(distToDropoff >= 0);
+//            assert(distFromDropoff >= 0);
+//        }
 
         const Vehicle *vehicle = nullptr;
         const PDLoc *pickup = nullptr;
@@ -82,10 +82,15 @@ namespace karri {
         int pickupStopIdx = INVALID_INDEX; // Pickup is inserted at or after stop with index pickupStopIdx in route of vehicle
         int dropoffStopIdx = INVALID_INDEX; // Dropoff is inserted at or after stop with index dropoffStopIdx in route of vehicle
 
-        int distToPickup = 0; // Distance from previous stop to pickup
-        int distFromPickup = 0; // Distance from pickup to next stop (or 0 if pickupStopIdx == dropoffStopIdx)
-        int distToDropoff = 0; // Distance from previous stop to dropoff (or from pickup to dropoff if pickupStopIdx == dropoffStopIdx)
-        int distFromDropoff = 0; // Distance from dropoff to next stop (or 0 if there is no next stop)
+        int costToPickup = 0; // Total travel cost from previous stop to pickup
+        int costFromPickup = 0; // Total travel cost from pickup to next stop (or 0 if pickupStopIdx == dropoffStopIdx)
+        int costToDropoff = 0; // Total travel cost from previous stop to dropoff (or from pickup to dropoff if pickupStopIdx == dropoffStopIdx)
+        int costFromDropoff = 0; // Total travel cost from dropoff to next stop (or 0 if there is no next stop)
+
+        int travelTimeToPickup = 0;
+        int travelTimeFromPickup = 0;
+        int travelTimeToDropoff = 0;
+        int travelTimeFromDropoff = 0;
     };
 
     // Criterion to make decision between two assignments with the same cost deterministic.
@@ -110,13 +115,13 @@ namespace karri {
         if (asgn1.pickup->id > asgn2.pickup->id) return false;
         if (asgn1.dropoff->id < asgn2.dropoff->id) return true;
         if (asgn1.dropoff->id > asgn2.dropoff->id) return false;
-        if (asgn1.distToPickup < asgn2.distToPickup) return true;
-        if (asgn1.distToPickup > asgn2.distToPickup) return false;
-        if (asgn1.distToDropoff < asgn2.distToDropoff) return true;
-        if (asgn1.distToDropoff > asgn2.distToDropoff) return false;
-        if (asgn1.distFromPickup < asgn2.distFromPickup) return true;
-        if (asgn1.distFromPickup > asgn2.distFromPickup) return false;
-        return asgn1.distFromDropoff < asgn2.distFromDropoff;
+        if (asgn1.costToPickup < asgn2.costToPickup) return true;
+        if (asgn1.costToPickup > asgn2.costToPickup) return false;
+        if (asgn1.costToDropoff < asgn2.costToDropoff) return true;
+        if (asgn1.costToDropoff > asgn2.costToDropoff) return false;
+        if (asgn1.costFromPickup < asgn2.costFromPickup) return true;
+        if (asgn1.costFromPickup > asgn2.costFromPickup) return false;
+        return asgn1.costFromDropoff < asgn2.costFromDropoff;
 
     }
 }

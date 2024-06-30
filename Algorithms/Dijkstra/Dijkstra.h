@@ -67,6 +67,15 @@ namespace dij {
         std::tuple<Criterions...> criterions; // The criteria that constitute the compound criterion.
     };
 
+    // No op edge relaxation callback.
+    struct NoRelaxationCallback {
+        template<typename LabelMaskT, typename DistanceLabelContainerT>
+        void operator()(const int /*u*/, const int /*v*/, const int /*e*/, const LabelMaskT & /*improved*/,
+                        const DistanceLabelContainerT & /*distanceLabels*/) {
+            // no op
+        }
+    };
+
 }
 
 // Forward declarations for friend
@@ -100,7 +109,9 @@ namespace traffic_flow_subnetwork {
 // criterion.
 template<
         typename GraphT, typename WeightT, typename LabelSetT,
-        typename StoppingCriterionT = dij::NoCriterion, typename PruningCriterionT = dij::NoCriterion,
+        typename StoppingCriterionT = dij::NoCriterion,
+        typename PruningCriterionT = dij::NoCriterion,
+        typename RelaxationCallbackT = dij::NoRelaxationCallback,
         template<typename> class DistanceLabelContainerT = StampedDistanceLabelContainer,
         typename QueueT = AddressableQuadHeap>
 class Dijkstra {
@@ -158,13 +169,15 @@ private:
 public:
     // Constructs a Dijkstra instance.
     explicit Dijkstra(
-            const Graph &graph, StoppingCriterionT stopSearch = {}, PruningCriterionT pruneSearch = {})
+            const Graph &graph, StoppingCriterionT stopSearch = {}, PruningCriterionT pruneSearch = {},
+            RelaxationCallbackT relaxationCallback = {})
             : graph(graph),
               distanceLabels(graph.numVertices()),
               parent(graph),
               queue(graph.numVertices()),
               stopSearch(stopSearch),
               pruneSearch(pruneSearch),
+              relaxationCallback(relaxationCallback),
               numEdgeRelaxations(0),
               numVerticesSettled(0) {}
 
@@ -323,6 +336,7 @@ private:
             auto &distToW = distanceLabels[w];
             const auto distViaV = distToV + graph.template get<WeightT>(e);
             const auto mask = distViaV < distToW;
+            relaxationCallback(v, w, e, mask, distanceLabels);
             if (anySet(mask)) {
                 distToW.min(distViaV);
                 parent.setVertex(w, v, mask);
@@ -346,6 +360,10 @@ private:
         return pruneSearch;
     }
 
+    RelaxationCallbackT &getRelaxationCallback() {
+        return relaxationCallback;
+    }
+
     using DistanceLabelCont = DistanceLabelContainerT<typename LabelSetT::DistanceLabel>;
     using ParentLabelCont = ParentLabelContainer<Graph, LabelSetT>;
 
@@ -355,6 +373,7 @@ private:
     Queue queue;                      // The priority queue of unsettled vertices.
     StoppingCriterionT stopSearch;    // The criterion used to stop the search.
     PruningCriterionT pruneSearch;    // The criterion used to prune the search.
+    RelaxationCallbackT relaxationCallback; // Called for every edge relaxation.
 
     int numEdgeRelaxations; // Number of edge relaxations in last run.
     int numVerticesSettled; // Number of vertices settled in last run.
