@@ -178,10 +178,10 @@ int main(int argc, char *argv[]) {
                 if (eInVehGraph != MapToEdgeInFullVehAttribute::defaultValue()) {
                     ++numEdgesWithMappingToCar;
                     LIGHT_KASSERT(eInVehGraph < vehicleInputGraph.numEdges());
-                    psgInputGraph.mapToEdgeInFullVeh(e) = eInVehGraph;
-                    LIGHT_KASSERT(psgInputGraph.mapToEdgeInFullVeh(e) < vehicleInputGraph.numEdges());
-                    vehicleInputGraph.mapToEdgeInPsg(eInVehGraph) = e;
 
+                    // Vehicle edge has to map back to some psg edge (not necessarily the same one) and has to have the
+                    // same head node.
+                    LIGHT_KASSERT(vehicleInputGraph.mapToEdgeInPsg(eInVehGraph) != MapToEdgeInPsgAttribute::defaultValue());
                     LIGHT_KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
                                   vehicleInputGraph.latLng(
                                           vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).latitude());
@@ -195,6 +195,22 @@ int main(int argc, char *argv[]) {
 
         const auto revPsgGraph = psgInputGraph.getReverseGraph();
         std::cout << "done.\n";
+
+        // Verify mappings between vehicle and passenger networks in direction veh->psg.
+        FORALL_VALID_EDGES(vehicleInputGraph, v, e) {
+                const int eInPsgGraph = vehicleInputGraph.mapToEdgeInPsg(e);
+                if (eInPsgGraph != MapToEdgeInPsgAttribute::defaultValue()) {
+                    LIGHT_KASSERT(eInPsgGraph < psgInputGraph.numEdges());
+                    LIGHT_KASSERT(psgInputGraph.mapToEdgeInFullVeh(eInPsgGraph) == e);
+
+                    LIGHT_KASSERT(vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(e)).latitude() ==
+                                  psgInputGraph.latLng(psgInputGraph.edgeHead(eInPsgGraph)).latitude());
+                    LIGHT_KASSERT(vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(e)).longitude() ==
+                        psgInputGraph.latLng(psgInputGraph.edgeHead(eInPsgGraph)).longitude());
+                }
+            }
+
+
 
 
         std::cout << "Number of vertices in the original vehicle network: " << vehicleInputGraph.numVertices()

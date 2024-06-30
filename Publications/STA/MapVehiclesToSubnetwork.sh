@@ -23,3 +23,4 @@ $binaryDir/RawData/TransformLocations -src-g $fullNetwork -tar-g $subNetwork -v 
 # Add other vehicle properties to the new vehicle file
 python3 $sourceDir/RawData/merge_csv_files.py  -i1 ${inputDir}/Vehicles/${subNetworkName}_${numVehicles}_locs.csv -c1 initial_location -i2 ${vehicles} -c2 start_of_service_time end_of_service_time capacity -o ${inputDir}/Vehicles/${subNetworkName}_${numVehicles}.csv
 rm ${inputDir}/Vehicles/${subNetworkName}_${numVehicles}_locs.csv
+rm ${inputDir}/Vehicles/${subNetworkName}_${numVehicles}_locs.vertexmatches.csv
