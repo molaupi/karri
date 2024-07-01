@@ -70,6 +70,7 @@ namespace karri {
 
             Assignment asgn;
             asgn.costToPickup = 0;
+            asgn.travelTimeToPickup = 0;
             for (const auto &p: requestState.pickups) {
                 asgn.pickup = &p;
 
@@ -82,7 +83,7 @@ namespace karri {
 
                     // Calculate lower bound on insertion cost with this pickup and vehicle
                     const auto lowerBoundCost = calculator.calcCostLowerBoundForPickupAfterLastStop(
-                            fleet[vehId], *asgn.pickup, 0, requestState.minDirectPDDist, requestState);
+                            fleet[vehId], *asgn.pickup, 0, 0, requestState.minDirectPDTravelTime, requestState);
                     if (lowerBoundCost > requestState.getBestCost())
                         continue;
 
@@ -92,8 +93,10 @@ namespace karri {
                     asgn.dropoffStopIdx = numStops - 1;
 
                     for (const auto &d: requestState.dropoffs) {
+
                         asgn.dropoff = &d;
-                        asgn.costToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.costToDropoff = pdDistances.getCost(p, d);
+                        asgn.travelTimeToDropoff = pdDistances.getTravelTime(p, d);
                         ++numInsertionsForCoinciding;
                         requestState.tryAssignment(asgn);
                     }

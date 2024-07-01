@@ -77,13 +77,14 @@ namespace karri::time_utils {
     }
 
     template<typename RequestContext>
-    static INLINE int getActualDepTimeAtPickup(const int vehId, const int stopIndexBeforePickup, const int distToPickup,
-                                               const PDLoc &pickup, const RequestContext &context,
-                                               const RouteState &routeState) {
+    static INLINE int
+    getActualDepTimeAtPickup(const int vehId, const int stopIndexBeforePickup, const int travelTimeToPickup,
+                             const PDLoc &pickup, const RequestContext &context,
+                             const RouteState &routeState) {
         const bool atStop = isPickupAtExistingStop(pickup, vehId, context.now(), stopIndexBeforePickup, routeState);
         const auto minVehicleDepTimeAtPickup =
                 getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, context, routeState) +
-                !atStop * (distToPickup + InputConfig::getInstance().stopTime);
+                !atStop * (travelTimeToPickup + InputConfig::getInstance().stopTime);
 
         // We assume a pickup at an existing stop takes no additional counting of stopTime, irrespective of when the
         // passenger arrives there. The vehicle can depart as soon as both the vehicle and the passenger are at the
@@ -157,7 +158,8 @@ namespace karri::time_utils {
             return arrTimeAtPrevious;
         }
 
-        const auto depTimeAtPrevious = std::max(minDepTimes[dropoffIndex], arrTimeAtPrevious + InputConfig::getInstance().stopTime);
+        const auto depTimeAtPrevious = std::max(minDepTimes[dropoffIndex],
+                                                arrTimeAtPrevious + InputConfig::getInstance().stopTime);
         return depTimeAtPrevious + asgn.travelTimeToDropoff;
     }
 
@@ -230,7 +232,9 @@ namespace karri::time_utils {
                              const RouteState &routeState) {
         if (dropoffAtExistingStop) return 0;
         const auto lengthOfReplacedLeg = calcTravelTimeOfLegStartingAt(dropoffIndex, vehId, routeState);
-        return travelTimeToDropoff + InputConfig::getInstance().stopTime + travelTimeFromDropoff - lengthOfReplacedLeg;
+        return std::max(
+                travelTimeToDropoff + InputConfig::getInstance().stopTime + travelTimeFromDropoff - lengthOfReplacedLeg,
+                0);
     }
 
     // Returns the additional time that is needed for the vehicle asgn.vehicle to drive from its stop at index

@@ -52,49 +52,71 @@ namespace karri {
         static constexpr int unknownDist = INFTY + 1;
 
 
-        struct StopWhenMaxDistExceeded {
 
-            explicit StopWhenMaxDistExceeded(const int &maxDist) : maxDist(maxDist) {}
+
+        struct StopIfUpperBoundCostExceeded {
+
+            explicit StopIfUpperBoundCostExceeded(const int &upperBoundCost)
+                    : upperBoundCost(upperBoundCost) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
-            bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
-                return !anySet(~(maxDist < distToV));
-            }
-
-
-        private:
-            const int &maxDist;
-        };
-
-        struct WriteVehicleDistLabel {
-            explicit WriteVehicleDistLabel(CurVehLocToPickupSearches &searches) : searches(searches) {}
-
-            template<typename DistLabelT, typename DistLabelContT>
-            bool operator()(const int v, const DistLabelT &distToV, const DistLabelContT &) {
-                searches.distFromCurVehLocation[v] = distToV[0];
-                return false;
+            bool operator()(const int, DistLabelT &costToV, const DistLabelContainerT & /*distLabels*/) {
+                return allSet(costToV > upperBoundCost);
             }
 
         private:
-
-            CurVehLocToPickupSearches &searches;
+            const int &upperBoundCost;
         };
+
+        // Bool overload of allSet which is usually defined for LabelMasks of LabelSets
+        static bool localAllSet(const bool &b) {
+            return b;
+        }
+
+        static bool localAllSet(const typename LabelSetT::LabelMask& mask) {
+            return allSet(mask);
+        }
+
+        template<typename TravelTimesContainer>
+        struct PruneIfTravelTimeExceedsLeeway {
+
+            explicit PruneIfTravelTimeExceedsLeeway(const int &leeway, TravelTimesContainer &travelTimes)
+                    : leeway(leeway), travelTimes(travelTimes) {}
+
+            template<typename DistLabelT, typename DistLabelContainerT>
+            bool operator()(const int v, DistLabelT &, const DistLabelContainerT & /*distLabels*/) {
+                return localAllSet(travelTimes[v] > leeway);
+            }
+
+        private:
+            const int &leeway;
+            TravelTimesContainer &travelTimes;
+        };
+
+        using PruneSingleTravelTime = PruneIfTravelTimeExceedsLeeway<TimestampedVector < int>>;
+        using PruneKTravelTimes = PruneIfTravelTimeExceedsLeeway<StampedDistanceLabelContainer<DistanceLabel>>;
 
         struct ScanLabelAndUpdateDistances {
             explicit ScanLabelAndUpdateDistances(CurVehLocToPickupSearches &searches) : searches(
                     searches) {}
 
             template<typename DistLabelT, typename DistLabelContT>
-            bool operator()(const int v, const DistLabelT &distToV, const DistLabelContT &) {
-                const auto &distFromVehLocToV = searches.distFromCurVehLocation[v];
-                if (distFromVehLocToV >= INFTY)
+            bool operator()(const int v, const DistLabelT &costFromV, const DistLabelContT &) {
+                const auto &travelTimesFromV = searches.travelTimesToPickups[v];
+                const auto &costFromVehLocToV = searches.writeVehLabelsSearch.getDistance(v);
+                const auto &travelTimeFromVehLocToV = searches.travelTimeFromCurVehLocation[v];
+                if (costFromVehLocToV >= INFTY)
                     return false;
 
-                DistanceLabel dists = distToV + DistanceLabel(distFromVehLocToV);
-                dists.setIf(DistanceLabel(INFTY), ~(distToV < INFTY));
-                searches.tentativeDistances.min(dists);
-                searches.maxTentativeDist = std::min(searches.maxTentativeDist,
-                                                     searches.tentativeDistances.horizontalMax());
+                DistanceLabel costsFromVehLocToPickup = DistanceLabel(costFromVehLocToV) + costFromV;
+                DistanceLabel travelTimesFromVehLocToPickup = DistanceLabel(travelTimeFromVehLocToV) + travelTimesFromV;
+                costsFromVehLocToPickup.setIf(DistanceLabel(INFTY), ~(costFromV < INFTY));
+                travelTimesFromVehLocToPickup.setIf(DistanceLabel(INFTY), ~(costFromV < INFTY));
+                const auto smaller = costsFromVehLocToPickup < searches.tentativeCosts;
+                searches.tentativeCosts.setIf(costsFromVehLocToPickup, smaller);
+                searches.tentativeTravelTimes.setIf(travelTimesFromVehLocToPickup, smaller);
+                searches.maxTentativeCost = std::min(searches.maxTentativeCost,
+                                                     searches.tentativeCosts.horizontalMax());
                 return false;
             }
 
@@ -103,8 +125,45 @@ namespace karri {
             CurVehLocToPickupSearches &searches;
         };
 
-        using WriteVehLabelsSearch = typename CHEnvT::template UpwardSearch<WriteVehicleDistLabel, StopWhenMaxDistExceeded>;
-        using FindDistancesSearch = typename CHEnvT::template UpwardSearch<ScanLabelAndUpdateDistances, StopWhenMaxDistExceeded, LabelSetT>;
+        struct WriteLabelsUpdateTravelTimeCallback {
+
+            WriteLabelsUpdateTravelTimeCallback(const typename CH::SearchGraph &searchGraph,
+                                                TimestampedVector<int> &travelTimes) : searchGraph(searchGraph),
+                                                                                       travelTimes(travelTimes) {}
+
+            template<typename LabelMaskT, typename DistanceLabelContainerT>
+            void operator()(const int v, const int w, const int e, const LabelMaskT &improved,
+                            const DistanceLabelContainerT &) {
+                if (improved[0]) {
+                    travelTimes[w] = travelTimes[v] + searchGraph.travelTime(e);
+                }
+            }
+
+            const CH::SearchGraph &searchGraph;
+            TimestampedVector<int> &travelTimes;
+        };
+
+        struct FindDistancesUpdateTravelTimeCallback {
+
+            FindDistancesUpdateTravelTimeCallback(const typename CH::SearchGraph &searchGraph,
+                                                  StampedDistanceLabelContainer<DistanceLabel> &travelTimes)
+                    : searchGraph(searchGraph), travelTimes(travelTimes) {}
+
+            template<typename LabelMaskT, typename DistanceLabelContainerT>
+            void operator()(const int v, const int w, const int e, const LabelMaskT &improved,
+                            const DistanceLabelContainerT &) {
+                travelTimes[w].setIf(travelTimes[v] + searchGraph.travelTime(e), improved);
+            }
+
+            const CH::SearchGraph &searchGraph;
+            StampedDistanceLabelContainer<DistanceLabel> &travelTimes;
+        };
+
+        using WriteVehLabelsSearch = typename CHEnvT::template UpwardSearch<
+                PruneSingleTravelTime, StopIfUpperBoundCostExceeded, WriteLabelsUpdateTravelTimeCallback>;
+        using FindDistancesSearch = typename CHEnvT::template UpwardSearch<
+                dij::CompoundCriterion<PruneKTravelTimes, ScanLabelAndUpdateDistances>,
+                StopIfUpperBoundCostExceeded, FindDistancesUpdateTravelTimeCallback, LabelSetT>;
 
 
     public:
@@ -121,22 +180,31 @@ namespace karri {
                   routeState(routeState),
                   requestState(requestState),
                   fleetSize(fleetSize),
-                  distances(),
+                  costs(),
+                  travelTimes(),
                   currentVehicleLocations(fleetSize, INVALID_LOC),
                   prevNumPickups(0),
                   vehiclesWithKnownLocation(),
                   writeVehLabelsSearch(
-                          chEnv.template getForwardSearch<WriteVehicleDistLabel, StopWhenMaxDistExceeded>(
-                                  WriteVehicleDistLabel(*this), StopWhenMaxDistExceeded(curLeeway))),
+                          chEnv.getForwardSearch(
+                                  PruneSingleTravelTime(curLeeway, travelTimeFromCurVehLocation),
+                                  StopIfUpperBoundCostExceeded(requestState.getBestCost()),
+                                  WriteLabelsUpdateTravelTimeCallback(chEnv.getCH().upwardGraph(),
+                                                                      travelTimeFromCurVehLocation))),
                   findDistancesSearch(
-                          chEnv.template getReverseSearch<ScanLabelAndUpdateDistances, StopWhenMaxDistExceeded, LabelSetT>(
-                                  ScanLabelAndUpdateDistances(*this),
-                                  StopWhenMaxDistExceeded(maxTentativeDist))),
-                  maxTentativeDist(INFTY),
+                          chEnv.template getReverseSearch<dij::CompoundCriterion<PruneKTravelTimes, ScanLabelAndUpdateDistances>,
+                                  StopIfUpperBoundCostExceeded, FindDistancesUpdateTravelTimeCallback, LabelSetT>(
+                                  dij::CompoundCriterion(PruneKTravelTimes(curLeeway, travelTimesToPickups),
+                                                         ScanLabelAndUpdateDistances(*this)),
+                                  StopIfUpperBoundCostExceeded(requestState.getBestCost()),
+                                  FindDistancesUpdateTravelTimeCallback(chEnv.getCH().downwardGraph(),
+                                                                        travelTimesToPickups))),
+                  travelTimesToPickups(ch.downwardGraph().numVertices()),
+                  maxTentativeCost(INFTY),
                   curPickupIds(),
                   currentTime(-1),
                   waitingQueue(),
-                  distFromCurVehLocation(chEnv.getCH().upwardGraph().numVertices(), INFTY) {}
+                  travelTimeFromCurVehLocation(chEnv.getCH().upwardGraph().numVertices(), INFTY) {}
 
         void initialize(const int now) {
             currentTime = now;
@@ -150,36 +218,44 @@ namespace karri {
             totalNumCHSearchesRunForRequest = 0;
         }
 
-        bool knowsDistance(const int vehId, const unsigned int pickupId) const {
-            assert(vehId >= 0 && vehId < fleetSize);
-            assert(pickupId < requestState.numPickups());
+        bool knowsCost(const int vehId, const unsigned int pickupId) const {
+            KASSERT(vehId >= 0 && vehId < fleetSize);
+            KASSERT(pickupId < requestState.numPickups());
             const int idx = vehId * requestState.numPickups() + pickupId;
-            return distances[idx] != unknownDist;
+            return costs[idx] != unknownDist;
         }
 
-        int getDistance(const int vehId, const unsigned int pickupId) const {
-            assert(vehId >= 0 && vehId < fleetSize);
-            assert(pickupId < requestState.numPickups());
+        int getCost(const int vehId, const unsigned int pickupId) const {
+            KASSERT(vehId >= 0 && vehId < fleetSize);
+            KASSERT(pickupId < requestState.numPickups());
             const int idx = vehId * requestState.numPickups() + pickupId;
-            return distances[idx];
+            return costs[idx];
+        }
+
+        int getTravelTime(const int vehId, const unsigned int pickupId) const {
+            KASSERT(vehId >= 0 && vehId < fleetSize);
+            KASSERT(pickupId < requestState.numPickups());
+            const int idx = vehId * requestState.numPickups() + pickupId;
+            return travelTimes[idx];
         }
 
         bool knowsCurrentLocationOf(const int vehId) const {
-            assert(vehId >= 0 && vehId < fleetSize);
+            KASSERT(vehId >= 0 && vehId < fleetSize);
             return currentVehicleLocations[vehId] != INVALID_LOC;
         }
 
         const VehicleLocation &getCurrentLocationOf(const int vehId) const {
-            assert(vehId >= 0 && vehId < fleetSize);
+            KASSERT(vehId >= 0 && vehId < fleetSize);
             return currentVehicleLocations[vehId];
         }
 
         // Register pickups for which we want to know the distance from the current location of a vehicle to this pickup.
         // All pickups registered until the next call to computeExactDistancesVia() will be processed with the same vehicle.
-        void addPickupForProcessing(const int pickupId, const int distFromPrevStopToPickup) {
-            assert(pickupId >= 0);
-            assert(pickupId < requestState.pickups.size());
-            waitingQueue.push_back({pickupId, distFromPrevStopToPickup});
+        void addPickupForProcessing(const int pickupId, const int distFromPrevStopToPickup,
+                                    const int travelTimeFromPrevStopToPickup) {
+            KASSERT(pickupId >= 0);
+            KASSERT(pickupId < requestState.pickups.size());
+            waitingQueue.push_back({pickupId, distFromPrevStopToPickup, travelTimeFromPrevStopToPickup});
         }
 
         // Computes the exact distances via a given vehicle to all pickups added using addPickupForProcessing() (since the
@@ -187,7 +263,7 @@ namespace karri {
         // already known.
         void computeExactDistancesVia(const Vehicle &vehicle) {
 
-            assert(routeState.numStopsOf(vehicle.vehicleId) > 1);
+            KASSERT(routeState.numStopsOf(vehicle.vehicleId) > 1);
             curLeeway = routeState.leewayOfLegStartingAt(routeState.stopIdsFor(vehicle.vehicleId)[0]);
             if (waitingQueue.empty()) return;
 
@@ -196,7 +272,7 @@ namespace karri {
                 vehiclesWithKnownLocation.push_back(vehicle.vehicleId);
             }
             const auto &vehLocation = currentVehicleLocations[vehicle.vehicleId];
-            assert(vehLocation != INVALID_LOC);
+            KASSERT(vehLocation != INVALID_LOC);
 
             if (vehLocation.location == routeState.stopLocationsFor(vehicle.vehicleId)[0]) {
                 fillDistancesForVehicleAtPrevStop(vehicle);
@@ -205,27 +281,31 @@ namespace karri {
                 return;
             }
 
-            const auto distToCurLoc = vehLocation.depTimeAtHead - routeState.schedDepTimesFor(vehicle.vehicleId)[0];
+            const auto costToCurLoc = vehLocation.costFromPrevStopToHead;
+            const auto travelTimeToCurLoc = vehLocation.travelTimeFromPrevStopToHead;
 
             int numChSearchesRun = 0;
             Timer timer;
             std::array<int, K> targets;
-            std::array<int, K> targetOffsets;
+            std::array<int, K> targetCostOffsets;
 
             unsigned int i = 0;
             bool builtLabelsForVeh = false;
 
+            travelTimesToPickups.init();
             for (auto it = waitingQueue.begin(); it != waitingQueue.end();) {
-                const auto pickupId = it->first;
+                const auto pickupId = std::get<0>(*it);
 
-                if (!knowsDistance(vehicle.vehicleId, pickupId)) {
+                if (!knowsCost(vehicle.vehicleId, pickupId)) {
                     const auto pickupLocation = requestState.pickups[pickupId].loc;
                     if (vehLocation.location == pickupLocation) {
                         const int idx = vehicle.vehicleId * requestState.numPickups() + pickupId;
-                        distances[idx] = distToCurLoc;
+                        costs[idx] = costToCurLoc;
+                        travelTimes[idx] = travelTimeToCurLoc;
                     } else {
                         targets[i] = ch.rank(inputGraph.edgeTail(pickupLocation));
-                        targetOffsets[i] = inputGraph.travelTime(pickupLocation);
+                        targetCostOffsets[i] = inputGraph.traversalCost(pickupLocation);
+                        travelTimesToPickups[targets[i]][i] = inputGraph.travelTime(pickupLocation);
                         curPickupIds[i] = pickupId;
                         ++i;
                     }
@@ -237,28 +317,32 @@ namespace karri {
                     int endOfBatch = i;
                     for (; i < K; ++i) {
                         targets[i] = targets[0];
-                        targetOffsets[i] = targetOffsets[0];
+                        targetCostOffsets[i] = targetCostOffsets[0];
+                        travelTimesToPickups[targets[0]][i] = static_cast<int>(travelTimesToPickups[targets[0]][0]);
                         curPickupIds[i] = curPickupIds[0];
                     }
 
-                    maxTentativeDist = curLeeway;
-                    tentativeDistances = DistanceLabel(INFTY);
+                    tentativeCosts = DistanceLabel(INFTY);
+                    tentativeTravelTimes = DistanceLabel(INFTY);
                     // Build distance labels for the vehicle
                     if (!builtLabelsForVeh) {
-                        distFromCurVehLocation.clear();
                         const auto source = ch.rank(inputGraph.edgeHead(vehLocation.location));
-                        writeVehLabelsSearch.runWithOffset(source, distToCurLoc);
+                        travelTimeFromCurVehLocation.clear();
+                        travelTimeFromCurVehLocation[source] = travelTimeToCurLoc;
+                        writeVehLabelsSearch.runWithOffset(source, costToCurLoc);
                         builtLabelsForVeh = true;
                     }
 
                     // Run search from pickups against the vehicle distance labels
-                    findDistancesSearch.runWithOffset(targets, targetOffsets);
+                    findDistancesSearch.runWithOffset(targets, targetCostOffsets);
+                    travelTimesToPickups.init();
                     ++numChSearchesRun;
 
                     // Set found distances.
                     for (int j = 0; j < endOfBatch; ++j) {
                         const int idx = vehicle.vehicleId * requestState.numPickups() + curPickupIds[j];
-                        distances[idx] = tentativeDistances[j];
+                        costs[idx] = tentativeCosts[j];
+                        travelTimes[idx] = tentativeTravelTimes[j];
                     }
 
                     i = 0;
@@ -292,18 +376,19 @@ namespace karri {
             for (const auto &vehId: vehiclesWithKnownLocation) {
                 const int start = vehId * prevNumPickups;
                 const int end = start + prevNumPickups;
-                std::fill(distances.begin() + start, distances.begin() + end, unknownDist);
+                std::fill(costs.begin() + start, costs.begin() + end, unknownDist);
+                std::fill(travelTimes.begin() + start, travelTimes.begin() + end, unknownDist);
                 currentVehicleLocations[vehId] = INVALID_LOC;
             }
-            assert(std::all_of(distances.begin(), distances.end(), [&](const auto &d) { return d == unknownDist; }));
-            assert(std::all_of(currentVehicleLocations.begin(), currentVehicleLocations.end(),
-                               [&](const auto &l) { return l == INVALID_LOC; }));
+            KASSERT(std::all_of(currentVehicleLocations.begin(), currentVehicleLocations.end(),
+                                [&](const auto &l) { return l == INVALID_LOC; }));
             vehiclesWithKnownLocation.clear();
 
             const int numDistances = requestState.numPickups() * fleetSize;
-            if (numDistances > distances.size()) {
-                const int diff = numDistances - distances.size();
-                distances.insert(distances.end(), diff, unknownDist);
+            if (numDistances > costs.size()) {
+                const int diff = numDistances - costs.size();
+                costs.insert(costs.end(), diff, unknownDist);
+                travelTimes.insert(travelTimes.end(), diff, unknownDist);
             }
         }
 
@@ -316,13 +401,15 @@ namespace karri {
 
         void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle) {
             const auto &stopLocations = routeState.stopLocationsFor(vehicle.vehicleId);
-            for (const auto &[pickupId, distFromPrevStopToPickup]: waitingQueue) {
+            for (const auto &[pickupId, costFromPrevStopToPickup, travelTimeFromPrevStopToPickup]: waitingQueue) {
                 if (stopLocations[0] != requestState.pickups[pickupId].loc) {
                     const int idx = vehicle.vehicleId * requestState.numPickups() + pickupId;
-                    distances[idx] = distFromPrevStopToPickup;
+                    costs[idx] = costFromPrevStopToPickup;
+                    travelTimes[idx] = travelTimeFromPrevStopToPickup;
                 } else {
                     const int idx = vehicle.vehicleId * requestState.numPickups() + pickupId;
-                    distances[idx] = 0;
+                    costs[idx] = 0;
+                    travelTimes[idx] = 0;
                 }
             }
         }
@@ -334,16 +421,23 @@ namespace karri {
         RequestState &requestState;
         const int fleetSize;
 
+        // Result of searches:
+        // costs[i * requestState.numPickups() + j] is the SP distance according to traversal costs from the current
+        // location of vehicle i to pickup j.
+        // travelTimes[i * requestState.numPickups() + j] is the total travel time on the SP according to traversal costs.
+        std::vector<int> costs;
+        std::vector<int> travelTimes;
 
-        std::vector<int> distances;
         std::vector<VehicleLocation> currentVehicleLocations;
         int prevNumPickups;
         std::vector<int> vehiclesWithKnownLocation;
 
         WriteVehLabelsSearch writeVehLabelsSearch;
         FindDistancesSearch findDistancesSearch;
-        DistanceLabel tentativeDistances;
-        int maxTentativeDist;
+        StampedDistanceLabelContainer<DistanceLabel> travelTimesToPickups;
+        DistanceLabel tentativeCosts; // Tentative SP distances according to traversal cost
+        DistanceLabel tentativeTravelTimes; // Tentative travel times on tentative SPs according to traversal cost
+        int maxTentativeCost;
         std::array<unsigned int, K> curPickupIds;
         int curLeeway;
 
@@ -354,9 +448,11 @@ namespace karri {
         int64_t totalNumCHSearchesRunForRequest;
 
         // Entry in waiting queue is pickupId + dist from previous stop of vehicle to pickup.
-        std::vector<std::pair<unsigned int, int>> waitingQueue;
+        std::vector<std::tuple<unsigned int, int, int>> waitingQueue;
 
-        TimestampedVector<int> distFromCurVehLocation;
+        // travelTimeFromCurVehLocation[v] is the total travel time on the shortest path according to traversal cost
+        // found by writeVehLabelsSearch. (i.e. not necessarily SP according to travel time).
+        TimestampedVector<int> travelTimeFromCurVehLocation;
     };
 
 }

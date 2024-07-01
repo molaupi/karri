@@ -47,48 +47,72 @@ namespace karri {
 
         TentativeLastStopDistances(const size_t fleetSize)
                 : startIdxForVeh(fleetSize, INVALID_INDEX),
-                  distances() {}
+                  costs(),
+                  travelTimes() {}
 
         void init(const int &numBatches) {
             curNumBatches = numBatches;
             startIdxForVeh.clear();
-            distances.clear();
+            costs.clear();
+            travelTimes.clear();
         }
 
         void setCurBatchIdx(const int &batchIdx) {
             curBatchIdx = batchIdx;
         }
 
-        int getDistance(const int &vehId, const int &pdLocId) {
+        int getCost(const int &vehId, const int &pdLocId) {
             assert(vehId < startIdxForVeh.size());
             const int startIdx = startIdxForVeh[vehId];
             if (startIdx == INVALID_INDEX)
                 return INFTY;
 
             const int batchIdx = pdLocId / K;
-            return distances[startIdx + batchIdx][pdLocId % K];
+            return costs[startIdx + batchIdx][pdLocId % K];
         }
 
-        DistanceLabel getDistancesForCurBatch(const int &vehId) {
+        DistanceLabel getCostsForCurBatch(const int &vehId) {
             assert(vehId < startIdxForVeh.size());
             const int startIdx = startIdxForVeh[vehId];
             if (startIdx == INVALID_INDEX)
                 return DistanceLabel(INFTY);
-            return distances[startIdx + curBatchIdx];
+            return costs[startIdx + curBatchIdx];
+        }
+
+        int getTravelTime(const int &vehId, const int &pdLocId) {
+            assert(vehId < startIdxForVeh.size());
+            const int startIdx = startIdxForVeh[vehId];
+            if (startIdx == INVALID_INDEX)
+                return INFTY;
+
+            const int batchIdx = pdLocId / K;
+            return travelTimes[startIdx + batchIdx][pdLocId % K];
+        }
+
+        DistanceLabel getTravelTimesForCurBatch(const int &vehId) {
+            assert(vehId < startIdxForVeh.size());
+            const int startIdx = startIdxForVeh[vehId];
+            if (startIdx == INVALID_INDEX)
+                return DistanceLabel(INFTY);
+            return travelTimes[startIdx + curBatchIdx];
         }
 
         void
-        setDistancesForCurBatchIf(const int &vehId, const DistanceLabel &distanceBatch,
+        setDistancesForCurBatchIf(const int &vehId,
+                                  const DistanceLabel &costBatch,
+                                  const DistanceLabel &travelTimeBatch,
                                   const LabelMask &batchInsertMask) {
             if (!anySet(batchInsertMask))
                 return;
 
             if (startIdxForVeh[vehId] == INVALID_INDEX) {
-                startIdxForVeh[vehId] = distances.size();
-                distances.insert(distances.end(), curNumBatches, DistanceLabel(INFTY));
+                startIdxForVeh[vehId] = costs.size();
+                costs.insert(costs.end(), curNumBatches, DistanceLabel(INFTY));
+                travelTimes.insert(travelTimes.end(), curNumBatches, DistanceLabel(INFTY));
             }
 
-            distances[startIdxForVeh[vehId] + curBatchIdx].setIf(distanceBatch, batchInsertMask);
+            costs[startIdxForVeh[vehId] + curBatchIdx].setIf(costBatch, batchInsertMask);
+            travelTimes[startIdxForVeh[vehId] + curBatchIdx].setIf(travelTimeBatch, batchInsertMask);
         }
 
 
@@ -96,7 +120,8 @@ namespace karri {
 
         int curNumBatches;
         TimestampedVector<int> startIdxForVeh;
-        std::vector<DistanceLabel> distances; // curNumBatches DistanceLabels per vehicle
+        std::vector<DistanceLabel> costs; // curNumBatches DistanceLabels per vehicle
+        std::vector<DistanceLabel> travelTimes;
 
         int curBatchIdx;
 

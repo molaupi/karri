@@ -116,7 +116,7 @@ int main(int argc, char *argv[]) {
         FORALL_VALID_EDGES(inputGraph, u, e) {
             const auto travelTime = inputGraph.get<TravelTimeAttribute>(e);
             const auto flow = flows[e];
-            const auto traversalCost = static_cast<int>(factor * travelTime + (1 - factor) * travelTime / flow);
+            const auto traversalCost = flow == 0? travelTime : static_cast<int>(factor * travelTime + (1 - factor) * travelTime / flow);
             inputGraph.get<TraversalCostAttribute>(e) = traversalCost;
         }
         std::cout << "done." << std::endl;

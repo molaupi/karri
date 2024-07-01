@@ -125,8 +125,7 @@ namespace karri {
                     const int eInFullVehGraph = forwardGraph.mapToEdgeInFullVeh(e);
                     KASSERT(eInFullVehGraph != MapToEdgeInFullVehAttribute::defaultValue());
                     pickups.push_back(
-                            {INVALID_ID, eInReducedVehGraph, eInFullVehGraph, e, distToV + forwardGraph.travelTime(e),
-                             INFTY, INFTY});
+                            {INVALID_ID, eInReducedVehGraph, eInFullVehGraph, e, distToV + forwardGraph.travelTime(e)});
                 }
             }
         }
@@ -143,7 +142,7 @@ namespace karri {
                     const int eInFullVehGraph = forwardGraph.mapToEdgeInFullVeh(eInForwGraph);
                     KASSERT(eInFullVehGraph != MapToEdgeInFullVehAttribute::defaultValue());
                     dropoffs.push_back(
-                            {INVALID_ID, eInReducedVehGraph, eInFullVehGraph, eInForwGraph, distToV, INFTY, INFTY});
+                            {INVALID_ID, eInReducedVehGraph, eInFullVehGraph, eInForwGraph, distToV});
                 }
             }
         }
@@ -159,7 +158,7 @@ namespace karri {
                 const int centerInFullVehGraph = forwardGraph.mapToEdgeInFullVeh(centerInPsgGraph);
                 KASSERT(centerInFullVehGraph != MapToEdgeInFullVehAttribute::defaultValue());
                 pdLocs.push_back(
-                        {nextSeqId, centerInRedVehGraph, centerInFullVehGraph, centerInPsgGraph, 0, INFTY, INFTY});
+                        {nextSeqId, centerInRedVehGraph, centerInFullVehGraph, centerInPsgGraph, 0});
             }
 
             // Remove duplicates
@@ -210,8 +209,6 @@ namespace karri {
         static bool sanityCheckPDLocs(const std::vector<PDLoc> &pdLocs, const PassengerGraphT& psgGraph) {
             for (int i = 0; i < pdLocs.size(); ++i) {
                 if (pdLocs[i].id != i) return false;
-                if (pdLocs[i].vehDistToCenter != INFTY) return false;
-                if (pdLocs[i].vehDistFromCenter != INFTY) return false;
                 if (psgGraph.mapToEdgeInReducedVeh(pdLocs[i].psgLoc) != pdLocs[i].loc) return false;
                 if (psgGraph.mapToEdgeInFullVeh(pdLocs[i].psgLoc) != pdLocs[i].fullVehLoc) return false;
             }

@@ -55,6 +55,8 @@ namespace karri {
             // minCostPerPickup has one entry per pickup. Initialize to INFTY.
             minCostPerPickup.clear();
             minCostPerPickup.resize(numLabelsPerDropoff, DistanceLabel(INFTY));
+            minTravelTimePerPickup.clear();
+            minTravelTimePerPickup.resize(numLabelsPerDropoff, DistanceLabel(INFTY));
         }
 
         // Get total traversal cost of shortest path between pickup and dropoff according to traversal costs.
@@ -83,7 +85,7 @@ namespace karri {
 
         // Get total travel time of shortest path between pickup and dropoff according to traversal costs.
         int getTravelTime(const PDLoc &pickup, const PDLoc &dropoff) const {
-            return getCost(pickup.id, dropoff.id);
+            return getTravelTime(pickup.id, dropoff.id);
         }
 
         const DistanceLabel &getCostsForBatchOfPickups(const unsigned int firstPickupIdInBatch,
@@ -108,6 +110,10 @@ namespace karri {
             return minCostPerPickup[pickupId / K][pickupId % K];
         }
 
+        int getMinTravelTimeForPickup(const int pickupId) const {
+            return minTravelTimePerPickup[pickupId / K][pickupId % K];
+        }
+
         // Compares a current PD-distance to the given distance and updates the distances if the given distances are smaller.
         void updateDistanceIfSmaller(const unsigned int pickupId, const unsigned int dropoffId, const int cost, const int travelTime) {
             const auto offsetInBatch = pickupId % K;
@@ -116,12 +122,16 @@ namespace karri {
                 label[offsetInBatch] = cost;
                 travelTimeLabelFor(pickupId, dropoffId)[offsetInBatch] = travelTime;
                 minCost = std::min(minCost, cost);
-                minTravelTime = std::min(minTravelTime, travelTimeLabelFor(pickupId, dropoffId)[offsetInBatch]);
+                minTravelTime = std::min(minTravelTime, travelTime);
 
                 if (cost < minCostPerPickup[pickupId / K][offsetInBatch]) {
                     minCostPerPickup[pickupId / K][offsetInBatch] = cost;
                 }
-                assert(minDirectDist <= minCostPerPickup[pickupId / K].horizontalMin());
+                if (travelTime < minTravelTimePerPickup[pickupId / K][offsetInBatch]) {
+                    minTravelTimePerPickup[pickupId / K][offsetInBatch] = travelTime;
+                }
+                KASSERT(minCost <= minCostPerPickup[pickupId / K].horizontalMin());
+                KASSERT(minTravelTime <= minTravelTimePerPickup[pickupId / K].horizontalMin());
             }
         }
 
@@ -136,9 +146,13 @@ namespace karri {
                 label.setIf(cost, smaller);
                 travelTimeLabelFor(firstPickupId, dropoffId).setIf(travelTime, smaller);
                 minCost = std::min(minCost, cost.horizontalMin());
-                minTravelTime = std::min(minTravelTime, travelTimeLabelFor(firstPickupId, dropoffId).horizontalMin());
                 minCostPerPickup[firstPickupId / K].min(cost);
-                assert(minDirectDist <= minCostPerPickup[firstPickupId / K].horizontalMin());
+                auto improvedTTs = travelTime;
+                improvedTTs.setIf(INFTY, ~smaller);
+                minTravelTime = std::min(minTravelTime, improvedTTs.horizontalMin());
+                minTravelTimePerPickup[firstPickupId / K].min(improvedTTs);
+                KASSERT(minCost <= minCostPerPickup[firstPickupId / K].horizontalMin());
+                KASSERT(minTravelTime <= minTravelTimePerPickup[firstPickupId / K].horizontalMin());
             }
         }
 
@@ -171,8 +185,9 @@ namespace karri {
         // ceil(numPickups / K) labels per dropoff, sequentially arranged by increasing dropoffId.
         AlignedVector<DistanceLabel> costs; // Total traversal costs of shortest paths according to traversal costs.
         AlignedVector<DistanceLabel> travelTimes; // Total travel times of shortest paths according to traversal costs.
-        int minCost;
-        int minTravelTime;
+        int minCost; // Smallest traversal cost between any pickup and dropoff
+        int minTravelTime; // Smallest travel time between any pickup and dropoff on the shortest cost paths
         AlignedVector<DistanceLabel> minCostPerPickup;
+        AlignedVector<DistanceLabel> minTravelTimePerPickup;
     };
 }

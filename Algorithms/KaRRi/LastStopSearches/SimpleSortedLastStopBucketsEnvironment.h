@@ -42,9 +42,13 @@ namespace karri {
     class SimpleSortedLastStopBucketsEnvironment {
 
         struct LastStopEntry {
-            int targetId;
-            int distToTarget; // cost (SP distance according to traversal cost)
-            int travelTimeToTarget; // travel time (not SP distance)
+            int targetId = INVALID_ID;
+            int distToTarget = INFTY; // cost (SP distance according to traversal cost)
+            int travelTimeToTarget = INFTY; // travel time (not SP distance)
+
+            friend bool operator==(const LastStopEntry &lhs, const LastStopEntry &rhs) {
+                return lhs.targetId == rhs.targetId;
+            }
         };
 
         struct CompareEntries {
@@ -84,7 +88,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &costToV, const DistLabelContT &) {
-                auto entry = LastStopEntry(curVehId, costToV[0], travelTimes[v]);
+                LastStopEntry entry = {curVehId, costToV[0], travelTimes[v]};
                 bucketContainer.insert(v, entry);
                 ++verticesVisited;
                 return false;
@@ -106,8 +110,8 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
-                auto entry = BucketEntry(curVehId, distToV[0], travelTimes[v]);
-                bool removed = bucketContainer.removeIdle(v, entry);
+                LastStopEntry entry = {curVehId, distToV[0], travelTimes[v]};
+                bool removed = bucketContainer.remove(v, entry);
                 ++verticesVisited;
                 entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
                 return !removed; // Prune if no entry for the vehicle was found at this vertex
@@ -204,7 +208,6 @@ namespace karri {
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 
             vehicleId = veh.vehicleId;
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
             entriesVisitedInSearch = 0;
             maxDetourUntilEndOfServiceTime = INFTY;
             verticesVisitedInSearch = 0;

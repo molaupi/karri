@@ -192,7 +192,7 @@ int main(int argc, char *argv[]) {
         // Read the full vehicle network from file.
         std::cout << "Reading full vehicle network from file... " << std::flush;
         using FullVehicleEdgeAttributes = EdgeAttrs<
-                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, MapToEdgeInPsgAttribute, MapToEdgeInReducedVehAttribute, OsmRoadCategoryAttribute>;
+                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, TraversalCostAttribute, MapToEdgeInPsgAttribute, MapToEdgeInReducedVehAttribute, OsmRoadCategoryAttribute>;
         using FullVehicleInputGraph = StaticGraph<VertexAttributes, FullVehicleEdgeAttributes>;
         std::ifstream fullVehicleNetworkFile(fullVehicleNetworkFileName, std::ios::binary);
         if (!fullVehicleNetworkFile.good())
@@ -204,13 +204,14 @@ int main(int argc, char *argv[]) {
             throw std::invalid_argument("Full vehicle input graph cannot have zero edges.");
         FORALL_VALID_EDGES(fullVehInputGraph, v, e) {
                 LIGHT_KASSERT(fullVehInputGraph.edgeId(e) == EdgeIdAttribute::defaultValue());
+                LIGHT_KASSERT(fullVehInputGraph.traversalCost(e) >= 0 && fullVehInputGraph.traversalCost(e) < INFTY);
                 fullVehInputGraph.edgeTail(e) = v;
                 fullVehInputGraph.edgeId(e) = e;
             }
         std::cout << "done.\n";
 
         using RedVehicleEdgeAttributes = EdgeAttrs<
-                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, MapToEdgeInPsgAttribute, MapToEdgeInFullVehAttribute, OsmRoadCategoryAttribute>;
+                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, TraversalCostAttribute, MapToEdgeInPsgAttribute, MapToEdgeInFullVehAttribute, OsmRoadCategoryAttribute>;
         using RedVehicleInputGraph = StaticGraph<VertexAttributes, RedVehicleEdgeAttributes>;
         std::unique_ptr<RedVehicleInputGraph> redVehInputGraphPtr;
         if (!clp.isSet("red-veh-g")) {
@@ -418,11 +419,11 @@ int main(int argc, char *argv[]) {
 
 #else
         // Prepare full vehicle CH environment
-        using FullVehCHEnv = CHEnvironment<FullVehicleInputGraph, TravelTimeAttribute>;
-        std::unique_ptr<FullVehCHEnv> fullVehChEnv;
+        using FullVehTravelTimeCHEnv = CHEnvironment<FullVehicleInputGraph, TravelTimeAttribute>;
+        std::unique_ptr<FullVehTravelTimeCHEnv> fullVehChEnv;
         if (fullVehHierarchyFileName.empty()) {
             std::cout << "Building full vehicle CH... " << std::flush;
-            fullVehChEnv = std::make_unique<FullVehCHEnv>(fullVehInputGraph);
+            fullVehChEnv = std::make_unique<FullVehTravelTimeCHEnv>(fullVehInputGraph);
             std::cout << "done.\n";
         } else {
             // Read the CH from file.
@@ -433,11 +434,11 @@ int main(int argc, char *argv[]) {
             CH fullVehCh(fullVehHierarchyFile);
             fullVehHierarchyFile.close();
             std::cout << "done.\n";
-            fullVehChEnv = std::make_unique<FullVehCHEnv>(std::move(fullVehCh));
+            fullVehChEnv = std::make_unique<FullVehTravelTimeCHEnv>(std::move(fullVehCh));
         }
 
         // Prepare full vehicle CH environment
-        using RedVehCHEnv = CHEnvironment<RedVehicleInputGraph, TravelTimeAttribute>;
+        using RedVehCHEnv = CHEnvironment<RedVehicleInputGraph, TraversalCostAttribute>;
         std::unique_ptr<RedVehCHEnv> redVehChEnv;
         if (!clp.isSet("red-veh-g") || !clp.isSet("red-veh-h")) {
             std::cout << "Building reduced vehicle CH... " << std::flush;
@@ -454,25 +455,6 @@ int main(int argc, char *argv[]) {
             redVehHierarchyFile.close();
             std::cout << "done.\n";
             redVehChEnv = std::make_unique<RedVehCHEnv>(std::move(redVehCh));
-        }
-
-        // Prepare passenger CH environment
-        using PsgCHEnv = CHEnvironment<PsgInputGraph, TravelTimeAttribute>;
-        std::unique_ptr<PsgCHEnv> psgChEnv;
-        if (psgHierarchyFileName.empty()) {
-            std::cout << "Building passenger CH... " << std::flush;
-            psgChEnv = std::make_unique<PsgCHEnv>(psgInputGraph);
-            std::cout << "done.\n";
-        } else {
-            // Read the passenger CH from file.
-            std::cout << "Reading passenger CH from file... " << std::flush;
-            std::ifstream psgHierarchyFile(psgHierarchyFileName, std::ios::binary);
-            if (!psgHierarchyFile.good())
-                throw std::invalid_argument("file not found -- '" + psgHierarchyFileName + "'");
-            CH psgCh(psgHierarchyFile);
-            psgHierarchyFile.close();
-            std::cout << "done.\n";
-            psgChEnv = std::make_unique<PsgCHEnv>(std::move(psgCh));
         }
 #endif
 
@@ -516,7 +498,7 @@ int main(int argc, char *argv[]) {
         FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(fleet.size(), routeState);
 
 
-        using EllipticBCHSearchesImpl = EllipticBCHSearches<RedVehicleInputGraph, RedVehCHEnv, CostCalculator::CostFunction,
+        using EllipticBCHSearchesImpl = EllipticBCHSearches<RedVehicleInputGraph, RedVehCHEnv,
                 EllipticBucketsEnv, LastStopAtVerticesInfo, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
         EllipticBCHSearchesImpl ellipticSearches(redVehInputGraph, fleet, ellipticBucketsEnv, lastStopBucketsEnv,
                                                  *redVehChEnv, routeState, feasibleEllipticPickups,
@@ -534,9 +516,9 @@ int main(int argc, char *argv[]) {
                                                       relOrdinaryPickups, relOrdinaryDropoffs, relPickupsBeforeNextStop,
                                                       relDropoffsBeforeNextStop);
 
-
-        using VehicleToPDLocQueryImpl = VehicleToPDLocQuery<FullVehicleInputGraph>;
-        VehicleToPDLocQueryImpl vehicleToPdLocQuery(fullVehInputGraph, revFullVehicleGraph);
+//
+//        using VehicleToPDLocQueryImpl = VehicleToPDLocQuery<FullVehicleInputGraph>;
+//        VehicleToPDLocQueryImpl vehicleToPdLocQuery(fullVehInputGraph, revFullVehicleGraph);
 
 
         // Construct PD-distance query
@@ -580,9 +562,9 @@ int main(int argc, char *argv[]) {
 
 #if KARRI_PALS_STRATEGY == KARRI_COL
         // Use Collective-BCH PALS Strategy
-        using PALSStrategy = PickupAfterLastStopStrategies::CollectiveBCHStrategy<RedVehicleInputGraph, RedVehCHEnv, LastStopBucketsEnv, VehicleToPDLocQueryImpl, PDDistancesImpl, PALSLabelSet>;
-        PALSStrategy palsStrategy(redVehInputGraph, fleet, *redVehChEnv, vehicleToPdLocQuery, lastStopBucketsEnv,
-                                  pdDistances, calc, routeState, reqState);
+        using PALSStrategy = PickupAfterLastStopStrategies::CollectiveBCHStrategy<RedVehicleInputGraph, RedVehCHEnv, LastStopBucketsEnv, PDDistancesImpl, PALSLabelSet>;
+        PALSStrategy palsStrategy(redVehInputGraph, fleet, *redVehChEnv, lastStopBucketsEnv, pdDistances, calc,
+                                  routeState, reqState);
 #elif KARRI_PALS_STRATEGY == KARRI_IND
         // Use Individual-BCH PALS Strategy
         using PALSStrategy = PickupAfterLastStopStrategies::IndividualBCHStrategy<RedVehicleInputGraph, RedVehCHEnv, LastStopBucketsEnv, PDDistancesImpl, PALSLabelSet>;
@@ -628,9 +610,8 @@ int main(int argc, char *argv[]) {
         using DALSInsertionsFinderImpl = DALSAssignmentsFinder<DALSStrategy>;
         DALSInsertionsFinderImpl dalsInsertionsFinder(dalsStrategy);
 
-        using RequestStateInitializerImpl = RequestStateInitializer<FullVehicleInputGraph, PsgInputGraph, FullVehCHEnv, PsgCHEnv, VehicleToPDLocQueryImpl>;
-        RequestStateInitializerImpl requestStateInitializer(fullVehInputGraph, psgInputGraph, *fullVehChEnv, *psgChEnv,
-                                                            reqState, vehicleToPdLocQuery);
+        using RequestStateInitializerImpl = RequestStateInitializer<FullVehicleInputGraph, PsgInputGraph, FullVehTravelTimeCHEnv>;
+        RequestStateInitializerImpl requestStateInitializer(fullVehInputGraph, psgInputGraph, *fullVehChEnv, reqState);
 
         using InsertionFinderImpl = AssignmentFinder<RequestStateInitializerImpl,
                 EllipticBCHSearchesImpl,
@@ -660,7 +641,7 @@ int main(int argc, char *argv[]) {
 
         // Initialize last stop state for initial locations of vehicles
         for (const auto &veh: fleet) {
-            lastStopBucketsEnv.generateIdleBucketEntries(veh);
+            lastStopBucketsEnv.generateBucketEntries(veh);
         }
 
         // Run simulation:

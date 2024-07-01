@@ -353,14 +353,14 @@ namespace karri::PickupAfterLastStopStrategies {
 
 
         int lowerBoundCostOfLabel(const PDPairAfterLastStopLabel &label) const {
-            const int minWaitVioCost = CostCalculator::CostFunction::calcWaitViolationCost(
-                    requestState.originalRequest.requestTime + label.travelTimeToPickup, requestState);
-            const int minTripTime =
-                    label.travelTimeToPickup + InputConfig::getInstance().stopTime + label.directTravelTime +
-                    requestState.dropoffs[label.dropoffId].walkingDist;
-            const int minTripVioCost = CostCalculator::CostFunction::calcTripTimeViolationCost(minTripTime,
-                                                                                               requestState);
-            return label.costToPickup + label.directCost + minWaitVioCost + minTripVioCost;
+//            const int minWaitVioCost = CostCalculator::CostFunction::calcWaitViolationCost(
+//                    requestState.originalRequest.requestTime + label.travelTimeToPickup, requestState);
+//            const int minTripTime =
+//                    label.travelTimeToPickup + InputConfig::getInstance().stopTime + label.directTravelTime +
+//                    requestState.dropoffs[label.dropoffId].walkingDist;
+//            const int minTripVioCost = CostCalculator::CostFunction::calcTripTimeViolationCost(minTripTime,
+//                                                                                               requestState);
+            return label.costToPickup + label.directCost;
         }
 
         // Settles the global label with minimum cost lower bound. Sets labelAtV to the closed label and v to the vertex
@@ -521,7 +521,7 @@ namespace karri::PickupAfterLastStopStrategies {
             ++numDominationRelationTests;
 
             if (label1.pickupId == label2.pickupId)
-                return label1.dropoffId == label2.dropoffId && label1.costToPickup <= label2.costToPickup;
+                return label1.dropoffId == label2.dropoffId && label1.costToPickup <= label2.costToPickup && label1.travelTimeToPickup <= label2.travelTimeToPickup;
 
             const auto &pickup1 = requestState.pickups[label1.pickupId];
             const auto &dropoff1 = requestState.dropoffs[label1.dropoffId];

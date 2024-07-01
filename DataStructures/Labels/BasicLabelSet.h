@@ -90,11 +90,20 @@ public:
             return res;
         }
 
+        friend bool operator==(const LabelMask &mask1, const LabelMask& mask2) {
+            for (int i = 0; i < K; ++i) {
+                if (mask1.isMarked[i] != mask2.isMarked[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         // Returns the logical NOT of this mask.
-        LabelMask operator~() const {
-            LabelMask res = *this;
+        friend LabelMask operator~(const LabelMask &mask) {
+            LabelMask res;
             for (int i = 0; i < K; ++i)
-                res.isMarked[i] = !res.isMarked[i];
+                res.isMarked[i] = !mask.isMarked[i];
             return res;
         }
 

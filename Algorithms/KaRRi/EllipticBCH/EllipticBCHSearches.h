@@ -93,7 +93,7 @@ namespace karri {
         template<typename UpdateDistancesT>
         struct ScanOrdinaryBucket {
             explicit ScanOrdinaryBucket(const Buckets &buckets, UpdateDistancesT &updateDistances,
-                                        const TravelTimes& travelTimes,
+                                        TravelTimes& travelTimes,
                                         int &numEntriesVisited, int &numEntriesVisitedWithDistSmallerLeeway)
                     : buckets(buckets),
                       updateDistances(updateDistances),
@@ -118,7 +118,7 @@ namespace karri {
 
                     // Otherwise, check if the tentative distances needs to be updated.
                     const auto costViaV = costToV + entry.distToTarget;
-                    const auto travelTimeViaV = travelTimes[v] + entry.travelTime;
+                    const auto travelTimeViaV = travelTimes[v] + entry.travelTimeToTarget;
                     ++numEntriesVisitedWithDistSmallerLeeway;
                     updateDistances(v, entry.targetId, costViaV, travelTimeViaV);
                 }
@@ -129,7 +129,7 @@ namespace karri {
         private:
             const Buckets &buckets;
             UpdateDistancesT &updateDistances;
-            const TravelTimes& travelTimes;
+            TravelTimes& travelTimes;
             int &numEntriesVisited;
             int &numEntriesVisitedWithDistSmallerLeeway;
         };
@@ -251,6 +251,7 @@ namespace karri {
                   feasibleEllipticDropoffs(feasibleEllipticDropoffs),
                   costUpperBound(INFTY),
                   travelTimeUpperBound(INFTY),
+                  travelTimes(inputGraph.numVertices()),
                   updateDistancesToPdLocs(),
                   updateDistancesFromPdLocs(routeState),
                   toQuery(chEnv.template getReverseSearch<dij::CompoundCriterion<PruneIfTravelTimeExceedsMaxLeeway, ScanSourceBuckets>, StopIfCostUpperBoundExceeded, UpdateTravelTimeCallback, LabelSetT>(
@@ -258,15 +259,15 @@ namespace karri {
                            ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
                                              travelTimes, totalNumEntriesScanned,
                                              totalNumEntriesScannedWithDistSmallerLeeway)},
-                          StopIfCostUpperBoundExceeded(costUpperBound, numTimesStoppingCriterionMet),
+                          StopIfCostUpperBoundExceeded(costUpperBound),
                           UpdateTravelTimeCallback(ch.downwardGraph(), travelTimes))),
                   fromQuery(
-                          chEnv.template getForwardSearch<dij::CompoundCriterion<PruneIfTravelTimeExceedsMaxLeeway, ScanTargetBuckets>, StopIfCostUpperBoundExceeded, LabelSetT>(
+                          chEnv.template getForwardSearch<dij::CompoundCriterion<PruneIfTravelTimeExceedsMaxLeeway, ScanTargetBuckets>, StopIfCostUpperBoundExceeded, UpdateTravelTimeCallback, LabelSetT>(
                                   {PruneIfTravelTimeExceedsMaxLeeway(travelTimeUpperBound, travelTimes),
                                   ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
                                                     travelTimes, totalNumEntriesScanned,
                                                     totalNumEntriesScannedWithDistSmallerLeeway)},
-                                  StopIfCostUpperBoundExceeded(costUpperBound, numTimesStoppingCriterionMet),
+                                  StopIfCostUpperBoundExceeded(costUpperBound),
                                   UpdateTravelTimeCallback(ch.upwardGraph(), travelTimes))) {}
 
 

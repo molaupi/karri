@@ -75,28 +75,28 @@ namespace karri {
         template<typename PruningCriterionT = dij::NoCriterion, typename StoppingCriterionT = dij::NoCriterion, typename RelaxationCallbackT = dij::NoRelaxationCallback, typename LabelSetT = DefaultLabelSet>
         UpwardSearch<PruningCriterionT, StoppingCriterionT, RelaxationCallbackT, LabelSetT>
         getForwardSearch(PruningCriterionT prune = {}, StoppingCriterionT stop = {}, RelaxationCallbackT relax = {}) const {
-            return UpwardSearch<PruningCriterionT, StoppingCriterionT, LabelSetT>(
+            return UpwardSearch<PruningCriterionT, StoppingCriterionT, RelaxationCallbackT, LabelSetT>(
                     ch.upwardGraph(), stop, {StallOnDemandCriterion<LabelSetT>(ch.downwardGraph()), prune}, relax);
         }
 
         template<typename PruningCriterionT = dij::NoCriterion, typename StoppingCriterionT = dij::NoCriterion, typename RelaxationCallbackT = dij::NoRelaxationCallback, typename LabelSetT = DefaultLabelSet>
         UpwardSearch<PruningCriterionT, StoppingCriterionT, RelaxationCallbackT, LabelSetT>
         getReverseSearch(PruningCriterionT prune = {}, StoppingCriterionT stop = {}, RelaxationCallbackT relax = {}) const {
-            return UpwardSearch<PruningCriterionT, StoppingCriterionT, LabelSetT>(
+            return UpwardSearch<PruningCriterionT, StoppingCriterionT, RelaxationCallbackT, LabelSetT>(
                     ch.downwardGraph(), stop, {StallOnDemandCriterion<LabelSetT>(ch.upwardGraph()), prune}, relax);
         }
 
         template<typename PruningCriterionT = dij::NoCriterion, typename StoppingCriterionT = dij::NoCriterion, typename RelaxationCallbackT = dij::NoRelaxationCallback, typename LabelSetT = DefaultLabelSet>
         TopologicalUpwardSearch<PruningCriterionT, StoppingCriterionT, RelaxationCallbackT, LabelSetT>
         getForwardTopologicalSearch(PruningCriterionT prune = {}, StoppingCriterionT stop = {}, RelaxationCallbackT relax = {}) const {
-            return TopologicalUpwardSearch<PruningCriterionT, StoppingCriterionT, LabelSetT>(
+            return TopologicalUpwardSearch<PruningCriterionT, StoppingCriterionT, RelaxationCallbackT, LabelSetT>(
                     ch.upwardGraph(), {stop, prune}, relax);
         }
 
         template<typename PruningCriterionT = dij::NoCriterion, typename StoppingCriterionT = dij::NoCriterion, typename RelaxationCallbackT = dij::NoRelaxationCallback, typename LabelSetT = DefaultLabelSet>
         TopologicalUpwardSearch<PruningCriterionT, StoppingCriterionT, RelaxationCallbackT, LabelSetT>
         getReverseTopologicalSearch(PruningCriterionT prune = {}, StoppingCriterionT stop = {}, RelaxationCallbackT relax = {}) const {
-            return TopologicalUpwardSearch<PruningCriterionT, StoppingCriterionT, LabelSetT>(
+            return TopologicalUpwardSearch<PruningCriterionT, StoppingCriterionT, RelaxationCallbackT, LabelSetT>(
                     ch.downwardGraph(), {stop, prune}, relax);
         }
 

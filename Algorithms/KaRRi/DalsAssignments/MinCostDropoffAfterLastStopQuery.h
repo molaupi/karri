@@ -39,7 +39,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         struct DropoffLabel {
             int dropoffId = INVALID_ID;
-            int distToDropoff = std::numeric_limits<int>::max();
+            int costToDropoff = INFTY;
+            int travelTimeToDropoff = INFTY;
 
             constexpr bool operator==(const DropoffLabel &rhs) const noexcept {
                 return dropoffId == rhs.dropoffId;
@@ -157,8 +158,9 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             for (const auto &dropoff: requestState.dropoffs) {
                 const auto tailRank = ch.rank(inputGraph.edgeTail(dropoff.loc));
-                const auto offset = inputGraph.travelTime(dropoff.loc);
-                const DropoffLabel initialLabel = {dropoff.id, offset};
+                const auto costOffset = inputGraph.traversalCost(dropoff.loc);
+                const auto travelTimeOffsest = inputGraph.travelTime(dropoff.loc);
+                const DropoffLabel initialLabel = {dropoff.id, costOffset, travelTimeOffsest};
                 const auto initialCost = costOf(initialLabel);
                 if (initialCost > requestState.getBestCost())
                     continue;
@@ -175,9 +177,10 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         int costOf(const DropoffLabel &label) const {
-            if (label.distToDropoff >= INFTY) return INFTY;
+            if (label.costToDropoff >= INFTY) return INFTY;
             return calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
-                    label.distToDropoff, requestState.dropoffs[label.dropoffId], requestState);
+                    label.costToDropoff, label.travelTimeToDropoff, requestState.dropoffs[label.dropoffId],
+                    requestState);
         }
 
         bool dominates(const DropoffLabel &label1, const DropoffLabel &label2) {
@@ -186,13 +189,14 @@ namespace karri::DropoffAfterLastStopStrategies {
             const auto &dropoff1 = requestState.dropoffs[label1.dropoffId];
             const auto &dropoff2 = requestState.dropoffs[label2.dropoffId];
 
-            const auto maxDetourDiff = label1.distToDropoff - label2.distToDropoff;
+            const auto maxDetourDiff = label1.travelTimeToDropoff - label2.travelTimeToDropoff;
             const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
             const auto maxTripDiff = maxDetourDiff + walkDiff;
 
             using F = CostCalculator::CostFunction;
-            const auto costDiffNoTripVio =
-                    F::VEH_WEIGHT * maxDetourDiff + F::PSG_WEIGHT * maxTripDiff + F::WALK_WEIGHT * walkDiff;
+
+            const auto costToDropoffDiff = label1.costToDropoff - label2.costToDropoff;
+            const auto costDiffNoTripVio = F::VEH_WEIGHT * costToDropoffDiff;
             const auto costDiffTripVio = costDiffNoTripVio + F::TRIP_VIO_WEIGHT * maxTripDiff;
             return costDiffNoTripVio < 0 && costDiffTripVio < 0;
         }
@@ -219,9 +223,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                     ++numEdgeRelaxations;
                     const auto w = searchGraph.edgeHead(e);
                     if (w == v) continue;
-                    const auto edgeTime = searchGraph.template get<CH::Weight>(e);
                     DropoffLabel labelViaV = labelAtV;
-                    labelViaV.distToDropoff += edgeTime;
+                    labelViaV.costToDropoff += searchGraph.template get<CH::Weight>(e);
+                    labelViaV.travelTimeToDropoff += searchGraph.travelTime(e);
 
                     bool inserted = insertLabelAtVertexAndClean(w, vertexLabelBuckets, labelViaV);
                     if (inserted) {
@@ -261,7 +265,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                 // Check if labelAtW is dominated by any closed labels at w.
                 for (const auto &closedLabel: bucketAtW.closed()) {
                     auto closedLabelAtV = closedLabel;
-                    closedLabelAtV.distToDropoff += oppositeGraph.template get<CH::Weight>(e);
+                    closedLabelAtV.costToDropoff += oppositeGraph.template get<CH::Weight>(e);
+                    closedLabelAtV.travelTimeToDropoff += oppositeGraph.travelTime(e);
 
                     if (dominates(closedLabelAtV, label)) {
                         return true;
@@ -271,7 +276,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                 // Check if labelAtW is dominated by any open labels at vertex.
                 for (const auto &openLabel: bucketAtW.open()) {
                     auto openLabelAtV = openLabel;
-                    openLabelAtV.distToDropoff += oppositeGraph.template get<CH::Weight>(e);
+                    openLabelAtV.costToDropoff += oppositeGraph.template get<CH::Weight>(e);
+                    openLabelAtV.travelTimeToDropoff += oppositeGraph.travelTime(e);
                     if (dominates(openLabelAtV, label)) {
                         return true;
                     }
@@ -349,10 +355,11 @@ namespace karri::DropoffAfterLastStopStrategies {
                     ++numEntriesScannedHere;
 
                     const int &vehId = entry.targetId;
-                    const int fullDistToDropoff = entry.distToTarget + label.distToDropoff;
+                    const int fullCostToDropoff = entry.distToTarget + label.costToDropoff;
+                    const int fullTravelTimeToDropoff = entry.travelTimeToTarget + label.travelTimeToDropoff;
 
                     const auto costFromLastStop = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
-                            fullDistToDropoff, dropoff, requestState);
+                            fullCostToDropoff, fullTravelTimeToDropoff, dropoff, requestState);
 
                     if (costFromLastStop > requestState.getBestCost())
                         continue;
@@ -366,30 +373,29 @@ namespace karri::DropoffAfterLastStopStrategies {
                     const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId,
                                                                                    routeState.numStopsOf(vehId) - 1,
                                                                                    requestState, routeState);
-                    if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff + InputConfig::getInstance().stopTime)
+                    if (fleet[vehId].endOfServiceTime <
+                        vehDepTimeAtLastStop + fullTravelTimeToDropoff + InputConfig::getInstance().stopTime)
                         continue;
 
-                    const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
+                    const DropoffLabel labelAtVeh = {dropoff.id, fullCostToDropoff, fullTravelTimeToDropoff};
                     insertLabelAtVehicleAndClean(vehId, labelAtVeh);
                 }
             } else {
 
-                // Idle vehicles cannot lead to dropoff after last stop queries, so only consider non-idle ones.
-                auto nonIdleBucket = lastStopBuckets.getNonIdleBucketOf(v);
-
-                for (const auto &entry: nonIdleBucket) {
+                for (const auto &entry: lastStopBuckets.getBucketOf(v)) {
                     ++numEntriesScannedHere;
 
                     const int &vehId = entry.targetId;
-                    const int arrTimeAtDropoff = entry.distToTarget + label.distToDropoff;
+                    const int fullCostToDropoff = entry.distToTarget + label.costToDropoff;
+                    const int fullTravelTimeToDropoff = entry.travelTimeToTarget + label.travelTimeToDropoff;
 
-                    const auto costFromLastStop = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinArrTime(
-                            dropoff.walkingDist, label.distToDropoff, arrTimeAtDropoff, requestState);
-
-                    // Entries of idle bucket are sorted by arrival time at v. The vehicle-independent lower
-                    // bound costFromLastStop increases monotonously with this arrival time. So once we find an entry
-                    // where the lower bound exceeds the best known cost, all remaining entries in the bucket will, too.
-                    if (costFromLastStop > requestState.getBestCost())
+                    // Vehicles are ordered by distToTarget, i.e. the cost from the last stop to v.
+                    // Thus, fullCostToDropoff increases monotonously with every scanned entry.
+                    // Once we scan an entry for which the cost upper bound is exceeded, all remaining entries will also
+                    // exceed it, and we can stop scanning the bucket.
+                    // We cannot consider travel times for the trip time violations here, though, as they are not
+                    // ordered within the bucket.
+                    if (fullCostToDropoff > requestState.getBestCost())
                         break;
 
                     // If vehicle is not eligible for dropoff after last stop assignments, it does not need to be regarded.
@@ -398,13 +404,14 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                     // If full distance to dropoff leads to violation of service time constraint, an assignment with this
                     // vehicle and dropoff does not need to be regarded.
-                    if (fleet[vehId].endOfServiceTime < arrTimeAtDropoff + InputConfig::getInstance().stopTime)
+                    const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId,
+                                                                                   routeState.numStopsOf(vehId) - 1,
+                                                                                   requestState, routeState);
+                    if (fleet[vehId].endOfServiceTime <
+                        vehDepTimeAtLastStop + fullTravelTimeToDropoff + InputConfig::getInstance().stopTime)
                         continue;
 
-
-                    const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[routeState.numStopsOf(vehId) - 1];
-                    const int fullDistToDropoff = arrTimeAtDropoff - depTimeAtLastStop;
-                    const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
+                    const DropoffLabel labelAtVeh = {dropoff.id, fullCostToDropoff, fullTravelTimeToDropoff};
                     insertLabelAtVehicleAndClean(vehId, labelAtVeh);
                 }
             }

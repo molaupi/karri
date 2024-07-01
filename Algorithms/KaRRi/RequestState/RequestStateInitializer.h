@@ -29,23 +29,20 @@ namespace karri {
 // Initializes the request state for a new request.
     template<typename FullVehInputGraphT,
             typename PsgInputGraphT,
-            typename FullVehCHEnvT,
-            typename PsgCHEnvT,
-            typename VehicleToPDLocQueryT>
+            typename FullVehTravelTimeCHEnvT>
     class RequestStateInitializer {
 
     public:
         RequestStateInitializer(const FullVehInputGraphT &fullVehInputGraph, const PsgInputGraphT &psgInputGraph,
-                                const FullVehCHEnvT &fullVehChEnv, const PsgCHEnvT &psgChEnv,
-                                RequestState &requestState, VehicleToPDLocQueryT &vehicleToPdLocQuery)
-                : fullVehInputGraph(fullVehInputGraph), psgInputGraph(psgInputGraph),
+                                const FullVehTravelTimeCHEnvT &fullVehTravelTimeChEnv,
+                                RequestState &requestState)
+                : fullVehInputGraph(fullVehInputGraph),
                   revPsgGraph(psgInputGraph.getReverseGraph()),
-                  fullVehCh(fullVehChEnv.getCH()), psgCh(psgChEnv.getCH()),
-                  fullVehChQuery(fullVehChEnv.template getFullCHQuery<>()), psgChQuery(psgChEnv.template getFullCHQuery<>()),
+                  fullVehTravelTimeCh(fullVehTravelTimeChEnv.getCH()),
+                  fullVehTravelTimeChQuery(fullVehTravelTimeChEnv.template getFullCHQuery<>()),
                   requestState(requestState),
                   findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph, requestState.pickups,
-                                          requestState.dropoffs),
-                  vehicleToPdLocQuery(vehicleToPdLocQuery) {}
+                                          requestState.dropoffs) {}
 
 
         void initializeRequestState(const Request &req) {
@@ -55,26 +52,8 @@ namespace karri {
 
             requestState.originalRequest = req;
 
-            assert(psgInputGraph.mapToEdgeInFullVeh(fullVehInputGraph.mapToEdgeInPsg(req.origin)) == req.origin);
             const auto originInPsgGraph = fullVehInputGraph.mapToEdgeInPsg(req.origin);
-
-            assert(psgInputGraph.mapToEdgeInFullVeh(fullVehInputGraph.mapToEdgeInPsg(req.destination)) == req.destination);
             const auto destInPsgGraph = fullVehInputGraph.mapToEdgeInPsg(req.destination);
-
-            if (!InputConfig::getInstance().alwaysUseVehicle) {
-                // Try pseudo-assignment for passenger walking to destination without using vehicle
-                timer.restart();
-
-                const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
-                const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
-                const int destOffset = psgInputGraph.travelTime(destInPsgGraph);
-                psgChQuery.run(originHeadRank, destTailRank);
-                const auto totalDist = psgChQuery.getDistance() + destOffset;
-                requestState.tryNotUsingVehicleAssignment(totalDist, destOffset);
-
-                const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
-                requestState.stats().initializationStats.notUsingVehicleTime = notUsingVehiclesTime;
-            }
 
             // Find PDLocs in radius
             timer.restart();
@@ -82,9 +61,11 @@ namespace karri {
 
             // Log road categories of PDLocs
             for (const auto &p: requestState.pickups)
-                requestState.allPDLocsRoadCategoryStats().incCountForCat(fullVehInputGraph.osmRoadCategory(p.fullVehLoc));
+                requestState.allPDLocsRoadCategoryStats().incCountForCat(
+                        fullVehInputGraph.osmRoadCategory(p.fullVehLoc));
             for (const auto &d: requestState.dropoffs)
-                requestState.allPDLocsRoadCategoryStats().incCountForCat(fullVehInputGraph.osmRoadCategory(d.fullVehLoc));
+                requestState.allPDLocsRoadCategoryStats().incCountForCat(
+                        fullVehInputGraph.osmRoadCategory(d.fullVehLoc));
 
             const auto findHaltingSpotsTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().initializationStats.findPDLocsInRadiusTime = findHaltingSpotsTime;
@@ -96,22 +77,14 @@ namespace karri {
             if (requestState.numPickups() == 0 || requestState.numDropoffs() == 0)
                 return;
 
-            // Precalculate the vehicle distances from pickups to origin and from destination to dropoffs for upper bounds on PD distances
-            timer.restart();
-
-            vehicleToPdLocQuery.runReverse(req.origin, requestState.pickups);
-            vehicleToPdLocQuery.runForward(req.destination, requestState.dropoffs);
-
-            const auto findVehicleToPdLocsDistancesTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().initializationStats.findVehicleToPdLocsDistancesTime = findVehicleToPdLocsDistancesTime;
-
             // Calculate the direct distance between the requests origin and destination in full vehicle graph
             timer.restart();
-            const auto source = fullVehCh.rank(fullVehInputGraph.edgeHead(req.origin));
-            const auto target = fullVehCh.rank(fullVehInputGraph.edgeTail(req.destination));
-            fullVehChQuery.run(source, target);
-            requestState.directDistInFullVeh = fullVehChQuery.getDistance() + fullVehInputGraph.travelTime(req.destination);
-            KASSERT(requestState.directDistInFullVeh < INFTY);
+            const auto source = fullVehTravelTimeCh.rank(fullVehInputGraph.edgeHead(req.origin));
+            const auto target = fullVehTravelTimeCh.rank(fullVehInputGraph.edgeTail(req.destination));
+            fullVehTravelTimeChQuery.run(source, target);
+            requestState.directTravelTimeInFullVeh =
+                    fullVehTravelTimeChQuery.getDistance() + fullVehInputGraph.travelTime(req.destination);
+            KASSERT(requestState.directTravelTimeInFullVeh < INFTY);
 
             const auto directSearchTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().initializationStats.computeODDistanceTime = directSearchTime;
@@ -120,21 +93,16 @@ namespace karri {
 
     private:
 
-        using FullVehCHQuery = typename FullVehCHEnvT::template FullCHQuery<>;
-        using PsgCHQuery = typename PsgCHEnvT::template FullCHQuery<>;
+        using FullVehTravelTimeCHQuery = typename FullVehTravelTimeCHEnvT::template FullCHQuery<>;
 
         const FullVehInputGraphT &fullVehInputGraph;
-        const PsgInputGraphT &psgInputGraph;
         PsgInputGraphT revPsgGraph;
-        const CH &fullVehCh;
-        const CH &psgCh;
-        FullVehCHQuery fullVehChQuery;
-        PsgCHQuery psgChQuery;
+        const CH &fullVehTravelTimeCh;
+        FullVehTravelTimeCHQuery fullVehTravelTimeChQuery;
 
         RequestState &requestState;
 
         FindPDLocsInRadiusQuery<PsgInputGraphT> findPdLocsInRadiusQuery;
-        VehicleToPDLocQueryT &vehicleToPdLocQuery;
 
     };
 }

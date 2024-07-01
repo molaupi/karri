@@ -31,10 +31,11 @@ namespace karri {
 
     struct VehicleLocation {
         int location = INVALID_EDGE;
-        int depTimeAtHead = INFTY;
+        int costFromPrevStopToHead = INFTY;
+        int travelTimeFromPrevStopToHead = INFTY;
 
         friend bool operator==(const VehicleLocation &l1, const VehicleLocation &l2) {
-            return l1.location == l2.location && l1.depTimeAtHead == l2.depTimeAtHead;
+            return l1.location == l2.location && l1.costFromPrevStopToHead == l2.costFromPrevStopToHead;
         }
 
         friend bool operator!=(const VehicleLocation &l1, const VehicleLocation &l2) {

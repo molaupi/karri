@@ -38,7 +38,16 @@ namespace karri {
         template<typename RequestContext>
         static inline int calcTripTimeViolationCost(const int tripTime, const RequestContext &context) {
             KASSERT(tripTime >= 0);
-            return TRIP_TIME_VIOLATION_WEIGHT * std::max(tripTime - context.getMaxTripTime(), 0);
+            return TRIP_TIME_VIOLATION_WEIGHT * std::max(tripTime - context.getOriginalReqMaxTripTime(), 0);
+        }
+
+        template<typename DistanceLabel, typename RequestContext>
+        static inline DistanceLabel calcKTripTimeViolationCosts(const DistanceLabel& tripTime, const RequestContext &context) {
+            KASSERT(allSet(tripTime >= 0));
+            DistanceLabel cost = tripTime - DistanceLabel(context.getOriginalReqMaxTripTime());
+            cost.max(0);
+            cost.multiplyWithScalar(TRIP_TIME_VIOLATION_WEIGHT);
+            return cost;
         }
 
         static inline int calcUpperBoundTripViolationCostDifference(const int tripTimeDifference) {

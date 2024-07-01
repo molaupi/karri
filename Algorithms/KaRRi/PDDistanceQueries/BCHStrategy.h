@@ -63,8 +63,8 @@ namespace karri::PDDistanceQueryStrategies {
 
             void cmpAndUpdate(const DropoffBatchLabel &other) {
                 assert(targetId == invalid_target || targetId == other.targetId);
-                const auto improved = other.costToDropoff < costToDropoff |
-                        (other.costToDropoff == costToDropoff & other.travelTimeToDropoff < travelTimeToDropoff);
+                const auto improved = (other.costToDropoff < costToDropoff) |
+                        ((other.costToDropoff == costToDropoff) & (other.travelTimeToDropoff < travelTimeToDropoff));
                 costToDropoff.setIf(other.costToDropoff, improved);
                 travelTimeToDropoff.setIf(other.travelTimeToDropoff, improved);
                 if (targetId == invalid_target)
@@ -80,6 +80,7 @@ namespace karri::PDDistanceQueryStrategies {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, const DistLabelT &costToV, const DistLabelContT &) {
+                KASSERT((costToV < INFTY) == (computer.travelTimes[v] < INFTY));
                 computer.dropoffBuckets.insertOrUpdate(v, {computer.dropoffBatchId, costToV, computer.travelTimes[v]});
                 return false;
             }
@@ -94,6 +95,7 @@ namespace karri::PDDistanceQueryStrategies {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, const DistLabelT &costToV, const DistLabelContT &) {
+                KASSERT((costToV < INFTY) == (computer.travelTimes[v] < INFTY));
                 for (const auto &dropoffBatchLabel: computer.dropoffBuckets.getBucketOf(v)) {
                     // Update distances to each dropoff in the batch label:
                     const auto firstDropoffIdInBatch = dropoffBatchLabel.targetId * K;
@@ -206,6 +208,7 @@ namespace karri::PDDistanceQueryStrategies {
             int pickupId = 0;
             for (; pickupId < requestState.numPickups();) {
                 headRanks[pickupId % K] = ch.rank(inputGraph.edgeHead(requestState.pickups[pickupId].loc));
+                travelTimes[headRanks[pickupId % K]][pickupId % K] = 0;
                 ++pickupId;
                 if (pickupId % K == 0) {
                     curFirstPickupId = pickupId - K;
@@ -218,6 +221,7 @@ namespace karri::PDDistanceQueryStrategies {
             if (pickupId % K != 0) {
                 while (pickupId % K != 0) {
                     headRanks[pickupId % K] = headRanks[0]; // fill with copies of first in batch
+                    travelTimes[headRanks[pickupId % K]][pickupId % K] = 0;
                     ++pickupId;
                 }
                 curFirstPickupId = pickupId - K;

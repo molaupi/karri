@@ -141,10 +141,10 @@ class CHQuery {
   };
 
   using UpwardSearchStall = Dijkstra<
-      CH::SearchGraph, TraversalCostAttribute, LabelSetT, dij::NoCriterion, PruningCriterion,
+      CH::SearchGraph, TraversalCostAttribute, LabelSetT, dij::NoCriterion, PruningCriterion, dij::NoRelaxationCallback,
       DistanceLabelContainerT, QueueT>;
   using UpwardSearchNoStall = Dijkstra<
-      CH::SearchGraph, TraversalCostAttribute, LabelSetT, dij::NoCriterion, dij::NoCriterion,
+      CH::SearchGraph, TraversalCostAttribute, LabelSetT, dij::NoCriterion, dij::NoCriterion, dij::NoRelaxationCallback,
       DistanceLabelContainerT, QueueT>;
   using UpwardSearch = std::conditional_t<USE_STALLING, UpwardSearchStall, UpwardSearchNoStall>;
 
