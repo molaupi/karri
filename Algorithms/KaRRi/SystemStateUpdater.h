@@ -26,7 +26,7 @@
 #pragma once
 
 #include "Algorithms/KaRRi/RouteState.h"
-#include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
+#include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 #include "PathTracker.h"
 
 namespace karri {
@@ -44,20 +44,17 @@ namespace karri {
     public:
 
         SystemStateUpdater(const InputGraphT &inputGraph, RequestState &requestState,
-                           const InputConfig &inputConfig, const CurVehLocsT &curVehLocs,
+                           const CurVehLocsT &curVehLocs,
                            PathTrackerT &pathTracker,
                            RouteState &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
-                           LastStopBucketsEnvT &lastStopBucketsEnv,
-                           LastStopsAtVertices &lastStopsAtVertices)
+                           LastStopBucketsEnvT &lastStopBucketsEnv)
                 : inputGraph(inputGraph),
                   requestState(requestState),
-                  inputConfig(inputConfig),
                   curVehLocs(curVehLocs),
                   pathTracker(pathTracker),
                   routeState(routeState),
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   lastStopBucketsEnv(lastStopBucketsEnv),
-                  lastStopsAtVertices(lastStopsAtVertices),
                   bestAssignmentsLogger(LogManager<LoggerT>::getLogger("bestassignments.csv",
                                                                        "request_id, "
                                                                        "request_time, "
@@ -184,9 +181,7 @@ namespace karri {
         void notifyVehicleReachedEndOfServiceTime(const Vehicle &veh) {
             const auto vehId = veh.vehicleId;
             assert(routeState.numStopsOf(vehId) == 1);
-            const auto loc = inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[0]);
 
-            lastStopsAtVertices.removeLastStopAt(loc, vehId);
             lastStopBucketsEnv.removeIdleBucketEntries(veh, 0);
 
             routeState.removeStartOfCurrentLeg(vehId);
@@ -271,7 +266,7 @@ namespace karri {
             auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
             routeState.createIntermediateStopForReroute(veh.vehicleId, loc.location, now, loc.depTimeAtHead);
-            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
+            ellipticBucketsEnv.generateSourceBucketEntries(veh, 1);
         }
 
 
@@ -341,20 +336,10 @@ namespace karri {
                 lastStopBucketsEnv.removeNonIdleBucketEntries(*asgn.vehicle, formerLastStopIdx);
             }
             lastStopBucketsEnv.generateNonIdleBucketEntries(*asgn.vehicle);
-
-            // Update lastStopAtVertices structure
-            Timer timer;
-            const auto oldLocHead = inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[formerLastStopIdx]);
-            const auto newLocHead = inputGraph.edgeHead(asgn.dropoff->loc);
-            lastStopsAtVertices.removeLastStopAt(oldLocHead, vehId);
-            lastStopsAtVertices.insertLastStopAt(newLocHead, vehId);
-            const auto lastStopsAtVerticesUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().updateStats.lastStopsAtVerticesUpdateTime += lastStopsAtVerticesUpdateTime;
         }
 
         const InputGraphT &inputGraph;
         RequestState &requestState;
-        const InputConfig &inputConfig;
         const CurVehLocsT &curVehLocs;
         PathTrackerT &pathTracker;
 
@@ -364,7 +349,6 @@ namespace karri {
         // Bucket state
         EllipticBucketsEnvT &ellipticBucketsEnv;
         LastStopBucketsEnvT &lastStopBucketsEnv;
-        LastStopsAtVertices &lastStopsAtVertices;
 
         // Performance Loggers
         LoggerT &bestAssignmentsLogger;

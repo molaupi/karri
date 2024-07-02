@@ -13,3 +13,6 @@
 [submodule "External/kassert"]
 	path = External/kassert
 	url = git@github.com:kamping-site/kassert.git
+[submodule "External/boost"]
+	path = External/boost
+	url = git@github.com:boostorg/boost.git

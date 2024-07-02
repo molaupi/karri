@@ -37,15 +37,14 @@ namespace karri {
     public:
         RequestStateInitializer(const VehInputGraphT &vehInputGraph, const PsgInputGraphT &psgInputGraph,
                                 const VehCHEnvT &vehChEnv, const PsgCHEnvT &psgChEnv,
-                                RequestState &requestState, const InputConfig &inputConfig,
+                                RequestState &requestState,
                                 VehicleToPDLocQueryT &vehicleToPdLocQuery)
                 : vehInputGraph(vehInputGraph), psgInputGraph(psgInputGraph),
                   revPsgGraph(psgInputGraph.getReverseGraph()),
                   vehCh(vehChEnv.getCH()), psgCh(psgChEnv.getCH()),
                   vehChQuery(vehChEnv.template getFullCHQuery<>()), psgChQuery(psgChEnv.template getFullCHQuery<>()),
                   requestState(requestState),
-                  inputConfig(inputConfig),
-                  findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph, inputConfig, requestState.pickups,
+                  findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph, requestState.pickups,
                                           requestState.dropoffs),
                   vehicleToPdLocQuery(vehicleToPdLocQuery) {}
 
@@ -95,7 +94,7 @@ namespace karri {
             requestState.stats().initializationStats.computeODDistanceTime = directSearchTime;
 
 
-            if (!inputConfig.alwaysUseVehicle) {
+            if (!InputConfig::getInstance().alwaysUseVehicle) {
                 // Try pseudo-assignment for passenger walking to destination without using vehicle
                 timer.restart();
 
@@ -126,7 +125,6 @@ namespace karri {
         PsgCHQuery psgChQuery;
 
         RequestState &requestState;
-        const InputConfig &inputConfig;
 
         FindPDLocsInRadiusQuery<PsgInputGraphT> findPdLocsInRadiusQuery;
         VehicleToPDLocQueryT &vehicleToPdLocQuery;
