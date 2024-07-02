@@ -438,37 +438,31 @@ int main(int argc, char *argv[]) {
         }
 
         // Prepare full vehicle CH environment
-        using RedVehCHEnv = CHEnvironment<RedVehicleInputGraph, TraversalCostAttribute>;
-        std::unique_ptr<RedVehCHEnv> redVehChEnv;
-        if (!clp.isSet("red-veh-g") || !clp.isSet("red-veh-h")) {
-            std::cout << "Building reduced vehicle CH... " << std::flush;
-            redVehChEnv = std::make_unique<RedVehCHEnv>(redVehInputGraph);
-            std::cout << "done.\n";
-        } else {
-            // Read the CH from file.
-            std::cout << "Reading reduced vehicle CH from file... " << std::flush;
-            const auto redVehHierarchyFileName = clp.getValue<std::string>("red-veh-h");
-            std::ifstream redVehHierarchyFile(redVehHierarchyFileName, std::ios::binary);
-            if (!redVehHierarchyFile.good())
-                throw std::invalid_argument("file not found -- '" + redVehHierarchyFileName + "'");
-            CH redVehCh(redVehHierarchyFile);
-            redVehHierarchyFile.close();
-            std::cout << "done.\n";
-            redVehChEnv = std::make_unique<RedVehCHEnv>(std::move(redVehCh));
-        }
+        using RedVehTraversalCostCHEnv = CHEnvironment<RedVehicleInputGraph, TraversalCostAttribute>;
+        std::unique_ptr<RedVehTraversalCostCHEnv> redVehCostChEnv;
+        std::cout << "Building reduced vehicle CH according to traversal cost... " << std::flush;
+        redVehCostChEnv = std::make_unique<RedVehTraversalCostCHEnv>(redVehInputGraph);
+        std::cout << "done.\n";
+
+        using RedVehTravelTimeCHEnv = CHEnvironment<RedVehicleInputGraph, TravelTimeAttribute>;
+        std::unique_ptr<RedVehTravelTimeCHEnv> redVehTimeChEnv;
+        std::cout << "Building reduced vehicle CH according to travel time... " << std::flush;
+        redVehTimeChEnv = std::make_unique<RedVehTravelTimeCHEnv>(redVehInputGraph);
+        std::cout << "done.\n";
+
 #endif
 
 
-        using VehicleLocatorImpl = VehicleLocator<RedVehicleInputGraph, RedVehCHEnv>;
-        VehicleLocatorImpl locator(redVehInputGraph, *redVehChEnv, routeState);
+        using VehicleLocatorImpl = VehicleLocator<RedVehicleInputGraph, RedVehTraversalCostCHEnv>;
+        VehicleLocatorImpl locator(redVehInputGraph, *redVehCostChEnv, routeState);
 
         CostCalculator calc(routeState);
         RequestState reqState(calc);
 
         // Construct Elliptic BCH bucket environment:
-        static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
-        using EllipticBucketsEnv = RadiusEllipticBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
-        EllipticBucketsEnv ellipticBucketsEnv(redVehInputGraph, *redVehChEnv, routeState, reqState.stats().updateStats);
+//        static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
+        using EllipticBucketsEnv = EllipticBucketsEnvironment<RedVehicleInputGraph, RedVehTravelTimeCHEnv, RedVehTraversalCostCHEnv>;
+        EllipticBucketsEnv ellipticBucketsEnv(redVehInputGraph, *redVehTimeChEnv, *redVehCostChEnv, routeState, reqState.stats().updateStats);
 
         // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
         // Otherwise, we use a last stop buckets substitute that only stores which vehicles' last stops are at a vertex.
@@ -477,10 +471,10 @@ int main(int argc, char *argv[]) {
 
         static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
         using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
-                SimpleSortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv>,
-                UnsortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehCHEnv>
+                SimpleSortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehTraversalCostCHEnv>,
+                UnsortedLastStopBucketsEnvironment<RedVehicleInputGraph, RedVehTraversalCostCHEnv>
         >;
-        LastStopBucketsEnv lastStopBucketsEnv(redVehInputGraph, *redVehChEnv, routeState,
+        LastStopBucketsEnv lastStopBucketsEnv(redVehInputGraph, *redVehCostChEnv, routeState,
                                               reqState.stats().updateStats);
 
 #else
@@ -498,10 +492,10 @@ int main(int argc, char *argv[]) {
         FeasibleEllipticDistancesImpl feasibleEllipticDropoffs(fleet.size(), routeState);
 
 
-        using EllipticBCHSearchesImpl = EllipticBCHSearches<RedVehicleInputGraph, RedVehCHEnv,
+        using EllipticBCHSearchesImpl = EllipticBCHSearches<RedVehicleInputGraph, RedVehTraversalCostCHEnv,
                 EllipticBucketsEnv, LastStopAtVerticesInfo, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
         EllipticBCHSearchesImpl ellipticSearches(redVehInputGraph, fleet, ellipticBucketsEnv, lastStopBucketsEnv,
-                                                 *redVehChEnv, routeState, feasibleEllipticPickups,
+                                                 *redVehCostChEnv, routeState, feasibleEllipticPickups,
                                                  feasibleEllipticDropoffs, reqState);
 
 
@@ -510,8 +504,8 @@ int main(int argc, char *argv[]) {
         RelevantPDLocs relOrdinaryDropoffs(fleet.size());
         RelevantPDLocs relPickupsBeforeNextStop(fleet.size());
         RelevantPDLocs relDropoffsBeforeNextStop(fleet.size());
-        using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, RedVehicleInputGraph, RedVehCHEnv>;
-        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, redVehInputGraph, *redVehChEnv, calc, reqState, routeState,
+        using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, RedVehicleInputGraph, RedVehTraversalCostCHEnv>;
+        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, redVehInputGraph, *redVehCostChEnv, calc, reqState, routeState,
                                                       feasibleEllipticPickups, feasibleEllipticDropoffs,
                                                       relOrdinaryPickups, relOrdinaryDropoffs, relPickupsBeforeNextStop,
                                                       relDropoffsBeforeNextStop);
@@ -529,8 +523,8 @@ int main(int argc, char *argv[]) {
         PDDistancesImpl pdDistances(reqState);
 
 #if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
-        using PDDistanceQueryImpl = PDDistanceQueryStrategies::BCHStrategy<RedVehicleInputGraph, RedVehCHEnv, PDDistancesLabelSet>;
-        PDDistanceQueryImpl pdDistanceQuery(redVehInputGraph, *redVehChEnv, pdDistances, reqState);
+        using PDDistanceQueryImpl = PDDistanceQueryStrategies::BCHStrategy<RedVehicleInputGraph, RedVehTraversalCostCHEnv, PDDistancesLabelSet>;
+        PDDistanceQueryImpl pdDistanceQuery(redVehInputGraph, *redVehCostChEnv, pdDistances, reqState);
 
 #else // KARRI_PD_STRATEGY == KARRI_CH_PD_STRAT
         using PDDistanceQueryImpl = PDDistanceQueryStrategies::CHStrategy<RedVehicleInputGraph, VehCHEnv, PDDistancesLabelSet>;
@@ -544,8 +538,8 @@ int main(int argc, char *argv[]) {
 
         // Construct PBNS assignments finder:
         using CurVehLocToPickupLabelSet = PDDistancesLabelSet;
-        using CurVehLocToPickupSearchesImpl = CurVehLocToPickupSearches<RedVehicleInputGraph, VehicleLocatorImpl, RedVehCHEnv, CurVehLocToPickupLabelSet>;
-        CurVehLocToPickupSearchesImpl curVehLocToPickupSearches(redVehInputGraph, locator, *redVehChEnv, routeState,
+        using CurVehLocToPickupSearchesImpl = CurVehLocToPickupSearches<RedVehicleInputGraph, VehicleLocatorImpl, RedVehTraversalCostCHEnv, CurVehLocToPickupLabelSet>;
+        CurVehLocToPickupSearchesImpl curVehLocToPickupSearches(redVehInputGraph, locator, *redVehCostChEnv, routeState,
                                                                 reqState, fleet.size());
 
 
@@ -562,8 +556,8 @@ int main(int argc, char *argv[]) {
 
 #if KARRI_PALS_STRATEGY == KARRI_COL
         // Use Collective-BCH PALS Strategy
-        using PALSStrategy = PickupAfterLastStopStrategies::CollectiveBCHStrategy<RedVehicleInputGraph, RedVehCHEnv, LastStopBucketsEnv, PDDistancesImpl, PALSLabelSet>;
-        PALSStrategy palsStrategy(redVehInputGraph, fleet, *redVehChEnv, lastStopBucketsEnv, pdDistances, calc,
+        using PALSStrategy = PickupAfterLastStopStrategies::CollectiveBCHStrategy<RedVehicleInputGraph, RedVehTraversalCostCHEnv, LastStopBucketsEnv, PDDistancesImpl, PALSLabelSet>;
+        PALSStrategy palsStrategy(redVehInputGraph, fleet, *redVehCostChEnv, lastStopBucketsEnv, pdDistances, calc,
                                   routeState, reqState);
 #elif KARRI_PALS_STRATEGY == KARRI_IND
         // Use Individual-BCH PALS Strategy
@@ -585,8 +579,8 @@ int main(int argc, char *argv[]) {
 
 #if KARRI_DALS_STRATEGY == KARRI_COL
         // Use Collective-BCH DALS Strategy
-        using DALSStrategy = DropoffAfterLastStopStrategies::CollectiveBCHStrategy<RedVehicleInputGraph, RedVehCHEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl>;
-        DALSStrategy dalsStrategy(redVehInputGraph, fleet, routeState, *redVehChEnv, lastStopBucketsEnv, calc,
+        using DALSStrategy = DropoffAfterLastStopStrategies::CollectiveBCHStrategy<RedVehicleInputGraph, RedVehTraversalCostCHEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl>;
+        DALSStrategy dalsStrategy(redVehInputGraph, fleet, routeState, *redVehCostChEnv, lastStopBucketsEnv, calc,
                                   curVehLocToPickupSearches, reqState, relOrdinaryPickups, relPickupsBeforeNextStop);
 
 #elif KARRI_DALS_STRATEGY == KARRI_IND

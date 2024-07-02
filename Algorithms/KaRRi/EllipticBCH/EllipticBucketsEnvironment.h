@@ -39,30 +39,24 @@
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
+    template<typename InputGraphT, typename TravelTimeCHEnvT, typename TraversalCostCHEnvT>
     class EllipticBucketsEnvironment {
 
-        using Entry = BucketEntryWithLeeway;
+    public:
+        static constexpr bool SORTED_BY_REM_LEEWAY = false;
 
-        struct DoesEntryHaveLargerRemainingLeeway {
-            bool operator()(const Entry &e1, const Entry &e2) const {
-                return e1.leeway - e1.travelTimeToTarget > e2.leeway - e2.travelTimeToTarget;
+        struct Entry {
+            int targetId = INVALID_ID;
+            int distToTarget = INFTY; // traversal cost (shortest path)
+            int travelTimeToTarget = INFTY; // travel time (not shortest path)
+
+            friend bool operator==(const Entry& e1, const Entry& e2) {
+                return e1.targetId == e2.targetId;
             }
         };
+        using BucketContainer = DynamicBucketContainer<Entry>;
 
-
-        struct StopWhenLeewayExceeded {
-            explicit StopWhenLeewayExceeded(const std::vector<int> &travelTimes, const int &currentLeeway)
-                    : travelTimes(travelTimes), currentLeeway(currentLeeway) {}
-
-            template<typename DistLabelT, typename DistLabelContT>
-            bool operator()(const int v, const DistLabelT &, const DistLabelContT &) const noexcept {
-                return travelTimes[v] > currentLeeway;
-            }
-
-            const std::vector<int> &travelTimes;
-            const int &currentLeeway;
-        };
+    private:
 
         struct StoreSearchSpace {
             explicit StoreSearchSpace(std::vector<int> &searchSpace) : searchSpace(searchSpace) {}
@@ -76,10 +70,34 @@ namespace karri {
             std::vector<int> &searchSpace;
         };
 
+
+        struct GenerateEntryIfInEllipse {
+            explicit GenerateEntryIfInEllipse(EllipticBucketsEnvironment &env, BucketContainer& buckets)
+                    : env(env), buckets(buckets) {}
+
+            template<typename DistLabelT, typename DistLabelContT>
+            bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
+
+                // Prune if not in ellipse
+                if (!env.ellipse.contains(env.costCh.contractionOrder(v)))
+                    return true;
+
+                // Otherwise generate bucket entry
+                Entry entry = {env.currentStopId, distToV[0], env.travelTimes[v]};
+                buckets.insert(v, entry);
+                ++env.numEntriesGenerated;
+                return false;
+            }
+
+            EllipticBucketsEnvironment &env;
+            BucketContainer & buckets;
+        };
+
         struct UpdateTravelTimeCallback {
 
             UpdateTravelTimeCallback(const typename CH::SearchGraph &searchGraph,
-                                     std::vector<int> &travelTimes) : searchGraph(searchGraph), travelTimes(travelTimes) {}
+                                     StampedDistanceLabelContainer<int> &travelTimes) : searchGraph(searchGraph),
+                                                                      travelTimes(travelTimes) {}
 
             template<typename LabelMaskT, typename DistanceLabelContainerT>
             void operator()(const int v, const int w, const int e, const LabelMaskT &improved,
@@ -89,37 +107,41 @@ namespace karri {
             }
 
             const CH::SearchGraph &searchGraph;
-            std::vector<int> &travelTimes;
+            StampedDistanceLabelContainer<int> &travelTimes;
         };
-
 
 
     public:
 
 
-        static constexpr bool SORTED_BY_REM_LEEWAY = SORTED_BUCKETS;
-
-        using BucketContainer = std::conditional_t<SORTED_BUCKETS,
-                SortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
-                DynamicBucketContainer<Entry>
-        >;
-
-        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState,
+        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const TravelTimeCHEnvT &timeChEnv,
+                                   const TraversalCostCHEnvT &costChEnv,
+                                   const RouteState &routeState,
                                    karri::stats::UpdatePerformanceStats &stats)
-                : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState),
-                  sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
-                  forwardSearchFromNewStop(
-                          chEnv.getForwardTopologicalSearch(StoreSearchSpace(searchSpace),
-                                                            StopWhenLeewayExceeded(currentLeeway))),
-                  reverseSearchFromNewStop(
-                          chEnv.getReverseTopologicalSearch(StoreSearchSpace(searchSpace),
-                                                            StopWhenLeewayExceeded(currentLeeway))),
-                  forwardSearchFromPrevStop(chEnv.getForwardSearch({}, StopWhenLeewayExceeded(currentLeeway))),
-                  reverseSearchFromNextStop(chEnv.getReverseSearch({}, StopWhenLeewayExceeded(currentLeeway))),
+                : inputGraph(inputGraph),
+                  timeCh(timeChEnv.getCH()),
+                  costCh(costChEnv.getCH()),
+                  routeState(routeState),
+                  travelTimeForwardSearchFromNewStop(
+                          timeChEnv.getForwardTopologicalSearch(StoreSearchSpace(searchSpace))),
+                  travelTimeReverseSearchFromNewStop(
+                          timeChEnv.getReverseTopologicalSearch(StoreSearchSpace(searchSpace))),
+                  travelTimeForwardSearchFromPrevStop(timeChEnv.getForwardSearch()),
+                  travelTimeReverseSearchFromNextStop(timeChEnv.getReverseSearch()),
                   currentLeeway(INFTY),
                   searchSpace(),
                   descendentHasEntry(inputGraph.numVertices()),
                   deleteSearchSpace(inputGraph.numVertices()),
+                  ellipse(inputGraph.numVertices()),
+                  sourceBuckets(inputGraph.numVertices()),
+                  targetBuckets(inputGraph.numVertices()),
+                  travelTimes(inputGraph.numVertices()),
+                  generateSourceBucketsSearch(costChEnv.getForwardSearch(GenerateEntryIfInEllipse(*this, sourceBuckets), {},
+                                                                         UpdateTravelTimeCallback(costCh.upwardGraph(),
+                                                                                                  travelTimes))),
+                  generateTargetBucketsSearch(costChEnv.getReverseSearch(GenerateEntryIfInEllipse(*this, targetBuckets), {},
+                                                                         UpdateTravelTimeCallback(
+                                                                                 costCh.downwardGraph(), travelTimes))),
                   stats(stats) {}
 
 
@@ -143,19 +165,21 @@ namespace karri {
             if (leeway <= 0)
                 return;
 
-            currentLeeway = leeway;
-
             const int newStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
-            const int newStopRoot = ch.rank(inputGraph.edgeHead(newStopLoc));
-
             const int nextStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex + 1];
-            const int nextStopRoot = ch.rank(inputGraph.edgeTail(nextStopLoc));
-            const int nextStopOffset = inputGraph.travelTime(nextStopLoc);
 
-            generateBucketEntries(stopId, leeway,
-                                  newStopRoot, 0, forwardSearchFromNewStop, ch.upwardGraph(),
-                                  nextStopRoot, nextStopOffset, reverseSearchFromNextStop, ch.downwardGraph(),
-                                  sourceBuckets);
+            // Find ellipse
+            currentLeeway = leeway;
+            const int timeNewStopRoot = timeCh.rank(inputGraph.edgeHead(newStopLoc));
+            const int timeNextStopRoot = timeCh.rank(inputGraph.edgeTail(nextStopLoc));
+            const int timeNextStopOffset = inputGraph.travelTime(nextStopLoc);
+            findEllipse(leeway, timeNewStopRoot, 0, travelTimeForwardSearchFromNewStop, timeCh.upwardGraph(),
+                        timeNextStopRoot, timeNextStopOffset, travelTimeReverseSearchFromNextStop,
+                        timeCh.downwardGraph());
+
+            // Generate entries within ellipse:
+            generateBucketEntriesInEllipse(stopId, costCh.rank(inputGraph.edgeHead(newStopLoc)), 0, 0,
+                                          generateSourceBucketsSearch);
         }
 
         void generateTargetBucketEntries(const Vehicle &veh, const int stopIndex) {
@@ -169,125 +193,67 @@ namespace karri {
             if (leeway <= 0)
                 return;
 
-            currentLeeway = leeway;
-
             const int newStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
-            const int newStopRoot = ch.rank(inputGraph.edgeTail(newStopLoc));
-            const int newStopOffset = inputGraph.travelTime(newStopLoc);
-
             const int prevStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex - 1];
-            const int prevStopRoot = ch.rank(inputGraph.edgeHead(prevStopLoc));
 
-            generateBucketEntries(stopId, leeway,
-                                  newStopRoot, newStopOffset, reverseSearchFromNewStop, ch.downwardGraph(),
-                                  prevStopRoot, 0, forwardSearchFromPrevStop, ch.upwardGraph(),
-                                  targetBuckets);
+            // Find ellipse
+            currentLeeway = leeway;
+            const int timeNewStopRoot = timeCh.rank(inputGraph.edgeTail(newStopLoc));
+            const int timeNewStopOffset = inputGraph.travelTime(newStopLoc);
+            const int timePrevStopRoot = timeCh.rank(inputGraph.edgeHead(prevStopLoc));
+            findEllipse(leeway, timeNewStopRoot, timeNewStopOffset, travelTimeReverseSearchFromNewStop,
+                                  timeCh.downwardGraph(), timePrevStopRoot, 0, travelTimeForwardSearchFromPrevStop,
+                                  timeCh.upwardGraph());
+
+            // Generate entries within ellipse:
+            const int costNewStopRoot = costCh.rank(inputGraph.edgeTail(newStopLoc));
+            const int costNewStopCostOffset = inputGraph.traversalCost(newStopLoc);
+            const int costNewStopTravelTimeOffset = inputGraph.travelTime(newStopLoc);
+            generateBucketEntriesInEllipse(stopId, costNewStopRoot, costNewStopCostOffset, costNewStopTravelTimeOffset,
+                                          generateTargetBucketsSearch);
+
         }
 
-        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle &veh) {
-            const auto numStops = routeState.numStopsOf(veh.vehicleId);
-            if (numStops <= 1)
-                return;
-            int64_t numVerticesVisited = 0, numEntriesScanned = 0;
-            Timer timer;
-            auto updateSourceLeeway = [&](BucketEntryWithLeeway &e) {
-                if (routeState.vehicleIdOf(e.targetId) != veh.vehicleId)
-                    return false;
-                const auto oldLeeway = e.leeway;
-                e.leeway = routeState.leewayOfLegStartingAt(e.targetId);
-                return e.leeway != oldLeeway;
-            };
-            deleteSearchSpace.clear();
-            const auto stopLocations = routeState.stopLocationsFor(veh.vehicleId);
-            for (int idx = 0; idx < numStops - 1; ++idx) {
-                const int root = ch.rank(inputGraph.edgeHead(stopLocations[idx]));
-                deleteSearchSpace.insert(root);
-            }
-            for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
-                const auto v = *iter;
-                if (sourceBuckets.updateAllEntries(v, updateSourceLeeway)) {
-                    FORALL_INCIDENT_EDGES(ch.upwardGraph(), v, e) {
-                        const auto w = ch.upwardGraph().edgeHead(e);
-                        deleteSearchSpace.insert(w);
-                    }
-                }
-                ++numVerticesVisited;
-                numEntriesScanned += sourceBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
-            }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.elliptic_update_time += time;
-            stats.elliptic_update_numVerticesVisited += numVerticesVisited;
-            stats.elliptic_update_numEntriesScanned += numEntriesScanned;
+        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle &) {
+            // no op because buckets are not sorted
         }
 
-        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle &veh) {
-            const auto numStops = routeState.numStopsOf(veh.vehicleId);
-            if (numStops <= 1)
-                return;
-            int64_t numVerticesVisited = 0, numEntriesScanned = 0;
-            Timer timer;
-            auto updateTargetLeeway = [&](BucketEntryWithLeeway &e) {
-                if (routeState.vehicleIdOf(e.targetId) != veh.vehicleId)
-                    return false;
-                const auto oldLeeway = e.leeway;
-                e.leeway = routeState.leewayOfLegStartingAt(routeState.idOfPreviousStopOf(e.targetId));
-                return e.leeway != oldLeeway;
-            };
-            deleteSearchSpace.clear();
-            const auto stopLocations = routeState.stopLocationsFor(veh.vehicleId);
-            for (int idx = 1; idx < numStops; ++idx) {
-                const int root = ch.rank(inputGraph.edgeTail(stopLocations[idx]));
-                deleteSearchSpace.insert(root);
-            }
-            for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
-                const auto v = *iter;
-                if (targetBuckets.updateAllEntries(v, updateTargetLeeway)) {
-                    FORALL_INCIDENT_EDGES(ch.downwardGraph(), v, e) {
-                        const auto w = ch.downwardGraph().edgeHead(e);
-                        deleteSearchSpace.insert(w);
-                    }
-                }
-                ++numVerticesVisited;
-                numEntriesScanned += targetBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
-            }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.elliptic_update_time += time;
-            stats.elliptic_update_numVerticesVisited += numVerticesVisited;
-            stats.elliptic_update_numEntriesScanned += numEntriesScanned;
+        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle &) {
+            // no op because buckets are not sorted
         }
 
         void deleteSourceBucketEntries(const Vehicle &veh, const int stopIndex) {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
-            const int root = ch.rank(inputGraph.edgeHead(stopLoc));
-            deleteBucketEntries(stopId, root, ch.upwardGraph(), sourceBuckets);
+            const int root = costCh.rank(inputGraph.edgeHead(stopLoc));
+            deleteBucketEntries(stopId, root, costCh.upwardGraph(), sourceBuckets);
         }
 
         void deleteTargetBucketEntries(const Vehicle &veh, const int stopIndex) {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
-            const int root = ch.rank(inputGraph.edgeTail(stopLoc));
-            deleteBucketEntries(stopId, root, ch.downwardGraph(), targetBuckets);
+            const int root = costCh.rank(inputGraph.edgeTail(stopLoc));
+            deleteBucketEntries(stopId, root, costCh.downwardGraph(), targetBuckets);
         }
 
     private:
 
 
         // Searches for inserting new stops: Topo search from/to new stop, regular CH searches to/from neighboring stops.
-        using SearchFromNewStop = typename CHEnvT::template TopologicalUpwardSearch<
-                StoreSearchSpace, StopWhenLeewayExceeded>;
-        using SearchFromNeighbor = typename CHEnvT::template UpwardSearch<
-                dij::NoCriterion, StopWhenLeewayExceeded>;
+        using TravelTimeSearchFromNewStop = typename TravelTimeCHEnvT::template TopologicalUpwardSearch<StoreSearchSpace>;
+        using TravelTimeSearchFromNeighbor = typename TravelTimeCHEnvT::template UpwardSearch<dij::NoCriterion>;
 
-        void generateBucketEntries(const int stopId, const int leeway,
-                                   const int newStopRoot, const int newStopOffSet, SearchFromNewStop &searchFromNewStop,
-                                   const CH::SearchGraph &newStopGraph,
-                                   const int neighborRoot, const int neighborOffset,
-                                   SearchFromNeighbor &searchFromNeighbor,
-                                   const CH::SearchGraph &neighborGraph,
-                                   BucketContainer &buckets) {
-            int64_t numEntriesGenerated = 0;
+        using TraversalCostGenerateBucketEntriesSearch = typename TraversalCostCHEnvT::template UpwardSearch<GenerateEntryIfInEllipse, dij::NoCriterion, UpdateTravelTimeCallback>;
+
+        void findEllipse(const int leeway,
+                         const int newStopRoot, const int newStopOffSet, TravelTimeSearchFromNewStop &searchFromNewStop,
+                         const CH::SearchGraph &newStopGraph,
+                         const int neighborRoot, const int neighborOffset,
+                         TravelTimeSearchFromNeighbor &searchFromNeighbor,
+                         const CH::SearchGraph &neighborGraph) {
             Timer timer;
+
+            ellipse.clear();
 
             // Run topological search from new stop and memorize search space:
             searchSpace.clear();
@@ -307,7 +273,6 @@ namespace karri {
                             searchFromNewStop.getDistance(higherVertex) + neighborGraph.traversalCost(e);
                     minDistViaHigherPath = std::min(minDistViaHigherPath, distViaHigherVertex);
                 }
-                const bool betterHigherPathExists = minDistViaHigherPath <= searchFromNewStop.getDistance(v);
                 searchFromNewStop.distanceLabels[v].min(minDistViaHigherPath);
 
 
@@ -321,9 +286,8 @@ namespace karri {
 
                 // Check if vertex is in ellipse using distances to neighbor:
                 const bool inEllipse = searchFromNewStop.getDistance(v) + searchFromNeighbor.getDistance(v) <= leeway;
-                if ((!betterHigherPathExists && inEllipse) || descendentHasEntry[v]) {
-                    buckets.insert(v, {stopId, searchFromNewStop.getDistance(v), leeway});
-                    ++numEntriesGenerated;
+                if (inEllipse || descendentHasEntry[v]) {
+                    ellipse.insert(timeCh.contractionOrder(v));
 
                     // Always insert entries at every vertex on the branch, so we obtain a tree of entries that can be
                     // used in delete operations.
@@ -335,6 +299,23 @@ namespace karri {
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_generate_time += time;
             stats.elliptic_generate_numVerticesInSearchSpace += searchSpace.size();
+        }
+
+        void generateBucketEntriesInEllipse(const int stopId, const int rootInCostCh, const int costOffset,
+                                            const int travelTimeOffset,
+                                            TraversalCostGenerateBucketEntriesSearch &search) {
+            numEntriesGenerated = 0;
+            currentStopId = stopId;
+
+            Timer timer;
+
+            travelTimes.init();
+            travelTimes[rootInCostCh] = travelTimeOffset;
+
+            search.runWithOffset(rootInCostCh, costOffset);
+
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            stats.elliptic_generate_time += time;
             stats.elliptic_generate_numEntriesInserted += numEntriesGenerated;
         }
 
@@ -363,23 +344,37 @@ namespace karri {
 
 
         const InputGraphT &inputGraph;
-        const CH &ch;
+        const CH &timeCh;
+        const CH &costCh;
+
         const RouteState &routeState;
 
-        BucketContainer sourceBuckets;
-        BucketContainer targetBuckets;
 
-        SearchFromNewStop forwardSearchFromNewStop;
-        SearchFromNewStop reverseSearchFromNewStop;
-        SearchFromNeighbor forwardSearchFromPrevStop;
-        SearchFromNeighbor reverseSearchFromNextStop;
+        // Ellipse computation:
+        TravelTimeSearchFromNewStop travelTimeForwardSearchFromNewStop;
+        TravelTimeSearchFromNewStop travelTimeReverseSearchFromNewStop;
+        TravelTimeSearchFromNeighbor travelTimeForwardSearchFromPrevStop;
+        TravelTimeSearchFromNeighbor travelTimeReverseSearchFromNextStop;
+
         int currentLeeway;
 
         std::vector<int> searchSpace;
-        BitVector descendentHasEntry;
 
+        BitVector descendentHasEntry;
         Subset deleteSearchSpace;
 
+        Subset ellipse;
+
+        // Bucket entry generation:
+        BucketContainer sourceBuckets;
+        BucketContainer targetBuckets;
+
+        int currentStopId;
+        StampedDistanceLabelContainer<int> travelTimes;
+        TraversalCostGenerateBucketEntriesSearch generateSourceBucketsSearch;
+        TraversalCostGenerateBucketEntriesSearch generateTargetBucketsSearch;
+
+        int numEntriesGenerated;
         karri::stats::UpdatePerformanceStats &stats;
     };
 }
