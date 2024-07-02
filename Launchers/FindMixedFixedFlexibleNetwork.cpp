@@ -326,9 +326,9 @@ int main(int argc, char *argv[]) {
         pdManager.findPossiblePDLocsForRequests(requests);
         std::cout << "done.\n";
 
-//        std::cout << "Verifying input paths ..." << std::flush;
-//        verifyPathViability(preliminaryPaths, vehicleInputGraph, pdManager);
-//        std::cout << "done.\n";
+        std::cout << "Verifying input paths ..." << std::flush;
+        verifyPathViability(preliminaryPaths, vehicleInputGraph, pdManager);
+        std::cout << "done.\n";
 
         std::cout << "Computing direct distances ..." << std::flush;
         DirectDistancesFinder<VehicleInputGraph, VehCHEnv> directDistancesFinder(vehicleInputGraph, *vehChEnv);

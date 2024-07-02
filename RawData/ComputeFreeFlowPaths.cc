@@ -32,7 +32,6 @@
 #include <vector>
 
 #include <csv.h>
-#include <routingkit/nested_dissection.h>
 
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/CH/CHPathUnpacker.h"
@@ -46,6 +45,7 @@
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "Tools/CommandLine/ProgressBar.h"
 #include "DataStructures/Utilities/OriginDestination.h"
+#include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
 
 inline void printUsage() {
     std::cout <<
@@ -54,7 +54,8 @@ inline void printUsage() {
               "Given a set of OD-pairs and a road network, computes the free-flow shortest paths for each pair and\n"
               "outputs them.\n\n"
               "  -g <file>         input graph in binary format\n"
-              "  -d <file>         CSV file that contains OD pairs (columns 'origin' and 'destination' containing vertex-ids)\n"
+              "  -d <file>         CSV file that contains OD pairs (columns 'origin' and 'destination')\n"
+              "  -edges            If set, origins and destinations are assumed to be edge IDs instead of vertex IDs.\n"
               "  -h <file>         weighted contraction hierarchy (optional)\n"
               "  -o <file>         place output in <file>\n"
               "  -help             display this help and exit\n";
@@ -62,7 +63,7 @@ inline void printUsage() {
 
 // Some helper aliases.
 using VertexAttributes = VertexAttrs<LatLngAttribute>;
-using EdgeAttributes = EdgeAttrs<LengthAttribute, TravelTimeAttribute>;
+using EdgeAttributes = EdgeAttrs<LengthAttribute, TravelTimeAttribute, EdgeTailAttribute>;
 using InputGraph = StaticGraph<VertexAttributes, EdgeAttributes>;
 using LabelSet = BasicLabelSet<0, ParentInfo::FULL_PARENT_INFO>;
 
@@ -90,6 +91,9 @@ int main(int argc, char *argv[]) {
             throw std::invalid_argument("file not found -- '" + graphFileName + "'");
         InputGraph inputGraph(graphFile);
         graphFile.close();
+        FORALL_VALID_EDGES(inputGraph, v, e) {
+                inputGraph.edgeTail(e) = v;
+            }
         std::cout << "done." << std::endl;
 
         std::unique_ptr<CH> chPtr;
@@ -112,7 +116,7 @@ int main(int argc, char *argv[]) {
 
         // Read the OD pairs from file.
         std::cout << "Reading OD pairs from file... " << std::flush;
-        const auto odPairs = importODPairsFrom(demandFileName);
+        auto odPairs = importODPairsFrom(demandFileName);
         std::cout << "done.\n";
 
         // Run queries
@@ -127,18 +131,28 @@ int main(int argc, char *argv[]) {
         std::vector<int> path;
         for (int i = 0; i < odPairs.size(); ++i) {
             const auto& od = odPairs[i];
-            int src = ch.rank(od.origin);
-            int dst = ch.rank(od.destination);
+            int src = INVALID_VERTEX, dst = INVALID_VERTEX;
+            if (!clp.isSet("edges")) {
+                src = ch.rank(od.origin);
+                dst = ch.rank(od.destination);
+            } else {
+                src = ch.rank(inputGraph.edgeHead(od.origin));
+                dst = ch.rank(inputGraph.edgeTail(od.destination));
+            }
             chQuery.run(src, dst);
             path.clear();
             pathUnpacker.unpackUpDownPath(chQuery.getUpEdgePath(), chQuery.getDownEdgePath(), path);
             outputFile << i << ", ";
+            if (clp.isSet("edges"))
+                outputFile << od.origin << " : ";
             for (int j = 0; j < path.size(); ++j) {
                 if (j > 0) {
                     outputFile << " : ";
                 }
                 outputFile << path[j];
             }
+            if (clp.isSet("edges"))
+                outputFile << (path.empty()? "" : " : ") << od.destination;
             outputFile << '\n';
             ++progressBar;
         }
