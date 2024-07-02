@@ -53,7 +53,6 @@
 #include "Tools/EnumParser.h"
 #include "Tools/LexicalCast.h"
 #include "Tools/StringHelpers.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
 
 // An importer for reading graphs from OpenStreetMap data. The OSM data must be given as a file in

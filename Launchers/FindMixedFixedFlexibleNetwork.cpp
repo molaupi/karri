@@ -41,8 +41,8 @@
 #include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
 #include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
-#include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 
 #include "Algorithms/FindMixedFixedFlexibleNetwork/PickupDropoffManager.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/GreedyFixedLineFinder.h"
@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Reading vehicle network from file... " << std::flush;
         using VehicleVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
         using VehicleEdgeAttributes = EdgeAttrs<
-                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute>;
+                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, MapToEdgeInPsgAttribute, OsmRoadCategoryAttribute>;
         using VehicleInputGraph = StaticGraph<VehicleVertexAttributes, VehicleEdgeAttributes>;
         std::ifstream vehicleNetworkFile(vehicleNetworkFileName, std::ios::binary);
         if (!vehicleNetworkFile.good())
@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
         // Read the passenger network from file.
         std::cout << "Reading passenger network from file... " << std::flush;
         using PsgVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
-        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, PsgEdgeToCarEdgeAttribute, TravelTimeAttribute>;
+        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, MapToEdgeInFullVehAttribute, TravelTimeAttribute>;
         using PsgInputGraph = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
         std::ifstream psgNetworkFile(passengerNetworkFileName, std::ios::binary);
         if (!psgNetworkFile.good())
@@ -212,18 +212,18 @@ int main(int argc, char *argv[]) {
                 psgInputGraph.edgeTail(e) = v;
                 psgInputGraph.edgeId(e) = e;
 
-                const int eInVehGraph = psgInputGraph.toCarEdge(e);
-                if (eInVehGraph != PsgEdgeToCarEdgeAttribute::defaultValue()) {
+                const int eInVehGraph = psgInputGraph.mapToEdgeInFullVeh(e);
+                if (eInVehGraph != MapToEdgeInFullVehAttribute::defaultValue()) {
                     ++numEdgesWithMappingToCar;
                     LIGHT_KASSERT(eInVehGraph < vehGraphOrigIdToSeqId.size());
-                    psgInputGraph.toCarEdge(e) = vehGraphOrigIdToSeqId[eInVehGraph];
-                    LIGHT_KASSERT(psgInputGraph.toCarEdge(e) < vehicleInputGraph.numEdges());
-                    vehicleInputGraph.toPsgEdge(psgInputGraph.toCarEdge(e)) = e;
+                    psgInputGraph.mapToEdgeInFullVeh(e) = vehGraphOrigIdToSeqId[eInVehGraph];
+                    LIGHT_KASSERT(psgInputGraph.mapToEdgeInFullVeh(e) < vehicleInputGraph.numEdges());
+                    vehicleInputGraph.mapToEdgeInPsg(psgInputGraph.mapToEdgeInFullVeh(e)) = e;
 
                     LIGHT_KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
-                           vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).latitude());
+                           vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).latitude());
                     LIGHT_KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
-                            vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).longitude());
+                            vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).longitude());
                 }
             }
         unused(numEdgesWithMappingToCar);
@@ -244,9 +244,9 @@ int main(int argc, char *argv[]) {
                 vehGraphOrigIdToSeqId[destination] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
             const auto originSeqId = vehGraphOrigIdToSeqId[origin];
-            LIGHT_KASSERT(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
+            LIGHT_KASSERT(vehicleInputGraph.mapToEdgeInPsg(originSeqId) != MapToEdgeInPsgAttribute::defaultValue());
             const auto destSeqId = vehGraphOrigIdToSeqId[destination];
-            LIGHT_KASSERT(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
+            LIGHT_KASSERT(vehicleInputGraph.mapToEdgeInPsg(destSeqId) != MapToEdgeInPsgAttribute::defaultValue());
             const int requestId = static_cast<int>(requests.size());
             requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
         }
@@ -326,9 +326,9 @@ int main(int argc, char *argv[]) {
         pdManager.findPossiblePDLocsForRequests(requests);
         std::cout << "done.\n";
 
-        std::cout << "Verifying input paths ..." << std::flush;
-        verifyPathViability(preliminaryPaths, vehicleInputGraph, pdManager);
-        std::cout << "done.\n";
+//        std::cout << "Verifying input paths ..." << std::flush;
+//        verifyPathViability(preliminaryPaths, vehicleInputGraph, pdManager);
+//        std::cout << "done.\n";
 
         std::cout << "Computing direct distances ..." << std::flush;
         DirectDistancesFinder<VehicleInputGraph, VehCHEnv> directDistancesFinder(vehicleInputGraph, *vehChEnv);

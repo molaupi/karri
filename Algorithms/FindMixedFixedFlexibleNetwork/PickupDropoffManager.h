@@ -25,7 +25,8 @@
 #pragma once
 
 #include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/Dijkstra/Dijkstra.h"
 #include "FixedLine.h"
@@ -105,8 +106,8 @@ namespace mixfix {
                 addPickupAtEdge(req.requestId, 0, req.origin);
                 addDropoffAtEdge(req.requestId, 0, req.destination);
 
-                const int originInPsg = vehGraph.toPsgEdge(req.origin);
-                const int destInPsg = vehGraph.toPsgEdge(req.destination);
+                const int originInPsg = vehGraph.mapToEdgeInPsg(req.origin);
+                const int destInPsg = vehGraph.mapToEdgeInPsg(req.destination);
 
                 searchSpace.clear();
                 auto headOfOriginEdge = forwardPsgGraph.edgeHead(originInPsg);
@@ -171,8 +172,8 @@ namespace mixfix {
                 assert(distToV <= InputConfig::getInstance().walkingRadius);
                 FORALL_INCIDENT_EDGES(forwardPsgGraph, v, e) {
                     const int walkingDist = distToV + forwardPsgGraph.travelTime(e);
-                    const int eInVehGraph = forwardPsgGraph.toCarEdge(e);
-                    if (eInVehGraph == PsgEdgeToCarEdgeAttribute::defaultValue() || walkingDist > InputConfig::getInstance().walkingRadius)
+                    const int eInVehGraph = forwardPsgGraph.mapToEdgeInFullVeh(e);
+                    if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue() || walkingDist > InputConfig::getInstance().walkingRadius)
                         continue;
 
                     addPickupAtEdge(requestId, walkingDist, eInVehGraph);
@@ -187,8 +188,8 @@ namespace mixfix {
                 assert(distToV <= InputConfig::getInstance().walkingRadius);
                 FORALL_INCIDENT_EDGES(reversePsgGraph, v, e) {
                     const auto eInForwGraph = reversePsgGraph.edgeId(e);
-                    const int eInVehGraph = forwardPsgGraph.toCarEdge(eInForwGraph);
-                    if (eInVehGraph == PsgEdgeToCarEdgeAttribute::defaultValue())
+                    const int eInVehGraph = forwardPsgGraph.mapToEdgeInFullVeh(eInForwGraph);
+                    if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue())
                         continue;
                     addDropoffAtEdge(requestId, distToV, eInVehGraph);
                     KASSERT(dropoffIndex[eInVehGraph].start >= 0 && dropoffIndex[eInVehGraph].end <= possibleDropoffs.size());

@@ -87,8 +87,8 @@ namespace mixfix {
                 std::cout << "\n\n";
                 FixedLine line;
                 int maxFlowOnLine;
-                std::vector<OverlappingPath> overlappingPaths;
-                constructNextLine(paths, line, maxFlowOnLine, overlappingPaths);
+                std::vector<int> fullyCoveredPaths;
+                constructNextLine(paths, line, maxFlowOnLine, fullyCoveredPaths);
 
                 if (maxFlowOnLine < inputConfig.minMaxFlowOnLine)
                     break;
@@ -104,8 +104,7 @@ namespace mixfix {
 
                 int numServedButNotOverlapping = 0;
                 for (const auto &served: pax) {
-                    if (!std::any_of(overlappingPaths.begin(), overlappingPaths.end(),
-                                     [&](const auto &o) { return o.requestId == served.requestId; })) {
+                    if (!contains(fullyCoveredPaths.begin(), fullyCoveredPaths.end(), served.requestId)) {
 //                        std::cout << "Passenger " << served.requestId << " is served by line but their path does not overlap." << std::endl;
                         ++numServedButNotOverlapping;
                     }
@@ -146,7 +145,9 @@ namespace mixfix {
 
         // Greedily constructs new line from remaining paths. Returns line and max flow on line.
         void constructNextLine(PreliminaryPathsT &paths, FixedLine &line, int &maxFlowOnLine,
-                               std::vector<OverlappingPath> &overlappingPaths) {
+                               std::vector<int> &fullyCoveredPaths) {
+
+
             residualFlow.clear();
             int maxFlow = 0;
             int maxFlowEdge = INVALID_EDGE;
@@ -160,6 +161,7 @@ namespace mixfix {
                 }
             }
 
+            std::vector<OverlappingPath> overlappingPaths;
             line = {maxFlowEdge};
             for (const auto &path: paths) {
                 for (int i = 0; i < path.size(); ++i) {
@@ -181,8 +183,11 @@ namespace mixfix {
             // TODO: Try extending by one edge forward and backward in alternating fashion.
             maxFlowOnLine = maxFlow;
             int minFlowOnLine = maxFlow;
-            extendLineForwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, paths);
-            extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, paths);
+            // Paths that contain the initial edge whose end is reached by the forward extension but who may still be
+            // extended toward their start by the backward extension
+            std::vector<OverlappingPath> overlappingReachedEnd;
+            extendLineForwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, overlappingReachedEnd, fullyCoveredPaths, paths);
+            extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlappingReachedEnd, fullyCoveredPaths, paths);
         }
 
         static inline int square(const int n) { return n * n; }
@@ -191,6 +196,8 @@ namespace mixfix {
                                 const int &maxFlowOnLine,
                                 int &minFlowOnLine,
                                 std::vector<OverlappingPath> &overlapping,
+                                std::vector<OverlappingPath> &overlappingReachedEnd,
+                                std::vector<int> &fullyCoveredPaths,
                                 const PreliminaryPathsT &paths) {
 
             // Begin extending
@@ -273,11 +280,22 @@ namespace mixfix {
                     const auto &path = paths.getPathFor(o.requestId);
                     if (o.end < path.size() && path[o.end] == extension) {
                         ++o.end;
-                        ++i;
-                    } else {
-                        std::swap(overlapping[i], overlapping.back());
-                        overlapping.pop_back();
+                        if (o.end < path.size()) {
+                            ++i; // If path continues on extension but is not fully covered yet, keep it as overlapping path
+                            continue;
+                        }
+                        if (o.start > 0)
+                            // In case end of path is reached but the overlap started at the initial edge, the backward
+                            // extension may still fully cover it.
+                            overlappingReachedEnd.push_back(o);
+                        else
+                            // In case both the path is contained in the line from start to end, it is fully covered.
+                            fullyCoveredPaths.push_back(o.requestId);
                     }
+                    // If overlapping path does not overlap with extension or path has been fully covered by extension,
+                    // remove from overlapping paths.
+                    std::swap(overlapping[i], overlapping.back());
+                    overlapping.pop_back();
                 }
 
                 // Add overlapping paths that start at extension
@@ -302,6 +320,7 @@ namespace mixfix {
                                  const int &maxFlowOnLine,
                                  int &minFlowOnLine,
                                  std::vector<OverlappingPath> &overlapping,
+                                 std::vector<int> &fullyCoveredPaths,
                                  const PreliminaryPathsT &paths) {
 
             // Get reverse representation of line: Order of edges is reversed and edges are transformed to edges in
@@ -339,7 +358,8 @@ namespace mixfix {
                     // the current overlap between the line and the path.
                     for (const auto &o: overlapping) {
                         const auto &path = paths.getPathFor(o.requestId);
-                        if (o.start > 0 && path[o.start - 1] == eInForwGraph) {
+                        LIGHT_KASSERT(o.start > 0);
+                        if (path[o.start - 1] == eInForwGraph) {
                             const int overlapLength = 1 + o.end - o.start;
                             score += square(overlapLength);
                             ++flow;
@@ -405,12 +425,18 @@ namespace mixfix {
                     const auto &path = paths.getPathFor(o.requestId);
                     if (o.start > 0 && path[o.start - 1] == extensionInForwGraph) {
                         --o.start;
-                        ++i;
-                    } else {
-                        std::swap(overlapping[i], overlapping.back());
-                        overlapping.pop_back();
+                        if (o.start > 0 || o.end < path.size()) {
+                            ++i; // If path continues on extension but is not fully covered yet, keep it as overlapping path
+                            continue;
+                        }
+                        fullyCoveredPaths.push_back(o.requestId);
                     }
+                    // If overlapping path does not overlap with extension or path has been fully covered by extension,
+                    // remove from overlapping paths.
+                    std::swap(overlapping[i], overlapping.back());
+                    overlapping.pop_back();
                 }
+
 
                 // Add passengers whose paths start at extension
                 int numOnLine = overlapping.size();

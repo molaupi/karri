@@ -28,7 +28,7 @@
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Graph.h"
-#include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "DataStructures/Utilities/OriginDestination.h"
 #include "DataStructures/Geometry/Area.h"
@@ -84,7 +84,7 @@ struct IsEdgePsgEligible {
     explicit IsEdgePsgEligible(const TargetGraphT &graph) : targetGraph(graph) {}
 
     bool operator()(const int edgeId) const {
-        return targetGraph.toPsgEdge(edgeId) != CarEdgeToPsgEdgeAttribute::defaultValue();
+        return targetGraph.mapToEdgeInPsg(edgeId) != MapToEdgeInPsgAttribute::defaultValue();
     }
 
     const TargetGraphT &targetGraph;
@@ -116,7 +116,10 @@ void transformPairs(const InputLocsT &inputPairs,
 
     std::cout << "Transforming OD-pairs ... " << std::flush;
     std::vector<OriginDestination> outputPairs;
-    for (const auto& curPair : inputPairs) {
+    std::vector<int> originalIdsOfOutputPairs;
+    for (int originalId = 0; originalId < inputPairs.size(); ++originalId) {
+
+        const auto& curPair = inputPairs[originalId];
 
         int mappingOfOrigin = INVALID_VERTEX;
         bool success = locationMapper.mapLocation(curPair.first, mappingOfOrigin);
@@ -127,20 +130,30 @@ void transformPairs(const InputLocsT &inputPairs,
             continue;
 
         outputPairs.emplace_back(mappingOfOrigin, mappingOfDestination);
+        originalIdsOfOutputPairs.emplace_back(originalId);
     }
     std::cout << " done.\n";
 
     std::cout << "Writing " << outputPairs.size() << " pairs to output..." << std::flush;
-    std::ofstream out(outputFileName + ".csv");
-    if (!out.good())
-        throw std::invalid_argument("file cannot be opened -- '" + outputFileName + "'");
-    out << "origin,destination\n";
+    std::ofstream pairsOut(outputFileName + ".csv");
+    if (!pairsOut.good())
+        throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".csv'");
+    pairsOut << "origin,destination\n";
     for (const auto &pair: outputPairs) {
-        out << pair.origin << ',' << pair.destination << '\n';
+        pairsOut << pair.origin << ',' << pair.destination << '\n';
     }
-    out.close();
-    std::cout << "done.\n";
+    pairsOut.close();
 
+    std::ofstream idsOut(outputFileName + ".original_ids.csv");
+    if (!idsOut.good())
+        throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".original_ids.csv'");
+    idsOut << "original_id\n";
+    for (const auto &id: originalIdsOfOutputPairs) {
+        idsOut << id << '\n';
+    }
+    idsOut.close();
+
+    std::cout << "done.\n";
 }
 
 
@@ -303,12 +316,12 @@ void decideTargetLocationEligibility(const bool onlyPsgAccessible,
         IsEdgePsgEligible<GraphT> isEdgePsgEligible(targetGraph);
         IsVertexPsgEligible<GraphT> isVertexPsgEligible(isEdgePsgEligible, revTargetGraph);
         decideOutputMapper<mode, inLocType, outLocType>( isVertexPsgEligible, isEdgePsgEligible, targetGraph,
-                                                        revTargetGraph, args...);
+                                                         revTargetGraph, args...);
     } else {
         AlwaysEligible alwaysEligible;
         decideOutputMapper<mode, inLocType, outLocType>( alwaysEligible, alwaysEligible, targetGraph,
-                                                        revTargetGraph,
-                                                        args...);
+                                                         revTargetGraph,
+                                                         args...);
     }
 }
 
@@ -367,7 +380,7 @@ int main(int argc, char *argv[]) {
             outputFileName = outputFileName.substr(0, outputFileName.size() - 4);
         LogManager<std::ofstream>::setBaseFileName(outputFileName + ".");
 
-        using Graph = StaticGraph<VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>, EdgeAttrs<EdgeIdAttribute, CarEdgeToPsgEdgeAttribute, EdgeTailAttribute, TravelTimeAttribute>>;
+        using Graph = StaticGraph<VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>, EdgeAttrs<EdgeIdAttribute, MapToEdgeInPsgAttribute, EdgeTailAttribute, TravelTimeAttribute>>;
 
         // Read target network
         std::cout << "Reading target network from file... " << std::flush;
