@@ -56,14 +56,14 @@ inline void printUsage() {
               "  -g <file>         input graph in binary format\n"
               "  -d <file>         CSV file that contains OD pairs (columns 'origin' and 'destination')\n"
               "  -edges            If set, origins and destinations are assumed to be edge IDs instead of vertex IDs.\n"
-              "  -h <file>         weighted contraction hierarchy (optional)\n"
+              "  -traversal-costs  If set, computes shortest paths based on TraversalCostAttribute rather than TravelTimeAttribute.\n"
               "  -o <file>         place output in <file>\n"
               "  -help             display this help and exit\n";
 }
 
 // Some helper aliases.
 using VertexAttributes = VertexAttrs<LatLngAttribute>;
-using EdgeAttributes = EdgeAttrs<LengthAttribute, TravelTimeAttribute, EdgeTailAttribute>;
+using EdgeAttributes = EdgeAttrs<LengthAttribute, TravelTimeAttribute, TraversalCostAttribute, EdgeTailAttribute>;
 using InputGraph = StaticGraph<VertexAttributes, EdgeAttributes>;
 using LabelSet = BasicLabelSet<0, ParentInfo::FULL_PARENT_INFO>;
 
@@ -78,7 +78,6 @@ int main(int argc, char *argv[]) {
 
         const auto graphFileName = clp.getValue<std::string>("g");
         const auto demandFileName = clp.getValue<std::string>("d");
-        const auto chFileName = clp.getValue<std::string>("h");
         auto outputFileName = clp.getValue<std::string>("o");
         if (!endsWith(outputFileName, ".csv")) {
             outputFileName += ".csv";
@@ -97,21 +96,15 @@ int main(int argc, char *argv[]) {
         std::cout << "done." << std::endl;
 
         std::unique_ptr<CH> chPtr;
-        if (chFileName.empty()) {
-            std::cout << "Building CH... " << std::flush;
-            chPtr = std::make_unique<CH>();
-            chPtr->preprocess<TravelTimeAttribute>(inputGraph);
-            std::cout << "done.\n";
+        std::cout << "Building CH... " << std::flush;
+        chPtr = std::make_unique<CH>();
+        if (clp.isSet("traversal-costs")) {
+            chPtr->preprocess<TraversalCostAttribute>(inputGraph);
         } else {
-            // Read the CH from file.
-            std::cout << "Reading CH from file... " << std::flush;
-            std::ifstream chFile(chFileName, std::ios::binary);
-            if (!chFile.good())
-                throw std::invalid_argument("file not found -- '" + chFileName + "'");
-            chPtr = std::make_unique<CH>(chFile);
-            chFile.close();
-            std::cout << "done.\n";
+            chPtr->preprocess<TravelTimeAttribute>(inputGraph);
         }
+        std::cout << "done.\n";
+
         auto& ch = *chPtr;
 
         // Read the OD pairs from file.

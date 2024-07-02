@@ -24,6 +24,10 @@
 # ******************************************************************************
 
 
+add_executable(AddStaTraversalCost AddStaTraversalCost.cc)
+target_compile_definitions(AddStaTraversalCost PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(AddStaTraversalCost ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+
 add_executable(ComputeFreeFlowPaths ComputeFreeFlowPaths.cc)
 target_compile_definitions(ComputeFreeFlowPaths PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(ComputeFreeFlowPaths ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
@@ -58,6 +62,7 @@ target_link_libraries(TransformLocations ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} k
 add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc
 )
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(CheckExistingAttributesInNetworkFile kassert)
 
 add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
 target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
