@@ -193,12 +193,16 @@ class CCHMetric {
     upOutEdges.back().first() = numUpEdges;
     downOutEdges.back().first() = numDownEdges;
 
+    // todo: only placeholder travel times for now.
+    AlignedVector<TravelTimeAttribute::Type> upTravelTimes(numUpEdges, 0);
+      AlignedVector<TravelTimeAttribute::Type> downTravelTimes(numUpEdges, 0);
+
     CH::SearchGraph upGraph(
         std::move(upOutEdges), std::move(upEdgeHeads), numUpEdges,
-        std::move(upEdgeWeights), std::move(upUnpackingInfo));
+        std::move(upEdgeWeights), std::move(upUnpackingInfo), std::move(upTravelTimes));
     CH::SearchGraph downGraph(
         std::move(downOutEdges), std::move(downEdgeHeads), numDownEdges,
-        std::move(downEdgeWeights), std::move(downUnpackingInfo));
+        std::move(downEdgeWeights), std::move(downUnpackingInfo), std::move(downTravelTimes));
 
     Permutation order;
     Permutation ranks;

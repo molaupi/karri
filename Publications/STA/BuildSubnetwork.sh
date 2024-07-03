@@ -4,7 +4,8 @@ inputDir=$1
 fullNetworkName=$2            # Expects full vehicle and pedestrian networks at $inputDir/Graphs/${fullNetworkName}_{veh,psg}.gr.bin as well as inner boundary at $inputDir/Boundaries/${fullNetworkName}_Inner.poly
 flowFile=$3
 radius=$4
-dependencyInstallDir=${5}    # Optional: Path to headers of dependencies
+flowFac=$5
+dependencyInstallDir=${6}    # Optional: Path to headers of dependencies
 
 veh_name=${fullNetworkName}_veh
 psg_name=${fullNetworkName}_psg
@@ -26,4 +27,5 @@ $binaryDir/RawData/BuildTrafficFlowBasedSubgraph \
   -psg-g $inputDir/Graphs/${psg_name}.gr.bin \
   -f $flowFile\
   -rho $radius \
-  -o $inputDir/Graphs/${fullNetworkName}_${flowBaseName}_r${radius}
+  -flow-fac $flowFac \
+  -o $inputDir/Graphs/${fullNetworkName}_${flowBaseName}_fac${flowFac}_r${radius}
