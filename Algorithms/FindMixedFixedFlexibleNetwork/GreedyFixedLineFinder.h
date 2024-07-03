@@ -48,7 +48,6 @@ namespace mixfix {
     // Technologies, 2024, https://doi.org/10.1016/j.trc.2024.104580.
     template<typename VehicleInputGraphT,
             typename PreliminaryPathsT,
-            typename PDManagerT,
             typename LoggerT = NullLogger>
     class GreedyFixedLineFinder {
 
@@ -63,9 +62,9 @@ namespace mixfix {
     public:
 
         GreedyFixedLineFinder(const VehicleInputGraphT &inputGraph, const VehicleInputGraphT &reverseGraph,
-                              const PDManagerT &pdManager, const std::vector<Request> &requests)
+                              const PickupDropoffInfo &pdInfo, const std::vector<Request> &requests)
                 : inputGraph(inputGraph), reverseGraph(reverseGraph),
-                  pdManager(pdManager), requests(requests), inputConfig(InputConfig::getInstance()),
+                  pdInfo(pdInfo), requests(requests), inputConfig(InputConfig::getInstance()),
                   residualFlow(inputGraph.numEdges(), 0),
                   linesLogger(LogManager<LoggerT>::getLogger("lines.csv",
                                                              "line_id, "
@@ -166,8 +165,11 @@ namespace mixfix {
             for (const auto &path: paths) {
                 for (int i = 0; i < path.size(); ++i) {
                     if (path[i] == maxFlowEdge) {
-                        overlappingPaths.push_back({path.getRequestId(), i, i + 1});
-//                        break;
+                        if (path.size() == 1) {
+                            fullyCoveredPaths.push_back(path.getRequestId());
+                        } else {
+                            overlappingPaths.push_back({path.getRequestId(), i, i + 1});
+                        }
                     }
                 }
                 if (overlappingPaths.size() == maxFlow)
@@ -324,7 +326,11 @@ namespace mixfix {
                 //  (or store them while counting flow in FORALL_INCIDENT_EDGES loop)
                 for (const auto &path: paths) {
                     if (path.front() == extension) {
-                        overlapping.push_back({path.getRequestId(), 0, 1});
+                        if (path.size() == 1) {
+                            fullyCoveredPaths.push_back(path.getRequestId());
+                        } else {
+                            overlapping.push_back({path.getRequestId(), 0, 1});
+                        }
                         if (++numOnLine == flowOnExtension)
                             break;
                     }
@@ -483,7 +489,11 @@ namespace mixfix {
                 //  (or store them while counting flow in FORALL_INCIDENT_EDGES loop)
                 for (const auto &path: paths) {
                     if (path.back() == extensionInForwGraph) {
-                        overlapping.push_back({path.getRequestId(), path.size() - 1, path.size()});
+                        if (path.size() == 1) {
+                            fullyCoveredPaths.push_back(path.getRequestId());
+                        } else {
+                            overlapping.push_back({path.getRequestId(), path.size() - 1, path.size()});
+                        }
                         if (++numOnLine == flowOnExtension)
                             break;
                     }
@@ -546,8 +556,8 @@ namespace mixfix {
                 }
 
                 // 2. Check which pickup-able requests can be dropped off at edge i.
-                const auto &dropoffsAtV = pdManager.getPossibleDropoffsAt(v);
-                const auto &dropoffWalkingTimes = pdManager.getDropoffWalkingDistsAt(v);
+                const auto &dropoffsAtV = pdInfo.getPossibleDropoffsAt(v);
+                const auto &dropoffWalkingTimes = pdInfo.getDropoffWalkingDistsAt(v);
                 for (int j = 0; j < dropoffsAtV.size(); ++j) {
                     const auto reqId = dropoffsAtV[j];
                     const auto pickupIt = std::find_if(pickupables.begin(), pickupables.end(),
@@ -567,8 +577,8 @@ namespace mixfix {
 
 
                 // 3. Add unserved passengers that may be picked up here:
-                const auto &pickupsAtV = pdManager.getPossiblePickupsAt(v);
-                const auto &pickupWalkingTimes = pdManager.getPickupWalkingDistsAt(v);
+                const auto &pickupsAtV = pdInfo.getPossiblePickupsAt(v);
+                const auto &pickupWalkingTimes = pdInfo.getPickupWalkingDistsAt(v);
                 for (int j = 0; j < pickupsAtV.size(); ++j) {
                     const auto &reqId = pickupsAtV[j];
                     if (isPaxAlreadyServedByOtherLine(reqId))
@@ -679,7 +689,7 @@ namespace mixfix {
 
         const VehicleInputGraphT &inputGraph;
         const VehicleInputGraphT &reverseGraph;
-        const PDManagerT &pdManager;
+        const PickupDropoffInfo &pdInfo;
         const std::vector<Request> &requests;
         const InputConfig &inputConfig;
 

@@ -49,7 +49,6 @@ namespace mixfix {
         int minNumPaxPerLine = INFTY;
         double maxFlowRatioOnLine = 0.0;
 
-        int walkingRadius = -1;
         double alpha = -1;
         int beta = -1;
     };

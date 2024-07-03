@@ -32,6 +32,11 @@ add_executable(ComputeFreeFlowPaths ComputeFreeFlowPaths.cc)
 target_compile_definitions(ComputeFreeFlowPaths PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(ComputeFreeFlowPaths ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
 
+
+add_executable(ComputePDLocsForRequests ComputePDLocsForRequests.cc)
+target_compile_definitions(ComputePDLocsForRequests PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(ComputePDLocsForRequests ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(ConvertGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
