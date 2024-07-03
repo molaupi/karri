@@ -49,11 +49,10 @@ namespace mixfix {
 
             for (auto &req: requests) {
                 const int srcRank = ch.rank(inputGraph.edgeHead(req.origin));
-                const int destRank = ch.rank(inputGraph.edgeTail(req.destination));
-                const int offset = inputGraph.travelTime(req.destination);
+                const int destRank = ch.rank(inputGraph.edgeHead(req.destination));
                 query.run(srcRank, destRank);
 
-                req.directDist = query.getDistance() + offset;
+                req.directDist = query.getDistance();
 
                 ++progressBar;
             }

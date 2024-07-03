@@ -87,14 +87,34 @@ namespace mixfix {
                   searchSpace(),
                   progressBar() {}
 
+
+        // Call defrag() first!
+        void writeTo(std::ofstream &out) const {
+            bio::write(out, pickupIndex);
+            bio::write(out, possiblePickups);
+            bio::write(out, pickupWalkingDists);
+            bio::write(out, dropoffIndex);
+            bio::write(out, possibleDropoffs);
+            bio::write(out, dropoffWalkingDists);
+        }
+
+        void readFrom(std::ifstream &in) {
+            bio::read(in, pickupIndex);
+            bio::read(in, possiblePickups);
+            bio::read(in, pickupWalkingDists);
+            bio::read(in, dropoffIndex);
+            bio::read(in, possibleDropoffs);
+            bio::read(in, dropoffWalkingDists);
+        }
+
         void findPossiblePDLocsForRequests(const std::vector<Request> &requests) {
 
             progressBar.init(requests.size());
 
-            pickupIndex.resize(vehGraph.numEdges());
-            std::fill(pickupIndex.begin(), pickupIndex.end(), ValueBlockPosition{0,0});
-            dropoffIndex.resize(vehGraph.numEdges());
-            std::fill(dropoffIndex.begin(), dropoffIndex.end(), ValueBlockPosition{0,0});
+            pickupIndex.resize(vehGraph.numVertices());
+            std::fill(pickupIndex.begin(), pickupIndex.end(), ValueBlockPosition{0, 0});
+            dropoffIndex.resize(vehGraph.numVertices());
+            std::fill(dropoffIndex.begin(), dropoffIndex.end(), ValueBlockPosition{0, 0});
 
             possiblePickups.clear();
             pickupWalkingDists.clear();
@@ -103,8 +123,8 @@ namespace mixfix {
 
             // TODO: SIMD-ify, parallelize
             for (const auto &req: requests) {
-                addPickupAtEdge(req.requestId, 0, req.origin);
-                addDropoffAtEdge(req.requestId, 0, req.destination);
+                addPickupAtVertex(req.requestId, 0, vehGraph.edgeHead(req.origin));
+                addDropoffAtVertex(req.requestId, 0, vehGraph.edgeHead(req.destination));
 
                 const int originInPsg = vehGraph.mapToEdgeInPsg(req.origin);
                 const int destInPsg = vehGraph.mapToEdgeInPsg(req.destination);
@@ -115,56 +135,56 @@ namespace mixfix {
                 turnSearchSpaceIntoPickupLocations(req.requestId);
 
                 searchSpace.clear();
-                auto tailOfDestEdge = forwardPsgGraph.edgeTail(destInPsg);
-                auto destOffset = forwardPsgGraph.travelTime(destInPsg);
-                dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
+                auto headOfDestEdge = forwardPsgGraph.edgeHead(destInPsg);
+                dropoffSearch.run(headOfDestEdge);
                 turnSearchSpaceIntoDropoffLocations(req.requestId);
 
                 ++progressBar;
             }
 
-            // TODO: Post-process 2D-arrays, (compression, potentially sorting)
-
+            // TODO: Post-process 2D-arrays, (potentially sorting)
+            defrag();
         }
 
-        // Returns IDs of requests that may be picked up at edge e.
-        ConstantVectorRange<int> getPossiblePickupsAt(const int e) const {
-            assert(e >= 0);
-            assert(e < vehGraph.numEdges());
-            const auto start = pickupIndex[e].start;
-            const auto end = pickupIndex[e].end;
+        // Returns IDs of requests that may be picked up at vertex v.
+        ConstantVectorRange<int> getPossiblePickupsAt(const int v) const {
+            assert(v >= 0);
+            assert(v < vehGraph.numEdges());
+            const auto start = pickupIndex[v].start;
+            const auto end = pickupIndex[v].end;
             return {possiblePickups.begin() + start, possiblePickups.begin() + end};
         }
 
-        // Returns IDs of requests that may be picked up at edge e.
-        ConstantVectorRange<int> getPickupWalkingDistsAt(const int e) const {
-            assert(e >= 0);
-            assert(e < vehGraph.numEdges());
-            const auto start = pickupIndex[e].start;
-            const auto end = pickupIndex[e].end;
+        // Returns IDs of requests that may be picked up at vertex v.
+        ConstantVectorRange<int> getPickupWalkingDistsAt(const int v) const {
+            assert(v >= 0);
+            assert(v < vehGraph.numEdges());
+            const auto start = pickupIndex[v].start;
+            const auto end = pickupIndex[v].end;
             return {pickupWalkingDists.begin() + start, pickupWalkingDists.begin() + end};
         }
 
-        // Returns IDs of requests that may be dropped off at edge e.
-        ConstantVectorRange<int> getPossibleDropoffsAt(const int e) const {
-            assert(e >= 0);
-            assert(e < vehGraph.numEdges());
-            const auto start = dropoffIndex[e].start;
-            const auto end = dropoffIndex[e].end;
+        // Returns IDs of requests that may be dropped off at vertex v.
+        ConstantVectorRange<int> getPossibleDropoffsAt(const int v) const {
+            assert(v >= 0);
+            assert(v < vehGraph.numEdges());
+            const auto start = dropoffIndex[v].start;
+            const auto end = dropoffIndex[v].end;
             return {possibleDropoffs.begin() + start, possibleDropoffs.begin() + end};
         }
 
-        // Returns IDs of requests that may be dropped off at edge e.
-        ConstantVectorRange<int> getDropoffWalkingDistsAt(const int e) const {
-            assert(e >= 0);
-            assert(e < vehGraph.numEdges());
-            const auto start = dropoffIndex[e].start;
-            const auto end = dropoffIndex[e].end;
+        // Returns IDs of requests that may be dropped off at vertex v.
+        ConstantVectorRange<int> getDropoffWalkingDistsAt(const int v) const {
+            assert(v >= 0);
+            assert(v < vehGraph.numEdges());
+            const auto start = dropoffIndex[v].start;
+            const auto end = dropoffIndex[v].end;
             return {dropoffWalkingDists.begin() + start, dropoffWalkingDists.begin() + end};
         }
 
 
     private:
+
 
         void turnSearchSpaceIntoPickupLocations(const int requestId) {
             for (const auto &v: searchSpace) {
@@ -176,8 +196,8 @@ namespace mixfix {
                     if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue() || walkingDist > InputConfig::getInstance().walkingRadius)
                         continue;
 
-                    addPickupAtEdge(requestId, walkingDist, eInVehGraph);
-                    KASSERT(pickupIndex[eInVehGraph].start >= 0 && pickupIndex[eInVehGraph].end <= possiblePickups.size());
+                    addPickupAtVertex(requestId, walkingDist, vehGraph.edgeHead(eInVehGraph));
+                    KASSERT(pickupIndex[vehGraph.edgeHead(eInVehGraph)].start >= 0 && pickupIndex[vehGraph.edgeHead(eInVehGraph)].end <= possiblePickups.size());
                 }
             }
         }
@@ -191,41 +211,72 @@ namespace mixfix {
                     const int eInVehGraph = forwardPsgGraph.mapToEdgeInFullVeh(eInForwGraph);
                     if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue())
                         continue;
-                    addDropoffAtEdge(requestId, distToV, eInVehGraph);
-                    KASSERT(dropoffIndex[eInVehGraph].start >= 0 && dropoffIndex[eInVehGraph].end <= possibleDropoffs.size());
+                    addDropoffAtVertex(requestId, distToV, vehGraph.edgeHead(eInVehGraph));
+                    KASSERT(dropoffIndex[vehGraph.edgeHead(eInVehGraph)].start >= 0 && dropoffIndex[vehGraph.edgeHead(eInVehGraph)].end <= possibleDropoffs.size());
                 }
             }
         }
 
 
-        void addPickupAtEdge(const int requestId, const int walkingDist, const int e) {
-            assert(e >= 0);
-            assert(e < vehGraph.numEdges());
-            const auto start = pickupIndex[e].start;
-            const auto end = pickupIndex[e].end;
+        void addPickupAtVertex(const int requestId, const int walkingDist, const int v) {
+            assert(v >= 0);
+            assert(v < vehGraph.numVertices());
+            const auto start = pickupIndex[v].start;
+            const auto end = pickupIndex[v].end;
 
             // TODO: sort value arrays?
             // Do not add duplicates
             if (contains(possiblePickups.begin() + start, possiblePickups.begin() + end, requestId))
                 return;
 
-            const int idx = insertion(e, requestId, pickupIndex, possiblePickups, pickupWalkingDists);
+            const int idx = insertion(v, requestId, pickupIndex, possiblePickups, pickupWalkingDists);
             pickupWalkingDists[idx] = walkingDist;
         }
 
-        void addDropoffAtEdge(const int requestId, const int walkingDist, const int e) {
-            assert(e >= 0);
-            assert(e < vehGraph.numEdges());
-            const auto start = dropoffIndex[e].start;
-            const auto end = dropoffIndex[e].end;
+        void addDropoffAtVertex(const int requestId, const int walkingDist, const int v) {
+            assert(v >= 0);
+            assert(v < vehGraph.numEdges());
+            const auto start = dropoffIndex[v].start;
+            const auto end = dropoffIndex[v].end;
 
             // TODO: sort value arrays?
             // Do not add duplicates
             if (contains(possibleDropoffs.begin() + start, possibleDropoffs.begin() + end, requestId))
                 return;
 
-            const int idx = insertion(e, requestId, dropoffIndex, possibleDropoffs, dropoffWalkingDists);
+            const int idx = insertion(v, requestId, dropoffIndex, possibleDropoffs, dropoffWalkingDists);
             dropoffWalkingDists[idx] = walkingDist;
+        }
+
+        // De-fragment 2D-arrays after constructing them
+        void defrag() {
+            defragImpl(pickupIndex, possiblePickups, pickupWalkingDists);
+            defragImpl(dropoffIndex, possibleDropoffs, dropoffWalkingDists);
+        }
+
+        void defragImpl(std::vector<ValueBlockPosition> &index, std::vector<int> &possiblePD,
+                        std::vector<int> &walkingDists) {
+            int totalPossiblePDs = 0;
+            for (const auto &pos: index)
+                totalPossiblePDs += pos.end - pos.start;
+
+            std::vector<ValueBlockPosition> newIndex(index.size());
+            std::vector<int> newPossiblePD;
+            std::vector<int> newWalkingDists;
+            newPossiblePD.reserve(totalPossiblePDs);
+            newWalkingDists.reserve(totalPossiblePDs);
+
+            for (int e = 0; e < index.size(); ++e) {
+                newIndex[e].start = newPossiblePD.size();
+                newPossiblePD.insert(newPossiblePD.end(), possiblePD.begin() + index[e].start,
+                                     possiblePD.begin() + index[e].end);
+                newWalkingDists.insert(newWalkingDists.end(), walkingDists.begin() + index[e].start,
+                                       walkingDists.begin() + index[e].end);
+                newIndex[e].end = newPossiblePD.size();
+            }
+            index = std::move(newIndex);
+            possiblePD = std::move(newPossiblePD);
+            walkingDists = std::move(newWalkingDists);
         }
 
 
@@ -237,28 +288,28 @@ namespace mixfix {
         Search dropoffSearch;
         std::vector<int> searchSpace;
 
-        // We use two DynamicRagged2DArray to store the subset of requests that can be picked up( dropped off at each
-        // edge. For both 2D-array, there is a single index array that for each edge stores a range of indices where
-        // the entries for that edge are stored in a number of value arrays.
+        // We use two DynamicRagged2DArray to store the subset of requests that can be picked up/ dropped off at each
+        // vertex. For both 2D-array, there is a single index array that for each vertex stores a range of indices where
+        // the entries for that vertex are stored in a number of value arrays.
 
-        // Pickup Index Arra<: For each edge (of the vehicle graph) e, the according entries in the pickup value arrays
-        // lie in the index interval [pickupIndex[e].start, pickupIndex[e].end).
+        // Pickup Index Array: For each vertex (of the vehicle graph) v, the according entries in the pickup value arrays
+        // lie in the index interval [pickupIndex[v].start, pickupIndex[v].end).
         std::vector<ValueBlockPosition> pickupIndex;
 
-        // IDs of requests that can be picked up at edge.
+        // IDs of requests that can be picked up at vertex.
         std::vector<int> possiblePickups;
 
-        // IDs of requests that can be picked up at edge.
+        // IDs of requests that can be picked up at vertex.
         std::vector<int> pickupWalkingDists;
 
-        // Dropoff Index Array: For each edge (of the vehicle graph) e, the according entries in the dropoff value arrays
-        // lie in the index interval [dropoffIndex[e].start, dropoffIndex[e].end).
+        // Dropoff Index Array: For each vertex (of the vehicle graph) v, the according entries in the dropoff value arrays
+        // lie in the index interval [dropoffIndex[v].start, dropoffIndex[v].end).
         std::vector<ValueBlockPosition> dropoffIndex;
 
-        // IDs of requests that can be dropped off at edge.
+        // IDs of requests that can be dropped off at vertex.
         std::vector<int> possibleDropoffs;
 
-        // IDs of requests that can be dropped off at edge.
+        // IDs of requests that can be dropped off at vertex.
         std::vector<int> dropoffWalkingDists;
 
 

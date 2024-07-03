@@ -67,6 +67,7 @@ inline void printUsage() {
               "  -a <factor>            model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
               "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
               "  -rho <sec>             walking radius (in s) for PD-Locs around origin/destination. (dflt: 300s)\n"
+              "  -pd <file>             PD-locations for requests in binary format. Optional, if not given, will be computed and written to binary file.\n"
               "  -veh-h <file>          contraction hierarchy for the vehicle network in binary format.\n"
               "  -psg-h <file>          contraction hierarchy for the passenger network in binary format.\n"
               "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
@@ -113,15 +114,15 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGr
         }
 
         if (path.size() > 0) {
-            const auto &pickups = pdManager.getPossiblePickupsAt(path.front());
+            const auto &pickups = pdManager.getPossiblePickupsAt(inputGraph.edgeTail(path.front()));
             if (!contains(pickups.begin(), pickups.end(), path.getRequestId()))
                 throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) +
-                                            " does not start at a possible pickup for that request.");
+                                            " does not start at a possible pickup vertex for that request.");
 
-            const auto &dropoffs = pdManager.getPossibleDropoffsAt(path.back());
+            const auto &dropoffs = pdManager.getPossibleDropoffsAt(inputGraph.edgeHead(path.back()));
             if (!contains(dropoffs.begin(), dropoffs.end(), path.getRequestId()))
                 throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) +
-                                            " does not end at a possible dropoff for that request.");
+                                            " does not end at a possible dropoff vertex for that request.");
         }
     }
 }
@@ -150,6 +151,7 @@ int main(int argc, char *argv[]) {
 //        const auto vehicleFileName = clp.getValue<std::string>("v");
         const auto requestFileName = clp.getValue<std::string>("r");
         const auto pathsFileName = clp.getValue<std::string>("p");
+        const auto pdLocsFileName = clp.getValue<std::string>("pd");
         const auto vehHierarchyFileName = clp.getValue<std::string>("veh-h");
         const auto psgHierarchyFileName = clp.getValue<std::string>("psg-h");
         const auto vehSepDecompFileName = clp.getValue<std::string>("veh-d");
@@ -313,8 +315,14 @@ int main(int argc, char *argv[]) {
         }
 
 
-        const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
-        const auto revPsgGraph = psgInputGraph.getReverseGraph();
+        auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
+        FORALL_VALID_EDGES(revVehicleGraph, u, e) {
+            revVehicleGraph.edgeTail(e) = u;
+        }
+        auto revPsgGraph = psgInputGraph.getReverseGraph();
+        FORALL_VALID_EDGES(revPsgGraph, u, e) {
+                revPsgGraph.edgeTail(e) = u;
+            }
 
         using PickupDropoffManagerImpl = PickupDropoffManager<VehicleInputGraph, PsgInputGraph>;
         PickupDropoffManagerImpl pdManager(vehicleInputGraph, psgInputGraph, revPsgGraph);
@@ -322,9 +330,24 @@ int main(int argc, char *argv[]) {
         using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, PickupDropoffManagerImpl, std::ofstream>;
         FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdManager, requests);
 
-        std::cout << "Finding PD-Locs ..." << std::flush;
-        pdManager.findPossiblePDLocsForRequests(requests);
-        std::cout << "done.\n";
+        if (pdLocsFileName.empty()) {
+            std::cout << "Finding PD-Locs and writing them to file..." << std::flush;
+            pdManager.findPossiblePDLocsForRequests(requests);
+            std::ofstream pdLocsOutputFile(outputFileName + ".pdlocs.bin");
+            if (!pdLocsOutputFile.good())
+                throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".geojson" + "'");
+            pdManager.writeTo(pdLocsOutputFile);
+            pdLocsOutputFile.close();
+            std::cout << "done.\n";
+        } else {
+            std::cout << "Reading PD-Locs from file... " << std::flush;
+            std::ifstream pdLocsFile(pdLocsFileName, std::ios::binary);
+            if (!pdLocsFile.good())
+                throw std::invalid_argument("file not found -- '" + pdLocsFileName + "'");
+            pdManager.readFrom(pdLocsFile);
+            pdLocsFile.close();
+            std::cout << "done.\n";
+        }
 
         std::cout << "Verifying input paths ..." << std::flush;
         verifyPathViability(preliminaryPaths, vehicleInputGraph, pdManager);

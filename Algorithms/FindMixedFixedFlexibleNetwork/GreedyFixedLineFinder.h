@@ -54,9 +54,9 @@ namespace mixfix {
 
         struct ServedRequest {
             int requestId;
-            int pickupEdgeIdx;
+            int pickupVertexIdx;
             int pickupWalkingTime;
-            int dropoffEdgeIdx;
+            int dropoffVertexIdx;
             int dropoffWalkingTime;
         };
 
@@ -81,7 +81,7 @@ namespace mixfix {
 
             lines.clear();
             linesGeoJson.clear();
-            linesGeoJson["type"] = "GeometryCollection";
+            linesGeoJson["type"] = "FeatureCollection";
 
             while (!paths.empty()) {
                 std::cout << "\n\n";
@@ -102,16 +102,16 @@ namespace mixfix {
                     break;
 
 
-                int numServedButNotOverlapping = 0;
+                int numServedButNotFullyCovered = 0;
                 for (const auto &served: pax) {
                     if (!contains(fullyCoveredPaths.begin(), fullyCoveredPaths.end(), served.requestId)) {
 //                        std::cout << "Passenger " << served.requestId << " is served by line but their path does not overlap." << std::endl;
-                        ++numServedButNotOverlapping;
+                        ++numServedButNotFullyCovered;
                     }
                     paths.removePathForRequest(served.requestId);
                 }
-                std::cout << "Number of passengers served that have not contributed to construction of line: "
-                          << numServedButNotOverlapping << std::endl;
+                std::cout << "Number of passengers served whose paths are not fully covered by line (origin to destination): "
+                          << numServedButNotFullyCovered << std::endl;
 
                 logLine(line, lines.size(), pax);
 
@@ -167,7 +167,7 @@ namespace mixfix {
                 for (int i = 0; i < path.size(); ++i) {
                     if (path[i] == maxFlowEdge) {
                         overlappingPaths.push_back({path.getRequestId(), i, i + 1});
-                        break;
+//                        break;
                     }
                 }
                 if (overlappingPaths.size() == maxFlow)
@@ -186,7 +186,8 @@ namespace mixfix {
             // Paths that contain the initial edge whose end is reached by the forward extension but who may still be
             // extended toward their start by the backward extension
             std::vector<OverlappingPath> overlappingReachedEnd;
-            extendLineForwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, overlappingReachedEnd, fullyCoveredPaths, paths);
+            extendLineForwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, overlappingReachedEnd,
+                               fullyCoveredPaths, paths);
             extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlappingReachedEnd, fullyCoveredPaths, paths);
         }
 
@@ -244,6 +245,13 @@ namespace mixfix {
 
                 KASSERT(flowOnExtension <= maxFlowOnLine, "Larger flow than max flow has been found!",
                         kassert::assert::light);
+//
+//                if (inputGraph.osmNodeId(inputGraph.edgeHead(extension)) == 266781215) {
+//                    std::cout << "Forward: Found extension edge " << extension << " (tail: "
+//                              << inputGraph.osmNodeId(inputGraph.edgeTail(extension)) << ", head: "
+//                              << inputGraph.osmNodeId(inputGraph.edgeHead(extension)) << ") with flow "
+//                              << flowOnExtension << std::endl;
+//                }
 
                 // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
 //                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
@@ -261,10 +269,22 @@ namespace mixfix {
                     break; // Stop extending line
 
                 // If extension edge is already part of line, stop extending
-                const int newReachedVertex = inputGraph.edgeHead(extension);
                 bool extensionClosesLoop = false;
+//                const int newReachedVertex = inputGraph.edgeHead(extension);
+
+//                // Check if edge (in either direction) is already on line
+//                for (const auto &e: line) {
+//                    if ((inputGraph.edgeHead(e) == inputGraph.edgeHead(extension) &&
+//                         inputGraph.edgeTail(e) == inputGraph.edgeTail(extension))
+//                        || (inputGraph.edgeHead(e) == inputGraph.edgeTail(extension) &&
+//                            inputGraph.edgeTail(e) == inputGraph.edgeHead(extension))) {
+//                        extensionClosesLoop = true;
+//                        break;
+//                    }
+//                }
+                // Check if edge (directional) is already on line
                 for (const auto &e: line) {
-                    if (inputGraph.edgeHead(e) == newReachedVertex || inputGraph.edgeTail(e) == newReachedVertex) {
+                    if (e == extension) {
                         extensionClosesLoop = true;
                         break;
                     }
@@ -386,6 +406,13 @@ namespace mixfix {
                 KASSERT(flowOnExtension <= maxFlowOnLine, "Larger flow than max flow has been found!",
                         kassert::assert::light);
 
+//                if (reverseGraph.osmNodeId(reverseGraph.edgeHead(extension)) == 266781215) {
+//                    std::cout << "Reverse: Found extension edge " << extension << " (tail: "
+//                              << reverseGraph.osmNodeId(reverseGraph.edgeTail(extension)) << ", head: "
+//                              << reverseGraph.osmNodeId(reverseGraph.edgeHead(extension)) << ") with flow "
+//                              << flowOnExtension << std::endl;
+//                }
+
                 // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
 //                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
 //                          static_cast<double>(std::min(minFlowOnLine, flowOnExtension));
@@ -404,10 +431,22 @@ namespace mixfix {
 
 
                 // If extension edge is already part of line, stop extending
-                const int newReachedVertex = reverseGraph.edgeHead(extension);
                 bool extensionClosesLoop = false;
+
+                // Check if edge (in either direction) is already on line
+//                const int newReachedVertex = reverseGraph.edgeHead(extension);
+//                for (const auto &e: line) {
+//                    if ((reverseGraph.edgeHead(e) == reverseGraph.edgeHead(extension) &&
+//                         reverseGraph.edgeTail(e) == reverseGraph.edgeTail(extension))
+//                        || (reverseGraph.edgeHead(e) == reverseGraph.edgeTail(extension) &&
+//                            reverseGraph.edgeTail(e) == reverseGraph.edgeHead(extension))) {
+//                        extensionClosesLoop = true;
+//                        break;
+//                    }
+//                }
+                // Check if edge (directional) is already on line
                 for (const auto &e: line) {
-                    if (reverseGraph.edgeHead(e) == newReachedVertex || reverseGraph.edgeTail(e) == newReachedVertex) {
+                    if (e == extension) {
                         extensionClosesLoop = true;
                         break;
                     }
@@ -466,33 +505,38 @@ namespace mixfix {
         findPassengersServableByLine(const FixedLine &line,
                                      const IsPassengerAlreadyServedT &isPaxAlreadyServedByOtherLine) {
 
-            // We iterate over the edges of the line from front to back, keeping track of a subset of requests P that
-            // may be picked up by the vehicle before the current edge.
-            // When reaching edge i, we perform the following:
-            //  1. Remove a request r from P if the detour of r has become too large with edge i.
-            //  2. Check whether r can be dropped off at edge i. If so, r can be served by the line. Remove r from P.
-            //  3. Add all unserved requests that can be picked up at edge i to P.
+            std::vector<int> verticesInLine;
+            verticesInLine.push_back(inputGraph.edgeTail(line.front()));
+            for (const auto &e: line)
+                verticesInLine.push_back(inputGraph.edgeHead(e));
+
+            // We iterate over the vertices of the line from front to back, keeping track of a subset of requests P that
+            // may be picked up by the vehicle before the current vertex.
+            // When reaching vertex i, we perform the following:
+            //  1. Remove a request r from P if the detour of r has become too large with vertex i.
+            //  2. Check whether r can be dropped off at vertex i. If so, r can be served by the line. Remove r from P.
+            //  3. Add all unserved requests that can be picked up at vertex i to P.
             //
-            // There may be multiple possible pickup edges on the same line for a request r. We always use the one with
-            // the smallest travel time to the current edge i, i.e. walking distance + current in-vehicle distance.
+            // There may be multiple possible pickup vertices on the same line for a request r. We always use the one with
+            // the smallest travel time to the current vertex i, i.e. walking distance + current in-vehicle distance.
 
             std::vector<ServedRequest> servableRequests;
 
             struct Pickupable {
                 int requestId;
-                int pickupIdx;
+                int pickupVertexIdx;
                 int walkingTime;
             };
 
             std::vector<Pickupable> pickupables;
-            for (int i = 0; i < line.size(); ++i) {
-                const auto &e = line[i];
+            for (int i = 0; i < verticesInLine.size(); ++i) {
+                const auto &v = verticesInLine[i];
 
                 // 1. Remove pickup-able requests whose detour would grow too large with edge i:
                 int k = 0;
                 while (k < pickupables.size()) {
                     const auto tt = pickupables[k].walkingTime +
-                                    getVehicleTravelTimeInInterval(line, pickupables[k].pickupIdx + 1, i + 1);
+                            getVehicleTravelTimeInEdgeInterval(line, pickupables[k].pickupVertexIdx, i);
                     if (tt > getMaxTravelTime(requests[pickupables[k].requestId], inputConfig)) {
                         std::swap(pickupables[k], pickupables.back());
                         pickupables.pop_back();
@@ -502,20 +546,20 @@ namespace mixfix {
                 }
 
                 // 2. Check which pickup-able requests can be dropped off at edge i.
-                const auto &dropoffsAtE = pdManager.getPossibleDropoffsAt(e);
-                const auto &dropoffWalkingTimes = pdManager.getDropoffWalkingDistsAt(e);
-                for (int j = 0; j < dropoffsAtE.size(); ++j) {
-                    const auto reqId = dropoffsAtE[j];
+                const auto &dropoffsAtV = pdManager.getPossibleDropoffsAt(v);
+                const auto &dropoffWalkingTimes = pdManager.getDropoffWalkingDistsAt(v);
+                for (int j = 0; j < dropoffsAtV.size(); ++j) {
+                    const auto reqId = dropoffsAtV[j];
                     const auto pickupIt = std::find_if(pickupables.begin(), pickupables.end(),
                                                        [&](const auto &p) { return p.requestId == reqId; });
                     if (pickupIt == pickupables.end())
                         continue;
                     auto &p = *pickupIt;
-                    const auto totalTT = p.walkingTime + getVehicleTravelTimeInInterval(line, p.pickupIdx + 1, i + 1) +
+                    const auto totalTT = p.walkingTime + getVehicleTravelTimeInEdgeInterval(line, p.pickupVertexIdx, i) +
                                          dropoffWalkingTimes[j];
                     if (totalTT <= getMaxTravelTime(requests[p.requestId], inputConfig)) {
                         // Request can be served by line
-                        servableRequests.push_back({reqId, p.pickupIdx, p.walkingTime, i, dropoffWalkingTimes[j]});
+                        servableRequests.push_back({reqId, p.pickupVertexIdx, p.walkingTime, i, dropoffWalkingTimes[j]});
                         std::swap(p, pickupables.back());
                         pickupables.pop_back();
                     }
@@ -523,10 +567,10 @@ namespace mixfix {
 
 
                 // 3. Add unserved passengers that may be picked up here:
-                const auto &pickupsAtE = pdManager.getPossiblePickupsAt(e);
-                const auto &pickupWalkingTimes = pdManager.getPickupWalkingDistsAt(e);
-                for (int j = 0; j < pickupsAtE.size(); ++j) {
-                    const auto &reqId = pickupsAtE[j];
+                const auto &pickupsAtV = pdManager.getPossiblePickupsAt(v);
+                const auto &pickupWalkingTimes = pdManager.getPickupWalkingDistsAt(v);
+                for (int j = 0; j < pickupsAtV.size(); ++j) {
+                    const auto &reqId = pickupsAtV[j];
                     if (isPaxAlreadyServedByOtherLine(reqId))
                         continue;
                     bool servedByThisLine = std::find_if(servableRequests.begin(), servableRequests.end(),
@@ -543,11 +587,11 @@ namespace mixfix {
                         continue;
                     }
 
-                    // If request can already be picked up at earlier edge on line, only store edge that provides
+                    // If request can already be picked up at earlier edge on line, only store vertex that provides
                     // better travel time (ignoring waiting times).
                     auto &p = *dupIt;
                     const auto ttExisting =
-                            p.walkingTime + getVehicleTravelTimeInInterval(line, p.pickupIdx + 1, i + 1);
+                            p.walkingTime + getVehicleTravelTimeInEdgeInterval(line, p.pickupVertexIdx, i);
                     const auto ttNew = walkingTime;
                     if (ttNew < ttExisting) {
                         p = {reqId, i, walkingTime};
@@ -558,7 +602,7 @@ namespace mixfix {
             return servableRequests;
         }
 
-        int getVehicleTravelTimeInInterval(const FixedLine &line, const int start, const int end) const {
+        int getVehicleTravelTimeInEdgeInterval(const std::vector<int> &line, const int start, const int end) const {
             if (start >= end)
                 return 0;
             return std::accumulate(line.begin() + start, line.begin() + end, 0, [&](const int a, const int b) {
@@ -595,24 +639,41 @@ namespace mixfix {
                 linesLogger << pax[i].requestId << (i < pax.size() - 1 ? " : " : "\n");
 
             // Also write GeoJson for line:
-            linesGeoJson["geometries"].push_back(generateGeoJsonFeatureForLine(latLngPath, lineId));
+            addGeoJsonFeaturesForLine(latLngPath, lineId, pax, linesGeoJson);
         }
 
-        nlohmann::json generateGeoJsonFeatureForLine(const std::vector<LatLng> &latLngPath, const int lineId) {
+        void addGeoJsonFeaturesForLine(const std::vector<LatLng> &latLngPath, const int lineId,
+                                       const std::vector<ServedRequest> &pax,
+                                       nlohmann::json &featureCol) {
+            static char lastEdgeColor[] = "red";
 
-            static char color[] = "blue";
-            nlohmann::json feature;
-            feature["type"] = "LineString";
+
+            // LineString feature for the line's edges
+            nlohmann::json lineFeature;
+            lineFeature["type"] = "Feature";
+            lineFeature["geometry"] = {{"type",        "LineString"},
+                                       {"coordinates", nlohmann::json::array()}};
 
             for (const auto &latLng: latLngPath) {
                 const auto coord = nlohmann::json::array({latLng.lngInDeg(), latLng.latInDeg()});
-                feature["coordinates"].push_back(coord);
+                lineFeature["geometry"]["coordinates"].push_back(coord);
             }
+            lineFeature["properties"] = {{"line_id", lineId},
+                                         {"num_pax", pax.size()}};
+            featureCol["features"].push_back(lineFeature);
 
-            feature["properties"] = {{"stroke",       color},
-                                     {"stroke-width", 3},
-                                     {"line_id",      lineId}};
-            return feature;
+            // MultiPoint feature for start and end of line
+            nlohmann::json startFeature;
+            startFeature["type"] = "Feature";
+            startFeature["geometry"] = {{"type",        "MultiPoint"},
+                                            {"coordinates", nlohmann::json::array()}};
+            const auto firstEdgeTail = latLngPath.front();
+            const auto lastEdgeHead = latLngPath.back();
+            startFeature["geometry"]["coordinates"].push_back({firstEdgeTail.lngInDeg(), firstEdgeTail.latInDeg()});
+            startFeature["geometry"]["coordinates"].push_back({lastEdgeHead.lngInDeg(), lastEdgeHead.latInDeg()});
+            startFeature["properties"] = {{"stroke", lastEdgeColor},
+                                              {"line_id", lineId}};
+            featureCol["features"].push_back(startFeature);
         }
 
 

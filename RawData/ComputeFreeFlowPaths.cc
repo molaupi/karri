@@ -130,22 +130,22 @@ int main(int argc, char *argv[]) {
                 dst = ch.rank(od.destination);
             } else {
                 src = ch.rank(inputGraph.edgeHead(od.origin));
-                dst = ch.rank(inputGraph.edgeTail(od.destination));
+                dst = ch.rank(inputGraph.edgeHead(od.destination));
             }
             chQuery.run(src, dst);
             path.clear();
             pathUnpacker.unpackUpDownPath(chQuery.getUpEdgePath(), chQuery.getDownEdgePath(), path);
             outputFile << i << ", ";
-            if (clp.isSet("edges"))
-                outputFile << od.origin << " : ";
+//            if (clp.isSet("edges"))
+//                outputFile << od.origin << " : ";
             for (int j = 0; j < path.size(); ++j) {
                 if (j > 0) {
                     outputFile << " : ";
                 }
                 outputFile << path[j];
             }
-            if (clp.isSet("edges"))
-                outputFile << (path.empty()? "" : " : ") << od.destination;
+//            if (clp.isSet("edges"))
+//                outputFile << (path.empty()? "" : " : ") << od.destination;
             outputFile << '\n';
             ++progressBar;
         }
