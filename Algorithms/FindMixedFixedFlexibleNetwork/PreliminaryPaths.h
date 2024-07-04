@@ -118,24 +118,32 @@ namespace mixfix {
         }
 
         bool hasPathFor(const int reqId) const {
-            return reqIdToPathIdx[reqId] != INVALID_INDEX;
+            KASSERT(reqId >= 0 && reqId < reqIdToPathIdx.size());
+            const int &idx = reqIdToPathIdx[reqId];
+            KASSERT(idx < static_cast<int>(paths.size()));
+            return idx != INVALID_INDEX;
         }
 
         const Path &getPathFor(const int reqId) const {
+            KASSERT(reqId >= 0 && reqId < reqIdToPathIdx.size());
             KASSERT(hasPathFor(reqId),
                     "Request " << reqId << " does not have a path.", kassert::assert::light);
             return paths[reqIdToPathIdx[reqId]];
         }
 
-        void removePathForRequest(const int requestId) {
-            const int idx = reqIdToPathIdx[requestId];
-            KASSERT(hasPathFor(requestId),
-                    "Request " << requestId << " already does not have a path.", kassert::assert::light);
+        void removePathForRequest(const int reqId) {
+            KASSERT(reqId >= 0 && reqId < reqIdToPathIdx.size());
+            KASSERT(hasPathFor(reqId),
+                    "Request " << reqId << " already does not have a path.", kassert::assert::light);
+            const int idx = reqIdToPathIdx[reqId];
+            reqIdToPathIdx[reqId] = INVALID_INDEX;
+            if (idx == static_cast<int>(paths.size() - 1)) {
+                paths.pop_back();
+                return;
+            }
 
             std::swap(paths[idx], paths.back());
             paths.pop_back();
-
-            reqIdToPathIdx[requestId] = INVALID_INDEX;
             reqIdToPathIdx[paths[idx].getRequestId()] = idx;
         }
 

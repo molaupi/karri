@@ -57,12 +57,13 @@
 
 inline void printUsage() {
     std::cout <<
-              "Usage: mixfix -veh-g <vehicle network> -psg-g <passenger network> -r <requests> -v <vehicles> -o <file>\n"
+              "Usage: mixfix -veh-g <vehicle network> -psg-g <passenger network> -r <requests> -p <paths> -v <vehicles> -o <file>\n"
               "Runs process to find mixed fixed-flexible bus public transport networks with given vehicle and passenger\n"
               "road networks and demand. Writes output files to specified base path."
               "  -veh-g <file>          vehicle road network in binary format.\n"
               "  -psg-g <file>          passenger road (and path) network in binary format.\n"
               "  -r <file>              requests in CSV format.\n"
+              "  -p <file>              preliminary paths in CSV format.\n"
               "  -a <factor>            model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
               "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
               "  -pd <file>             PD-locations for requests in binary format. Optional, if not given, will be computed and written to binary file.\n"
