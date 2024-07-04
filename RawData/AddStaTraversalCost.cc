@@ -126,6 +126,7 @@ int main(int argc, char *argv[]) {
                 LIGHT_KASSERT(factor != 1 || traversalCost == travelTime,
                               "factor is 1, but traversal cost is not equal to travel time");
                 inputGraph.get<TraversalCostAttribute>(e) = traversalCost;
+                inputGraph.get<FloatingPointTraversalCostAttribute>(e) = floatTraversalCost;
             }
         std::cout << "done." << std::endl;
 
