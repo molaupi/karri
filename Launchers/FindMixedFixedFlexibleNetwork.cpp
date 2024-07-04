@@ -91,13 +91,19 @@ template<typename VehInputGraphT, typename PdManagerT>
 void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGraphT &inputGraph,
                          const PdManagerT &pdInfo) {
 
+    Subset edgesInPath(inputGraph.numEdges());
+
     for (const auto &path: paths) {
+        edgesInPath.clear();
         int prevVertex = path.size() == 0 ? INVALID_VERTEX : inputGraph.edgeTail(path[0]);
         for (int i = 0; i < path.size() - 1; ++i) {
             const auto nextPathEdge = path[i];
             LIGHT_KASSERT(inputGraph.edgeTail(nextPathEdge) == prevVertex,
                           "Previous vertex " << prevVertex << " is not tail of next edge " << nextPathEdge
                                              << " on path.");
+            if (!edgesInPath.insert(nextPathEdge))
+                throw std::invalid_argument("Edge " + std::to_string(nextPathEdge) + " is visited twice in path for request " +
+                                            std::to_string(path.getRequestId()));
             bool found = false;
             FORALL_INCIDENT_EDGES(inputGraph, prevVertex, e) {
                 if (e == nextPathEdge) {

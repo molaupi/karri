@@ -92,14 +92,24 @@ namespace mixfix {
                 if (maxFlowOnLine < inputConfig.minMaxFlowOnLine)
                     break;
 
-                const auto &pax = findPassengersServableByLine(line, [&](const int reqId) {
-                    return !paths.hasPathFor(reqId);
-                });
-                std::cout << "Found a line of length " << line.size() << " that can serve " << pax.size()
-                          << " passengers." << std::endl;
-                if (pax.size() < inputConfig.minNumPaxPerLine)
-                    break;
 
+                std::vector<int> verticesInLine;
+                verticesInLine.push_back(inputGraph.edgeTail(line.front()));
+                for (const auto &e: line)
+                    verticesInLine.push_back(inputGraph.edgeHead(e));
+
+                for (const auto& reqId : fullyCoveredPaths) {
+                    LIGHT_KASSERT(contains(verticesInLine.begin(), verticesInLine.end(), inputGraph.edgeHead(requests[reqId].origin)),
+                                  "Origin of fully covered request not in line.");
+                    LIGHT_KASSERT(contains(verticesInLine.begin(), verticesInLine.end(), inputGraph.edgeHead(requests[reqId].destination)),
+                                  "Destination of fully covered request not in line.");
+                }
+
+                const auto &pax = findPassengersServableByLine(line, verticesInLine, [&](const int reqId) {
+                    return !paths.hasPathFor(reqId);
+                }, fullyCoveredPaths);
+                std::cout << "Found a line of length " << line.size() << " that can serve " << pax.size()
+                          << " passengers. (Num fully covered paths = " << fullyCoveredPaths.size() << ")" << std::endl;
 
                 int numServedButNotFullyCovered = 0;
                 for (const auto &served: pax) {
@@ -111,6 +121,9 @@ namespace mixfix {
                 }
                 std::cout << "Number of passengers served whose paths are not fully covered by line (origin to destination): "
                           << numServedButNotFullyCovered << std::endl;
+
+                if (pax.size() < inputConfig.minNumPaxPerLine)
+                    break;
 
                 logLine(line, lines.size(), pax);
 
@@ -513,12 +526,10 @@ namespace mixfix {
         template<typename IsPassengerAlreadyServedT>
         std::vector<ServedRequest>
         findPassengersServableByLine(const FixedLine &line,
-                                     const IsPassengerAlreadyServedT &isPaxAlreadyServedByOtherLine) {
+                                     const std::vector<int>& verticesInLine,
+                                     const IsPassengerAlreadyServedT &isPaxAlreadyServedByOtherLine,
+                                     const std::vector<int>& fullyCoveredPaths) {
 
-            std::vector<int> verticesInLine;
-            verticesInLine.push_back(inputGraph.edgeTail(line.front()));
-            for (const auto &e: line)
-                verticesInLine.push_back(inputGraph.edgeHead(e));
 
             // We iterate over the vertices of the line from front to back, keeping track of a subset of requests P that
             // may be picked up by the vehicle before the current vertex.
@@ -548,6 +559,12 @@ namespace mixfix {
                     const auto tt = pickupables[k].walkingTime +
                             getVehicleTravelTimeInEdgeInterval(line, pickupables[k].pickupVertexIdx, i);
                     if (tt > getMaxTravelTime(requests[pickupables[k].requestId], inputConfig)) {
+                        if (contains(fullyCoveredPaths.begin(), fullyCoveredPaths.end(), pickupables[k].requestId)) {
+                            std::cout << "Request " << pickupables[k].requestId
+                            << " is fully covered but cannot be served by line due to exceeded maximum travel time: "
+                            << "Max travel time = " << getMaxTravelTime(requests[pickupables[k].requestId], inputConfig)
+                            << std::endl;
+                        }
                         std::swap(pickupables[k], pickupables.back());
                         pickupables.pop_back();
                         continue;
@@ -603,7 +620,7 @@ namespace mixfix {
                     const auto ttExisting =
                             p.walkingTime + getVehicleTravelTimeInEdgeInterval(line, p.pickupVertexIdx, i);
                     const auto ttNew = walkingTime;
-                    if (ttNew < ttExisting) {
+                    if (ttNew < ttExisting ) {
                         p = {reqId, i, walkingTime};
                     }
                 }

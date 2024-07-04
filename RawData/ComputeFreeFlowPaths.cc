@@ -57,6 +57,7 @@ inline void printUsage() {
               "  -d <file>         CSV file that contains OD pairs (columns 'origin' and 'destination')\n"
               "  -edges            If set, origins and destinations are assumed to be edge IDs instead of vertex IDs.\n"
               "  -traversal-costs  If set, computes shortest paths based on TraversalCostAttribute rather than TravelTimeAttribute.\n"
+              "  -avoid-cost-zero  If set, adds 1 to all edge costs if any are zero in input.\n"
               "  -o <file>         place output in <file>\n"
               "  -help             display this help and exit\n";
 }
@@ -79,6 +80,7 @@ int main(int argc, char *argv[]) {
         const auto graphFileName = clp.getValue<std::string>("g");
         const auto demandFileName = clp.getValue<std::string>("d");
         auto outputFileName = clp.getValue<std::string>("o");
+        const bool useCosts = clp.isSet("traversal-costs");
         if (!endsWith(outputFileName, ".csv")) {
             outputFileName += ".csv";
         }
@@ -90,15 +92,31 @@ int main(int argc, char *argv[]) {
             throw std::invalid_argument("file not found -- '" + graphFileName + "'");
         InputGraph inputGraph(graphFile);
         graphFile.close();
+        bool hasZeroCostEdge = false;
         FORALL_VALID_EDGES(inputGraph, v, e) {
                 inputGraph.edgeTail(e) = v;
+                if ((useCosts && inputGraph.traversalCost(e) == 0) || (!useCosts && inputGraph.travelTime(e) == 0)) {
+                    hasZeroCostEdge = true;
+                    break;
+                }
+            }
+
+            if (hasZeroCostEdge) {
+                std::cout << "Warning: Graph contains edges with zero cost. Adding 1 to all edge costs.\nThis may affect the results (we technically need floating point costs).\n";
+                FORALL_VALID_EDGES(inputGraph, v, e) {
+                    if (useCosts) {
+                        inputGraph.traversalCost(e) += 1;
+                    } else {
+                        inputGraph.travelTime(e) += 1;
+                    }
+                }
             }
         std::cout << "done." << std::endl;
 
         std::unique_ptr<CH> chPtr;
         std::cout << "Building CH... " << std::flush;
         chPtr = std::make_unique<CH>();
-        if (clp.isSet("traversal-costs")) {
+        if (useCosts) {
             chPtr->preprocess<TraversalCostAttribute>(inputGraph);
         } else {
             chPtr->preprocess<TravelTimeAttribute>(inputGraph);
