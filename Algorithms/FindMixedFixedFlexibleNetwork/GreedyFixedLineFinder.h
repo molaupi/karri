@@ -224,7 +224,7 @@ namespace mixfix {
             extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlappingReachedEnd, fullyCoveredPaths, paths);
         }
 
-        static inline int square(const int n) { return n * n; }
+        static inline uint64_t square(const uint64_t n) { return n * n; }
 
         void extendLineForwards(FixedLine &line,
                                 const int &maxFlowOnLine,
@@ -241,11 +241,11 @@ namespace mixfix {
                 const auto v = inputGraph.edgeHead(line.back());
 
                 // Search for edge on which to extend line. Edge is chosen using a scoring system.
-                int maxScore = 0;
+                uint64_t maxScore = 0;
                 int extension = INVALID_EDGE;
                 int flowOnExtension = 0;
                 FORALL_INCIDENT_EDGES(inputGraph, v, e) {
-                    int score = 0; // Each path that overlaps with the edge contributes to the score as described below
+                    uint64_t score = 0; // Each path that overlaps with the edge contributes to the score as described below
                     int flow = 0; // Each path that overlaps with the edge contributes to the load with a value of one
 
                     // Paths already on line whose next edge is e increase the score by 1 + the square of the length of
@@ -253,7 +253,7 @@ namespace mixfix {
                     for (const auto &o: overlapping) {
                         const auto &path = paths.getPathFor(o.requestId);
                         if (o.end < path.size() && path[o.end] == e) {
-                            const int overlapLength = 1 + o.end - o.start;
+                            const uint64_t overlapLength = 1 + o.end - o.start;
                             score += square(overlapLength);
                             ++flow;
                         }
@@ -262,6 +262,10 @@ namespace mixfix {
                     // TODO: Sort paths by first edge to find these in O(log |paths|)
                     // Paths that begin at e increase the score by 1.
                     for (const auto &path: paths) {
+                        if (std::find_if(overlapping.begin(), overlapping.end(), [&](const OverlappingPath &o) {
+                            return o.requestId != path.getRequestId();
+                        }) != overlapping.end())
+                            continue;
                         score += path.front() == e;
                         flow += path.front() == e;
                     }
@@ -402,11 +406,11 @@ namespace mixfix {
                 const auto v = reverseGraph.edgeHead(line.back());
 
                 // Search for edge on which to extend line. Edge is chosen using a scoring system.
-                int maxScore = 0;
+                uint64_t maxScore = 0;
                 int extension = INVALID_EDGE;
                 int flowOnExtension = 0;
                 FORALL_INCIDENT_EDGES(reverseGraph, v, e) {
-                    int score = 0; // Each path that overlaps with the edge contributes to the score as described below
+                    uint64_t score = 0; // Each path that overlaps with the edge contributes to the score as described below
                     int flow = 0; // Each path that overlaps with the edge contributes to the load with a value of one
 
                     int eInForwGraph = reverseGraph.edgeId(e);
@@ -417,7 +421,7 @@ namespace mixfix {
                         const auto &path = paths.getPathFor(o.requestId);
                         LIGHT_KASSERT(o.start > 0);
                         if (path[o.start - 1] == eInForwGraph) {
-                            const int overlapLength = 1 + o.end - o.start;
+                            const uint64_t overlapLength = 1 + o.end - o.start;
                             score += square(overlapLength);
                             ++flow;
                         }
@@ -426,6 +430,10 @@ namespace mixfix {
                     // TODO: Sort paths by last edge to find these in O(log |paths|)
                     // Paths that end at e increase the score by 1.
                     for (const auto &path: paths) {
+                        if (std::find_if(overlapping.begin(), overlapping.end(), [&](const OverlappingPath &o) {
+                            return o.requestId != path.getRequestId();
+                        }) != overlapping.end())
+                            continue;
                         score += path.back() == eInForwGraph;
                         flow += path.back() == eInForwGraph;
                     }

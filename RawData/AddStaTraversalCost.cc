@@ -41,6 +41,7 @@
 #include "DataStructures/Graph/Attributes/TraversalCostAttribute.h"
 #include "DataStructures/Graph/Graph.h"
 #include "Tools/CommandLine/CommandLineParser.h"
+#include "DataStructures/Graph/Attributes/FloatingPointTraversalCostAttribute.h"
 
 inline void printUsage() {
     std::cout <<
@@ -66,7 +67,8 @@ using EdgeAttributes = EdgeAttrs<
         MapToEdgeInReducedVehAttribute,
         OsmRoadCategoryAttribute,
         TravelTimeAttribute,
-        TraversalCostAttribute>;
+        TraversalCostAttribute,
+        FloatingPointTraversalCostAttribute>;
 using InputGraph = StaticGraph<VertexAttributes, EdgeAttributes>;
 
 
@@ -114,10 +116,13 @@ int main(int argc, char *argv[]) {
 
         std::cout << "Compute new traversal costs..." << std::flush;
         FORALL_VALID_EDGES(inputGraph, u, e) {
-                const auto travelTime = inputGraph.get<TravelTimeAttribute>(e);
-                const auto flow = flows[e];
-                const auto traversalCost = flow == 0 ? travelTime : static_cast<int>(factor * travelTime +
-                                                                                     (1 - factor) * travelTime / flow);
+                const int travelTime = inputGraph.get<TravelTimeAttribute>(e);
+                const int flow = flows[e];
+                const double floatTraversalCost =
+                        flow == 0 ? static_cast<float>(travelTime) : factor * static_cast<float>(travelTime) +
+                                                                      (1.0 - factor) * static_cast<float>(travelTime) /
+                                                                      static_cast<float>(flow);
+                const int traversalCost = flow == 0 ? travelTime : static_cast<int>(floatTraversalCost);
                 LIGHT_KASSERT(factor != 1 || traversalCost == travelTime,
                               "factor is 1, but traversal cost is not equal to travel time");
                 inputGraph.get<TraversalCostAttribute>(e) = traversalCost;
