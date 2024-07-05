@@ -72,6 +72,7 @@ inline void printUsage() {
               "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
               "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
+              "  -output-paths          If set, also outputs paths as GeoJSON and CSV.\n"
               "  -help                  show usage help text.\n";
 }
 
@@ -162,6 +163,7 @@ int main(int argc, char *argv[]) {
         const auto psgHierarchyFileName = clp.getValue<std::string>("psg-h");
         const auto vehSepDecompFileName = clp.getValue<std::string>("veh-d");
         const auto psgSepDecompFileName = clp.getValue<std::string>("psg-d");
+        const auto outputFullPaths = clp.isSet("output-paths");
         auto outputFileName = clp.getValue<std::string>("o");
         if (endsWith(outputFileName, ".csv"))
             outputFileName = outputFileName.substr(0, outputFileName.size() - 4);
@@ -341,8 +343,6 @@ int main(int argc, char *argv[]) {
         pdLocsFile.close();
         std::cout << "done.\n";
 
-        using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, std::ofstream>;
-        FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdInfo, requests);
 
         std::cout << "Verifying input paths ..." << std::flush;
         verifyPathViability(preliminaryPaths, vehicleInputGraph, pdInfo);
@@ -355,20 +355,32 @@ int main(int argc, char *argv[]) {
 
         const auto numNonEmptyPaths = preliminaryPaths.numPaths();
         std::cout << "Constructing lines ..." << std::flush;
-        lineFinder.findFixedLines(preliminaryPaths);
-        std::cout << "done.\n";
 
+        using OverviewLogger = std::ofstream;
+        if (!outputFullPaths) {
+            using PathLogger = NullLogger;
+            using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, OverviewLogger, PathLogger>;
+            FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdInfo, requests);
+            lineFinder.findFixedLines(preliminaryPaths, false);
+            std::cout << "done.\n";
+        } else {
+            using PathLogger = std::ofstream;
+            using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, OverviewLogger, PathLogger>;
+            FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdInfo, requests);
+            lineFinder.findFixedLines(preliminaryPaths, true);
+            std::cout << "done.\n";
+
+            std::cout << "Writing GeoJSON to output file... " << std::flush;
+            // Open the output file and write the GeoJson.
+            std::ofstream geoJsonOutputFile(outputFileName + ".geojson");
+            if (!geoJsonOutputFile.good())
+                throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".geojson" + "'");
+            geoJsonOutputFile << std::setw(2) << lineFinder.getLinesGeoJson() << std::endl;
+            std::cout << "done.\n";
+        }
 
         std::cout << "Could serve " << numNonEmptyPaths - preliminaryPaths.numPaths() << " / " << requests.size()
                   << " requests with fixed lines." << std::endl;
-
-        std::cout << "Writing GeoJSON to output file... " << std::flush;
-        // Open the output file and write the GeoJson.
-        std::ofstream geoJsonOutputFile(outputFileName + ".geojson");
-        if (!geoJsonOutputFile.good())
-            throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".geojson" + "'");
-        geoJsonOutputFile << std::setw(2) << lineFinder.getLinesGeoJson() << std::endl;
-        std::cout << "done.\n";
 
     } catch (std::exception &e) {
         std::cerr << argv[0] << ": " << e.what() << '\n';

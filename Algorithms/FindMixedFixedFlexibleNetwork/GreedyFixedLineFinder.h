@@ -48,7 +48,8 @@ namespace mixfix {
     // Technologies, 2024, https://doi.org/10.1016/j.trc.2024.104580.
     template<typename VehicleInputGraphT,
             typename PreliminaryPathsT,
-            typename LoggerT = NullLogger>
+            typename OverviewLoggerT = NullLogger,
+            typename FullPathLoggerT = NullLogger>
     class GreedyFixedLineFinder {
 
         struct ServedRequest {
@@ -66,7 +67,7 @@ namespace mixfix {
                 : inputGraph(inputGraph), reverseGraph(reverseGraph),
                   pdInfo(pdInfo), requests(requests), inputConfig(InputConfig::getInstance()),
                   residualFlow(inputGraph.numEdges(), 0),
-                  lineOverviewLogger(LogManager<LoggerT>::getLogger("lines.csv",
+                  lineOverviewLogger(LogManager<OverviewLoggerT>::getLogger("lines.csv",
                                                                     "line_id,"
                                                                     "initial_edge,"
                                                                     "max_flow,"
@@ -74,7 +75,7 @@ namespace mixfix {
                                                                     "total_travel_time,"
                                                                     "num_pax_served,"
                                                                     "num_pax_fully_covered\n")),
-                  linePathLogger(LogManager<LoggerT>::getLogger("line_paths.csv",
+                  linePathLogger(LogManager<FullPathLoggerT>::getLogger("line_paths.csv",
                                                                 "line_id,"
                                                                 "path_as_edge_ids,"
                                                                 "path_as_lat_lng,"
@@ -82,11 +83,13 @@ namespace mixfix {
 
         // Finds fixed lines given preliminary rider paths.
         // Each path is expected to be a sequence of edges in the network.
-        void findFixedLines(PreliminaryPathsT &paths) {
+        void findFixedLines(PreliminaryPathsT &paths, const bool buildGeoJson = false) {
 
             lines.clear();
-            linesGeoJson.clear();
-            linesGeoJson["type"] = "FeatureCollection";
+            if (buildGeoJson) {
+                linesGeoJson.clear();
+                linesGeoJson["type"] = "FeatureCollection";
+            }
 
             while (!paths.empty()) {
                 std::cout << "\n\n";
@@ -127,7 +130,7 @@ namespace mixfix {
                 if (pax.size() < inputConfig.minNumPaxPerLine)
                     break;
 
-                logLine(line, lines.size(), initialEdge, maxFlowOnLine, pax, fullyCoveredPaths.size());
+                logLine(line, lines.size(), initialEdge, maxFlowOnLine, pax, fullyCoveredPaths.size(), buildGeoJson);
 
                 // Add line
                 lines.push_back(std::make_pair(std::move(line), std::move(pax)));
@@ -705,7 +708,8 @@ namespace mixfix {
 
         void
         logLine(const FixedLine &line, const int lineId, const int initialEdge, const int maxFlow,
-                const std::vector<ServedRequest> &pax, const int numFullyCovered) {
+                const std::vector<ServedRequest> &pax, const int numFullyCovered,
+                const bool buildGeoJson) {
 
             int totalTravelTime = 0;
             for (const auto &e: line)
@@ -745,8 +749,10 @@ namespace mixfix {
                 linePathLogger << pax[i].requestId << (i < pax.size() - 1 ? " : " : "\n");
 
 
-            // Also write GeoJson for line:
-            addGeoJsonFeaturesForLine(latLngPath, lineId, pax, linesGeoJson);
+            if (buildGeoJson) {
+                // Also write GeoJson for line:
+                addGeoJsonFeaturesForLine(latLngPath, lineId, pax, linesGeoJson);
+            }
         }
 
         void addGeoJsonFeaturesForLine(const std::vector<LatLng> &latLngPath, const int lineId,
@@ -795,8 +801,8 @@ namespace mixfix {
         std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> lines;
         nlohmann::json linesGeoJson;
 
-        LoggerT &lineOverviewLogger;
-        LoggerT &linePathLogger;
+        OverviewLoggerT &lineOverviewLogger;
+        FullPathLoggerT &linePathLogger;
 
     };
 
