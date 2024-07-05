@@ -48,8 +48,10 @@ namespace mixfix {
         int minMaxFlowOnLine = INFTY;
         int minNumPaxPerLine = INFTY;
         double maxFlowRatioOnLine = 0.0;
+        double overlapScoreExponent = 0.0;
 
         double alpha = -1;
         int beta = -1;
+
     };
 }

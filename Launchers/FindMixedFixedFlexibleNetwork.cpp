@@ -148,6 +148,7 @@ int main(int argc, char *argv[]) {
         inputConfig.minMaxFlowOnLine = clp.getValue<int>("min-max-line-flow", 5); // Delta1 in paper
         inputConfig.maxFlowRatioOnLine = clp.getValue<double>("max-flow-dif", 10.0); // Delta2 in paper
         inputConfig.minNumPaxPerLine = clp.getValue<int>("min-num-line-pax", 5); // Delta3 in paper
+        inputConfig.overlapScoreExponent = clp.getValue<double>("overlap-score-exp", 2.0); // Exponent for weighting overlap length
 
         inputConfig.alpha = clp.getValue<double>("a", 1.7);
         inputConfig.beta = clp.getValue<int>("b", 120) * 10;

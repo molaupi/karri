@@ -226,6 +226,11 @@ namespace mixfix {
 
         static inline uint64_t square(const uint64_t n) { return n * n; }
 
+        uint64_t computeScoreForOverlapLength(const uint64_t overlapLength) {
+            const auto res = std::pow(overlapLength, InputConfig::getInstance().overlapScoreExponent);
+            return static_cast<uint64_t>(res);
+        }
+
         void extendLineForwards(FixedLine &line,
                                 const int &maxFlowOnLine,
                                 int &minFlowOnLine,
@@ -254,7 +259,7 @@ namespace mixfix {
                         const auto &path = paths.getPathFor(o.requestId);
                         if (o.end < path.size() && path[o.end] == e) {
                             const uint64_t overlapLength = 1 + o.end - o.start;
-                            score += square(overlapLength);
+                            score += computeScoreForOverlapLength(overlapLength);
                             ++flow;
                         }
                     }
@@ -422,7 +427,7 @@ namespace mixfix {
                         LIGHT_KASSERT(o.start > 0);
                         if (path[o.start - 1] == eInForwGraph) {
                             const uint64_t overlapLength = 1 + o.end - o.start;
-                            score += square(overlapLength);
+                            score += computeScoreForOverlapLength(overlapLength);
                             ++flow;
                         }
                     }
@@ -557,7 +562,7 @@ namespace mixfix {
         findPassengersServableByLine(const FixedLine &line,
                                      const std::vector<int> &verticesInLine,
                                      const IsPassengerAlreadyServedT &isPaxAlreadyServedByOtherLine,
-                                     const std::vector<int> &) {
+                                     const std::vector<int> &) const {
 
 
             // We iterate over the vertices of the line from front to back, keeping track of a subset of requests P that
