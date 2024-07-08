@@ -67,6 +67,10 @@ namespace mixfix {
                 : inputGraph(inputGraph), reverseGraph(reverseGraph),
                   pdInfo(pdInfo), requests(requests), inputConfig(InputConfig::getInstance()),
                   residualFlow(inputGraph.numEdges(), 0),
+                  firstPathStartingAtEdge(inputGraph.numEdges() + 1, 0),
+                  pathsStartingAtEdge(),
+                  firstPathEndingAtEdge(inputGraph.numEdges() + 1, 0),
+                  pathsEndingAtEdge(),
                   lineOverviewLogger(LogManager<OverviewLoggerT>::getLogger("lines.csv",
                                                                             "line_id,"
                                                                             "initial_edge,"
@@ -91,12 +95,17 @@ namespace mixfix {
                 linesGeoJson["type"] = "FeatureCollection";
             }
 
+            initializePathsStartingOrEndingAtEdge<true>(paths, firstPathStartingAtEdge, pathsStartingAtEdge);
+            initializePathsStartingOrEndingAtEdge<false>(paths, firstPathEndingAtEdge, pathsEndingAtEdge);
+
+            FixedLine line;
+            std::vector<int> fullyCoveredPaths;
             while (!paths.empty()) {
                 std::cout << "\n\n";
-                FixedLine line;
                 int initialEdge;
                 int maxFlowOnLine;
-                std::vector<int> fullyCoveredPaths;
+                line.clear();
+                fullyCoveredPaths.clear();
                 constructNextLine(paths, line, initialEdge, maxFlowOnLine, fullyCoveredPaths);
 
                 if (maxFlowOnLine < inputConfig.minMaxFlowOnLine)
@@ -122,6 +131,10 @@ namespace mixfix {
                     }
                     paths.removePathForRequest(served.requestId);
                 }
+                updatePathsStartingOrEndingAtEdge(paths, firstPathStartingAtEdge, pathsStartingAtEdge);
+                verifyPathsStartingOrEndingAtEdge<true>(paths, firstPathStartingAtEdge, pathsStartingAtEdge);
+                updatePathsStartingOrEndingAtEdge(paths, firstPathEndingAtEdge, pathsEndingAtEdge);
+                verifyPathsStartingOrEndingAtEdge<false>(paths, firstPathEndingAtEdge, pathsEndingAtEdge);
                 std::cout
                         << "Number of passengers served whose paths are not fully covered by line (origin to destination): "
                         << numServedButNotFullyCovered << std::endl;
@@ -236,9 +249,9 @@ namespace mixfix {
 
         template<
                 typename DoesExtensionContinueOverlapT,
-                typename DoesExtensionStartOverlapT,
+                typename CountOverlapsStartingAtExtensionT,
                 typename ExtendOverlapIfPossibleT,
-                typename StartOverlapIfPossibleT
+                typename StartNewOverlapsAtExtensionT
         >
         void extendLine(FixedLine &line,
                         const int &maxFlowOnLine,
@@ -247,9 +260,9 @@ namespace mixfix {
                         const PreliminaryPathsT &paths,
                         const VehicleInputGraphT &graph,
                         const DoesExtensionContinueOverlapT &doesExtensionContinueOverlap,
-                        const DoesExtensionStartOverlapT &doesExtensionStartOverlap,
+                        const CountOverlapsStartingAtExtensionT &countOverlapsStartingAtExtension,
                         const ExtendOverlapIfPossibleT &extendOverlapIfPossible,
-                        const StartOverlapIfPossibleT &startOverlapIfPossible) {
+                        const StartNewOverlapsAtExtensionT &startNewOverlapsAtExtension) {
 
             // Begin extending
             double flowDif = 0.0;
@@ -278,10 +291,9 @@ namespace mixfix {
                     }
 
                     // Paths that begin at e increase the score by 1.
-                    for (const auto &path: paths) {
-                        score += doesExtensionStartOverlap(path, eInForwGraph);
-                        flow += doesExtensionStartOverlap(path, eInForwGraph);
-                    }
+                    const int numNewOverlaps = countOverlapsStartingAtExtension(paths, eInForwGraph);
+                    score += numNewOverlaps;
+                    flow += numNewOverlaps;
 
                     if (score > maxScore) {
                         maxScore = score;
@@ -344,9 +356,7 @@ namespace mixfix {
                 }
 
                 // Add passengers whose paths start at extension
-                for (const auto &path: paths) {
-                    startOverlapIfPossible(overlapping, path, extensionInForwGraph, newReachedVertex);
-                }
+                startNewOverlapsAtExtension(overlapping, paths, extensionInForwGraph, newReachedVertex);
 
                 // Add extension
                 line.push_back(extension);
@@ -375,9 +385,13 @@ namespace mixfix {
                 return path[o.end] == extension;
             };
 
-            // Hook function for checking if an extension starts an overlap with a path when deciding next extension.
-            static auto doesExtensionStartOverlap = [](const Path &path, const int extension) {
-                return path.front() == extension;
+            // Hook function for counting the number of new overlaps when deciding next extension.
+            auto countOverlapsStartingAtExtension = [this](const PreliminaryPathsT &paths, const int extension) {
+//                return firstPathStartingAtEdge[extension + 1] - firstPathStartingAtEdge[extension];
+                int res = 0;
+                for (const auto &path: paths)
+                    res += path.front() == extension;
+                return res;
             };
 
             // Hook function for extending an overlap if possible for a chosen extension.
@@ -410,37 +424,42 @@ namespace mixfix {
 
             // Hook function for starting an overlap if possible for a chosen extension.
             // If extension starts an overlap with the path, we do not know an overlap already, and the path is not
-            // fully covered right away, the overlap is added and true is returned. Otherwise, returns false.
-            const auto startOverlapIfPossible = [this, &fullyCoveredPaths](
+            // fully covered right away, the overlap is added to overlapping.
+            const auto startNewOverlapsAtExtension = [this, &fullyCoveredPaths](
                     std::vector<OverlappingPath> &overlapping,
-                    const Path &path,
+                    const PreliminaryPathsT &paths,
                     const int extension,
                     const int newReachedVertex) {
-                if (path.front() != extension)
-                    return false;
                 const auto &dropoffsAtNewVertex = pdInfo.getPossibleDropoffsAt(newReachedVertex);
-                KASSERT(contains(pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).begin(),
-                                 pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).end(),
-                                 path.getRequestId()),
-                        "Path that begins at extension does not have a pickup at the tail of the extension.");
+//                for (int idx = firstPathStartingAtEdge[extension];
+//                     idx < firstPathStartingAtEdge[extension + 1]; ++idx) {
+//                    const auto &path = paths.getPathFor(pathsStartingAtEdge[idx]);
+//                    LIGHT_KASSERT(path.front() == extension);
+                for (const auto &path: paths) {
+                    if (path.front() != extension)
+                        continue;
+                    KASSERT(contains(pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).begin(),
+                                     pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).end(),
+                                     path.getRequestId()),
+                            "Path that begins at extension does not have a pickup at the tail of the extension.");
 
-                // If we already know an earlier overlap of the path with the line, we only keep the earlier one
-                // and do not add a second overlap (happens if a path visits the same edge multiple times).
-                if (earlierOverlapKnown(path.getRequestId(), overlapping))
-                    return false;
+                    // If we already know an earlier overlap of the path with the line, we only keep the earlier one
+                    // and do not add a second overlap (happens if a path visits the same edge multiple times).
+                    if (earlierOverlapKnown(path.getRequestId(), overlapping))
+                        continue;
 
-                if (contains(dropoffsAtNewVertex.begin(), dropoffsAtNewVertex.end(), path.getRequestId())) {
-                    fullyCoveredPaths.push_back(path.getRequestId());
-                    return false;
+                    if (contains(dropoffsAtNewVertex.begin(), dropoffsAtNewVertex.end(), path.getRequestId())) {
+                        fullyCoveredPaths.push_back(path.getRequestId());
+                        continue;
+                    }
+
+                    overlapping.push_back({path.getRequestId(), 0, 1, true, false});
                 }
-
-                overlapping.push_back({path.getRequestId(), 0, 1, true, false});
-                return true;
             };
 
             // Execute line extension with the forward extension hooks
             extendLine(line, maxFlowOnLine, minFlowOnLine, overlapping, paths, inputGraph, doesExtensionContinueOverlap,
-                       doesExtensionStartOverlap, extendOverlapIfPossible, startOverlapIfPossible);
+                       countOverlapsStartingAtExtension, extendOverlapIfPossible, startNewOverlapsAtExtension);
         }
 
 
@@ -465,8 +484,12 @@ namespace mixfix {
             };
 
             // Hook function for checking if an extension starts an overlap with a path when deciding next extension.
-            static auto doesExtensionStartOverlap = [](const Path &path, const int extension) {
-                return path.back() == extension;
+            static auto countOverlapsStartingAtExtension = [this](const PreliminaryPathsT &paths, const int extension) {
+                int res = 0;
+                for (const auto &path: paths)
+                    res += path.back() == extension;
+                return res;
+//                return firstPathEndingAtEdge[extension + 1] - firstPathEndingAtEdge[extension];
             };
 
             // Hook function for extending an overlap if possible for a chosen extension.
@@ -493,36 +516,40 @@ namespace mixfix {
                 return false;
             };
 
-            // Hook function for starting an overlap if possible for a chosen extension.
+            // Hook function for starting overlaps for a chosen extension.
             // If extension starts an overlap with the path, we do not know an overlap already, and the path is not
-            // fully covered right away, the overlap is added and true is returned. Otherwise, returns false.
-            const auto startOverlapIfPossible = [this, &fullyCoveredPaths](
+            // fully covered right away, the overlap is added to overlapping..
+            const auto startNewOverlapsAtExtension = [this, &fullyCoveredPaths](
                     std::vector<OverlappingPath> &overlapping,
-                    const Path &path,
+                    const PreliminaryPathsT &paths,
                     const int extension,
                     const int newReachedVertex) {
-                if (path.back() != extension)
-                    return false;
-                KASSERT(contains(
-                        pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extension)).begin(),
-                        pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extension)).end(),
-                        path.getRequestId()),
-                        "Path that ends at extension does not have a dropoff at the head of the extension.");
-
                 const auto &pickupsAtNewVertex = pdInfo.getPossiblePickupsAt(newReachedVertex);
+//                for (int idx = firstPathEndingAtEdge[extension]; idx < firstPathEndingAtEdge[extension + 1]; ++idx) {
+//                    const auto &path = paths.getPathFor(pathsEndingAtEdge[idx]);
+//                    LIGHT_KASSERT(path.back() == extension);
 
-                // If we already know a later overlap of the path with the line, we only keep the later one
-                // and do not add a second overlap (happens if a path visits the same edge multiple times).
-                if (laterOverlapKnown(path.getRequestId(), overlapping))
-                    return false;
+                for (const auto &path: paths) {
+                    if (path.back() != extension)
+                        continue;
 
-                if (contains(pickupsAtNewVertex.begin(), pickupsAtNewVertex.end(), path.getRequestId())) {
-                    fullyCoveredPaths.push_back(path.getRequestId());
-                    return false;
+                    KASSERT(contains(pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extension)).begin(),
+                                     pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extension)).end(),
+                                     path.getRequestId()),
+                            "Path that ends at extension does not have a dropoff at the head of the extension.");
+
+                    // If we already know a later overlap of the path with the line, we only keep the later one
+                    // and do not add a second overlap (happens if a path visits the same edge multiple times).
+                    if (laterOverlapKnown(path.getRequestId(), overlapping))
+                        continue;
+
+                    if (contains(pickupsAtNewVertex.begin(), pickupsAtNewVertex.end(), path.getRequestId())) {
+                        fullyCoveredPaths.push_back(path.getRequestId());
+                        continue;
+                    }
+
+                    overlapping.push_back({path.getRequestId(), path.size() - 1, path.size(), false, true});
                 }
-
-                overlapping.push_back({path.getRequestId(), path.size() - 1, path.size(), false, true});
-                return true;
             };
 
 
@@ -543,8 +570,8 @@ namespace mixfix {
 
             // Execute line extension with the backward extension hooks
             extendLine(line, maxFlowOnLine, minFlowOnLine, overlapping, paths, reverseGraph,
-                       doesExtensionContinueOverlap, doesExtensionStartOverlap, extendOverlapIfPossible,
-                       startOverlapIfPossible);
+                       doesExtensionContinueOverlap, countOverlapsStartingAtExtension, extendOverlapIfPossible,
+                       startNewOverlapsAtExtension);
 
             // Convert line back into forwards representation
             std::reverse(line.begin(), line.end());
@@ -670,6 +697,94 @@ namespace mixfix {
             });
         }
 
+        template<bool Starting>
+        void initializePathsStartingOrEndingAtEdge(const PreliminaryPathsT &paths,
+                                                   std::vector<int> &firstPathAtEdge,
+                                                   std::vector<int> &pathsAtEdge) {
+            LIGHT_KASSERT(firstPathAtEdge.size() == inputGraph.numEdges() + 1);
+            LIGHT_KASSERT(std::all_of(firstPathAtEdge.begin(), firstPathAtEdge.end(),
+                                      [](const int i) { return i == 0; }));
+            // Count number of paths starting at each edge:
+            for (const auto &path: paths) {
+                KASSERT(path.size() > 0);
+                if constexpr (Starting) {
+                    ++firstPathAtEdge[path.front()];
+                } else {
+                    ++firstPathAtEdge[path.back()];
+                }
+            }
+
+            // Compute prefix sum:
+            int sum = 0;
+            for (int i = 0; i < firstPathAtEdge.size(); ++i) {
+                const int tmp = firstPathAtEdge[i];
+                firstPathAtEdge[i] = sum;
+                sum += tmp;
+            }
+            LIGHT_KASSERT(firstPathAtEdge.back() == paths.numPaths());
+
+            // Write request IDs to right spots, using firstPathStartingAtEdge[e] as counter for edge e.
+            pathsAtEdge.resize(paths.numPaths());
+            for (const auto &path: paths) {
+                const auto e = Starting ? path.front() : path.back();
+                pathsAtEdge[firstPathAtEdge[e]] = path.getRequestId();
+                ++firstPathAtEdge[e];
+            }
+
+            // Restore indices in firstPathStartingAtEdge:
+            for (int i = firstPathAtEdge.size() - 1; i > 0; --i) {
+                firstPathAtEdge[i] = firstPathAtEdge[i - 1];
+            }
+            firstPathAtEdge[0] = 0;
+
+            verifyPathsStartingOrEndingAtEdge<Starting>(paths, firstPathAtEdge, pathsAtEdge);
+        }
+
+        void updatePathsStartingOrEndingAtEdge(const PreliminaryPathsT &paths,
+                                               std::vector<int> &firstPathAtEdge,
+                                               std::vector<int> &pathsAtEdge) {
+            // Iterate through edges and remove all requests who no longer have a path in paths:
+            int numRemoved = 0;
+            int curEdge = 0;
+            for (int readIdx = 0; readIdx < pathsAtEdge.size(); ++readIdx) {
+                // If we reach end of range of current edge, update end of range and move on to next edge:
+                while (firstPathAtEdge[curEdge + 1] <= readIdx) {
+                    firstPathAtEdge[curEdge + 1] -= numRemoved;
+                    ++curEdge;
+                }
+                const int writeIdx = readIdx - numRemoved;
+                LIGHT_KASSERT(firstPathAtEdge[curEdge] <= writeIdx);
+
+                // Check if path is still in paths and possibly remove it:
+                const auto reqId = pathsAtEdge[readIdx];
+                if (paths.hasPathFor(reqId)) {
+                    pathsAtEdge[writeIdx] = reqId;
+                } else {
+                    ++numRemoved;
+                }
+            }
+            LIGHT_KASSERT(pathsAtEdge.size() - numRemoved == paths.numPaths());
+            firstPathAtEdge.back() -= numRemoved;
+            pathsAtEdge.erase(pathsAtEdge.end() - numRemoved, pathsAtEdge.end());
+        }
+
+        template<bool Starting>
+        void verifyPathsStartingOrEndingAtEdge(const PreliminaryPathsT &paths,
+                                               const std::vector<int> &firstPathAtEdge,
+                                               const std::vector<int> &pathsAtEdge) const {
+            // Verify:
+            for (int i = 0; i < firstPathAtEdge.size() - 1; ++i) {
+                for (int j = firstPathAtEdge[i]; j < firstPathAtEdge[i + 1]; ++j) {
+                    if constexpr (Starting)
+                        KASSERT(paths.getPathFor(pathsAtEdge[j]).front() == i,
+                                "Path does not start at edge it is supposed to start at.");
+                    else
+                        KASSERT(paths.getPathFor(pathsAtEdge[j]).back() == i,
+                                "Path does not end at edge it is supposed to end at.");
+                }
+            }
+        }
+
         // Verify that every fully covered path has a possible pickup and dropoff location on the line
         void verifyFullyCoveredPathsPickupsAndDropoffs(const std::vector<int> &verticesInLine,
                                                        const std::vector<int> &fullyCoveredPaths) {
@@ -790,6 +905,16 @@ namespace mixfix {
         const InputConfig &inputConfig;
 
         TimestampedVector<int> residualFlow;
+
+        // For every edge e, the IDs of not-yet-served requests whose paths start at e are stored in
+        // pathsStartingAtEdge[firstPathStartingAtEdge[e]..firstPathStartingAtEdge[e + 1]].
+        std::vector<int> firstPathStartingAtEdge;
+        std::vector<int> pathsStartingAtEdge;
+
+        // For every edge e, the IDs of not-yet-served requests whose paths end at e are stored in
+        // pathsEndingAtEdge[firstPathEndingAtEdge[e]..firstPathEndingAtEdge[e + 1]].
+        std::vector<int> firstPathEndingAtEdge;
+        std::vector<int> pathsEndingAtEdge;
 
         std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> lines;
         nlohmann::json linesGeoJson;
