@@ -34,6 +34,7 @@
 #include "DataStructures/Containers/Subset.h"
 #include "PickupDropoffManager.h"
 #include "InputConfig.h"
+#include "Tools/Timer.h"
 
 #include <nlohmann/json.hpp>
 
@@ -60,6 +61,12 @@ namespace mixfix {
             int dropoffWalkingTime;
         };
 
+        struct RunningTimePerLineStats {
+            uint64_t constructLineTime = 0;
+            uint64_t findServedPaxTime = 0;
+            uint64_t updatePathsTime = 0;
+        };
+
     public:
 
         GreedyFixedLineFinder(const VehicleInputGraphT &inputGraph, const VehicleInputGraphT &reverseGraph,
@@ -78,13 +85,15 @@ namespace mixfix {
                                                                             "num_edges,"
                                                                             "total_travel_time,"
                                                                             "num_pax_served,"
-                                                                            "num_pax_fully_covered\n")),
+                                                                            "num_pax_fully_covered,"
+                                                                            "construct_line_time,"
+                                                                            "find_served_pax_time,"
+                                                                            "update_paths_time\n")),
                   linePathLogger(LogManager<FullPathLoggerT>::getLogger("line_paths.csv",
                                                                         "line_id,"
                                                                         "path_as_edge_ids,"
                                                                         "path_as_lat_lng,"
                                                                         "served\n")) {}
-
         // Finds fixed lines given preliminary rider paths.
         // Each path is expected to be a sequence of edges in the network.
         void findFixedLines(PreliminaryPathsT &paths, const bool buildGeoJson = false) {
@@ -100,30 +109,39 @@ namespace mixfix {
 
             FixedLine line;
             std::vector<int> fullyCoveredPaths;
+            Timer timer;
             while (!paths.empty()) {
                 std::cout << "\n\n";
+
+                RunningTimePerLineStats runningTimeStats;
+                timer.restart();
                 int initialEdge;
                 int maxFlowOnLine;
                 line.clear();
                 fullyCoveredPaths.clear();
                 constructNextLine(paths, line, initialEdge, maxFlowOnLine, fullyCoveredPaths);
+                runningTimeStats.constructLineTime = timer.elapsed<std::chrono::nanoseconds>();
 
                 if (maxFlowOnLine < inputConfig.minMaxFlowOnLine)
                     break;
 
+                timer.restart();
                 std::vector<int> verticesInLine;
                 verticesInLine.push_back(inputGraph.edgeTail(line.front()));
                 for (const auto &e: line)
                     verticesInLine.push_back(inputGraph.edgeHead(e));
 
-                verifyFullyCoveredPathsPickupsAndDropoffs(verticesInLine, fullyCoveredPaths);
+                KASSERT(verifyFullyCoveredPathsPickupsAndDropoffs(verticesInLine, fullyCoveredPaths),
+                        "Line does not have possible pickup and dropoff locations for all fully covered paths.");
 
                 const auto &pax = findPassengersServableByLine(line, verticesInLine, [&](const int reqId) {
                     return !paths.hasPathFor(reqId);
                 }, fullyCoveredPaths);
+                runningTimeStats.findServedPaxTime = timer.elapsed<std::chrono::nanoseconds>();
                 std::cout << "Found a line of length " << line.size() << " that can serve " << pax.size()
                           << " passengers. (Num fully covered paths = " << fullyCoveredPaths.size() << ")" << std::endl;
 
+                timer.restart();
                 int numServedButNotFullyCovered = 0;
                 for (const auto &served: pax) {
                     if (!contains(fullyCoveredPaths.begin(), fullyCoveredPaths.end(), served.requestId)) {
@@ -135,6 +153,7 @@ namespace mixfix {
                 verifyPathsStartingOrEndingAtEdge<true>(paths, firstPathStartingAtEdge, pathsStartingAtEdge);
                 updatePathsStartingOrEndingAtEdge(paths, firstPathEndingAtEdge, pathsEndingAtEdge);
                 verifyPathsStartingOrEndingAtEdge<false>(paths, firstPathEndingAtEdge, pathsEndingAtEdge);
+                runningTimeStats.updatePathsTime = timer.elapsed<std::chrono::nanoseconds>();
                 std::cout
                         << "Number of passengers served whose paths are not fully covered by line (origin to destination): "
                         << numServedButNotFullyCovered << std::endl;
@@ -142,7 +161,8 @@ namespace mixfix {
                 if (pax.size() < inputConfig.minNumPaxPerLine)
                     break;
 
-                logLine(line, lines.size(), initialEdge, maxFlowOnLine, pax, fullyCoveredPaths.size(), buildGeoJson);
+                logLine(line, lines.size(), initialEdge, maxFlowOnLine, pax, fullyCoveredPaths.size(), runningTimeStats,
+                        buildGeoJson);
 
                 // Add line
                 lines.push_back(std::make_pair(std::move(line), std::move(pax)));
@@ -386,12 +406,8 @@ namespace mixfix {
             };
 
             // Hook function for counting the number of new overlaps when deciding next extension.
-            auto countOverlapsStartingAtExtension = [this](const PreliminaryPathsT &paths, const int extension) {
-//                return firstPathStartingAtEdge[extension + 1] - firstPathStartingAtEdge[extension];
-                int res = 0;
-                for (const auto &path: paths)
-                    res += path.front() == extension;
-                return res;
+            auto countOverlapsStartingAtExtension = [this](const PreliminaryPathsT &, const int extension) {
+                return firstPathStartingAtEdge[extension + 1] - firstPathStartingAtEdge[extension];
             };
 
             // Hook function for extending an overlap if possible for a chosen extension.
@@ -431,13 +447,10 @@ namespace mixfix {
                     const int extension,
                     const int newReachedVertex) {
                 const auto &dropoffsAtNewVertex = pdInfo.getPossibleDropoffsAt(newReachedVertex);
-//                for (int idx = firstPathStartingAtEdge[extension];
-//                     idx < firstPathStartingAtEdge[extension + 1]; ++idx) {
-//                    const auto &path = paths.getPathFor(pathsStartingAtEdge[idx]);
-//                    LIGHT_KASSERT(path.front() == extension);
-                for (const auto &path: paths) {
-                    if (path.front() != extension)
-                        continue;
+                for (int idx = firstPathStartingAtEdge[extension];
+                     idx < firstPathStartingAtEdge[extension + 1]; ++idx) {
+                    const auto &path = paths.getPathFor(pathsStartingAtEdge[idx]);
+                    LIGHT_KASSERT(path.front() == extension);
                     KASSERT(contains(pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).begin(),
                                      pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).end(),
                                      path.getRequestId()),
@@ -484,12 +497,8 @@ namespace mixfix {
             };
 
             // Hook function for checking if an extension starts an overlap with a path when deciding next extension.
-            static auto countOverlapsStartingAtExtension = [this](const PreliminaryPathsT &paths, const int extension) {
-                int res = 0;
-                for (const auto &path: paths)
-                    res += path.back() == extension;
-                return res;
-//                return firstPathEndingAtEdge[extension + 1] - firstPathEndingAtEdge[extension];
+            static auto countOverlapsStartingAtExtension = [this](const PreliminaryPathsT &, const int extension) {
+                return firstPathEndingAtEdge[extension + 1] - firstPathEndingAtEdge[extension];
             };
 
             // Hook function for extending an overlap if possible for a chosen extension.
@@ -525,14 +534,9 @@ namespace mixfix {
                     const int extension,
                     const int newReachedVertex) {
                 const auto &pickupsAtNewVertex = pdInfo.getPossiblePickupsAt(newReachedVertex);
-//                for (int idx = firstPathEndingAtEdge[extension]; idx < firstPathEndingAtEdge[extension + 1]; ++idx) {
-//                    const auto &path = paths.getPathFor(pathsEndingAtEdge[idx]);
-//                    LIGHT_KASSERT(path.back() == extension);
-
-                for (const auto &path: paths) {
-                    if (path.back() != extension)
-                        continue;
-
+                for (int idx = firstPathEndingAtEdge[extension]; idx < firstPathEndingAtEdge[extension + 1]; ++idx) {
+                    const auto &path = paths.getPathFor(pathsEndingAtEdge[idx]);
+                    LIGHT_KASSERT(path.back() == extension);
                     KASSERT(contains(pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extension)).begin(),
                                      pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extension)).end(),
                                      path.getRequestId()),
@@ -786,7 +790,7 @@ namespace mixfix {
         }
 
         // Verify that every fully covered path has a possible pickup and dropoff location on the line
-        void verifyFullyCoveredPathsPickupsAndDropoffs(const std::vector<int> &verticesInLine,
+        bool verifyFullyCoveredPathsPickupsAndDropoffs(const std::vector<int> &verticesInLine,
                                                        const std::vector<int> &fullyCoveredPaths) {
             int numFoundPickup = 0;
             BitVector foundPickup(fullyCoveredPaths.size());
@@ -810,13 +814,12 @@ namespace mixfix {
                 if (numFoundPickup == fullyCoveredPaths.size() && numFoundDropoff == fullyCoveredPaths.size())
                     break;
             }
-            LIGHT_KASSERT(numFoundPickup == fullyCoveredPaths.size() && numFoundDropoff == fullyCoveredPaths.size(),
-                          "Line does not have possible pickup and dropoff locations for all fully covered paths.");
+            return numFoundPickup == fullyCoveredPaths.size() && numFoundDropoff == fullyCoveredPaths.size();
         }
 
         void
         logLine(const FixedLine &line, const int lineId, const int initialEdge, const int maxFlow,
-                const std::vector<ServedRequest> &pax, const int numFullyCovered,
+                const std::vector<ServedRequest> &pax, const int numFullyCovered, const RunningTimePerLineStats& runningTimeStats,
                 const bool buildGeoJson) {
 
             int totalTravelTime = 0;
@@ -829,7 +832,10 @@ namespace mixfix {
                                << line.size() << ", "
                                << totalTravelTime << ", "
                                << pax.size() << ", "
-                               << numFullyCovered << "\n";
+                               << numFullyCovered << ", "
+                               << runningTimeStats.constructLineTime << ", "
+                               << runningTimeStats.findServedPaxTime << ", "
+                               << runningTimeStats.updatePathsTime << "\n";
 
 
             linePathLogger << lineId << ", ";
