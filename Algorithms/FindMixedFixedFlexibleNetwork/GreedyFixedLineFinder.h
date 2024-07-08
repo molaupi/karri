@@ -279,8 +279,8 @@ namespace mixfix {
 
                     // Paths that begin at e increase the score by 1.
                     for (const auto &path: paths) {
-                        score += doesExtensionStartOverlap(path, extension);
-                        flow += doesExtensionStartOverlap(path, extension);
+                        score += doesExtensionStartOverlap(path, eInForwGraph);
+                        flow += doesExtensionStartOverlap(path, eInForwGraph);
                     }
 
                     if (score > maxScore) {
