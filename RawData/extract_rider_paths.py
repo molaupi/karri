@@ -36,6 +36,11 @@ argParser.add_argument("-p", "--inpaths", type=str, help="path to vehpaths.csv f
 argParser.add_argument("-v", "--vehicles", type=str, help="path to .csv file containing initial vehicle locations",
                        required=True,
                        dest="vehiclesfile")
+argParser.add_argument("--pickup-locs", action="store_true", dest="include_pickup_locs",
+                       help="include pickup location in path")
+argParser.add_argument("--no-pickup-locs", action="store_false", dest="include_pickup_locs",
+                       help="do not include pickup location in path")
+argParser.set_defaults(include_pickup_locs=True)
 argParser.add_argument("-o", "--output", type=str, help="path to output file", required=True, dest="output")
 
 args = argParser.parse_args()
@@ -110,7 +115,8 @@ def getRiderPath(asgn, vehpaths):
     path_as_list = vehpaths.loc[vehpaths["vehicle_id"] == vehid]["graph_edge_ids_to_stop"].values[0]
     path_as_list = path_as_list[asgn[1] + 1:asgn[2] + 1]
     path_as_list = [s for s in path_as_list if s != ""]
-    path_as_list = [getPickupLoc(asgn, vehpaths)] + path_as_list
+    if args.include_pickup_locs:
+        path_as_list = [getPickupLoc(asgn, vehpaths)] + path_as_list
     path_as_string = " : ".join(path_as_list)
     return path_as_string
 

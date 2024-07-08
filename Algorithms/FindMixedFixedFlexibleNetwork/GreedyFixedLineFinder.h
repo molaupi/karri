@@ -68,18 +68,18 @@ namespace mixfix {
                   pdInfo(pdInfo), requests(requests), inputConfig(InputConfig::getInstance()),
                   residualFlow(inputGraph.numEdges(), 0),
                   lineOverviewLogger(LogManager<OverviewLoggerT>::getLogger("lines.csv",
-                                                                    "line_id,"
-                                                                    "initial_edge,"
-                                                                    "max_flow,"
-                                                                    "num_edges,"
-                                                                    "total_travel_time,"
-                                                                    "num_pax_served,"
-                                                                    "num_pax_fully_covered\n")),
+                                                                            "line_id,"
+                                                                            "initial_edge,"
+                                                                            "max_flow,"
+                                                                            "num_edges,"
+                                                                            "total_travel_time,"
+                                                                            "num_pax_served,"
+                                                                            "num_pax_fully_covered\n")),
                   linePathLogger(LogManager<FullPathLoggerT>::getLogger("line_paths.csv",
-                                                                "line_id,"
-                                                                "path_as_edge_ids,"
-                                                                "path_as_lat_lng,"
-                                                                "served\n")) {}
+                                                                        "line_id,"
+                                                                        "path_as_edge_ids,"
+                                                                        "path_as_lat_lng,"
+                                                                        "served\n")) {}
 
         // Finds fixed lines given preliminary rider paths.
         // Each path is expected to be a sequence of edges in the network.
@@ -118,7 +118,6 @@ namespace mixfix {
                 int numServedButNotFullyCovered = 0;
                 for (const auto &served: pax) {
                     if (!contains(fullyCoveredPaths.begin(), fullyCoveredPaths.end(), served.requestId)) {
-//                        std::cout << "Passenger " << served.requestId << " is served by line but their path does not overlap." << std::endl;
                         ++numServedButNotFullyCovered;
                     }
                     paths.removePathForRequest(served.requestId);
@@ -183,6 +182,8 @@ namespace mixfix {
                 }
             }
 
+            // maxFlow may be larger than the number of paths if one paths visits maxFlowEdge multiple times.
+
             std::vector<OverlappingPath> overlappingPaths;
             std::vector<OverlappingPath> overlappingReachedEnd;
             line = {maxFlowEdge};
@@ -204,10 +205,9 @@ namespace mixfix {
                             overlappingPaths.push_back(
                                     {path.getRequestId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
                         }
+                        break; // If path overlaps with edge in multiple places, only consider first overlap
                     }
                 }
-                if (overlappingPaths.size() == maxFlow)
-                    break;
             }
 
             std::cout << "Line construction started at edge " << maxFlowEdge
@@ -229,53 +229,58 @@ namespace mixfix {
 
         static inline uint64_t square(const uint64_t n) { return n * n; }
 
-        uint64_t computeScoreForOverlapLength(const uint64_t overlapLength) {
+        static uint64_t computeScoreForOverlapLength(const uint64_t overlapLength) {
             const auto res = std::pow(overlapLength, InputConfig::getInstance().overlapScoreExponent);
             return static_cast<uint64_t>(res);
         }
 
-        void extendLineForwards(FixedLine &line,
-                                const int &maxFlowOnLine,
-                                int &minFlowOnLine,
-                                std::vector<OverlappingPath> &overlapping,
-                                std::vector<OverlappingPath> &overlappingReachedEnd,
-                                std::vector<int> &fullyCoveredPaths,
-                                const PreliminaryPathsT &paths) {
+        template<
+                typename DoesExtensionContinueOverlapT,
+                typename DoesExtensionStartOverlapT,
+                typename ExtendOverlapIfPossibleT,
+                typename StartOverlapIfPossibleT
+        >
+        void extendLine(FixedLine &line,
+                        const int &maxFlowOnLine,
+                        int &minFlowOnLine,
+                        std::vector<OverlappingPath> &overlapping,
+                        const PreliminaryPathsT &paths,
+                        const VehicleInputGraphT &graph,
+                        const DoesExtensionContinueOverlapT &doesExtensionContinueOverlap,
+                        const DoesExtensionStartOverlapT &doesExtensionStartOverlap,
+                        const ExtendOverlapIfPossibleT &extendOverlapIfPossible,
+                        const StartOverlapIfPossibleT &startOverlapIfPossible) {
 
             // Begin extending
-//            double flowDif = static_cast<double>(maxFlowOnLine) / static_cast<double>(minFlowOnLine);
             double flowDif = 0.0;
             while (flowDif < inputConfig.maxFlowRatioOnLine) {
-                const auto v = inputGraph.edgeHead(line.back());
+                const auto v = graph.edgeHead(line.back());
 
                 // Search for edge on which to extend line. Edge is chosen using a scoring system.
                 uint64_t maxScore = 0;
                 int extension = INVALID_EDGE;
                 int flowOnExtension = 0;
-                FORALL_INCIDENT_EDGES(inputGraph, v, e) {
+                FORALL_INCIDENT_EDGES(graph, v, e) {
                     uint64_t score = 0; // Each path that overlaps with the edge contributes to the score as described below
                     int flow = 0; // Each path that overlaps with the edge contributes to the load with a value of one
+
+                    int eInForwGraph = graph.edgeId(e);
 
                     // Paths already on line whose next edge is e increase the score by 1 + the square of the length of
                     // the current overlap between the line and the path.
                     for (const auto &o: overlapping) {
                         const auto &path = paths.getPathFor(o.requestId);
-                        if (o.end < path.size() && path[o.end] == e) {
+                        if (doesExtensionContinueOverlap(o, path, eInForwGraph)) {
                             const uint64_t overlapLength = 1 + o.end - o.start;
                             score += computeScoreForOverlapLength(overlapLength);
                             ++flow;
                         }
                     }
 
-                    // TODO: Sort paths by first edge to find these in O(log |paths|)
                     // Paths that begin at e increase the score by 1.
                     for (const auto &path: paths) {
-                        if (std::find_if(overlapping.begin(), overlapping.end(), [&](const OverlappingPath &o) {
-                            return o.requestId != path.getRequestId();
-                        }) != overlapping.end())
-                            continue;
-                        score += path.front() == e;
-                        flow += path.front() == e;
+                        score += doesExtensionStartOverlap(path, extension);
+                        flow += doesExtensionStartOverlap(path, extension);
                     }
 
                     if (score > maxScore) {
@@ -291,35 +296,25 @@ namespace mixfix {
                 KASSERT(flowOnExtension <= maxFlowOnLine, "Larger flow than max flow has been found!",
                         kassert::assert::light);
 
-                // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
-//                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
-//                          static_cast<double>(std::min(minFlowOnLine, flowOnExtension));
-                flowDif = static_cast<double>(maxFlowOnLine) /
-                          static_cast<double>(flowOnExtension);
-
-                // In the paper, they give this formula for the flow difference. The given intention is to stop
+                // Fielbaum and Alonso-Mora give this formula for the flow difference. The given intention is to stop
                 // extending once the difference in flow becomes too large since this would imply bad utilization of
                 // vehicle capacity in parts of the line. However, a line is started on the edge with most flow so
                 // flowOnExtension will become smaller over time which means flowDif also becomes smaller over time.
-//                flowDif = static_cast<double>(flowOnExtension) /
-//                          static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
+                // Thus, this stopping criterion is never met. Therefore, we use the formula below instead.
+                // flowDif = static_cast<double>(flowOnExtension) /
+                //           static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
+
+                // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
+                flowDif = static_cast<double>(maxFlowOnLine) /
+                          static_cast<double>(flowOnExtension);
+
                 if (flowDif >= inputConfig.maxFlowRatioOnLine)
                     break; // Stop extending line
 
+
                 // If extension edge is already part of line, stop extending
                 bool extensionClosesLoop = false;
-//                const int newReachedVertex = inputGraph.edgeHead(extension);
 
-//                // Check if edge (in either direction) is already on line
-//                for (const auto &e: line) {
-//                    if ((inputGraph.edgeHead(e) == inputGraph.edgeHead(extension) &&
-//                         inputGraph.edgeTail(e) == inputGraph.edgeTail(extension))
-//                        || (inputGraph.edgeHead(e) == inputGraph.edgeTail(extension) &&
-//                            inputGraph.edgeTail(e) == inputGraph.edgeHead(extension))) {
-//                        extensionClosesLoop = true;
-//                        break;
-//                    }
-//                }
                 // Check if edge (directional) is already on line
                 for (const auto &e: line) {
                     if (e == extension) {
@@ -330,53 +325,27 @@ namespace mixfix {
                 if (extensionClosesLoop)
                     break; // Stop extending line
 
-                // Remove overlapping paths that do not overlap with extension
+                const int extensionInForwGraph = graph.edgeId(extension);
+                const int newReachedVertex = graph.edgeHead(extension);
+
+                // Remove passengers whose paths do not overlap with extension
                 int i = 0;
-                const int newReachedVertex = inputGraph.edgeHead(extension);
-                const auto &dropoffsAtNewVertex = pdInfo.getPossibleDropoffsAt(newReachedVertex);
                 while (i < overlapping.size()) {
                     auto &o = overlapping[i];
                     const auto &path = paths.getPathFor(o.requestId);
-                    LIGHT_KASSERT(o.end < path.size());
-                    if (path[o.end] == extension) {
-                        ++o.end;
-                        if (!contains(dropoffsAtNewVertex.begin(), dropoffsAtNewVertex.end(), o.requestId)) {
-                            ++i; // If path continues on extension but no dropoff is reached yet, keep it as overlapping path
-                            continue;
-                        }
-                        o.possibleDropoffReached = true;
-                        if (!o.possiblePickupReached)
-                            // In case a dropoff is reached but no pickup spot is covered yet, the backward
-                            // extension may still fully cover it.
-                            overlappingReachedEnd.push_back(o);
-                        else
-                            // In case both a pickup and dropoff is on the line, the path is fully covered.
-                            fullyCoveredPaths.push_back(o.requestId);
+                    if (extendOverlapIfPossible(o, path, extensionInForwGraph, newReachedVertex)) {
+                        ++i;
+                    } else {
+                        // If overlapping path does not overlap with extension or a dropoff has been found,
+                        // remove from overlapping paths.
+                        std::swap(overlapping[i], overlapping.back());
+                        overlapping.pop_back();
                     }
-                    // If overlapping path does not overlap with extension or a dropoff has been found,
-                    // remove from overlapping paths.
-                    std::swap(overlapping[i], overlapping.back());
-                    overlapping.pop_back();
                 }
 
-                // Add overlapping paths that start at extension
-                int numOnLine = overlapping.size();
-                // TODO: Sort paths by first edge to find these in O(log |paths|)
-                //  (or store them while counting flow in FORALL_INCIDENT_EDGES loop)
+                // Add passengers whose paths start at extension
                 for (const auto &path: paths) {
-                    if (path.front() == extension) {
-                        KASSERT(contains(pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).begin(),
-                                         pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).end(),
-                                         path.getRequestId()),
-                                "Path that begins at extension does not have a pickup at the tail of the extension.");
-                        if (contains(dropoffsAtNewVertex.begin(), dropoffsAtNewVertex.end(), path.getRequestId())) {
-                            fullyCoveredPaths.push_back(path.getRequestId());
-                        } else {
-                            overlapping.push_back({path.getRequestId(), 0, 1, true, false});
-                        }
-                        if (++numOnLine == flowOnExtension)
-                            break;
-                    }
+                    startOverlapIfPossible(overlapping, path, extensionInForwGraph, newReachedVertex);
                 }
 
                 // Add extension
@@ -385,12 +354,177 @@ namespace mixfix {
             }
         }
 
+        void extendLineForwards(FixedLine &line,
+                                const int &maxFlowOnLine,
+                                int &minFlowOnLine,
+                                std::vector<OverlappingPath> &overlapping,
+                                std::vector<OverlappingPath> &overlappingReachedEnd,
+                                std::vector<int> &fullyCoveredPaths,
+                                const PreliminaryPathsT &paths) {
+
+            static auto earlierOverlapKnown = [](const int requestId, const std::vector<OverlappingPath> &overlapping) {
+                return std::find_if(overlapping.begin(), overlapping.end(), [&](const OverlappingPath &o) {
+                    return o.requestId == requestId;
+                }) != overlapping.end();
+            };
+
+            // Hook function for checking if an extension continues an overlap with a path when deciding next extension.
+            static auto doesExtensionContinueOverlap = [](const OverlappingPath &o, const Path &path,
+                                                          const int extension) {
+                LIGHT_KASSERT(o.end < path.size());
+                return path[o.end] == extension;
+            };
+
+            // Hook function for checking if an extension starts an overlap with a path when deciding next extension.
+            static auto doesExtensionStartOverlap = [](const Path &path, const int extension) {
+                return path.front() == extension;
+            };
+
+            // Hook function for extending an overlap if possible for a chosen extension.
+            // Returns true if overlap has been extended and should be kept as overlapping or false if it
+            // should be removed.
+            const auto extendOverlapIfPossible = [this, &fullyCoveredPaths, &overlappingReachedEnd](
+                    OverlappingPath &o,
+                    const Path &path,
+                    const int extension,
+                    const int newReachedVertex) {
+                const auto &dropoffsAtNewVertex = pdInfo.getPossibleDropoffsAt(newReachedVertex);
+                LIGHT_KASSERT(o.end < path.size());
+                if (path[o.end] != extension)
+                    return false;
+                ++o.end;
+                if (!contains(dropoffsAtNewVertex.begin(), dropoffsAtNewVertex.end(), o.requestId)) {
+                    // If path continues on extension but no dropoff is reached yet, keep it as overlapping path
+                    return true;
+                }
+                o.possibleDropoffReached = true;
+                if (!o.possiblePickupReached)
+                    // In case a dropoff is reached but no pickup spot is covered yet, the backward
+                    // extension may still fully cover it.
+                    overlappingReachedEnd.push_back(o);
+                else
+                    // In case both a pickup and dropoff is on the line, the path is fully covered.
+                    fullyCoveredPaths.push_back(o.requestId);
+                return false;
+            };
+
+            // Hook function for starting an overlap if possible for a chosen extension.
+            // If extension starts an overlap with the path, we do not know an overlap already, and the path is not
+            // fully covered right away, the overlap is added and true is returned. Otherwise, returns false.
+            const auto startOverlapIfPossible = [this, &fullyCoveredPaths](
+                    std::vector<OverlappingPath> &overlapping,
+                    const Path &path,
+                    const int extension,
+                    const int newReachedVertex) {
+                if (path.front() != extension)
+                    return false;
+                const auto &dropoffsAtNewVertex = pdInfo.getPossibleDropoffsAt(newReachedVertex);
+                KASSERT(contains(pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).begin(),
+                                 pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(extension)).end(),
+                                 path.getRequestId()),
+                        "Path that begins at extension does not have a pickup at the tail of the extension.");
+
+                // If we already know an earlier overlap of the path with the line, we only keep the earlier one
+                // and do not add a second overlap (happens if a path visits the same edge multiple times).
+                if (earlierOverlapKnown(path.getRequestId(), overlapping))
+                    return false;
+
+                if (contains(dropoffsAtNewVertex.begin(), dropoffsAtNewVertex.end(), path.getRequestId())) {
+                    fullyCoveredPaths.push_back(path.getRequestId());
+                    return false;
+                }
+
+                overlapping.push_back({path.getRequestId(), 0, 1, true, false});
+                return true;
+            };
+
+            // Execute line extension with the forward extension hooks
+            extendLine(line, maxFlowOnLine, minFlowOnLine, overlapping, paths, inputGraph, doesExtensionContinueOverlap,
+                       doesExtensionStartOverlap, extendOverlapIfPossible, startOverlapIfPossible);
+        }
+
+
         void extendLineBackwards(FixedLine &line,
                                  const int &maxFlowOnLine,
                                  int &minFlowOnLine,
                                  std::vector<OverlappingPath> &overlapping,
                                  std::vector<int> &fullyCoveredPaths,
                                  const PreliminaryPathsT &paths) {
+
+            static auto laterOverlapKnown = [](const int requestId, const std::vector<OverlappingPath> &overlapping) {
+                return std::find_if(overlapping.begin(), overlapping.end(), [&](const OverlappingPath &o) {
+                    return o.requestId == requestId;
+                }) != overlapping.end();
+            };
+
+            // Hook function for checking if an extension continues an overlap with a path when deciding next extension.
+            static auto doesExtensionContinueOverlap = [](const OverlappingPath &o, const Path &path,
+                                                          const int extension) {
+                LIGHT_KASSERT(o.start > 0);
+                return path[o.start - 1] == extension;
+            };
+
+            // Hook function for checking if an extension starts an overlap with a path when deciding next extension.
+            static auto doesExtensionStartOverlap = [](const Path &path, const int extension) {
+                return path.back() == extension;
+            };
+
+            // Hook function for extending an overlap if possible for a chosen extension.
+            // Returns true if overlap has been extended and should be kept as overlapping or false if it
+            // should be removed.
+            const auto extendOverlapIfPossible = [this, &fullyCoveredPaths](
+                    OverlappingPath &o,
+                    const Path &path,
+                    const int extension,
+                    const int newReachedVertex) {
+                LIGHT_KASSERT(o.start > 0);
+                LIGHT_KASSERT(o.possibleDropoffReached);
+                const auto &pickupsAtNewVertex = pdInfo.getPossiblePickupsAt(newReachedVertex);
+                if (path[o.start - 1] != extension)
+                    return false;
+
+                --o.start;
+                if (!contains(pickupsAtNewVertex.begin(), pickupsAtNewVertex.end(), o.requestId)) {
+                    // If path continues on extension but no possible pickup has been reached, keep it as overlapping path
+                    return true;
+                }
+                // If a possible pickup has been reached, the path is fully covered.
+                fullyCoveredPaths.push_back(o.requestId);
+                return false;
+            };
+
+            // Hook function for starting an overlap if possible for a chosen extension.
+            // If extension starts an overlap with the path, we do not know an overlap already, and the path is not
+            // fully covered right away, the overlap is added and true is returned. Otherwise, returns false.
+            const auto startOverlapIfPossible = [this, &fullyCoveredPaths](
+                    std::vector<OverlappingPath> &overlapping,
+                    const Path &path,
+                    const int extension,
+                    const int newReachedVertex) {
+                if (path.back() != extension)
+                    return false;
+                KASSERT(contains(
+                        pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extension)).begin(),
+                        pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extension)).end(),
+                        path.getRequestId()),
+                        "Path that ends at extension does not have a dropoff at the head of the extension.");
+
+                const auto &pickupsAtNewVertex = pdInfo.getPossiblePickupsAt(newReachedVertex);
+
+                // If we already know a later overlap of the path with the line, we only keep the later one
+                // and do not add a second overlap (happens if a path visits the same edge multiple times).
+                if (laterOverlapKnown(path.getRequestId(), overlapping))
+                    return false;
+
+                if (contains(pickupsAtNewVertex.begin(), pickupsAtNewVertex.end(), path.getRequestId())) {
+                    fullyCoveredPaths.push_back(path.getRequestId());
+                    return false;
+                }
+
+                overlapping.push_back({path.getRequestId(), path.size() - 1, path.size(), false, true});
+                return true;
+            };
+
 
             // Get reverse representation of line: Order of edges is reversed and edges are transformed to edges in
             // reverseGraph.
@@ -407,158 +541,17 @@ namespace mixfix {
                 KASSERT(found, "No reverse edge found for " << e << "!", kassert::assert::light);
             }
 
-            // Begin extending
-//            double flowDif = static_cast<double>(maxFlowOnLine) / static_cast<double>(minFlowOnLine);
-            double flowDif = 0.0;
-            while (flowDif < inputConfig.maxFlowRatioOnLine) {
-                const auto v = reverseGraph.edgeHead(line.back());
-
-                // Search for edge on which to extend line. Edge is chosen using a scoring system.
-                uint64_t maxScore = 0;
-                int extension = INVALID_EDGE;
-                int flowOnExtension = 0;
-                FORALL_INCIDENT_EDGES(reverseGraph, v, e) {
-                    uint64_t score = 0; // Each path that overlaps with the edge contributes to the score as described below
-                    int flow = 0; // Each path that overlaps with the edge contributes to the load with a value of one
-
-                    int eInForwGraph = reverseGraph.edgeId(e);
-
-                    // Paths already on line whose previous edge is e increase the score by 1 + the square of the length of
-                    // the current overlap between the line and the path.
-                    for (const auto &o: overlapping) {
-                        const auto &path = paths.getPathFor(o.requestId);
-                        LIGHT_KASSERT(o.start > 0);
-                        if (path[o.start - 1] == eInForwGraph) {
-                            const uint64_t overlapLength = 1 + o.end - o.start;
-                            score += computeScoreForOverlapLength(overlapLength);
-                            ++flow;
-                        }
-                    }
-
-                    // TODO: Sort paths by last edge to find these in O(log |paths|)
-                    // Paths that end at e increase the score by 1.
-                    for (const auto &path: paths) {
-                        if (std::find_if(overlapping.begin(), overlapping.end(), [&](const OverlappingPath &o) {
-                            return o.requestId != path.getRequestId();
-                        }) != overlapping.end())
-                            continue;
-                        score += path.back() == eInForwGraph;
-                        flow += path.back() == eInForwGraph;
-                    }
-
-                    if (score > maxScore) {
-                        maxScore = score;
-                        extension = e;
-                        flowOnExtension = flow;
-                    }
-                }
-
-                if (extension == INVALID_EDGE)
-                    break;
-
-                KASSERT(flowOnExtension <= maxFlowOnLine, "Larger flow than max flow has been found!",
-                        kassert::assert::light);
-
-                // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
-//                flowDif = static_cast<double>(std::max(maxFlowOnLine, flowOnExtension)) /
-//                          static_cast<double>(std::min(minFlowOnLine, flowOnExtension));
-                flowDif = static_cast<double>(maxFlowOnLine) /
-                          static_cast<double>(flowOnExtension);
-
-                // In the paper, they give this formula for the flow difference. The given intention is to stop
-                // extending once the difference in flow becomes too large since this would imply bad utilization of
-                // vehicle capacity in parts of the line. However, a line is started on the edge with most flow so
-                // flowOnExtension will become smaller over time which means flowDif also becomes smaller over time.
-                // Thus, this stopping criterion is never met.
-//                flowDif = static_cast<double>(flowOnExtension) /
-//                          static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
-                if (flowDif >= inputConfig.maxFlowRatioOnLine)
-                    break; // Stop extending line
-
-
-                // If extension edge is already part of line, stop extending
-                bool extensionClosesLoop = false;
-
-                // Check if edge (in either direction) is already on line
-//                const int newReachedVertex = reverseGraph.edgeHead(extension);
-//                for (const auto &e: line) {
-//                    if ((reverseGraph.edgeHead(e) == reverseGraph.edgeHead(extension) &&
-//                         reverseGraph.edgeTail(e) == reverseGraph.edgeTail(extension))
-//                        || (reverseGraph.edgeHead(e) == reverseGraph.edgeTail(extension) &&
-//                            reverseGraph.edgeTail(e) == reverseGraph.edgeHead(extension))) {
-//                        extensionClosesLoop = true;
-//                        break;
-//                    }
-//                }
-                // Check if edge (directional) is already on line
-                for (const auto &e: line) {
-                    if (e == extension) {
-                        extensionClosesLoop = true;
-                        break;
-                    }
-                }
-                if (extensionClosesLoop)
-                    break; // Stop extending line
-
-
-                const int extensionInForwGraph = reverseGraph.edgeId(extension);
-
-                // Remove passengers whose paths do not overlap with extension
-                const int newReachedVertex = reverseGraph.edgeHead(extension);
-                const auto &pickupsAtNewVertex = pdInfo.getPossiblePickupsAt(newReachedVertex);
-                int i = 0;
-                while (i < overlapping.size()) {
-                    auto &o = overlapping[i];
-                    const auto &path = paths.getPathFor(o.requestId);
-                    LIGHT_KASSERT(o.start > 0);
-                    LIGHT_KASSERT(o.possibleDropoffReached);
-                    if (path[o.start - 1] == extensionInForwGraph) {
-                        --o.start;
-                        if (!contains(pickupsAtNewVertex.begin(), pickupsAtNewVertex.end(), o.requestId)) {
-                            ++i; // If path continues on extension but no possible pickup has been reached, keep it as overlapping path
-                            continue;
-                        }
-                        // If a possible pickup has been reached, the path is fully covered.
-                        fullyCoveredPaths.push_back(o.requestId);
-                    }
-                    // If overlapping path does not overlap with extension or pickup and dropoff are covered,
-                    // remove from overlapping paths.
-                    std::swap(overlapping[i], overlapping.back());
-                    overlapping.pop_back();
-                }
-
-
-                // Add passengers whose paths start at extension
-                int numOnLine = overlapping.size();
-                // TODO: Sort paths by last edge to find these in O(log |paths|)
-                //  (or store them while counting flow in FORALL_INCIDENT_EDGES loop)
-                for (const auto &path: paths) {
-                    if (path.back() == extensionInForwGraph) {
-                        KASSERT(contains(
-                                pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extensionInForwGraph)).begin(),
-                                pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(extensionInForwGraph)).end(),
-                                path.getRequestId()),
-                                "Path that ends at extension does not have a dropoff at the head of the extension.");
-                        if (contains(pickupsAtNewVertex.begin(), pickupsAtNewVertex.end(), path.getRequestId())) {
-                            fullyCoveredPaths.push_back(path.getRequestId());
-                        } else {
-                            overlapping.push_back({path.getRequestId(), path.size() - 1, path.size(), false, true});
-                        }
-                        if (++numOnLine == flowOnExtension)
-                            break;
-                    }
-                }
-
-                // Add extension
-                line.push_back(extension);
-                minFlowOnLine = std::min(minFlowOnLine, flowOnExtension);
-            }
+            // Execute line extension with the backward extension hooks
+            extendLine(line, maxFlowOnLine, minFlowOnLine, overlapping, paths, reverseGraph,
+                       doesExtensionContinueOverlap, doesExtensionStartOverlap, extendOverlapIfPossible,
+                       startOverlapIfPossible);
 
             // Convert line back into forwards representation
             std::reverse(line.begin(), line.end());
             for (auto &e: line)
                 e = reverseGraph.edgeId(e);
         }
+
 
         template<typename IsPassengerAlreadyServedT>
         std::vector<ServedRequest>
