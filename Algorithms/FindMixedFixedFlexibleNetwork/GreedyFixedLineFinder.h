@@ -768,8 +768,12 @@ namespace mixfix {
                 }
             }
             KASSERT(pathsAtEdge.size() - numRemoved == paths.numPaths());
-            firstPathAtEdge.back() -= numRemoved;
+            while (curEdge < inputGraph.numEdges()) {
+                firstPathAtEdge[curEdge + 1] -= numRemoved;
+                ++curEdge;
+            }
             pathsAtEdge.erase(pathsAtEdge.end() - numRemoved, pathsAtEdge.end());
+            KASSERT(firstPathAtEdge.back() == paths.numPaths());
         }
 
         template<bool Starting>
