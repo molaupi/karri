@@ -59,6 +59,8 @@ namespace mixfix {
             int pickupWalkingTime;
             int dropoffVertexIdx;
             int dropoffWalkingTime;
+            int inVehicleTime;
+            double ttWeightedAvgSharing;
         };
 
         struct RunningTimePerLineStats {
@@ -86,6 +88,9 @@ namespace mixfix {
                                                                             "total_travel_time,"
                                                                             "num_pax_served,"
                                                                             "num_pax_fully_covered,"
+                                                                            "avg_rel_pax_detour,"
+                                                                            "avg_abs_pax_detour,"
+                                                                            "avg_tt_weighted_avg_sharing,"
                                                                             "construct_line_time,"
                                                                             "find_served_pax_time,"
                                                                             "update_paths_time\n")),
@@ -652,13 +657,13 @@ namespace mixfix {
                         continue;
                     auto &p = pickupables[pickupableIdx[reqId]];
                     KASSERT(p.requestId == reqId);
-                    const auto totalTT =
-                            p.walkingTime + (ttPrefixSum[i] - ttPrefixSum[p.pickupVertexIdx]) + dropoffWalkingTimes[j];
+                    const auto inVehTime = ttPrefixSum[i] - ttPrefixSum[p.pickupVertexIdx];
+                    const auto totalTT = p.walkingTime + inVehTime + dropoffWalkingTimes[j];
                     if (totalTT <= getMaxTravelTime(requests[p.requestId], inputConfig)) {
                         // Request can be served by line
                         servedByThisLine[reqId] = true;
                         servableRequests.push_back(
-                                {reqId, p.pickupVertexIdx, p.walkingTime, i, dropoffWalkingTimes[j]});
+                                {reqId, p.pickupVertexIdx, p.walkingTime, i, dropoffWalkingTimes[j], inVehTime, 0.0});
                         p = pickupables.back();
                         pickupableIdx[p.requestId] = pickupableIdx[reqId];
                         pickupables.pop_back();
@@ -696,6 +701,24 @@ namespace mixfix {
 
             for (const auto &p: pickupables) {
                 pickupableIdx[p.requestId] = INVALID_INDEX;
+            }
+
+            // Find travel time weighted average degree of sharing of each served request
+            std::vector<int> numOccupants(line.size(), 0);
+            for (const auto &served: servableRequests) {
+                for (int i = served.pickupVertexIdx; i < served.dropoffVertexIdx; ++i) {
+                    ++numOccupants[i];
+                }
+            }
+
+            for (auto &served: servableRequests) {
+                int64_t weightedNumOtherRiders = 0;
+                for (int i = served.pickupVertexIdx; i < served.dropoffVertexIdx; ++i) {
+                    weightedNumOtherRiders += (numOccupants[i] - 1) * inputGraph.travelTime(line[i]);
+                }
+//                int64_t totalTT = served.pickupWalkingTime + served.inVehicleTime + served.dropoffWalkingTime;
+                int64_t totalTT = served.inVehicleTime;
+                served.ttWeightedAvgSharing = static_cast<double>(weightedNumOtherRiders) / static_cast<double>(totalTT);
             }
 
             return servableRequests;
@@ -831,6 +854,20 @@ namespace mixfix {
             for (const auto &e: line)
                 totalTravelTime += inputGraph.travelTime(e);
 
+            int64_t sumActualTT = 0;
+            int64_t sumDirectTT = 0;
+            double sumTTWeightedAvgSharing = 0.0;
+            for (const auto &p: pax) {
+                sumActualTT += p.pickupWalkingTime + p.inVehicleTime + p.dropoffWalkingTime;
+                sumDirectTT += requests[p.requestId].directDist;
+                sumTTWeightedAvgSharing += p.ttWeightedAvgSharing;
+            }
+            const double avgRelDetour = static_cast<double>(sumActualTT) / static_cast<double>(sumDirectTT);
+            KASSERT(pax.size() > 0);
+            const double avgAbsDetour = static_cast<double>(sumActualTT - sumDirectTT) / static_cast<double>(pax.size());
+            const double avgTTWeightedAvgSharing = sumTTWeightedAvgSharing / static_cast<double>(pax.size());
+
+
             lineOverviewLogger << lineId << ", "
                                << initialEdge << ","
                                << maxFlow << ","
@@ -838,6 +875,9 @@ namespace mixfix {
                                << totalTravelTime << ", "
                                << pax.size() << ", "
                                << numFullyCovered << ", "
+                               << avgRelDetour << ", "
+                               << avgAbsDetour << ", "
+                               << avgTTWeightedAvgSharing << ", "
                                << runningTimeStats.constructLineTime << ", "
                                << runningTimeStats.findServedPaxTime << ", "
                                << runningTimeStats.updatePathsTime << "\n";
