@@ -145,7 +145,7 @@ namespace karri {
         // Checks whether all buckets are empty. This may be expensive!
         bool allEmpty() const {
             const auto hole = BucketEntryT();
-            return bucketPositions.empty() &&
+            return bucketPositions.allInvalid() &&
                    std::all_of(entries.begin(), entries.end(),
                                [hole](const BucketEntryT &entry) { return entry == hole; });
         }

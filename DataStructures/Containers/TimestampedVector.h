@@ -75,11 +75,23 @@ public:
         return elements[i];
     }
 
-    const T &at(const int i) {
+    // Returns a const reference to the element at i.
+    const T &operator[](const int i) const {
+        assert(i >= 0);
+        assert(i < elements.size());
+        if (timestamps[i] != clock) {
+            assert(timestamps[i] < clock);
+            elements[i] = INVALID_VAL;
+            timestamps[i] = clock;
+        }
+        return elements[i];
+    }
+
+    const T &at(const int i) const {
         return (*this)[i];
     }
 
-    bool empty() const {
+    bool allInvalid() const {
         for (const auto &timestamp: timestamps) {
             assert(timestamp <= clock);
             if (timestamp == clock) return false;
@@ -96,7 +108,11 @@ private:
     T INVALID_VAL;
 
     uint32_t clock;
-    UnderlyingVectorT<T> elements;
-    std::vector<uint32_t> timestamps;
+    // mutable to allow lazy updates of elements even in const subscript operator (which is logically const for outside
+    // users).
+    mutable UnderlyingVectorT<T> elements;
+    // mutable to allow lazy updates of elements even in const subscript operator (which is logically const for outside
+    // users).
+    mutable std::vector<uint32_t> timestamps;
 };
 

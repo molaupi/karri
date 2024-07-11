@@ -123,17 +123,25 @@ namespace mixfix {
                 std::cout << "\n\n";
 
                 RunningTimePerLineStats runningTimeStats;
+
+                // Construct line:
                 timer.restart();
-                int initialEdge;
-                int maxFlowOnLine;
+                int initialEdge, maxFlowOnLine;
                 line.clear();
                 fullyCoveredPaths.clear();
+                findInitialEdge(paths, initialEdge, maxFlowOnLine);
+                std::cout << "Initial edge " << initialEdge
+                          << " (tail: " << inputGraph.osmNodeId(inputGraph.edgeTail(initialEdge))
+                          << ", head: " << inputGraph.osmNodeId(inputGraph.edgeHead(initialEdge))
+                          << ") with flow " << maxFlowOnLine << std::endl;
+                if (maxFlowOnLine < inputConfig.minMaxFlowOnLine) {
+                    std::cout << "Stopping line construction due to insufficient flow on initial edge." << std::endl;
+                    break;
+                }
                 constructNextLine(paths, line, initialEdge, maxFlowOnLine, fullyCoveredPaths);
                 runningTimeStats.constructLineTime = timer.elapsed<std::chrono::nanoseconds>();
 
-                if (maxFlowOnLine < inputConfig.minMaxFlowOnLine)
-                    break;
-
+                // Find passengers served by line:
                 timer.restart();
                 std::vector<int> verticesInLine;
                 verticesInLine.push_back(inputGraph.edgeTail(line.front()));
@@ -149,11 +157,8 @@ namespace mixfix {
                 runningTimeStats.findServedPaxTime = timer.elapsed<std::chrono::nanoseconds>();
                 std::cout << "Found a line of length " << line.size() << " that can serve " << pax.size()
                           << " passengers. (Num fully covered paths = " << fullyCoveredPaths.size() << ")" << std::endl;
-                std::cout << "\tInitial edge " << initialEdge
-                          << " (tail: " << inputGraph.osmNodeId(inputGraph.edgeTail(initialEdge))
-                          << ", head: " << inputGraph.osmNodeId(inputGraph.edgeHead(initialEdge))
-                          << ") with flow " << maxFlowOnLine << std::endl;
 
+                // Update paths data structures:
                 timer.restart();
                 int numServedButNotFullyCovered = 0;
                 for (const auto &served: pax) {
@@ -210,34 +215,35 @@ namespace mixfix {
             bool possibleDropoffReached;
         };
 
-        // Greedily constructs new line from remaining paths. Returns line and max flow on line.
-        void constructNextLine(PreliminaryPathsT &paths, FixedLine &line, int &initialEdge, int &maxFlowOnLine,
-                               std::vector<int> &fullyCoveredPaths) {
+        void findInitialEdge(const PreliminaryPathsT &paths, int &initialEdge, int &flowOnInitialEdge) {
 
-
+            // flowOnInitialEdge may be larger than the number of paths if one paths visits maxFlowEdge multiple times.
             residualFlow.clear();
-            int maxFlow = 0;
-            int maxFlowEdge = INVALID_EDGE;
+            flowOnInitialEdge = 0;
+            initialEdge = INVALID_EDGE;
             for (const auto &path: paths) {
                 for (const auto &e: path) {
                     ++residualFlow[e];
-                    if (residualFlow[e] > maxFlow) {
-                        maxFlowEdge = e;
-                        maxFlow = residualFlow[e];
+                    if (residualFlow[e] > flowOnInitialEdge) {
+                        initialEdge = e;
+                        flowOnInitialEdge = residualFlow[e];
                     }
                 }
             }
+        }
 
-            // maxFlow may be larger than the number of paths if one paths visits maxFlowEdge multiple times.
-
+        // Greedily constructs new line from remaining paths. Returns line and max flow on line.
+        void constructNextLine(PreliminaryPathsT &paths, FixedLine &line,
+                               const int &initialEdge, const int &flowOnInitialEdge,
+                               std::vector<int> &fullyCoveredPaths) {
             std::vector<OverlappingPath> overlappingPaths;
             std::vector<OverlappingPath> overlappingReachedEnd;
-            line = {maxFlowEdge};
-            const auto pickupsAtTail = pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(maxFlowEdge));
-            const auto dropoffsAtHead = pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(maxFlowEdge));
+            line = {initialEdge};
+            const auto pickupsAtTail = pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(initialEdge));
+            const auto dropoffsAtHead = pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(initialEdge));
             for (const auto &path: paths) {
                 for (int i = 0; i < path.size(); ++i) {
-                    if (path[i] == maxFlowEdge) {
+                    if (path[i] == initialEdge) {
                         const bool possiblePickupReached = contains(pickupsAtTail.begin(), pickupsAtTail.end(),
                                                                     path.getRequestId());
                         const bool possibleDropoffReached = contains(dropoffsAtHead.begin(), dropoffsAtHead.end(),
@@ -258,17 +264,12 @@ namespace mixfix {
 
             // Construct line by greedily extending in both directions.
             // TODO: Try extending by one edge forward and backward in alternating fashion.
-            initialEdge = maxFlowEdge;
-            maxFlowOnLine = maxFlow;
-            int minFlowOnLine = maxFlow;
             // Paths that contain the initial edge whose end is reached by the forward extension but who may still be
             // extended toward their start by the backward extension
-            extendLineForwards(line, maxFlowOnLine, minFlowOnLine, overlappingPaths, overlappingReachedEnd,
+            extendLineForwards(line, flowOnInitialEdge, overlappingPaths, overlappingReachedEnd,
                                fullyCoveredPaths, paths);
-            extendLineBackwards(line, maxFlowOnLine, minFlowOnLine, overlappingReachedEnd, fullyCoveredPaths, paths);
+            extendLineBackwards(line, flowOnInitialEdge, overlappingReachedEnd, fullyCoveredPaths, paths);
         }
-
-        static inline uint64_t square(const uint64_t n) { return n * n; }
 
         static uint64_t computeScoreForOverlapLength(const uint64_t overlapLength) {
             const auto res = std::pow(overlapLength, InputConfig::getInstance().overlapScoreExponent);
@@ -283,7 +284,6 @@ namespace mixfix {
         >
         void extendLine(FixedLine &line,
                         const int &maxFlowOnLine,
-                        int &minFlowOnLine,
                         std::vector<OverlappingPath> &overlapping,
                         const PreliminaryPathsT &paths,
                         const VehicleInputGraphT &graph,
@@ -388,13 +388,11 @@ namespace mixfix {
 
                 // Add extension
                 line.push_back(extension);
-                minFlowOnLine = std::min(minFlowOnLine, flowOnExtension);
             }
         }
 
         void extendLineForwards(FixedLine &line,
                                 const int &maxFlowOnLine,
-                                int &minFlowOnLine,
                                 std::vector<OverlappingPath> &overlapping,
                                 std::vector<OverlappingPath> &overlappingReachedEnd,
                                 std::vector<int> &fullyCoveredPaths,
@@ -479,14 +477,13 @@ namespace mixfix {
             };
 
             // Execute line extension with the forward extension hooks
-            extendLine(line, maxFlowOnLine, minFlowOnLine, overlapping, paths, inputGraph, doesExtensionContinueOverlap,
+            extendLine(line, maxFlowOnLine, overlapping, paths, inputGraph, doesExtensionContinueOverlap,
                        countOverlapsStartingAtExtension, extendOverlapIfPossible, startNewOverlapsAtExtension);
         }
 
 
         void extendLineBackwards(FixedLine &line,
                                  const int &maxFlowOnLine,
-                                 int &minFlowOnLine,
                                  std::vector<OverlappingPath> &overlapping,
                                  std::vector<int> &fullyCoveredPaths,
                                  const PreliminaryPathsT &paths) {
@@ -581,9 +578,8 @@ namespace mixfix {
             }
 
             // Execute line extension with the backward extension hooks
-            extendLine(line, maxFlowOnLine, minFlowOnLine, overlapping, paths, reverseGraph,
-                       doesExtensionContinueOverlap, countOverlapsStartingAtExtension, extendOverlapIfPossible,
-                       startNewOverlapsAtExtension);
+            extendLine(line, maxFlowOnLine, overlapping, paths, reverseGraph, doesExtensionContinueOverlap,
+                       countOverlapsStartingAtExtension, extendOverlapIfPossible, startNewOverlapsAtExtension);
 
             // Convert line back into forwards representation
             std::reverse(line.begin(), line.end());
@@ -718,7 +714,8 @@ namespace mixfix {
                 }
 //                int64_t totalTT = served.pickupWalkingTime + served.inVehicleTime + served.dropoffWalkingTime;
                 int64_t totalTT = served.inVehicleTime;
-                served.ttWeightedAvgSharing = static_cast<double>(weightedNumOtherRiders) / static_cast<double>(totalTT);
+                served.ttWeightedAvgSharing =
+                        static_cast<double>(weightedNumOtherRiders) / static_cast<double>(totalTT);
             }
 
             return servableRequests;
@@ -864,7 +861,8 @@ namespace mixfix {
             }
             const double avgRelDetour = static_cast<double>(sumActualTT) / static_cast<double>(sumDirectTT);
             KASSERT(pax.size() > 0);
-            const double avgAbsDetour = static_cast<double>(sumActualTT - sumDirectTT) / static_cast<double>(pax.size());
+            const double avgAbsDetour =
+                    static_cast<double>(sumActualTT - sumDirectTT) / static_cast<double>(pax.size());
             const double avgTTWeightedAvgSharing = sumTTWeightedAvgSharing / static_cast<double>(pax.size());
 
 
