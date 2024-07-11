@@ -176,11 +176,12 @@ namespace mixfix {
                 std::cout << "\tNumber of passengers served whose paths are not fully covered by "
                              "line (origin to destination): " << numServedButNotFullyCovered << std::endl;
 
-                if (pax.size() < inputConfig.minNumPaxPerLine)
-                    break;
 
                 logLine(line, lines.size(), initialEdge, maxFlowOnLine, pax, fullyCoveredPaths.size(), runningTimeStats,
                         buildGeoJson);
+
+                if (pax.size() < inputConfig.minNumPaxPerLine)
+                    break;
 
                 // Add line
                 lines.push_back(std::make_pair(std::move(line), std::move(pax)));
@@ -588,12 +589,18 @@ namespace mixfix {
         }
 
 
+        struct Pickupable {
+            int requestId;
+            int pickupVertexIdx;
+            int walkingTime;
+        };
+
         template<typename IsPassengerAlreadyServedT>
         std::vector<ServedRequest>
         findPassengersServableByLine(const FixedLine &line,
                                      const std::vector<int> &verticesInLine,
                                      const IsPassengerAlreadyServedT &isPaxAlreadyServedByOtherLine,
-                                     const std::vector<int> &,
+                                     const std::vector<int> &fullyCoveredPaths,
                                      BitVector &servedByThisLine,
                                      std::vector<int> &pickupableIdx) const {
             KASSERT(servedByThisLine.cardinality() == 0);
@@ -616,88 +623,62 @@ namespace mixfix {
                 ttPrefixSum[i + 1] = ttPrefixSum[i] + inputGraph.travelTime(line[i]);
 
             std::vector<ServedRequest> servableRequests;
-
-            struct Pickupable {
-                int requestId;
-                int pickupVertexIdx;
-                int walkingTime;
-            };
-
             std::vector<Pickupable> pickupables;
             for (int i = 0; i < verticesInLine.size(); ++i) {
                 const auto &v = verticesInLine[i];
 
                 // 1. Remove pickup-able requests whose detour would grow too large with edge i:
-                int k = 0;
-                while (k < pickupables.size()) {
-                    auto &p = pickupables[k];
-                    const auto tt = p.walkingTime + (ttPrefixSum[i] - ttPrefixSum[p.pickupVertexIdx]);
-                    if (tt > getMaxTravelTime(requests[p.requestId], inputConfig)) {
-                        const int removedReqId = p.requestId;
-                        KASSERT(pickupableIdx[removedReqId] == k);
-                        p = pickupables.back();
-                        pickupableIdx[p.requestId] = k;
-                        pickupables.pop_back();
-                        pickupableIdx[removedReqId] = INVALID_INDEX;
-                        continue;
-                    }
-                    ++k;
-                }
+                removePickupablesWithExceededDetour(pickupables, pickupableIdx, ttPrefixSum, i, fullyCoveredPaths);
 
                 // 2. Check which pickup-able requests can be dropped off at edge i.
-                const auto &dropoffsAtV = pdInfo.getPossibleDropoffsAt(v);
-                const auto &dropoffWalkingTimes = pdInfo.getDropoffWalkingDistsAt(v);
-                for (int j = 0; j < dropoffsAtV.size(); ++j) {
-                    const auto reqId = dropoffsAtV[j];
-                    if (pickupableIdx[reqId] == INVALID_INDEX)
-                        continue;
-                    auto &p = pickupables[pickupableIdx[reqId]];
-                    KASSERT(p.requestId == reqId);
-                    const auto inVehTime = ttPrefixSum[i] - ttPrefixSum[p.pickupVertexIdx];
-                    const auto totalTT = p.walkingTime + inVehTime + dropoffWalkingTimes[j];
-                    if (totalTT <= getMaxTravelTime(requests[p.requestId], inputConfig)) {
-                        // Request can be served by line
-                        servedByThisLine[reqId] = true;
-                        servableRequests.push_back(
-                                {reqId, p.pickupVertexIdx, p.walkingTime, i, dropoffWalkingTimes[j], inVehTime, 0.0});
-                        p = pickupables.back();
-                        pickupableIdx[p.requestId] = pickupableIdx[reqId];
-                        pickupables.pop_back();
-                        pickupableIdx[reqId] = INVALID_INDEX;
-                    }
-                }
-
+                findPickupablesThatCanBeDroppedOff(pickupables, pickupableIdx, servableRequests, servedByThisLine,
+                                                   ttPrefixSum, i, v);
 
                 // 3. Add unserved passengers that may be picked up here:
-                const auto &pickupsAtV = pdInfo.getPossiblePickupsAt(v);
-                const auto &pickupWalkingTimes = pdInfo.getPickupWalkingDistsAt(v);
-                for (int j = 0; j < pickupsAtV.size(); ++j) {
-                    const auto &reqId = pickupsAtV[j];
-                    if (isPaxAlreadyServedByOtherLine(reqId) || servedByThisLine[reqId])
-                        continue;
-                    const auto &walkingTime = pickupWalkingTimes[j];
-
-                    // If request is not pickupable already, mark it as such
-                    if (pickupableIdx[reqId] == INVALID_INDEX) {
-                        pickupableIdx[reqId] = pickupables.size();
-                        pickupables.push_back({reqId, i, walkingTime});
-                        continue;
-                    }
-
-                    // If request can already be picked up at earlier edge on line, only store vertex that provides
-                    // better travel time (ignoring waiting times).
-                    auto &p = pickupables[pickupableIdx[reqId]];
-                    const auto ttExisting = p.walkingTime + ttPrefixSum[i] - ttPrefixSum[p.pickupVertexIdx];
-                    const auto ttNew = walkingTime;
-                    if (ttNew < ttExisting) {
-                        p = {reqId, i, walkingTime};
-                    }
-                }
+                addNewPickupables(pickupables, pickupableIdx, servedByThisLine, isPaxAlreadyServedByOtherLine, ttPrefixSum, i, v);
             }
+
+//            // If the line comprises a single loop, we try to find dropoffs for the remaining pickup-able passengers
+//            // along the loop:
+//            if (verticesInLine.front() == verticesInLine.back()) {
+//                // The prefix sum no longer works when crossing the stitch of the loop. Thus, we explicitly advance
+//                // from the stitch forward for every remaining pickup-able:
+//                for (const auto &p: pickupables) {
+//                    int tt = p.walkingTime + (ttPrefixSum[verticesInLine.size() - 1] - ttPrefixSum[p.pickupVertexIdx]);
+//                    bool dropoffFound = false;
+//                    for (int i = 1; !dropoffFound && i < p.pickupVertexIdx; ++i) {
+//                        const int v = verticesInLine[i];
+//                        tt += inputGraph.travelTime(line[i - 1]);
+//                        if (tt > getMaxTravelTime(requests[p.requestId], inputConfig))
+//                            break;
+//
+//                        const auto &dropoffsAtV = pdInfo.getPossibleDropoffsAt(v);
+//                        const auto &dropoffWalkingTimes = pdInfo.getDropoffWalkingDistsAt(v);
+//                        for (int j = 0; j < dropoffsAtV.size(); ++j) {
+//                            const auto reqId = dropoffsAtV[j];
+//                            if (reqId != p.requestId)
+//                                continue;
+//
+//                            const auto totalTT = tt + dropoffWalkingTimes[j];
+//                            if (totalTT <= getMaxTravelTime(requests[p.requestId], inputConfig)) {
+//                                // Request can be served by line
+//                                servedByThisLine[reqId] = true;
+//                                servableRequests.push_back(
+//                                        {reqId, p.pickupVertexIdx, p.walkingTime, i, dropoffWalkingTimes[j],
+//                                         totalTT - p.walkingTime - dropoffWalkingTimes[j], 0.0});
+//                                dropoffFound = true;
+//                                break;
+//                            }
+//                        }
+//                    }
+//                }
+//            }
 
             for (const auto &p: pickupables) {
                 pickupableIdx[p.requestId] = INVALID_INDEX;
             }
+
+
 
             // Find travel time weighted average degree of sharing of each served request
             std::vector<int> numOccupants(line.size(), 0);
@@ -709,8 +690,18 @@ namespace mixfix {
 
             for (auto &served: servableRequests) {
                 int64_t weightedNumOtherRiders = 0;
-                for (int i = served.pickupVertexIdx; i < served.dropoffVertexIdx; ++i) {
-                    weightedNumOtherRiders += (numOccupants[i] - 1) * inputGraph.travelTime(line[i]);
+                if (served.pickupVertexIdx < served.dropoffVertexIdx) {
+                    for (int i = served.pickupVertexIdx; i < served.dropoffVertexIdx; ++i) {
+                        weightedNumOtherRiders += (numOccupants[i] - 1) * inputGraph.travelTime(line[i]);
+                    }
+                } else {
+                    // For passengers crossing the stitch of a loop line:
+                    for (int i = served.pickupVertexIdx; i < verticesInLine.size(); ++i) {
+                        weightedNumOtherRiders += (numOccupants[i] - 1) * inputGraph.travelTime(line[i]);
+                    }
+                    for (int i = 0; i < served.dropoffVertexIdx; ++i) {
+                        weightedNumOtherRiders += (numOccupants[i] - 1) * inputGraph.travelTime(line[i]);
+                    }
                 }
 //                int64_t totalTT = served.pickupWalkingTime + served.inVehicleTime + served.dropoffWalkingTime;
                 int64_t totalTT = served.inVehicleTime;
@@ -719,6 +710,91 @@ namespace mixfix {
             }
 
             return servableRequests;
+        }
+
+        void removePickupablesWithExceededDetour(std::vector<Pickupable> &pickupables,
+                                                 std::vector<int> &pickupableIdx,
+                                                 const std::vector<int> &ttPrefixSum,
+                                                 const int vertexInLineIdx,
+                                                 const std::vector<int> &) const {
+            int k = 0;
+            while (k < pickupables.size()) {
+                auto &p = pickupables[k];
+                const auto tt = p.walkingTime + (ttPrefixSum[vertexInLineIdx] - ttPrefixSum[p.pickupVertexIdx]);
+                if (tt > getMaxTravelTime(requests[p.requestId], inputConfig)) {
+                    const int removedReqId = p.requestId;
+                    KASSERT(pickupableIdx[removedReqId] == k);
+                    p = pickupables.back();
+                    pickupableIdx[p.requestId] = k;
+                    pickupables.pop_back();
+                    pickupableIdx[removedReqId] = INVALID_INDEX;
+                    continue;
+                }
+                ++k;
+            }
+        }
+
+        void findPickupablesThatCanBeDroppedOff(std::vector<Pickupable> &pickupables,
+                                                std::vector<int> &pickupableIdx,
+                                                std::vector<ServedRequest> &servableRequests,
+                                                BitVector &servedByThisLine,
+                                                const std::vector<int> &ttPrefixSum,
+                                                const int vertexInLineIdx, const int v) const {
+            const auto &dropoffsAtV = pdInfo.getPossibleDropoffsAt(v);
+            const auto &dropoffWalkingTimes = pdInfo.getDropoffWalkingDistsAt(v);
+            for (int j = 0; j < dropoffsAtV.size(); ++j) {
+                const auto reqId = dropoffsAtV[j];
+                if (pickupableIdx[reqId] == INVALID_INDEX)
+                    continue;
+                auto &p = pickupables[pickupableIdx[reqId]];
+                KASSERT(p.requestId == reqId);
+                const auto inVehTime = ttPrefixSum[vertexInLineIdx] - ttPrefixSum[p.pickupVertexIdx];
+                const auto totalTT = p.walkingTime + inVehTime + dropoffWalkingTimes[j];
+                if (totalTT <= getMaxTravelTime(requests[p.requestId], inputConfig)) {
+                    // Request can be served by line
+                    servedByThisLine[reqId] = true;
+                    servableRequests.push_back(
+                            {reqId, p.pickupVertexIdx, p.walkingTime, vertexInLineIdx, dropoffWalkingTimes[j],
+                             inVehTime, 0.0});
+                    p = pickupables.back();
+                    pickupableIdx[p.requestId] = pickupableIdx[reqId];
+                    pickupables.pop_back();
+                    pickupableIdx[reqId] = INVALID_INDEX;
+                }
+            }
+        }
+
+        template<typename IsPassengerAlreadyServedT>
+        void addNewPickupables(std::vector<Pickupable> &pickupables,
+                               std::vector<int> &pickupableIdx,
+                               const BitVector &servedByThisLine,
+                               const IsPassengerAlreadyServedT &isPaxAlreadyServedByOtherLine,
+                               const std::vector<int> &ttPrefixSum,
+                               const int vertexInLineIdx, const int v) const {
+            const auto &pickupsAtV = pdInfo.getPossiblePickupsAt(v);
+            const auto &pickupWalkingTimes = pdInfo.getPickupWalkingDistsAt(v);
+            for (int j = 0; j < pickupsAtV.size(); ++j) {
+                const auto &reqId = pickupsAtV[j];
+                if (isPaxAlreadyServedByOtherLine(reqId) || servedByThisLine[reqId])
+                    continue;
+                const auto &walkingTime = pickupWalkingTimes[j];
+
+                // If request is not pickupable already, mark it as such
+                if (pickupableIdx[reqId] == INVALID_INDEX) {
+                    pickupableIdx[reqId] = pickupables.size();
+                    pickupables.push_back({reqId, vertexInLineIdx, walkingTime});
+                    continue;
+                }
+
+                // If request can already be picked up at earlier edge on line, only store vertex that provides
+                // better travel time (ignoring waiting times).
+                auto &p = pickupables[pickupableIdx[reqId]];
+                const auto ttExisting = p.walkingTime + ttPrefixSum[vertexInLineIdx] - ttPrefixSum[p.pickupVertexIdx];
+                const auto ttNew = walkingTime;
+                if (ttNew < ttExisting) {
+                    p = {reqId, vertexInLineIdx, walkingTime};
+                }
+            }
         }
 
         template<bool Starting>
@@ -860,10 +936,9 @@ namespace mixfix {
                 sumTTWeightedAvgSharing += p.ttWeightedAvgSharing;
             }
             const double avgRelDetour = static_cast<double>(sumActualTT) / static_cast<double>(sumDirectTT);
-            KASSERT(pax.size() > 0);
-            const double avgAbsDetour =
+            const double avgAbsDetour = pax.empty()? 0 :
                     static_cast<double>(sumActualTT - sumDirectTT) / static_cast<double>(pax.size());
-            const double avgTTWeightedAvgSharing = sumTTWeightedAvgSharing / static_cast<double>(pax.size());
+            const double avgTTWeightedAvgSharing = pax.empty()? 0 : sumTTWeightedAvgSharing / static_cast<double>(pax.size());
 
 
             lineOverviewLogger << lineId << ", "
