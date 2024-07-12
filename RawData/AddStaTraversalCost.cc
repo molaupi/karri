@@ -82,7 +82,7 @@ int main(int argc, char *argv[]) {
 
         const auto graphFileName = clp.getValue<std::string>("g");
         const auto flowFileName = clp.getValue<std::string>("f");
-        const auto factor = clp.getValue<double>("x");
+        const auto factor = clp.getValue<float>("x");
         auto outputFileName = clp.getValue<std::string>("o");
         if (!endsWith(outputFileName, ".gr.bin")) {
             outputFileName += ".gr.bin";
@@ -118,9 +118,9 @@ int main(int argc, char *argv[]) {
         FORALL_VALID_EDGES(inputGraph, u, e) {
                 const int travelTime = inputGraph.get<TravelTimeAttribute>(e);
                 const int flow = flows[e];
-                const double floatTraversalCost =
+                const float floatTraversalCost =
                         flow == 0 ? static_cast<float>(travelTime) : factor * static_cast<float>(travelTime) +
-                                                                      (1.0 - factor) * static_cast<float>(travelTime) /
+                                                                      (1.0f - factor) * static_cast<float>(travelTime) /
                                                                       static_cast<float>(flow);
                 const int traversalCost = flow == 0 ? travelTime : static_cast<int>(floatTraversalCost);
                 LIGHT_KASSERT(factor != 1 || traversalCost == travelTime,
