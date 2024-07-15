@@ -88,6 +88,7 @@ namespace mixfix {
                                                                             "total_travel_time,"
                                                                             "num_pax_served,"
                                                                             "num_pax_fully_covered,"
+                                                                            "num_trip_time_violations,"
                                                                             "avg_rel_pax_detour,"
                                                                             "avg_abs_pax_detour,"
                                                                             "avg_tt_weighted_avg_sharing,"
@@ -115,6 +116,7 @@ namespace mixfix {
 
             BitVector isServable(requests.size(), false);
             std::vector<int> pickupableIdx(requests.size(), INVALID_INDEX);
+            Subset tripTimeViolators(requests.size());
 
             FixedLine line;
             std::vector<int> fullyCoveredPaths;
@@ -143,6 +145,7 @@ namespace mixfix {
 
                 // Find passengers served by line:
                 timer.restart();
+                tripTimeViolators.clear();
                 std::vector<int> verticesInLine;
                 verticesInLine.push_back(inputGraph.edgeTail(line.front()));
                 for (const auto &e: line)
@@ -153,7 +156,7 @@ namespace mixfix {
 
                 const auto &pax = findPassengersServableByLine(line, verticesInLine, [&](const int reqId) {
                     return !paths.hasPathFor(reqId);
-                }, fullyCoveredPaths, isServable, pickupableIdx);
+                }, fullyCoveredPaths, isServable, pickupableIdx, tripTimeViolators);
                 runningTimeStats.findServedPaxTime = timer.elapsed<std::chrono::nanoseconds>();
                 std::cout << "Found a line of length " << line.size() << " that can serve " << pax.size()
                           << " passengers. (Num fully covered paths = " << fullyCoveredPaths.size() << ")" << std::endl;
@@ -180,8 +183,8 @@ namespace mixfix {
                 std::cout << "\tNumber of passengers served whose paths are not fully covered by "
                              "line (origin to destination): " << numServedButNotFullyCovered << std::endl;
 
-                logLine(line, lines.size(), initialEdge, maxFlowOnLine, pax, fullyCoveredPaths.size(), runningTimeStats,
-                        buildGeoJson);
+                logLine(line, lines.size(), initialEdge, maxFlowOnLine, pax, fullyCoveredPaths.size(),
+                        tripTimeViolators, runningTimeStats, buildGeoJson);
 
                 // Add line
                 lines.push_back(std::make_pair(std::move(line), std::move(pax)));
@@ -602,7 +605,8 @@ namespace mixfix {
                                      const IsPassengerAlreadyServedT &isPaxAlreadyServedByOtherLine,
                                      const std::vector<int> &fullyCoveredPaths,
                                      BitVector &servedByThisLine,
-                                     std::vector<int> &pickupableIdx) const {
+                                     std::vector<int> &pickupableIdx,
+                                     Subset& tripTimeViolators) const {
             KASSERT(servedByThisLine.cardinality() == 0);
             KASSERT(std::all_of(pickupableIdx.begin(), pickupableIdx.end(),
                                 [](const int idx) { return idx == INVALID_INDEX; }));
@@ -611,7 +615,7 @@ namespace mixfix {
             // may be picked up by the vehicle before the current vertex.
             // When reaching vertex i, we perform the following:
             //  1. Remove a request r from P if the detour of r has become too large with vertex i.
-            //  2. Check whether r can be dropped off at vertex i. If so, r can be served by the line. Remove r from P.
+            //  2. For every r in P, check whether r can be dropped off at vertex i. If so, r can be served by the line. Remove r from P.
             //  3. Add all unserved requests that can be picked up at vertex i to P.
             //
             // There may be multiple possible pickup vertices on the same line for a request r. We always use the one with
@@ -632,7 +636,7 @@ namespace mixfix {
 
                 // 2. Check which pickup-able requests can be dropped off at edge i.
                 findPickupablesThatCanBeDroppedOff(pickupables, pickupableIdx, servableRequests, servedByThisLine,
-                                                   ttPrefixSum, i, v);
+                                                   tripTimeViolators, ttPrefixSum, i, v);
 
                 // 3. Add unserved passengers that may be picked up here:
                 addNewPickupables(pickupables, pickupableIdx, servedByThisLine, isPaxAlreadyServedByOtherLine, ttPrefixSum, i, v);
@@ -738,6 +742,7 @@ namespace mixfix {
                                                 std::vector<int> &pickupableIdx,
                                                 std::vector<ServedRequest> &servableRequests,
                                                 BitVector &servedByThisLine,
+                                                Subset &tripTimeViolators,
                                                 const std::vector<int> &ttPrefixSum,
                                                 const int vertexInLineIdx, const int v) const {
             const auto &dropoffsAtV = pdInfo.getPossibleDropoffsAt(v);
@@ -756,10 +761,13 @@ namespace mixfix {
                     servableRequests.push_back(
                             {reqId, p.pickupVertexIdx, p.walkingTime, vertexInLineIdx, dropoffWalkingTimes[j],
                              inVehTime, 0.0});
+                    tripTimeViolators.remove(reqId);
                     p = pickupables.back();
                     pickupableIdx[p.requestId] = pickupableIdx[reqId];
                     pickupables.pop_back();
                     pickupableIdx[reqId] = INVALID_INDEX;
+                } else {
+                    tripTimeViolators.insert(reqId);
                 }
             }
         }
@@ -919,7 +927,7 @@ namespace mixfix {
 
         void
         logLine(const FixedLine &line, const int lineId, const int initialEdge, const int maxFlow,
-                const std::vector<ServedRequest> &pax, const int numFullyCovered,
+                const std::vector<ServedRequest> &pax, const int numFullyCovered, const Subset& tripTimeViolators,
                 const RunningTimePerLineStats &runningTimeStats,
                 const bool buildGeoJson) {
 
@@ -948,6 +956,7 @@ namespace mixfix {
                                << totalTravelTime << ", "
                                << pax.size() << ", "
                                << numFullyCovered << ", "
+                               << tripTimeViolators.size() << ", "
                                << avgRelDetour << ", "
                                << avgAbsDetour << ", "
                                << avgTTWeightedAvgSharing << ", "
