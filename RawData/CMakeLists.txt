@@ -24,6 +24,10 @@
 # ******************************************************************************
 
 
+add_executable(AddSingleEdgeByOsmNodeIds AddSingleEdgeByOsmNodeIds.cc)
+target_compile_definitions(AddSingleEdgeByOsmNodeIds PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(AddSingleEdgeByOsmNodeIds ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+
 add_executable(AddStaTraversalCost AddStaTraversalCost.cc)
 target_compile_definitions(AddStaTraversalCost PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(AddStaTraversalCost ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)

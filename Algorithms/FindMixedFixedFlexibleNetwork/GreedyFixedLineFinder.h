@@ -158,6 +158,10 @@ namespace mixfix {
                 std::cout << "Found a line of length " << line.size() << " that can serve " << pax.size()
                           << " passengers. (Num fully covered paths = " << fullyCoveredPaths.size() << ")" << std::endl;
 
+
+                if (pax.size() < inputConfig.minNumPaxPerLine)
+                    break;
+
                 // Update paths data structures:
                 timer.restart();
                 int numServedButNotFullyCovered = 0;
@@ -176,12 +180,8 @@ namespace mixfix {
                 std::cout << "\tNumber of passengers served whose paths are not fully covered by "
                              "line (origin to destination): " << numServedButNotFullyCovered << std::endl;
 
-
                 logLine(line, lines.size(), initialEdge, maxFlowOnLine, pax, fullyCoveredPaths.size(), runningTimeStats,
                         buildGeoJson);
-
-                if (pax.size() < inputConfig.minNumPaxPerLine)
-                    break;
 
                 // Add line
                 lines.push_back(std::make_pair(std::move(line), std::move(pax)));

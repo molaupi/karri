@@ -60,20 +60,22 @@ inline void printUsage() {
               "Usage: mixfix -veh-g <vehicle network> -psg-g <passenger network> -r <requests> -p <paths> -v <vehicles> -o <file>\n"
               "Runs process to find mixed fixed-flexible bus public transport networks with given vehicle and passenger\n"
               "road networks and demand. Writes output files to specified base path."
-              "  -veh-g <file>          vehicle road network in binary format.\n"
-              "  -psg-g <file>          passenger road (and path) network in binary format.\n"
-              "  -r <file>              requests in CSV format.\n"
-              "  -p <file>              preliminary paths in CSV format.\n"
-              "  -a <factor>            model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
-              "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
-              "  -pd <file>             PD-locations for requests in binary format. Optional, if not given, will be computed and written to binary file.\n"
-              "  -veh-h <file>          contraction hierarchy for the vehicle network in binary format.\n"
-              "  -psg-h <file>          contraction hierarchy for the passenger network in binary format.\n"
-              "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
-              "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
-              "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
-              "  -output-paths          If set, also outputs paths as GeoJSON and CSV.\n"
-              "  -help                  show usage help text.\n";
+              "  -veh-g <file>              vehicle road network in binary format.\n"
+              "  -psg-g <file>              passenger road (and path) network in binary format.\n"
+              "  -r <file>                  requests in CSV format.\n"
+              "  -p <file>                  preliminary paths in CSV format.\n"
+              "  -pd <file>                 PD-locations for requests in binary format (see ComputePDLocsForRequests).\n"
+              "  -veh-h <file>              contraction hierarchy for the vehicle network in binary format (optional).\n"
+              "  -psg-h <file>              contraction hierarchy for the passenger network in binary format (optional).\n"
+              "  -a <factor>                model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.0)\n"
+              "  -b <seconds>               model parameter beta for max trip time = a * OD-dist + b (dflt: 900)\n"
+              "  -min-max-line-flow <int>   stops constructing lines if flow of initial edge is < given value (dflt: 1)\n"
+              "  -max-flow-dif <float>      stops extending a line if max flow / min flow on line is >= given value (dflt: unlimited)\n"
+              "  -min-num-line-pax <int>    stops constructing lines if a line found has fewer passengers than given value (dflt: 1)\n"
+              "  -overlap-score-exp <float> exponent for score of longer overlaps when finding next line edge (dflt: 1)\n"
+              "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
+              "  -output-paths              If set, also outputs paths as GeoJSON and CSV.\n"
+              "  -help                      show usage help text.\n";
 }
 
 std::vector<int> parseEdgePathString(std::string s) {
@@ -146,13 +148,13 @@ int main(int argc, char *argv[]) {
 
         // Parse the command-line options.
         InputConfig &inputConfig = InputConfig::getInstance();
-        inputConfig.minMaxFlowOnLine = clp.getValue<int>("min-max-line-flow", 5); // Delta1 in paper
-        inputConfig.maxFlowRatioOnLine = clp.getValue<double>("max-flow-dif", 10.0); // Delta2 in paper
-        inputConfig.minNumPaxPerLine = clp.getValue<int>("min-num-line-pax", 5); // Delta3 in paper
-        inputConfig.overlapScoreExponent = clp.getValue<double>("overlap-score-exp", 2.0); // Exponent for weighting overlap length
+        inputConfig.minMaxFlowOnLine = clp.getValue<int>("min-max-line-flow", 1); // Delta1 in paper
+        inputConfig.maxFlowRatioOnLine = clp.getValue<double>("max-flow-dif", std::numeric_limits<double>::max()); // Delta2 in paper
+        inputConfig.minNumPaxPerLine = clp.getValue<int>("min-num-line-pax", 1); // Delta3 in paper
+        inputConfig.overlapScoreExponent = clp.getValue<double>("overlap-score-exp", 1.0); // Exponent for weighting overlap length
 
-        inputConfig.alpha = clp.getValue<double>("a", 1.7);
-        inputConfig.beta = clp.getValue<int>("b", 120) * 10;
+        inputConfig.alpha = clp.getValue<double>("a", 1.0);
+        inputConfig.beta = clp.getValue<int>("b", 900) * 10;
 
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
