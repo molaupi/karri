@@ -270,9 +270,51 @@ namespace mixfix {
             // TODO: Try extending by one edge forward and backward in alternating fashion.
             // Paths that contain the initial edge whose end is reached by the forward extension but who may still be
             // extended toward their start by the backward extension
-            extendLineForwards(line, flowOnInitialEdge, overlappingPaths, overlappingReachedEnd,
+            extendLineForwards(line, flowOnInitialEdge, overlappingPaths, overlappingReachedEnd, fullyCoveredPaths,
+                               paths);
+            std::vector<OverlappingPath> overlappingReachedBeginning;
+            extendLineBackwards(line, flowOnInitialEdge, overlappingReachedEnd, overlappingReachedBeginning,
+                                fullyCoveredPaths, paths);
+        }
+
+        void constructNextLineBackwardFirst(PreliminaryPathsT &paths, FixedLine &line,
+                                            const int &initialEdge, const int &flowOnInitialEdge,
+                                            std::vector<int> &fullyCoveredPaths) {
+            std::vector<OverlappingPath> overlappingPaths;
+            std::vector<OverlappingPath> overlappingReachedBeginning;
+            line = {initialEdge};
+            const auto pickupsAtTail = pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(initialEdge));
+            const auto dropoffsAtHead = pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(initialEdge));
+            for (const auto &path: paths) {
+                for (int i = 0; i < path.size(); ++i) {
+                    if (path[i] == initialEdge) {
+                        const bool possiblePickupReached = contains(pickupsAtTail.begin(), pickupsAtTail.end(),
+                                                                    path.getRequestId());
+                        const bool possibleDropoffReached = contains(dropoffsAtHead.begin(), dropoffsAtHead.end(),
+                                                                     path.getRequestId());
+                        if (possiblePickupReached && possibleDropoffReached) {
+                            fullyCoveredPaths.push_back(path.getRequestId());
+                        } else if (possiblePickupReached) {
+                            overlappingReachedBeginning.push_back(
+                                    {path.getRequestId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
+                        } else {
+                            overlappingPaths.push_back(
+                                    {path.getRequestId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
+                        }
+                        break; // If path overlaps with edge in multiple places, only consider first overlap
+                    }
+                }
+            }
+
+            // Construct line by greedily extending in both directions.
+            // TODO: Try extending by one edge forward and backward in alternating fashion.
+            // Paths that contain the initial edge whose end is reached by the forward extension but who may still be
+            // extended toward their start by the backward extension
+            extendLineBackwards(line, flowOnInitialEdge, overlappingPaths, overlappingReachedBeginning,
+                                fullyCoveredPaths, paths);
+            std::vector<OverlappingPath> overlappingReachedEnd;
+            extendLineForwards(line, flowOnInitialEdge, overlappingReachedBeginning, overlappingReachedEnd,
                                fullyCoveredPaths, paths);
-            extendLineBackwards(line, flowOnInitialEdge, overlappingReachedEnd, fullyCoveredPaths, paths);
         }
 
         static uint64_t computeScoreForOverlapLength(const uint64_t overlapLength) {
@@ -489,6 +531,7 @@ namespace mixfix {
         void extendLineBackwards(FixedLine &line,
                                  const int &maxFlowOnLine,
                                  std::vector<OverlappingPath> &overlapping,
+                                 std::vector<OverlappingPath> &overlappingReachedBeginning,
                                  std::vector<int> &fullyCoveredPaths,
                                  const PreliminaryPathsT &paths) {
 
@@ -513,13 +556,12 @@ namespace mixfix {
             // Hook function for extending an overlap if possible for a chosen extension.
             // Returns true if overlap has been extended and should be kept as overlapping or false if it
             // should be removed.
-            const auto extendOverlapIfPossible = [this, &fullyCoveredPaths](
+            const auto extendOverlapIfPossible = [this, &fullyCoveredPaths, &overlappingReachedBeginning](
                     OverlappingPath &o,
                     const Path &path,
                     const int extension,
                     const int newReachedVertex) {
                 KASSERT(o.start > 0);
-                KASSERT(o.possibleDropoffReached);
                 const auto &pickupsAtNewVertex = pdInfo.getPossiblePickupsAt(newReachedVertex);
                 if (path[o.start - 1] != extension)
                     return false;
@@ -529,8 +571,14 @@ namespace mixfix {
                     // If path continues on extension but no possible pickup has been reached, keep it as overlapping path
                     return true;
                 }
-                // If a possible pickup has been reached, the path is fully covered.
-                fullyCoveredPaths.push_back(o.requestId);
+                o.possiblePickupReached = true;
+                if (!o.possibleDropoffReached)
+                    // In case a pickup is reached but no dropoff spot is covered yet, the backward
+                    // extension may still fully cover it.
+                    overlappingReachedBeginning.push_back(o);
+                else
+                    // In case both a pickup and dropoff is on the line, the path is fully covered.
+                    fullyCoveredPaths.push_back(o.requestId);
                 return false;
             };
 
@@ -606,7 +654,7 @@ namespace mixfix {
                                      const std::vector<int> &fullyCoveredPaths,
                                      BitVector &servedByThisLine,
                                      std::vector<int> &pickupableIdx,
-                                     Subset& tripTimeViolators) const {
+                                     Subset &tripTimeViolators) const {
             KASSERT(servedByThisLine.cardinality() == 0);
             KASSERT(std::all_of(pickupableIdx.begin(), pickupableIdx.end(),
                                 [](const int idx) { return idx == INVALID_INDEX; }));
@@ -639,7 +687,8 @@ namespace mixfix {
                                                    tripTimeViolators, ttPrefixSum, i, v);
 
                 // 3. Add unserved passengers that may be picked up here:
-                addNewPickupables(pickupables, pickupableIdx, servedByThisLine, isPaxAlreadyServedByOtherLine, ttPrefixSum, i, v);
+                addNewPickupables(pickupables, pickupableIdx, servedByThisLine, isPaxAlreadyServedByOtherLine,
+                                  ttPrefixSum, i, v);
             }
 
 //            // If the line comprises a single loop, we try to find dropoffs for the remaining pickup-able passengers
@@ -927,7 +976,7 @@ namespace mixfix {
 
         void
         logLine(const FixedLine &line, const int lineId, const int initialEdge, const int maxFlow,
-                const std::vector<ServedRequest> &pax, const int numFullyCovered, const Subset& tripTimeViolators,
+                const std::vector<ServedRequest> &pax, const int numFullyCovered, const Subset &tripTimeViolators,
                 const RunningTimePerLineStats &runningTimeStats,
                 const bool buildGeoJson) {
 
@@ -944,9 +993,11 @@ namespace mixfix {
                 sumTTWeightedAvgSharing += p.ttWeightedAvgSharing;
             }
             const double avgRelDetour = static_cast<double>(sumActualTT) / static_cast<double>(sumDirectTT);
-            const double avgAbsDetour = pax.empty()? 0 :
-                    static_cast<double>(sumActualTT - sumDirectTT) / static_cast<double>(pax.size());
-            const double avgTTWeightedAvgSharing = pax.empty()? 0 : sumTTWeightedAvgSharing / static_cast<double>(pax.size());
+            const double avgAbsDetour = pax.empty() ? 0 :
+                                        static_cast<double>(sumActualTT - sumDirectTT) /
+                                        static_cast<double>(pax.size());
+            const double avgTTWeightedAvgSharing = pax.empty() ? 0 : sumTTWeightedAvgSharing /
+                                                                     static_cast<double>(pax.size());
 
 
             lineOverviewLogger << lineId << ", "
