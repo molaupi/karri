@@ -24,37 +24,31 @@
 
 #pragma once
 
-#include "Tools/Constants.h"
-#include "AvoidLoopsStrategy.h"
+#include "Tools/EnumParser.h"
 
 namespace mixfix {
-    struct InputConfig {
+    enum class AvoidLoopsStrategy {
+        NONE,
+        VERTEX,
+        EDGE,
+        VERTEX_ROLLBACK,
+        EDGE_ROLLBACK,
+        EDGE_ALTERNATIVE
+    };
 
-    public:
-        static InputConfig &getInstance() {
-            static InputConfig instance; // Guaranteed to be destroyed.
-            // Instantiated on first use.
-            return instance;
-        }
+} // end namespace mixfix
 
-    private:
-        InputConfig() = default;
-
-    public:
-        // public deleted constructors for compiler error messages
-        InputConfig(InputConfig const &) = delete;
-
-        void operator=(InputConfig const &) = delete;
-
-        int minMaxFlowOnLine = INFTY;
-        int minNumPaxPerLine = INFTY;
-        double maxFlowRatioOnLine = 0.0;
-        double overlapScoreExponent = 0.0;
-
-        double alpha = -1;
-        int beta = -1;
-
-        AvoidLoopsStrategy loopStrategy = AvoidLoopsStrategy::NONE;
-
+// Make EnumParser usable with LoopStrategy.
+template<>
+void EnumParser<mixfix::AvoidLoopsStrategy>::initNameToEnumMap() {
+    nameToEnum = {
+            {"none",                mixfix::AvoidLoopsStrategy::NONE},
+            {"vertex",              mixfix::AvoidLoopsStrategy::VERTEX},
+            {"edge",                mixfix::AvoidLoopsStrategy::EDGE},
+            {"vertex-rollback",     mixfix::AvoidLoopsStrategy::VERTEX_ROLLBACK},
+            {"edge-rollback",       mixfix::AvoidLoopsStrategy::EDGE_ROLLBACK},
+            {"edge-alternative",    mixfix::AvoidLoopsStrategy::EDGE_ALTERNATIVE}
     };
 }
+
+

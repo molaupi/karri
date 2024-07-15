@@ -49,6 +49,7 @@
 #include "Algorithms/FindMixedFixedFlexibleNetwork/DirectDistancesFinder.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/PreliminaryPaths.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/InputConfig.h"
+#include "Algorithms/FindMixedFixedFlexibleNetwork/AvoidLoopsStrategy.h"
 #include "DataStructures/Graph/Attributes/OsmRoadCategoryAttribute.h"
 #include "Algorithms/KaRRi/CHEnvironment.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
@@ -73,6 +74,17 @@ inline void printUsage() {
               "  -max-flow-dif <float>      stops extending a line if max flow / min flow on line is >= given value (dflt: unlimited)\n"
               "  -min-num-line-pax <int>    stops constructing lines if a line found has fewer passengers than given value (dflt: 1)\n"
               "  -overlap-score-exp <float> exponent for score of longer overlaps when finding next line edge (dflt: 1)\n"
+              "  -avoid-loops <strategy>    strategy to avoid loops in lines. Possible values are: \n"
+              "                                 none                lines may visit vertices and edges multiple times (dflt)\n"
+              "                                 vertex              stop extending if a vertex is visited the second time\n"
+              "                                                     (strategy used in Fielbaum, Alonso-Mora paper)\n"
+              "                                 edge                stop extending if a (directed) edge is visited the second time\n"
+              "                                 vertex-rollback     stop extending if a vertex is visited the second time\n"
+              "                                                     and roll line back to last useful edge\n"
+              "                                 edge-rollback       stop extending if an edge is visited the second time\n"
+              "                                                     and roll line back to last useful edge\n"
+              "                                 edge-alternative    if extension edge has been visited before, attempt to find\n"
+              "                                                     different viable extension\n"
               "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
               "  -output-paths              If set, also outputs paths as GeoJSON and CSV.\n"
               "  -help                      show usage help text.\n";
@@ -155,6 +167,8 @@ int main(int argc, char *argv[]) {
 
         inputConfig.alpha = clp.getValue<double>("a", 1.0);
         inputConfig.beta = clp.getValue<int>("b", 900) * 10;
+
+        inputConfig.loopStrategy = EnumParser<AvoidLoopsStrategy>()(clp.getValue<std::string>("avoid-loops", "none"));
 
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");

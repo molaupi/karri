@@ -35,6 +35,7 @@
 #include "PickupDropoffManager.h"
 #include "InputConfig.h"
 #include "Tools/Timer.h"
+#include "DataStructures/Containers/FastResetFlagArray.h"
 
 #include <nlohmann/json.hpp>
 
@@ -117,6 +118,7 @@ namespace mixfix {
             BitVector isServable(requests.size(), false);
             std::vector<int> pickupableIdx(requests.size(), INVALID_INDEX);
             Subset tripTimeViolators(requests.size());
+            FastResetFlagArray<> hasOverlapped(requests.size());
 
             FixedLine line;
             std::vector<int> fullyCoveredPaths;
@@ -131,6 +133,7 @@ namespace mixfix {
                 int initialEdge, maxFlowOnLine;
                 line.clear();
                 fullyCoveredPaths.clear();
+                hasOverlapped.reset();
                 findInitialEdge(paths, initialEdge, maxFlowOnLine);
                 std::cout << "Initial edge " << initialEdge
                           << " (tail: " << inputGraph.osmNodeId(inputGraph.edgeTail(initialEdge))
@@ -140,7 +143,7 @@ namespace mixfix {
                     std::cout << "Stopping line construction due to insufficient flow on initial edge." << std::endl;
                     break;
                 }
-                constructNextLine(paths, line, initialEdge, maxFlowOnLine, fullyCoveredPaths);
+                constructNextLine(paths, line, initialEdge, maxFlowOnLine, fullyCoveredPaths, hasOverlapped);
                 runningTimeStats.constructLineTime = timer.elapsed<std::chrono::nanoseconds>();
 
                 // Find passengers served by line:
@@ -239,7 +242,8 @@ namespace mixfix {
         // Greedily constructs new line from remaining paths. Returns line and max flow on line.
         void constructNextLine(PreliminaryPathsT &paths, FixedLine &line,
                                const int &initialEdge, const int &flowOnInitialEdge,
-                               std::vector<int> &fullyCoveredPaths) {
+                               std::vector<int> &fullyCoveredPaths,
+                               FastResetFlagArray<> &hasOverlapped) {
             std::vector<OverlappingPath> overlappingPaths;
             std::vector<OverlappingPath> overlappingReachedEnd;
             line = {initialEdge};
@@ -271,10 +275,10 @@ namespace mixfix {
             // Paths that contain the initial edge whose end is reached by the forward extension but who may still be
             // extended toward their start by the backward extension
             extendLineForwards(line, flowOnInitialEdge, overlappingPaths, overlappingReachedEnd, fullyCoveredPaths,
-                               paths);
+                               paths, hasOverlapped);
             std::vector<OverlappingPath> overlappingReachedBeginning;
             extendLineBackwards(line, flowOnInitialEdge, overlappingReachedEnd, overlappingReachedBeginning,
-                                fullyCoveredPaths, paths);
+                                fullyCoveredPaths, paths, hasOverlapped);
         }
 
         void constructNextLineBackwardFirst(PreliminaryPathsT &paths, FixedLine &line,
@@ -317,9 +321,62 @@ namespace mixfix {
                                fullyCoveredPaths, paths);
         }
 
-        static uint64_t computeScoreForOverlapLength(const uint64_t overlapLength) {
+        static inline uint64_t computeScoreForOverlapLength(const uint64_t overlapLength) {
             const auto res = std::pow(overlapLength, InputConfig::getInstance().overlapScoreExponent);
             return static_cast<uint64_t>(res);
+        }
+
+        // Finds the highest scoring extension starting at given vertex.
+        // Ignores edges in given blacklist.
+        // Returns extension edge and flow on extension or {INVALID_EDGE, 0} if no viable extension exists.
+        template<
+                typename DoesExtensionContinueOverlapT,
+                typename CountOverlapsStartingAtExtensionT>
+        static std::pair<int, int>
+        findMaxScoreExtension(const VehicleInputGraphT &graph,
+                              const int v,
+                              const std::vector<OverlappingPath> &overlapping,
+                              const PreliminaryPathsT &paths,
+                              const DoesExtensionContinueOverlapT &doesExtensionContinueOverlap,
+                              const CountOverlapsStartingAtExtensionT &countOverlapsStartingAtExtension,
+                              const std::vector<int> &edgeBlackList = {}) {
+            // Search for edge on which to extend line. Edge is chosen using a scoring system.
+            int extension = INVALID_EDGE;
+            int flowOnExtension = 0;
+            uint64_t maxScore = 0;
+            FORALL_INCIDENT_EDGES(graph, v, e) {
+                if (contains(edgeBlackList.begin(), edgeBlackList.end(), e))
+                    continue;
+
+                uint64_t score = 0; // Each path that overlaps with the edge contributes to the score as described below
+                int flow = 0; // Each path that overlaps with the edge contributes to the load with a value of one
+
+                int eInForwGraph = graph.edgeId(e);
+
+                // Paths already on line whose next edge is e increase the score by 1 + the square of the length of
+                // the current overlap between the line and the path.
+                for (const auto &o: overlapping) {
+                    const auto &path = paths.getPathFor(o.requestId);
+                    if (doesExtensionContinueOverlap(o, path, eInForwGraph)) {
+                        const uint64_t overlapLength = 1 + o.end - o.start;
+                        score += computeScoreForOverlapLength(overlapLength);
+                        ++flow;
+                    }
+                }
+
+                // Paths that begin at e increase the score by 1.
+                const int numNewOverlaps = countOverlapsStartingAtExtension(paths, eInForwGraph);
+                score += numNewOverlaps;
+                flow += numNewOverlaps;
+
+                if (score > maxScore) {
+                    maxScore = score;
+                    extension = e;
+                    flowOnExtension = flow;
+                }
+            }
+
+            return {extension, flowOnExtension};
         }
 
         template<
@@ -339,48 +396,119 @@ namespace mixfix {
                         const StartNewOverlapsAtExtensionT &startNewOverlapsAtExtension) {
 
             // Begin extending
+            int mostRecentUsefulVertex = graph.edgeHead(line.back());
             double flowDif = 0.0;
             while (flowDif < inputConfig.maxFlowRatioOnLine) {
                 const auto v = graph.edgeHead(line.back());
 
-                // Search for edge on which to extend line. Edge is chosen using a scoring system.
-                uint64_t maxScore = 0;
-                int extension = INVALID_EDGE;
-                int flowOnExtension = 0;
-                FORALL_INCIDENT_EDGES(graph, v, e) {
-                    uint64_t score = 0; // Each path that overlaps with the edge contributes to the score as described below
-                    int flow = 0; // Each path that overlaps with the edge contributes to the load with a value of one
+                int extension, flowOnExtension;
+                if (inputConfig.loopStrategy == AvoidLoopsStrategy::NONE) {
+                    // Allow loops on lines
+                    const auto [foundExtension, foundFlowOnExtension]
+                            = findMaxScoreExtension(graph, v, overlapping, paths, doesExtensionContinueOverlap,
+                                                    countOverlapsStartingAtExtension);
+                    extension = foundExtension;
+                    flowOnExtension = foundFlowOnExtension;
+                } else if (inputConfig.loopStrategy == AvoidLoopsStrategy::VERTEX
+                           || inputConfig.loopStrategy == AvoidLoopsStrategy::VERTEX_ROLLBACK) {
+                    // Stop extending if current vertex has been visited before
+                    bool vertexVisitedBefore = false;
+                    for (const auto &e: line) {
+                        if (v == graph.edgeTail(e)) {
+                            vertexVisitedBefore = true;
+                            break;
+                        }
+                    }
+                    if (vertexVisitedBefore) {
+                        if (inputConfig.loopStrategy == AvoidLoopsStrategy::VERTEX_ROLLBACK) {
+                            // Immediately roll line back to last useful vertex.
+                            while (graph.edgeHead(line.back()) != mostRecentUsefulVertex) {
+                                line.pop_back();
+                            }
+                            KASSERT(!line.empty());
+                        }
+                        break;
+                    }
 
-                    int eInForwGraph = graph.edgeId(e);
+                    const auto [foundExtension, foundFlowOnExtension]
+                            = findMaxScoreExtension(graph, v, overlapping, paths, doesExtensionContinueOverlap,
+                                                    countOverlapsStartingAtExtension);
+                    extension = foundExtension;
+                    flowOnExtension = foundFlowOnExtension;
 
-                    // Paths already on line whose next edge is e increase the score by 1 + the square of the length of
-                    // the current overlap between the line and the path.
-                    for (const auto &o: overlapping) {
-                        const auto &path = paths.getPathFor(o.requestId);
-                        if (doesExtensionContinueOverlap(o, path, eInForwGraph)) {
-                            const uint64_t overlapLength = 1 + o.end - o.start;
-                            score += computeScoreForOverlapLength(overlapLength);
-                            ++flow;
+                } else if (inputConfig.loopStrategy == AvoidLoopsStrategy::EDGE
+                           || inputConfig.loopStrategy == AvoidLoopsStrategy::EDGE_ROLLBACK) {
+                    // Stop extending if chosen extension edge has been visited before
+
+                    const auto [foundExtension, foundFlowOnExtension]
+                            = findMaxScoreExtension(graph, v, overlapping, paths, doesExtensionContinueOverlap,
+                                                    countOverlapsStartingAtExtension);
+
+                    bool edgeVisitedBefore = false;
+                    for (const auto &e: line) {
+                        if (e == foundExtension) {
+                            edgeVisitedBefore = true;
+                            break;
                         }
                     }
 
-                    // Paths that begin at e increase the score by 1.
-                    const int numNewOverlaps = countOverlapsStartingAtExtension(paths, eInForwGraph);
-                    score += numNewOverlaps;
-                    flow += numNewOverlaps;
+                    if (edgeVisitedBefore) {
+                        if (inputConfig.loopStrategy == AvoidLoopsStrategy::VERTEX_ROLLBACK) {
+                            // Immediately roll line back to last useful vertex.
+                            while (graph.edgeHead(line.back()) != mostRecentUsefulVertex) {
+                                line.pop_back();
+                            }
+                            KASSERT(!line.empty());
+                        }
+                        break;
+                    }
 
-                    if (score > maxScore) {
-                        maxScore = score;
-                        extension = e;
-                        flowOnExtension = flow;
+                    extension = foundExtension;
+                    flowOnExtension = foundFlowOnExtension;
+
+                } else { // inputConfig.avoidLoopsStrategy == AvoidLoopsStrategy::EDGE_ALTERNATIVE
+                    // Choose extension that avoids loop if one exists.
+                    std::vector<int> extensionBlackList;
+                    extensionBlackList.reserve(graph.degree(v));
+                    while (true) {
+
+                        const auto [foundExtension, foundFlowOnExtension]
+                                = findMaxScoreExtension(graph, v, overlapping, paths, doesExtensionContinueOverlap,
+                                                        countOverlapsStartingAtExtension, extensionBlackList);
+                        extension = foundExtension;
+                        flowOnExtension = foundFlowOnExtension;
+
+                        // If no viable extension is available, stop extending line.
+                        if (extension == INVALID_EDGE)
+                            break;
+
+                        KASSERT(flowOnExtension <= maxFlowOnLine, "Larger flow than max flow has been found!",
+                                kassert::assert::light);
+
+                        // If extension edge is already part of line, choose different extension (if possible)
+                        bool extensionClosesLoop = false;
+                        for (const auto &e: line) {
+                            if (e == extension) {
+                                extensionClosesLoop = true;
+                                break;
+                            }
+                        }
+                        if (!extensionClosesLoop)
+                            break; // Viable extension has been found
+
+                        // Blacklist extension and try again
+                        extensionBlackList.push_back(extension);
                     }
                 }
 
+
+                // If no viable extension is available, stop extending line.
                 if (extension == INVALID_EDGE)
                     break;
 
                 KASSERT(flowOnExtension <= maxFlowOnLine, "Larger flow than max flow has been found!",
                         kassert::assert::light);
+                KASSERT(!contains(line.begin(), line.end(), extension));
 
                 // Fielbaum and Alonso-Mora give this formula for the flow difference. The given intention is to stop
                 // extending once the difference in flow becomes too large since this would imply bad utilization of
@@ -397,20 +525,6 @@ namespace mixfix {
                 if (flowDif >= inputConfig.maxFlowRatioOnLine)
                     break; // Stop extending line
 
-
-                // If extension edge is already part of line, stop extending
-                bool extensionClosesLoop = false;
-
-                // Check if edge (directional) is already on line
-                for (const auto &e: line) {
-                    if (e == extension) {
-                        extensionClosesLoop = true;
-                        break;
-                    }
-                }
-                if (extensionClosesLoop)
-                    break; // Stop extending line
-
                 const int extensionInForwGraph = graph.edgeId(extension);
                 const int newReachedVertex = graph.edgeHead(extension);
 
@@ -419,7 +533,7 @@ namespace mixfix {
                 while (i < overlapping.size()) {
                     auto &o = overlapping[i];
                     const auto &path = paths.getPathFor(o.requestId);
-                    if (extendOverlapIfPossible(o, path, extensionInForwGraph, newReachedVertex)) {
+                    if (extendOverlapIfPossible(o, path, extensionInForwGraph, newReachedVertex, mostRecentUsefulVertex)) {
                         ++i;
                     } else {
                         // If overlapping path does not overlap with extension or a dropoff has been found,
@@ -442,13 +556,9 @@ namespace mixfix {
                                 std::vector<OverlappingPath> &overlapping,
                                 std::vector<OverlappingPath> &overlappingReachedEnd,
                                 std::vector<int> &fullyCoveredPaths,
-                                const PreliminaryPathsT &paths) {
+                                const PreliminaryPathsT &paths,
+                                FastResetFlagArray<> &hasOverlapped) {
 
-            static auto earlierOverlapKnown = [](const int requestId, const std::vector<OverlappingPath> &overlapping) {
-                return std::find_if(overlapping.begin(), overlapping.end(), [&](const OverlappingPath &o) {
-                    return o.requestId == requestId;
-                }) != overlapping.end();
-            };
 
             // Hook function for checking if an extension continues an overlap with a path when deciding next extension.
             static auto doesExtensionContinueOverlap = [](const OverlappingPath &o, const Path &path,
@@ -469,7 +579,8 @@ namespace mixfix {
                     OverlappingPath &o,
                     const Path &path,
                     const int extension,
-                    const int newReachedVertex) {
+                    const int newReachedVertex,
+                    int& mostRecentUsefulVertex) {
                 const auto &dropoffsAtNewVertex = pdInfo.getPossibleDropoffsAt(newReachedVertex);
                 KASSERT(o.end < path.size());
                 if (path[o.end] != extension)
@@ -480,6 +591,7 @@ namespace mixfix {
                     return true;
                 }
                 o.possibleDropoffReached = true;
+                mostRecentUsefulVertex = newReachedVertex;
                 if (!o.possiblePickupReached)
                     // In case a dropoff is reached but no pickup spot is covered yet, the backward
                     // extension may still fully cover it.
@@ -493,7 +605,7 @@ namespace mixfix {
             // Hook function for starting an overlap if possible for a chosen extension.
             // If extension starts an overlap with the path, we do not know an overlap already, and the path is not
             // fully covered right away, the overlap is added to overlapping.
-            const auto startNewOverlapsAtExtension = [this, &fullyCoveredPaths](
+            const auto startNewOverlapsAtExtension = [this, &fullyCoveredPaths, &hasOverlapped](
                     std::vector<OverlappingPath> &overlapping,
                     const PreliminaryPathsT &paths,
                     const int extension,
@@ -510,7 +622,7 @@ namespace mixfix {
 
                     // If we already know an earlier overlap of the path with the line, we only keep the earlier one
                     // and do not add a second overlap (happens if a path visits the same edge multiple times).
-                    if (earlierOverlapKnown(path.getRequestId(), overlapping))
+                    if (hasOverlapped.isSet(path.getRequestId()))
                         continue;
 
                     if (contains(dropoffsAtNewVertex.begin(), dropoffsAtNewVertex.end(), path.getRequestId())) {
@@ -519,6 +631,7 @@ namespace mixfix {
                     }
 
                     overlapping.push_back({path.getRequestId(), 0, 1, true, false});
+                    hasOverlapped.set(path.getRequestId());
                 }
             };
 
@@ -533,13 +646,8 @@ namespace mixfix {
                                  std::vector<OverlappingPath> &overlapping,
                                  std::vector<OverlappingPath> &overlappingReachedBeginning,
                                  std::vector<int> &fullyCoveredPaths,
-                                 const PreliminaryPathsT &paths) {
-
-            static auto laterOverlapKnown = [](const int requestId, const std::vector<OverlappingPath> &overlapping) {
-                return std::find_if(overlapping.begin(), overlapping.end(), [&](const OverlappingPath &o) {
-                    return o.requestId == requestId;
-                }) != overlapping.end();
-            };
+                                 const PreliminaryPathsT &paths,
+                                 FastResetFlagArray<> &hasOverlapped) {
 
             // Hook function for checking if an extension continues an overlap with a path when deciding next extension.
             static auto doesExtensionContinueOverlap = [](const OverlappingPath &o, const Path &path,
@@ -560,7 +668,8 @@ namespace mixfix {
                     OverlappingPath &o,
                     const Path &path,
                     const int extension,
-                    const int newReachedVertex) {
+                    const int newReachedVertex,
+                    int& mostRecentUsefulVertex) {
                 KASSERT(o.start > 0);
                 const auto &pickupsAtNewVertex = pdInfo.getPossiblePickupsAt(newReachedVertex);
                 if (path[o.start - 1] != extension)
@@ -572,6 +681,7 @@ namespace mixfix {
                     return true;
                 }
                 o.possiblePickupReached = true;
+                mostRecentUsefulVertex = newReachedVertex;
                 if (!o.possibleDropoffReached)
                     // In case a pickup is reached but no dropoff spot is covered yet, the backward
                     // extension may still fully cover it.
@@ -585,7 +695,7 @@ namespace mixfix {
             // Hook function for starting overlaps for a chosen extension.
             // If extension starts an overlap with the path, we do not know an overlap already, and the path is not
             // fully covered right away, the overlap is added to overlapping..
-            const auto startNewOverlapsAtExtension = [this, &fullyCoveredPaths](
+            const auto startNewOverlapsAtExtension = [this, &fullyCoveredPaths, &hasOverlapped](
                     std::vector<OverlappingPath> &overlapping,
                     const PreliminaryPathsT &paths,
                     const int extension,
@@ -601,7 +711,7 @@ namespace mixfix {
 
                     // If we already know a later overlap of the path with the line, we only keep the later one
                     // and do not add a second overlap (happens if a path visits the same edge multiple times).
-                    if (laterOverlapKnown(path.getRequestId(), overlapping))
+                    if (hasOverlapped.isSet(path.getRequestId()))
                         continue;
 
                     if (contains(pickupsAtNewVertex.begin(), pickupsAtNewVertex.end(), path.getRequestId())) {
@@ -610,6 +720,7 @@ namespace mixfix {
                     }
 
                     overlapping.push_back({path.getRequestId(), path.size() - 1, path.size(), false, true});
+                    hasOverlapped.set(path.getRequestId());
                 }
             };
 
