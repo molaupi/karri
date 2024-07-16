@@ -50,19 +50,9 @@ namespace mixfix {
     // Technologies, 2024, https://doi.org/10.1016/j.trc.2024.104580.
     template<typename VehicleInputGraphT,
             typename PreliminaryPathsT,
-            typename OverviewLoggerT = NullLogger,
-            typename FullPathLoggerT = NullLogger>
+            AvoidLoopsStrategy AvoidLoopsStrat,
+            typename OverviewLoggerT = NullLogger>
     class GreedyFixedLineFinder {
-
-        struct ServedRequest {
-            int requestId;
-            int pickupVertexIdx;
-            int pickupWalkingTime;
-            int dropoffVertexIdx;
-            int dropoffWalkingTime;
-            int inVehicleTime;
-            double ttWeightedAvgSharing;
-        };
 
         struct RunningTimePerLineStats {
             uint64_t constructLineTime = 0;
@@ -95,22 +85,13 @@ namespace mixfix {
                                                                             "avg_tt_weighted_avg_sharing,"
                                                                             "construct_line_time,"
                                                                             "find_served_pax_time,"
-                                                                            "update_paths_time\n")),
-                  linePathLogger(LogManager<FullPathLoggerT>::getLogger("line_paths.csv",
-                                                                        "line_id,"
-                                                                        "path_as_edge_ids,"
-                                                                        "path_as_lat_lng,"
-                                                                        "served\n")) {}
+                                                                            "update_paths_time\n")) {}
 
         // Finds fixed lines given preliminary rider paths.
         // Each path is expected to be a sequence of edges in the network.
-        void findFixedLines(PreliminaryPathsT &paths, const bool buildGeoJson = false) {
+        std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> findFixedLines(PreliminaryPathsT &paths) {
 
-            lines.clear();
-            if (buildGeoJson) {
-                linesGeoJson.clear();
-                linesGeoJson["type"] = "FeatureCollection";
-            }
+            std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> lines;
 
             initializePathsStartingOrEndingAtEdge<true>(paths, firstPathStartingAtEdge, pathsStartingAtEdge);
             initializePathsStartingOrEndingAtEdge<false>(paths, firstPathEndingAtEdge, pathsEndingAtEdge);
@@ -187,19 +168,13 @@ namespace mixfix {
                              "line (origin to destination): " << numServedButNotFullyCovered << std::endl;
 
                 logLine(line, lines.size(), initialEdge, maxFlowOnLine, pax, fullyCoveredPaths.size(),
-                        tripTimeViolators, runningTimeStats, buildGeoJson);
+                        tripTimeViolators, runningTimeStats);
 
                 // Add line
                 lines.push_back(std::make_pair(std::move(line), std::move(pax)));
             }
-        }
 
-        const std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> &getLines() const {
             return lines;
-        }
-
-        const nlohmann::json &getLinesGeoJson() const {
-            return linesGeoJson;
         }
 
 
@@ -402,15 +377,15 @@ namespace mixfix {
                 const auto v = graph.edgeHead(line.back());
 
                 int extension, flowOnExtension;
-                if (inputConfig.loopStrategy == AvoidLoopsStrategy::NONE) {
+                if constexpr (AvoidLoopsStrat == AvoidLoopsStrategy::NONE) {
                     // Allow loops on lines
                     const auto [foundExtension, foundFlowOnExtension]
                             = findMaxScoreExtension(graph, v, overlapping, paths, doesExtensionContinueOverlap,
                                                     countOverlapsStartingAtExtension);
                     extension = foundExtension;
                     flowOnExtension = foundFlowOnExtension;
-                } else if (inputConfig.loopStrategy == AvoidLoopsStrategy::VERTEX
-                           || inputConfig.loopStrategy == AvoidLoopsStrategy::VERTEX_ROLLBACK) {
+                } else if constexpr (AvoidLoopsStrat == AvoidLoopsStrategy::VERTEX
+                           || AvoidLoopsStrat == AvoidLoopsStrategy::VERTEX_ROLLBACK) {
                     // Stop extending if current vertex has been visited before
                     bool vertexVisitedBefore = false;
                     for (const auto &e: line) {
@@ -420,7 +395,7 @@ namespace mixfix {
                         }
                     }
                     if (vertexVisitedBefore) {
-                        if (inputConfig.loopStrategy == AvoidLoopsStrategy::VERTEX_ROLLBACK) {
+                        if constexpr (AvoidLoopsStrat == AvoidLoopsStrategy::VERTEX_ROLLBACK) {
                             // Immediately roll line back to last useful vertex.
                             while (graph.edgeHead(line.back()) != mostRecentUsefulVertex) {
                                 line.pop_back();
@@ -436,8 +411,8 @@ namespace mixfix {
                     extension = foundExtension;
                     flowOnExtension = foundFlowOnExtension;
 
-                } else if (inputConfig.loopStrategy == AvoidLoopsStrategy::EDGE
-                           || inputConfig.loopStrategy == AvoidLoopsStrategy::EDGE_ROLLBACK) {
+                } else if constexpr (AvoidLoopsStrat == AvoidLoopsStrategy::EDGE
+                           || AvoidLoopsStrat == AvoidLoopsStrategy::EDGE_ROLLBACK) {
                     // Stop extending if chosen extension edge has been visited before
 
                     const auto [foundExtension, foundFlowOnExtension]
@@ -453,7 +428,7 @@ namespace mixfix {
                     }
 
                     if (edgeVisitedBefore) {
-                        if (inputConfig.loopStrategy == AvoidLoopsStrategy::VERTEX_ROLLBACK) {
+                        if constexpr (AvoidLoopsStrat == AvoidLoopsStrategy::VERTEX_ROLLBACK) {
                             // Immediately roll line back to last useful vertex.
                             while (graph.edgeHead(line.back()) != mostRecentUsefulVertex) {
                                 line.pop_back();
@@ -1088,8 +1063,7 @@ namespace mixfix {
         void
         logLine(const FixedLine &line, const int lineId, const int initialEdge, const int maxFlow,
                 const std::vector<ServedRequest> &pax, const int numFullyCovered, const Subset &tripTimeViolators,
-                const RunningTimePerLineStats &runningTimeStats,
-                const bool buildGeoJson) {
+                const RunningTimePerLineStats &runningTimeStats) {
 
             int totalTravelTime = 0;
             for (const auto &e: line)
@@ -1125,71 +1099,6 @@ namespace mixfix {
                                << runningTimeStats.constructLineTime << ", "
                                << runningTimeStats.findServedPaxTime << ", "
                                << runningTimeStats.updatePathsTime << "\n";
-
-
-            linePathLogger << lineId << ", ";
-            // Log path as edge Ids:
-            for (int i = 0; i < line.size(); ++i)
-                linePathLogger << line[i] << (i < line.size() - 1 ? " : " : ", ");
-
-            // Log path as latlngs
-            std::vector<LatLng> latLngPath;
-            for (int i = 0; i < line.size(); ++i) {
-                const auto e = line[i];
-                const auto tail = inputGraph.edgeTail(e);
-                const auto latLng = inputGraph.latLng(tail);
-                linePathLogger << latLngForCsv(latLng) << " : ";
-                latLngPath.push_back(latLng);
-            }
-            if (!line.empty()) {
-                const auto latLng = inputGraph.latLng(inputGraph.edgeHead(line.back()));
-                linePathLogger << latLngForCsv(latLng);
-                latLngPath.push_back(latLng);
-            }
-            linePathLogger << ", ";
-            // Log served passengers
-            for (int i = 0; i < pax.size(); ++i)
-                linePathLogger << pax[i].requestId << (i < pax.size() - 1 ? " : " : "\n");
-
-
-            if (buildGeoJson) {
-                // Also write GeoJson for line:
-                addGeoJsonFeaturesForLine(latLngPath, lineId, pax, linesGeoJson);
-            }
-        }
-
-        void addGeoJsonFeaturesForLine(const std::vector<LatLng> &latLngPath, const int lineId,
-                                       const std::vector<ServedRequest> &pax,
-                                       nlohmann::json &featureCol) {
-            static char lastEdgeColor[] = "red";
-
-
-            // LineString feature for the line's edges
-            nlohmann::json lineFeature;
-            lineFeature["type"] = "Feature";
-            lineFeature["geometry"] = {{"type",        "LineString"},
-                                       {"coordinates", nlohmann::json::array()}};
-
-            for (const auto &latLng: latLngPath) {
-                const auto coord = nlohmann::json::array({latLng.lngInDeg(), latLng.latInDeg()});
-                lineFeature["geometry"]["coordinates"].push_back(coord);
-            }
-            lineFeature["properties"] = {{"line_id", lineId},
-                                         {"num_pax", pax.size()}};
-            featureCol["features"].push_back(lineFeature);
-
-            // MultiPoint feature for start and end of line
-            nlohmann::json startFeature;
-            startFeature["type"] = "Feature";
-            startFeature["geometry"] = {{"type",        "MultiPoint"},
-                                        {"coordinates", nlohmann::json::array()}};
-            const auto firstEdgeTail = latLngPath.front();
-            const auto lastEdgeHead = latLngPath.back();
-            startFeature["geometry"]["coordinates"].push_back({firstEdgeTail.lngInDeg(), firstEdgeTail.latInDeg()});
-            startFeature["geometry"]["coordinates"].push_back({lastEdgeHead.lngInDeg(), lastEdgeHead.latInDeg()});
-            startFeature["properties"] = {{"stroke",  lastEdgeColor},
-                                          {"line_id", lineId}};
-            featureCol["features"].push_back(startFeature);
         }
 
 
@@ -1211,11 +1120,7 @@ namespace mixfix {
         std::vector<int> firstPathEndingAtEdge;
         std::vector<int> pathsEndingAtEdge;
 
-        std::vector<std::pair<FixedLine, std::vector<ServedRequest>>> lines;
-        nlohmann::json linesGeoJson;
-
         OverviewLoggerT &lineOverviewLogger;
-        FullPathLoggerT &linePathLogger;
 
     };
 

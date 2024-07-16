@@ -54,7 +54,5 @@ namespace mixfix {
         double alpha = -1;
         int beta = -1;
 
-        AvoidLoopsStrategy loopStrategy = AvoidLoopsStrategy::NONE;
-
     };
 }

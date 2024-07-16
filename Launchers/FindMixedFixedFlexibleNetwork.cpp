@@ -50,6 +50,7 @@
 #include "Algorithms/FindMixedFixedFlexibleNetwork/PreliminaryPaths.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/InputConfig.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/AvoidLoopsStrategy.h"
+#include "Algorithms/FindMixedFixedFlexibleNetwork/LinesGeoJson.h"
 #include "DataStructures/Graph/Attributes/OsmRoadCategoryAttribute.h"
 #include "Algorithms/KaRRi/CHEnvironment.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
@@ -149,6 +150,54 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGr
     }
 }
 
+template<mixfix::AvoidLoopsStrategy AvoidLoopsStrat, typename VehicleInputGraphT>
+std::vector<std::pair<mixfix::FixedLine, std::vector<mixfix::ServedRequest>>>
+runLineFinder(const VehicleInputGraphT &vehicleInputGraph, const VehicleInputGraphT &revVehicleGraph,
+              const mixfix::PickupDropoffInfo &pdInfo, const std::vector<mixfix::Request> &requests,
+              mixfix::PreliminaryPaths &preliminaryPaths) {
+
+    using namespace mixfix;
+    using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraphT, PreliminaryPaths, AvoidLoopsStrat, std::ofstream>;
+    FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdInfo, requests);
+    return lineFinder.findFixedLines(preliminaryPaths);
+}
+
+
+template<typename ...Args>
+std::vector<std::pair<mixfix::FixedLine, std::vector<mixfix::ServedRequest>>>
+decideAvoidLoopsStrategy(const mixfix::AvoidLoopsStrategy &avoidLoopsStrategy, Args &...args) {
+    if (avoidLoopsStrategy == mixfix::AvoidLoopsStrategy::NONE) {
+        return runLineFinder<mixfix::AvoidLoopsStrategy::NONE>(args...);
+    }
+    if (avoidLoopsStrategy == mixfix::AvoidLoopsStrategy::VERTEX) {
+        return runLineFinder<mixfix::AvoidLoopsStrategy::VERTEX>(args...);
+    }
+    if (avoidLoopsStrategy == mixfix::AvoidLoopsStrategy::EDGE) {
+        return runLineFinder<mixfix::AvoidLoopsStrategy::EDGE>(args...);
+    }
+    if (avoidLoopsStrategy == mixfix::AvoidLoopsStrategy::VERTEX_ROLLBACK) {
+        return runLineFinder<mixfix::AvoidLoopsStrategy::VERTEX_ROLLBACK>(args...);
+    }
+    if (avoidLoopsStrategy == mixfix::AvoidLoopsStrategy::EDGE_ROLLBACK) {
+        return runLineFinder<mixfix::AvoidLoopsStrategy::EDGE_ROLLBACK>(args...);
+    }
+    if (avoidLoopsStrategy == mixfix::AvoidLoopsStrategy::EDGE_ALTERNATIVE) {
+        return runLineFinder<mixfix::AvoidLoopsStrategy::EDGE_ALTERNATIVE>(args...);
+    }
+    throw std::invalid_argument("No implementation for given avoid loops strategy.");
+}
+
+template<typename ...Args>
+std::vector<std::pair<mixfix::FixedLine, std::vector<mixfix::ServedRequest>>>
+decidePathLogger(const bool outputPaths, Args &...args) {
+    if (outputPaths) {
+        return decideAvoidLoopsStrategy<std::ofstream>(args...);
+    }
+
+    return decideAvoidLoopsStrategy<NullLogger>(args...);
+}
+
+
 int main(int argc, char *argv[]) {
     using namespace mixfix;
     try {
@@ -161,14 +210,17 @@ int main(int argc, char *argv[]) {
         // Parse the command-line options.
         InputConfig &inputConfig = InputConfig::getInstance();
         inputConfig.minMaxFlowOnLine = clp.getValue<int>("min-max-line-flow", 1); // Delta1 in paper
-        inputConfig.maxFlowRatioOnLine = clp.getValue<double>("max-flow-dif", std::numeric_limits<double>::max()); // Delta2 in paper
+        inputConfig.maxFlowRatioOnLine = clp.getValue<double>("max-flow-dif",
+                                                              std::numeric_limits<double>::max()); // Delta2 in paper
         inputConfig.minNumPaxPerLine = clp.getValue<int>("min-num-line-pax", 1); // Delta3 in paper
-        inputConfig.overlapScoreExponent = clp.getValue<double>("overlap-score-exp", 1.0); // Exponent for weighting overlap length
+        inputConfig.overlapScoreExponent = clp.getValue<double>("overlap-score-exp",
+                                                                1.0); // Exponent for weighting overlap length
 
         inputConfig.alpha = clp.getValue<double>("a", 1.0);
         inputConfig.beta = clp.getValue<int>("b", 900) * 10;
 
-        inputConfig.loopStrategy = EnumParser<AvoidLoopsStrategy>()(clp.getValue<std::string>("avoid-loops", "none"));
+        const auto &avoidLoopsStrategy = EnumParser<AvoidLoopsStrategy>()(
+                clp.getValue<std::string>("avoid-loops", "none"));
 
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
@@ -372,26 +424,57 @@ int main(int argc, char *argv[]) {
         const auto numNonEmptyPaths = preliminaryPaths.numPaths();
         std::cout << "Constructing lines ..." << std::flush;
 
-        using OverviewLogger = std::ofstream;
-        if (!outputFullPaths) {
-            using PathLogger = NullLogger;
-            using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, OverviewLogger, PathLogger>;
-            FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdInfo, requests);
-            lineFinder.findFixedLines(preliminaryPaths, false);
-            std::cout << "done.\n";
-        } else {
-            using PathLogger = std::ofstream;
-            using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraph, PreliminaryPaths, OverviewLogger, PathLogger>;
-            FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdInfo, requests);
-            lineFinder.findFixedLines(preliminaryPaths, true);
-            std::cout << "done.\n";
+        const auto lines = decideAvoidLoopsStrategy(avoidLoopsStrategy, vehicleInputGraph, revVehicleGraph,
+                                                    pdInfo, requests,
+                                                    preliminaryPaths);
 
-            std::cout << "Writing GeoJSON to output file... " << std::flush;
+        if (outputFullPaths) {
+
+            std::cout << "Logging line paths..." << std::flush;
+            auto &linePathLogger = LogManager<std::ofstream>::getLogger("line_paths.csv",
+                                                                        "line_id,"
+                                                                        "path_as_edge_ids,"
+                                                                        "path_as_lat_lng,"
+                                                                        "served\n");
+
+            nlohmann::json topGeoJson;
+            topGeoJson["type"] = "FeatureCollection";
+            for (int lineId = 0; lineId < lines.size(); ++lineId) {
+                const auto &[line, pax] = lines[lineId];
+                linePathLogger << lineId << ", ";
+                // Log path as edge Ids:
+                for (int i = 0; i < line.size(); ++i)
+                    linePathLogger << line[i] << (i < line.size() - 1 ? " : " : ", ");
+
+                // Log path as latlngs
+                std::vector<LatLng> latLngPath;
+                for (int i = 0; i < line.size(); ++i) {
+                    const auto e = line[i];
+                    const auto tail = vehicleInputGraph.edgeTail(e);
+                    const auto latLng = vehicleInputGraph.latLng(tail);
+                    linePathLogger << latLngForCsv(latLng) << " : ";
+                    latLngPath.push_back(latLng);
+                }
+                if (!line.empty()) {
+                    const auto latLng = vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(line.back()));
+                    linePathLogger << latLngForCsv(latLng);
+                    latLngPath.push_back(latLng);
+                }
+                linePathLogger << ", ";
+
+                // Log served passengers
+                for (int i = 0; i < pax.size(); ++i)
+                    linePathLogger << pax[i].requestId << (i < pax.size() - 1 ? " : " : "\n");
+
+                // Add GeoJson features
+                geojson::addGeoJsonFeaturesForLine(latLngPath, lineId, pax, topGeoJson);
+            }
+
             // Open the output file and write the GeoJson.
             std::ofstream geoJsonOutputFile(outputFileName + ".geojson");
             if (!geoJsonOutputFile.good())
                 throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".geojson" + "'");
-            geoJsonOutputFile << std::setw(2) << lineFinder.getLinesGeoJson() << std::endl;
+            geoJsonOutputFile << std::setw(2) << topGeoJson << std::endl;
             std::cout << "done.\n";
         }
 
