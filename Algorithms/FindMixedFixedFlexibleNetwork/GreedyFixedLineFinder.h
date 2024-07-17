@@ -83,6 +83,7 @@ namespace mixfix {
                                                                             "avg_rel_pax_detour,"
                                                                             "avg_abs_pax_detour,"
                                                                             "avg_tt_weighted_avg_sharing,"
+                                                                            "avg_tt_weighted_occupancy,"
                                                                             "construct_line_time,"
                                                                             "find_served_pax_time,"
                                                                             "update_paths_time\n")) {}
@@ -1065,7 +1066,7 @@ namespace mixfix {
                 const std::vector<ServedRequest> &pax, const int numFullyCovered, const Subset &tripTimeViolators,
                 const RunningTimePerLineStats &runningTimeStats) {
 
-            int totalTravelTime = 0;
+            uint64_t totalTravelTime = 0;
             for (const auto &e: line)
                 totalTravelTime += inputGraph.travelTime(e);
 
@@ -1084,6 +1085,16 @@ namespace mixfix {
             const double avgTTWeightedAvgSharing = pax.empty() ? 0 : sumTTWeightedAvgSharing /
                                                                      static_cast<double>(pax.size());
 
+            // Compute average occupancy weighted with travel time
+            uint64_t ttWeightedOcc = 0;
+            for (const auto& p : pax)
+                for (int i = p.pickupVertexIdx; i < p.dropoffVertexIdx; ++i)
+                    ttWeightedOcc += inputGraph.travelTime(line[i]);
+
+            const double avgTTWeightedOcc = static_cast<double>(ttWeightedOcc) / static_cast<double>(totalTravelTime);
+
+
+
 
             lineOverviewLogger << lineId << ", "
                                << initialEdge << ","
@@ -1096,6 +1107,7 @@ namespace mixfix {
                                << avgRelDetour << ", "
                                << avgAbsDetour << ", "
                                << avgTTWeightedAvgSharing << ", "
+                               << avgTTWeightedOcc << ", "
                                << runningTimeStats.constructLineTime << ", "
                                << runningTimeStats.findServedPaxTime << ", "
                                << runningTimeStats.updatePathsTime << "\n";
