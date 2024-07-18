@@ -347,6 +347,7 @@ namespace mixfix {
                     }
                 }
 
+
                 // Paths that begin at e increase the score by 1.
                 const auto startingOverlapsOnE = findOverlapsStartingAtExtension(paths, eInForwGraph);
                 score += startingOverlapsOnE.size();
@@ -381,7 +382,7 @@ namespace mixfix {
             int mostRecentUsefulVertex = graph.edgeHead(line.back());
             double flowDif = 0.0;
             std::vector<OverlappingPath> startingOverlaps; // Overlaps starting on extension
-            while (flowDif < inputConfig.maxFlowRatioOnLine) {
+            while (flowDif < inputConfig.maxFlowRatioOnLine && !overlapping.empty()) {
                 const auto v = graph.edgeHead(line.back());
 
                 int extension, flowOnExtension;
