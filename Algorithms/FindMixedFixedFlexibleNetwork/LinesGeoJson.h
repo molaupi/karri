@@ -27,6 +27,7 @@
 namespace mixfix::geojson {
 
         static void addGeoJsonFeaturesForLine(const std::vector<LatLng> &latLngPath, const int lineId,
+                                              const int totalTravelTime,
                                               const std::vector<ServedRequest> &pax,
                                               nlohmann::json &featureCol) {
             static char lastEdgeColor[] = "red";
@@ -43,7 +44,8 @@ namespace mixfix::geojson {
                 lineFeature["geometry"]["coordinates"].push_back(coord);
             }
             lineFeature["properties"] = {{"line_id", lineId},
-                                         {"num_pax", pax.size()}};
+                                         {"num_pax", pax.size()},
+                                         {"total_travel_time", totalTravelTime}};
             featureCol["features"].push_back(lineFeature);
 
             // MultiPoint feature for start and end of line
@@ -59,23 +61,5 @@ namespace mixfix::geojson {
                                           {"line_id", lineId}};
             featureCol["features"].push_back(startFeature);
         }
-
-
-    template<typename InputGraphT>
-    static nlohmann::json buildLinesGeoJson(const InputGraphT& inputGraph, const std::vector<std::pair<FixedLine, std::vector<ServedRequest>>>& lines) {
-        nlohmann::json topGeoJson;
-        topGeoJson["type"] = "FeatureCollection";
-        std::vector<LatLng> latLngPath;
-        for (int i = 0; i < lines.size(); ++i) {
-            const auto& [line, served] = lines[i];
-            latLngPath.clear();
-            for (int j = 0; j < line.size(); ++j)
-                latLngPath.push_back(inputGraph.latLng(inputGraph.edgeTail(line[j])));
-            if (!line.empty())
-                latLngPath.push_back(inputGraph.latLng(inputGraph.edgeHead(line.back())));
-            addGeoJsonFeaturesForLine(latLngPath, i, served, topGeoJson);
-        }
-        return topGeoJson;
-    }
 
 } // end namespace mixfix::geojson

@@ -446,6 +446,7 @@ int main(int argc, char *argv[]) {
                 for (int i = 0; i < line.size(); ++i)
                     linePathLogger << line[i] << (i < line.size() - 1 ? " : " : ", ");
 
+                int totalTravelTime = 0;
                 // Log path as latlngs
                 std::vector<LatLng> latLngPath;
                 for (int i = 0; i < line.size(); ++i) {
@@ -454,6 +455,7 @@ int main(int argc, char *argv[]) {
                     const auto latLng = vehicleInputGraph.latLng(tail);
                     linePathLogger << latLngForCsv(latLng) << " : ";
                     latLngPath.push_back(latLng);
+                    totalTravelTime += vehicleInputGraph.travelTime(e);
                 }
                 if (!line.empty()) {
                     const auto latLng = vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(line.back()));
@@ -467,7 +469,7 @@ int main(int argc, char *argv[]) {
                     linePathLogger << pax[i].requestId << (i < pax.size() - 1 ? " : " : "\n");
 
                 // Add GeoJson features
-                geojson::addGeoJsonFeaturesForLine(latLngPath, lineId, pax, topGeoJson);
+                geojson::addGeoJsonFeaturesForLine(latLngPath, lineId, totalTravelTime, pax, topGeoJson);
             }
 
             // Open the output file and write the GeoJson.
