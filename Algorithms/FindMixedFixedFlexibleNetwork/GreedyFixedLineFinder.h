@@ -233,18 +233,18 @@ namespace mixfix {
                 for (int i = 0; i < path.size(); ++i) {
                     if (path[i] == initialEdge) {
                         const bool possiblePickupReached = contains(pickupsAtTail.begin(), pickupsAtTail.end(),
-                                                                    path.getRequestId());
+                                                                    path.getPathId());
                         const bool possibleDropoffReached = contains(dropoffsAtHead.begin(), dropoffsAtHead.end(),
-                                                                     path.getRequestId());
-                        hasOverlapped.set(path.getRequestId());
+                                                                     path.getPathId());
+                        hasOverlapped.set(path.getPathId());
                         if (possiblePickupReached && possibleDropoffReached) {
-                            fullyCoveredPaths.push_back(path.getRequestId());
+                            fullyCoveredPaths.push_back(path.getPathId());
                         } else if (possibleDropoffReached) {
                             overlappingReachedEnd.push_back(
-                                    {path.getRequestId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
+                                    {path.getPathId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
                         } else {
                             overlappingPaths.push_back(
-                                    {path.getRequestId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
+                                    {path.getPathId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
                         }
                         break; // If path overlaps with edge in multiple places, only consider first overlap
                     }
@@ -274,17 +274,17 @@ namespace mixfix {
                 for (int i = 0; i < path.size(); ++i) {
                     if (path[i] == initialEdge) {
                         const bool possiblePickupReached = contains(pickupsAtTail.begin(), pickupsAtTail.end(),
-                                                                    path.getRequestId());
+                                                                    path.getPathId());
                         const bool possibleDropoffReached = contains(dropoffsAtHead.begin(), dropoffsAtHead.end(),
-                                                                     path.getRequestId());
+                                                                     path.getPathId());
                         if (possiblePickupReached && possibleDropoffReached) {
-                            fullyCoveredPaths.push_back(path.getRequestId());
+                            fullyCoveredPaths.push_back(path.getPathId());
                         } else if (possiblePickupReached) {
                             overlappingReachedBeginning.push_back(
-                                    {path.getRequestId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
+                                    {path.getPathId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
                         } else {
                             overlappingPaths.push_back(
-                                    {path.getRequestId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
+                                    {path.getPathId(), i, i + 1, possiblePickupReached, possibleDropoffReached});
                         }
                         break; // If path overlaps with edge in multiple places, only consider first overlap
                     }
@@ -1008,7 +1008,7 @@ namespace mixfix {
             pathsAtEdge.resize(paths.numPaths());
             for (const auto &path: paths) {
                 const auto e = Starting ? path.front() : path.back();
-                pathsAtEdge[firstPathAtEdge[e]] = path.getRequestId();
+                pathsAtEdge[firstPathAtEdge[e]] = path.getPathId();
                 ++firstPathAtEdge[e];
             }
 

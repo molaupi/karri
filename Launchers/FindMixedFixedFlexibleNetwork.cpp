@@ -120,7 +120,7 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGr
                                              << " on path.");
 //            if (!edgesInPath.insert(nextPathEdge))
 //                throw std::invalid_argument("Edge " + std::to_string(nextPathEdge) + " is visited twice in path for request " +
-//                                            std::to_string(path.getRequestId()));
+//                                            std::to_string(path.getPathId()));
             bool found = false;
             FORALL_INCIDENT_EDGES(inputGraph, prevVertex, e) {
                 if (e == nextPathEdge) {
@@ -131,20 +131,20 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGr
             if (!found)
                 throw std::invalid_argument(
                         "Cannot find edge " + std::to_string(nextPathEdge) + " incident to vertex " +
-                        std::to_string(prevVertex) + " in path for request " + std::to_string(path.getRequestId()));
+                        std::to_string(prevVertex) + " in path for request " + std::to_string(path.getPathId()));
 
             prevVertex = inputGraph.edgeHead(nextPathEdge);
         }
 
         if (path.size() > 0) {
             const auto &pickups = pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(path.front()));
-            if (!contains(pickups.begin(), pickups.end(), path.getRequestId()))
-                throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) +
+            if (!contains(pickups.begin(), pickups.end(), path.getPathId()))
+                throw std::invalid_argument("Path for request " + std::to_string(path.getPathId()) +
                                             " does not start at a possible pickup vertex for that request.");
 
             const auto &dropoffs = pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(path.back()));
-            if (!contains(dropoffs.begin(), dropoffs.end(), path.getRequestId()))
-                throw std::invalid_argument("Path for request " + std::to_string(path.getRequestId()) +
+            if (!contains(dropoffs.begin(), dropoffs.end(), path.getPathId()))
+                throw std::invalid_argument("Path for request " + std::to_string(path.getPathId()) +
                                             " does not end at a possible dropoff vertex for that request.");
         }
     }
@@ -359,7 +359,7 @@ int main(int argc, char *argv[]) {
                                       [&](const int e) { return e < vehicleInputGraph.numEdges(); }));
             if (edges.empty())
                 continue;
-            preliminaryPaths.addPathForRequest(requestId, std::move(edges));
+            preliminaryPaths.addInitialPath(requestId, std::move(edges));
         }
         std::cout << "done.\n";
 

@@ -33,60 +33,66 @@
 namespace mixfix {
 
     class PreliminaryPaths {
+        using EdgeIt = typename std::vector<int>::const_iterator;
 
     public:
 
         struct Path {
-            using EdgeIt = typename std::vector<int>::const_iterator;
 
             EdgeIt begin() const {
-                return edges.cbegin();
+                return allPathEdges->cbegin() + startOffset;
             }
 
             EdgeIt end() const {
-                return edges.cend();
+                return allPathEdges->cbegin() + endOffset;
             }
 
             int &operator[](const int idx) {
-                return edges[idx];
+                return (*allPathEdges)[startOffset + idx];
             }
 
             const int &operator[](const int idx) const {
-                return edges[idx];
+                return (*allPathEdges)[startOffset + idx];
             }
 
             int &front() {
-                return edges.front();
+                return (*allPathEdges)[startOffset];
             }
 
             const int &front() const {
-                return edges.front();
+                return (*allPathEdges)[startOffset];
             }
 
             int &back() {
-                return edges.back();
+                return (*allPathEdges)[endOffset - 1];
             }
 
             const int &back() const {
-                return edges.back();
+                return (*allPathEdges)[endOffset - 1];
             }
 
             int size() const {
-                return edges.size();
+                return endOffset - startOffset;
             }
 
-            const int &getRequestId() const {
-                return requestId;
+            const int &getPathId() const {
+                return pathId;
             }
+
 
         private:
 
             friend PreliminaryPaths;
 
-            Path(const int requestId, std::vector<int> &&edges) : requestId(requestId), edges(edges) {}
+            Path(const int pathId, int startOffset, int endOffset, std::vector<int> *allPathEdges) :
+                    pathId(pathId), startOffset(startOffset), endOffset(endOffset), allPathEdges(allPathEdges) {
+                KASSERT(endOffset > startOffset);
+            }
 
-            int requestId;
-            std::vector<int> edges;
+            int pathId = INVALID_ID;
+            int startOffset = INVALID_INDEX;
+            int endOffset = INVALID_INDEX;
+            std::vector<int> *allPathEdges;
         };
 
     private:
@@ -99,14 +105,17 @@ namespace mixfix {
         PreliminaryPaths() {}
 
         void init(const int numRequests) {
-            std::fill(reqIdToPathIdx.begin(), reqIdToPathIdx.end(), INVALID_INDEX);
-            reqIdToPathIdx.resize(numRequests, INVALID_INDEX);
+            pathIdToIdx.resize(numRequests);
+            std::fill(pathIdToIdx.begin(), pathIdToIdx.end(), INVALID_INDEX);
             paths.clear();
         }
 
-        void addPathForRequest(const int requestId, std::vector<int> &&edges) {
-            reqIdToPathIdx[requestId] = paths.size();
-            paths.push_back(Path(requestId, std::move(edges)));
+        void addInitialPath(const int pathId, std::vector<int> &&edges) {
+            const int startOffset = allPathEdges.size();
+            const int endOffset = startOffset + edges.size();
+            allPathEdges.insert(allPathEdges.end(), edges.begin(), edges.end());
+            pathIdToIdx[pathId] = paths.size();
+            paths.push_back(Path(pathId, startOffset, endOffset, &allPathEdges));
         }
 
         int numPaths() const {
@@ -117,34 +126,34 @@ namespace mixfix {
             return paths.empty();
         }
 
-        bool hasPathFor(const int reqId) const {
-            KASSERT(reqId >= 0 && reqId < reqIdToPathIdx.size());
-            const int &idx = reqIdToPathIdx[reqId];
+        bool hasPathFor(const int pathId) const {
+            KASSERT(pathId >= 0 && pathId < pathIdToIdx.size());
+            const int &idx = pathIdToIdx[pathId];
             KASSERT(idx < static_cast<int>(paths.size()));
             return idx != INVALID_INDEX;
         }
 
-        const Path &getPathFor(const int reqId) const {
-            KASSERT(reqId >= 0 && reqId < reqIdToPathIdx.size());
-            KASSERT(hasPathFor(reqId),
-                    "Request " << reqId << " does not have a path.", kassert::assert::light);
-            return paths[reqIdToPathIdx[reqId]];
+        const Path &getPathFor(const int pathId) const {
+            KASSERT(pathId >= 0 && pathId < pathIdToIdx.size());
+            KASSERT(hasPathFor(pathId),
+                    "No path with ID " << pathId << ".", kassert::assert::light);
+            return paths[pathIdToIdx[pathId]];
         }
 
-        void removePathForRequest(const int reqId) {
-            KASSERT(reqId >= 0 && reqId < reqIdToPathIdx.size());
-            KASSERT(hasPathFor(reqId),
-                    "Request " << reqId << " already does not have a path.", kassert::assert::light);
-            const int idx = reqIdToPathIdx[reqId];
-            reqIdToPathIdx[reqId] = INVALID_INDEX;
+        void removePathForRequest(const int pathId) {
+            KASSERT(pathId >= 0 && pathId < pathIdToIdx.size());
+            KASSERT(hasPathFor(pathId),
+                    "No path with ID " << pathId << ".", kassert::assert::light);
+            const int idx = pathIdToIdx[pathId];
+            pathIdToIdx[pathId] = INVALID_INDEX;
             if (idx == static_cast<int>(paths.size() - 1)) {
                 paths.pop_back();
                 return;
             }
 
-            std::swap(paths[idx], paths.back());
+            paths[idx] = paths.back();
             paths.pop_back();
-            reqIdToPathIdx[paths[idx].getRequestId()] = idx;
+            pathIdToIdx[paths[idx].getPathId()] = idx;
         }
 
         PathIt begin() const {
@@ -157,8 +166,9 @@ namespace mixfix {
 
     private:
 
-        std::vector<int> reqIdToPathIdx;
+        std::vector<int> pathIdToIdx;
         std::vector<Path> paths;
+        std::vector<int> allPathEdges;
 
     };
 
