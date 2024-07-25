@@ -104,8 +104,8 @@ namespace mixfix {
 
         PreliminaryPaths() {}
 
-        void init(const int numRequests) {
-            pathIdToIdx.resize(numRequests);
+        void init(const int numInitialPaths) {
+            pathIdToIdx.resize(numInitialPaths);
             std::fill(pathIdToIdx.begin(), pathIdToIdx.end(), INVALID_INDEX);
             paths.clear();
         }
@@ -116,6 +116,10 @@ namespace mixfix {
             allPathEdges.insert(allPathEdges.end(), edges.begin(), edges.end());
             pathIdToIdx[pathId] = paths.size();
             paths.push_back(Path(pathId, startOffset, endOffset, &allPathEdges));
+        }
+
+        int getMaxPathId() const {
+            return pathIdToIdx.size() - 1;
         }
 
         int numPaths() const {
@@ -140,7 +144,7 @@ namespace mixfix {
             return paths[pathIdToIdx[pathId]];
         }
 
-        void removePathForRequest(const int pathId) {
+        void removePath(const int pathId) {
             KASSERT(pathId >= 0 && pathId < pathIdToIdx.size());
             KASSERT(hasPathFor(pathId),
                     "No path with ID " << pathId << ".", kassert::assert::light);

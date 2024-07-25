@@ -151,7 +151,7 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGr
 }
 
 template<mixfix::AvoidLoopsStrategy AvoidLoopsStrat, typename VehicleInputGraphT>
-std::vector<std::pair<mixfix::FixedLine, std::vector<mixfix::ServedRequest>>>
+std::vector<mixfix::FixedLine>
 runLineFinder(const VehicleInputGraphT &vehicleInputGraph, const VehicleInputGraphT &revVehicleGraph,
               const mixfix::PickupDropoffInfo &pdInfo, const std::vector<mixfix::Request> &requests,
               mixfix::PreliminaryPaths &preliminaryPaths) {
@@ -164,7 +164,7 @@ runLineFinder(const VehicleInputGraphT &vehicleInputGraph, const VehicleInputGra
 
 
 template<typename ...Args>
-std::vector<std::pair<mixfix::FixedLine, std::vector<mixfix::ServedRequest>>>
+std::vector<mixfix::FixedLine>
 decideAvoidLoopsStrategy(const mixfix::AvoidLoopsStrategy &avoidLoopsStrategy, Args &...args) {
     if (avoidLoopsStrategy == mixfix::AvoidLoopsStrategy::NONE) {
         return runLineFinder<mixfix::AvoidLoopsStrategy::NONE>(args...);
@@ -188,7 +188,7 @@ decideAvoidLoopsStrategy(const mixfix::AvoidLoopsStrategy &avoidLoopsStrategy, A
 }
 
 template<typename ...Args>
-std::vector<std::pair<mixfix::FixedLine, std::vector<mixfix::ServedRequest>>>
+std::vector<mixfix::FixedLine>
 decidePathLogger(const bool outputPaths, Args &...args) {
     if (outputPaths) {
         return decideAvoidLoopsStrategy<std::ofstream>(args...);
@@ -422,11 +422,17 @@ int main(int argc, char *argv[]) {
         std::cout << "done.\n";
 
         const auto numNonEmptyPaths = preliminaryPaths.numPaths();
+
+        uint64_t totalPathTravelTime = 0;
+        for (const auto& p : preliminaryPaths)
+            for (const auto& e : p)
+                totalPathTravelTime += static_cast<uint64_t>(vehicleInputGraph.travelTime(e));
+        std::cout << "Sum of travel times on all paths: " << totalPathTravelTime << "\n" << std::endl;
+
         std::cout << "Constructing lines ..." << std::flush;
 
         const auto lines = decideAvoidLoopsStrategy(avoidLoopsStrategy, vehicleInputGraph, revVehicleGraph,
-                                                    pdInfo, requests,
-                                                    preliminaryPaths);
+                                                    pdInfo, requests, preliminaryPaths);
 
         if (outputFullPaths) {
 
@@ -434,13 +440,12 @@ int main(int argc, char *argv[]) {
             auto &linePathLogger = LogManager<std::ofstream>::getLogger("line_paths.csv",
                                                                         "line_id,"
                                                                         "path_as_edge_ids,"
-                                                                        "path_as_lat_lng,"
-                                                                        "served\n");
+                                                                        "path_as_lat_lng\n");
 
             nlohmann::json topGeoJson;
             topGeoJson["type"] = "FeatureCollection";
             for (int lineId = 0; lineId < lines.size(); ++lineId) {
-                const auto &[line, pax] = lines[lineId];
+                const auto &line = lines[lineId];
                 linePathLogger << lineId << ", ";
                 // Log path as edge Ids:
                 for (int i = 0; i < line.size(); ++i)
@@ -462,14 +467,10 @@ int main(int argc, char *argv[]) {
                     linePathLogger << latLngForCsv(latLng);
                     latLngPath.push_back(latLng);
                 }
-                linePathLogger << ", ";
-
-                // Log served passengers
-                for (int i = 0; i < pax.size(); ++i)
-                    linePathLogger << pax[i].requestId << (i < pax.size() - 1 ? " : " : "\n");
+                linePathLogger << "\n";
 
                 // Add GeoJson features
-                geojson::addGeoJsonFeaturesForLine(latLngPath, lineId, totalTravelTime, pax, topGeoJson);
+                geojson::addGeoJsonFeaturesForLine(latLngPath, lineId, totalTravelTime, topGeoJson);
             }
 
             // Open the output file and write the GeoJson.

@@ -27,8 +27,7 @@
 namespace mixfix::geojson {
 
         static void addGeoJsonFeaturesForLine(const std::vector<LatLng> &latLngPath, const int lineId,
-                                              const int totalTravelTime,
-                                              const std::vector<ServedRequest> &pax,
+                                              const int vehicleTravelTime,
                                               nlohmann::json &featureCol) {
             static char lastEdgeColor[] = "red";
 
@@ -44,8 +43,7 @@ namespace mixfix::geojson {
                 lineFeature["geometry"]["coordinates"].push_back(coord);
             }
             lineFeature["properties"] = {{"line_id", lineId},
-                                         {"num_pax", pax.size()},
-                                         {"total_travel_time", totalTravelTime}};
+                                         {"vehicle_travel_time", vehicleTravelTime}};
             featureCol["features"].push_back(lineFeature);
 
             // MultiPoint feature for start and end of line

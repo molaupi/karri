@@ -39,21 +39,4 @@ namespace mixfix {
 
         int directDist = INFTY;
     };
-
-    static int getMaxTravelTime(const Request& req, const InputConfig& inputConfig) {
-        KASSERT(req.directDist != INFTY);
-        return static_cast<int>(inputConfig.alpha * static_cast<double>(req.directDist)) + inputConfig.beta;
-    }
-
-    // Information about a request being served by a line
-    struct ServedRequest {
-        int requestId = INVALID_ID;
-        int pickupVertexIdx = INVALID_INDEX;
-        int pickupWalkingTime = INFTY;
-        int dropoffVertexIdx = INVALID_INDEX;
-        int dropoffWalkingTime = INFTY;
-        int inVehicleTime = INFTY;
-        double ttWeightedAvgSharing = 0.0;
-    };
-
 }
