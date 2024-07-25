@@ -901,7 +901,11 @@ namespace mixfix {
             for (const auto &pathId: overlappingWithLine) {
                 const auto &p = paths.getPathFor(pathId);
                 const auto& o = globalOverlaps.getOverlapFor(pathId);
-                for (int i = o.start; i < o.end; ++i) {
+
+                const int begEdgeIdx = o.reachesBeginningOfPath? 0 : o.start;
+                const int endEdgeIdx = o.reachesEndOfPath? p.size() : o.end;
+
+                for (int i = begEdgeIdx; i < endEdgeIdx; ++i) {
                     ++sumNumRiderEdges;
                     sumRiderTravelTime += inputGraph.travelTime(p[i]);
                 }
