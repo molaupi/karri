@@ -33,7 +33,7 @@
 #include "Request.h"
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
 #include "Tools/CommandLine/ProgressBar.h"
-#include "PickupDropoffInfo.h"
+#include "PathStartEndInfo.h"
 
 namespace mixfix {
 
@@ -93,14 +93,14 @@ namespace mixfix {
 
 
         void findPossiblePDLocsForRequests(const std::vector<Request> &requests,
-                                           PickupDropoffInfo& pdInfo) {
+                                           PathStartEndInfo& pdInfo) {
 
             progressBar.init(static_cast<int>(requests.size()));
 
             // TODO: SIMD-ify, parallelize
             for (const auto &req: requests) {
-                pdInfo.addPickupAtVertex(req.requestId, 0, vehGraph.edgeHead(req.origin));
-                pdInfo.addDropoffAtVertex(req.requestId, 0, vehGraph.edgeHead(req.destination));
+                pdInfo.addPathBeginningAtVertex(req.requestId, 0, vehGraph.edgeHead(req.origin));
+                pdInfo.addPathEndAtVertex(req.requestId, 0, vehGraph.edgeHead(req.destination));
 
                 const int originInPsg = vehGraph.mapToEdgeInPsg(req.origin);
                 const int destInPsg = vehGraph.mapToEdgeInPsg(req.destination);
@@ -122,7 +122,7 @@ namespace mixfix {
     private:
 
 
-        void turnSearchSpaceIntoPickupLocations(const int requestId, PickupDropoffInfo& pdInfo) {
+        void turnSearchSpaceIntoPickupLocations(const int requestId, PathStartEndInfo& pdInfo) {
             for (const auto &v: searchSpace) {
                 const auto distToV = pickupSearch.getDistance(v);
                 assert(distToV <= walkingRadius);
@@ -132,12 +132,12 @@ namespace mixfix {
                     if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue() || walkingDist > walkingRadius)
                         continue;
 
-                    pdInfo.addPickupAtVertex(requestId, walkingDist, vehGraph.edgeHead(eInVehGraph));
+                    pdInfo.addPathBeginningAtVertex(requestId, walkingDist, vehGraph.edgeHead(eInVehGraph));
                 }
             }
         }
 
-        void turnSearchSpaceIntoDropoffLocations(const int requestId, PickupDropoffInfo& pdInfo) {
+        void turnSearchSpaceIntoDropoffLocations(const int requestId, PathStartEndInfo& pdInfo) {
             for (const auto &v: searchSpace) {
                 const auto distToV = dropoffSearch.getDistance(v);
                 assert(distToV <= walkingRadius);
@@ -146,7 +146,7 @@ namespace mixfix {
                     const int eInVehGraph = forwardPsgGraph.mapToEdgeInFullVeh(eInForwGraph);
                     if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue())
                         continue;
-                    pdInfo.addDropoffAtVertex(requestId, distToV, vehGraph.edgeHead(eInVehGraph));
+                    pdInfo.addPathEndAtVertex(requestId, distToV, vehGraph.edgeHead(eInVehGraph));
                 }
             }
         }

@@ -144,14 +144,14 @@ namespace karri {
                 if (dropoffEntry.stopIndex + 1 < numStops &&
                     stopLocations[dropoffEntry.stopIndex + 1] == asgn.dropoff->loc) {
                     // If the dropoff is at the location of the following stop, do not try an assignment here as it would
-                    // introduce a new stop after dropoffIndex that is at the same location as dropoffIndex + 1.
-                    // Instead, this will be dealt with as an assignment at dropoffIndex + 1 afterwards.
+                    // introduce a new stop after endsIndex that is at the same location as endsIndex + 1.
+                    // Instead, this will be dealt with as an assignment at endsIndex + 1 afterwards.
                     continue;
                 }
 
                 if (asgn.dropoff->loc == asgn.pickup->loc) {
-                    // In this case, this spot is the best spot at or after pickupIndex and the best spot at or after
-                    // dropoffIndex. We ignore this case here since inserting them paired into the same leg will be better.
+                    // In this case, this spot is the best spot at or after beginningsIndex and the best spot at or after
+                    // endsIndex. We ignore this case here since inserting them paired into the same leg will be better.
                     continue;
                 }
 
@@ -265,7 +265,7 @@ namespace karri {
                             asgn.dropoff = &requestState.dropoffs[dropoffEntry.pdId];
 
                             if (stopLocations[stopPos + 1] == asgn.dropoff->loc)
-                                continue; // if dropoff coincides with the following stop, an ordinary non-paired assignment with dropoffIndex = pickupIndex + 1 will cover this case
+                                continue; // if dropoff coincides with the following stop, an ordinary non-paired assignment with endsIndex = beginningsIndex + 1 will cover this case
 
                             asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                             for (auto pickupIt2 = beginOfStopInPickups; pickupIt2 < endOfStopInPickups; ++pickupIt2) {

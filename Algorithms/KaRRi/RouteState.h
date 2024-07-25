@@ -298,7 +298,7 @@ namespace karri {
 
             // Propagate updated scheduled arrival and departure times as well as latest permissible arrival times.
             if (start + dropoffIndex < end - 1) {
-                // At this point minDepTimes[start + dropoffIndex] is correct. If dropoff has been inserted not as the last
+                // At this point minDepTimes[start + endsIndex] is correct. If dropoff has been inserted not as the last
                 // stop, propagate the changes to minDep and minArr times forward until the last stop.
                 propagateSchedArrAndDepForward(start + dropoffIndex + 1, end - 1, asgn.distFromDropoff);
 

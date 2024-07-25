@@ -160,6 +160,39 @@ namespace mixfix {
             pathIdToIdx[paths[idx].getPathId()] = idx;
         }
 
+        // Slice out subpath with edge indices [start, end) from middle of path.
+        // Removes path and inserts up to two new paths representing the remaining subpaths [0, start) and
+        // [end, path.size()).
+        // Returns IDs of new subpath at beginning and end of old path (INVALID_ID if no subpath introduced).
+        std::pair<int, int> sliceOutSubpath(const int pathId, const int start, const int end) {
+            KASSERT(pathId >= 0 && pathId < pathIdToIdx.size());
+            KASSERT(hasPathFor(pathId),
+                    "No path with ID " << pathId << ".", kassert::assert::light);
+
+            const auto oldPath = getPathFor(pathId);
+            KASSERT(0 <= start && start < end);
+            KASSERT(end <= oldPath.size());
+
+            removePath(pathId);
+            int begId = INVALID_ID;
+            int endId = INVALID_ID;
+            // Add subpath at beginning (if any remaining)
+            if (start > 0) {
+                begId = pathIdToIdx.size();
+                pathIdToIdx.push_back(paths.size());
+                paths.push_back(Path(begId, oldPath.startOffset, oldPath.startOffset + start, &allPathEdges));
+            }
+
+            // Add subpath at end (if any remaining)
+            if (end < oldPath.size()) {
+                endId = pathIdToIdx.size();
+                pathIdToIdx.push_back(paths.size());
+                paths.push_back(Path(endId, oldPath.startOffset + end, oldPath.endOffset, &allPathEdges));
+            }
+
+            return {begId, endId};
+        }
+
         PathIt begin() const {
             return paths.cbegin();
         }

@@ -38,7 +38,7 @@
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Graph.h"
-#include "Algorithms/FindMixedFixedFlexibleNetwork/PickupDropoffInfo.h"
+#include "Algorithms/FindMixedFixedFlexibleNetwork/PathStartEndInfo.h"
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
 #include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
@@ -182,7 +182,7 @@ int main(int argc, char *argv[]) {
         std::cout << "done.\n";
 
         std::cout << "Finding PD-Locs and writing them to file..." << std::flush;
-        mixfix::PickupDropoffInfo pdInfo(vehicleInputGraph.numVertices());
+        mixfix::PathStartEndInfo pdInfo(vehicleInputGraph.numVertices());
         using PickupDropoffManagerImpl = mixfix::PickupDropoffManager<VehicleInputGraph, PsgInputGraph>;
         PickupDropoffManagerImpl pdManager(vehicleInputGraph, psgInputGraph, revPsgGraph, walkingRadius);
         pdManager.findPossiblePDLocsForRequests(requests, pdInfo);

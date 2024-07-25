@@ -104,9 +104,9 @@ std::vector<int> parseEdgePathString(std::string s) {
     return result;
 }
 
-template<typename VehInputGraphT, typename PdManagerT>
+template<typename VehInputGraphT, typename PathStartEndInfoT>
 void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGraphT &inputGraph,
-                         const PdManagerT &pdInfo) {
+                         const PathStartEndInfoT &pathStartEndInfo) {
 
 //    Subset edgesInPath(inputGraph.numEdges());
 
@@ -137,12 +137,12 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGr
         }
 
         if (path.size() > 0) {
-            const auto &pickups = pdInfo.getPossiblePickupsAt(inputGraph.edgeTail(path.front()));
+            const auto &pickups = pathStartEndInfo.getPathsPossiblyBeginningAt(inputGraph.edgeTail(path.front()));
             if (!contains(pickups.begin(), pickups.end(), path.getPathId()))
                 throw std::invalid_argument("Path for request " + std::to_string(path.getPathId()) +
                                             " does not start at a possible pickup vertex for that request.");
 
-            const auto &dropoffs = pdInfo.getPossibleDropoffsAt(inputGraph.edgeHead(path.back()));
+            const auto &dropoffs = pathStartEndInfo.getPathsPossiblyEndingAt(inputGraph.edgeHead(path.back()));
             if (!contains(dropoffs.begin(), dropoffs.end(), path.getPathId()))
                 throw std::invalid_argument("Path for request " + std::to_string(path.getPathId()) +
                                             " does not end at a possible dropoff vertex for that request.");
@@ -153,12 +153,12 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGr
 template<mixfix::AvoidLoopsStrategy AvoidLoopsStrat, typename VehicleInputGraphT>
 std::vector<mixfix::FixedLine>
 runLineFinder(const VehicleInputGraphT &vehicleInputGraph, const VehicleInputGraphT &revVehicleGraph,
-              const mixfix::PickupDropoffInfo &pdInfo, const std::vector<mixfix::Request> &requests,
+              mixfix::PathStartEndInfo &pathStartEndInfo, const std::vector<mixfix::Request> &requests,
               mixfix::PreliminaryPaths &preliminaryPaths) {
 
     using namespace mixfix;
     using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraphT, PreliminaryPaths, AvoidLoopsStrat, std::ofstream>;
-    FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pdInfo, requests);
+    FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pathStartEndInfo, requests);
     return lineFinder.findFixedLines(preliminaryPaths);
 }
 
@@ -185,16 +185,6 @@ decideAvoidLoopsStrategy(const mixfix::AvoidLoopsStrategy &avoidLoopsStrategy, A
         return runLineFinder<mixfix::AvoidLoopsStrategy::EDGE_ALTERNATIVE>(args...);
     }
     throw std::invalid_argument("No implementation for given avoid loops strategy.");
-}
-
-template<typename ...Args>
-std::vector<mixfix::FixedLine>
-decidePathLogger(const bool outputPaths, Args &...args) {
-    if (outputPaths) {
-        return decideAvoidLoopsStrategy<std::ofstream>(args...);
-    }
-
-    return decideAvoidLoopsStrategy<NullLogger>(args...);
 }
 
 
@@ -407,21 +397,19 @@ int main(int argc, char *argv[]) {
         std::ifstream pdLocsFile(pdLocsFileName, std::ios::binary);
         if (!pdLocsFile.good())
             throw std::invalid_argument("file not found -- '" + pdLocsFileName + "'");
-        PickupDropoffInfo pdInfo(pdLocsFile);
+        PathStartEndInfo pathStartEndInfo(pdLocsFile);
         pdLocsFile.close();
         std::cout << "done.\n";
 
 
         std::cout << "Verifying input paths ..." << std::flush;
-        verifyPathViability(preliminaryPaths, vehicleInputGraph, pdInfo);
+        verifyPathViability(preliminaryPaths, vehicleInputGraph, pathStartEndInfo);
         std::cout << "done.\n";
 
         std::cout << "Computing direct distances ..." << std::flush;
         DirectDistancesFinder<VehicleInputGraph, VehCHEnv> directDistancesFinder(vehicleInputGraph, *vehChEnv);
         directDistancesFinder.computeDirectDists(requests);
         std::cout << "done.\n";
-
-        const auto numNonEmptyPaths = preliminaryPaths.numPaths();
 
         uint64_t totalPathTravelTime = 0;
         for (const auto& p : preliminaryPaths)
@@ -432,7 +420,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Constructing lines ..." << std::flush;
 
         const auto lines = decideAvoidLoopsStrategy(avoidLoopsStrategy, vehicleInputGraph, revVehicleGraph,
-                                                    pdInfo, requests, preliminaryPaths);
+                                                    pathStartEndInfo, requests, preliminaryPaths);
 
         if (outputFullPaths) {
 
@@ -480,9 +468,6 @@ int main(int argc, char *argv[]) {
             geoJsonOutputFile << std::setw(2) << topGeoJson << std::endl;
             std::cout << "done.\n";
         }
-
-        std::cout << "Could serve " << numNonEmptyPaths - preliminaryPaths.numPaths() << " / " << requests.size()
-                  << " requests with fixed lines." << std::endl;
 
     } catch (std::exception &e) {
         std::cerr << argv[0] << ": " << e.what() << '\n';

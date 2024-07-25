@@ -217,9 +217,9 @@ namespace karri::time_utils {
     }
 
     // Returns the additional time needed for the vehicle to perform a pickup with initialPickupDetour after its stop
-    // at pickupIndex and drive until stop toIndex instead of going to stop toIndex according to its current schedule.
+    // at beginningsIndex and drive until stop toIndex instead of going to stop toIndex according to its current schedule.
     // The residual pickup detour can be smaller than the initial detour since the vehicle may currently wait for
-    // passengers at stops between (pickupIndex, toIndex) which is time that it can now spend driving instead which
+    // passengers at stops between (beginningsIndex, toIndex) which is time that it can now spend driving instead which
     // reduces the additional operation time incurred by the new pickup compared to the initial detour for the pickup.
     // Does not subtract the vehicle wait at toIndex itself if one exists, i.e. this is the residual pickup detour that
     // arrives at toIndex.
