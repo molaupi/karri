@@ -63,9 +63,21 @@ target_compile_definitions(GenerateRandomVehicles PRIVATE CSV_IO_NO_THREAD)
 add_executable(DrawRandomDepartureTimes DrawRandomDepartureTimes.cc)
 target_compile_definitions(DrawRandomDepartureTimes PRIVATE CSV_IO_NO_THREAD)
 
+add_executable(ODPairsCsvToRoutingKit ODPairsCsvToRoutingKit.cc)
+target_compile_definitions(ODPairsCsvToRoutingKit PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(ODPairsCsvToRoutingKit ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+
+add_executable(ODPairsRoutingKitToCsv ODPairsRoutingKitToCsv.cc)
+target_compile_definitions(ODPairsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(ODPairsRoutingKitToCsv ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+
 add_executable(OsmToCarAndPassengerGraph OsmToCarAndPassengerGraph.cc)
 target_compile_definitions(OsmToCarAndPassengerGraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(OsmToCarAndPassengerGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+
+add_executable(RequestsToODPairs RequestsToODPairs.cc)
+target_compile_definitions(RequestsToODPairs PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(RequestsToODPairs ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 
 add_executable(TransformLocations TransformLocations.cc)
 target_compile_definitions(TransformLocations PRIVATE CSV_IO_NO_THREAD)
