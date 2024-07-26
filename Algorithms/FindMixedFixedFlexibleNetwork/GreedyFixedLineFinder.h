@@ -68,7 +68,7 @@ namespace mixfix {
                 : inputGraph(inputGraph), reverseGraph(reverseGraph),
                   pathStartEndInfo(pathStartEndInfo), requests(requests), inputConfig(InputConfig::getInstance()),
                   residualFlow(inputGraph.numEdges(), 0),
-                  lineOverviewLogger(LogManager<OverviewLoggerT>::getLogger("lines.csv",
+                  lineStatsLogger(LogManager<OverviewLoggerT>::getLogger("lines.csv",
                                                                             "line_id,"
                                                                             "initial_edge,"
                                                                             "max_flow,"
@@ -719,7 +719,7 @@ namespace mixfix {
             }
 
 
-            lineOverviewLogger << lineId << ", "
+            lineStatsLogger << lineId << ", "
                                << initialEdge << ","
                                << maxFlow << ","
                                << line.size() << ", "
@@ -750,7 +750,7 @@ namespace mixfix {
 //        std::vector<int> firstPathEndingAtEdge;
 //        std::vector<int> pathsEndingAtEdge;
 
-        OverviewLoggerT &lineOverviewLogger;
+        OverviewLoggerT &lineStatsLogger;
 
     };
 

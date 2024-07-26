@@ -416,6 +416,8 @@ int main(int argc, char *argv[]) {
             for (const auto& e : p)
                 totalPathTravelTime += static_cast<uint64_t>(vehicleInputGraph.travelTime(e));
         std::cout << "Sum of travel times on all paths: " << totalPathTravelTime << "\n" << std::endl;
+        auto& overviewLogger = LogManager<std::ofstream>::getLogger("overview.csv", "total_path_travel_time\n");
+        overviewLogger << totalPathTravelTime << "\n";
 
         std::cout << "Constructing lines ..." << std::flush;
 
