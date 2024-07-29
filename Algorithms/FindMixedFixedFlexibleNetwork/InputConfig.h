@@ -46,13 +46,7 @@ namespace mixfix {
 
         void operator=(InputConfig const &) = delete;
 
-        int minMaxFlowOnLine = INFTY;
-        int minNumPaxPerLine = INFTY;
-        double maxFlowRatioOnLine = 0.0;
+        int minFlowOnLine = INFTY;
         double overlapScoreExponent = 0.0;
-
-        double alpha = -1;
-        int beta = -1;
-
     };
 }

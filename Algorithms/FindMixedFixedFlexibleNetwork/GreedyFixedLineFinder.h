@@ -38,14 +38,14 @@
 #include "DataStructures/Containers/FastResetFlagArray.h"
 #include "Tools/Logging/NullLogger.h"
 #include "Tools/Logging/LogManager.h"
+#include "PathStartEndInfo.h"
 
 #include <nlohmann/json.hpp>
 
 namespace mixfix {
 
     // Given a set of OD-pairs and paths between each origin and destination in a road network, this facility
-    // constructs a set of fixed lines with the goal of serving as many passengers as possible, i.e. s.t. the
-    // number of OD-pairs (o,d) for which both o and d lie in the vicinity of at least one single line is maximized.
+    // constructs a set of fixed lines with the goal of (partially) covering as many rider paths as possible.
     //
     // This greedy algorithm is based on Andres Fielbaum, Javier Alonso-Mora, "Design of mixed fixed-flexible bus
     // public transport networks by tracking the paths of on-demand vehicles", Transportation Research Part C: Emerging
@@ -108,7 +108,7 @@ namespace mixfix {
                           << " (tail: " << inputGraph.osmNodeId(inputGraph.edgeTail(initialEdge))
                           << ", head: " << inputGraph.osmNodeId(inputGraph.edgeHead(initialEdge))
                           << ") with flow " << maxFlowOnLine << std::endl;
-                if (maxFlowOnLine < inputConfig.minMaxFlowOnLine) {
+                if (maxFlowOnLine < inputConfig.minFlowOnLine) {
                     std::cout << "Stopping line construction due to insufficient flow on initial edge." << std::endl;
                     break;
                 }
@@ -303,9 +303,8 @@ namespace mixfix {
 
             // Begin extending
             int mostRecentUsefulVertex = graph.edgeHead(line.back());
-            double flowDif = 0.0;
             std::vector<std::pair<int, int>> startingOverlaps; // Overlaps starting on extension [request ID, index of edge in path of request]
-            while (flowDif < inputConfig.maxFlowRatioOnLine && !activeOverlaps.empty()) {
+            while (!activeOverlaps.empty()) {
                 const auto v = graph.edgeHead(line.back());
 
                 int extension, flowOnExtension;
@@ -404,24 +403,8 @@ namespace mixfix {
                 KASSERT(flowOnExtension <= maxFlowOnLine, "Larger flow than max flow has been found!",
                         kassert::assert::light);
 
-                // TODO update name of parameter?
-                if (flowOnExtension < inputConfig.minMaxFlowOnLine)
+                if (flowOnExtension < inputConfig.minFlowOnLine)
                     break;
-
-                // Fielbaum and Alonso-Mora give this formula for the flow difference. The given intention is to stop
-                // extending once the difference in flow becomes too large since this would imply bad utilization of
-                // vehicle capacity in parts of the line. However, a line is started on the edge with most flow so
-                // flowOnExtension will become smaller over time which means flowDif also becomes smaller over time.
-                // Thus, this stopping criterion is never met. Therefore, we use the formula below instead.
-                // flowDif = static_cast<double>(flowOnExtension) /
-                //           static_cast<double>(std::max(maxFlowOnLine, flowOnExtension));
-
-                // If flow difference (i.e. difference between least and most flow) has become too large, stop extending
-                flowDif = static_cast<double>(maxFlowOnLine) /
-                          static_cast<double>(flowOnExtension);
-
-                if (flowDif >= inputConfig.maxFlowRatioOnLine)
-                    break; // Stop extending line
 
                 const int extensionInForwGraph = graph.edgeId(extension);
 
@@ -739,16 +722,6 @@ namespace mixfix {
         const InputConfig &inputConfig;
 
         TimestampedVector<int> residualFlow;
-
-//        // For every edge e, the IDs of not-yet-served requests whose paths start at e are stored in
-//        // pathsStartingAtEdge[firstPathStartingAtEdge[e]..firstPathStartingAtEdge[e + 1]].
-//        std::vector<int> firstPathStartingAtEdge;
-//        std::vector<int> pathsStartingAtEdge;
-//
-//        // For every edge e, the IDs of not-yet-served requests whose paths end at e are stored in
-//        // pathsEndingAtEdge[firstPathEndingAtEdge[e]..firstPathEndingAtEdge[e + 1]].
-//        std::vector<int> firstPathEndingAtEdge;
-//        std::vector<int> pathsEndingAtEdge;
 
         OverviewLoggerT &lineStatsLogger;
 

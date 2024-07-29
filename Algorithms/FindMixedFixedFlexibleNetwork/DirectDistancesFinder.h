@@ -28,6 +28,7 @@
 #include "Tools/Constants.h"
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/CH/CHPathUnpacker.h"
+#include "Tools/CommandLine/ProgressBar.h"
 #include <vector>
 
 namespace mixfix {

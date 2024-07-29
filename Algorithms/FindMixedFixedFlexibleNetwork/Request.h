@@ -36,7 +36,5 @@ namespace mixfix {
         int origin = INVALID_EDGE;
         int destination = INVALID_EDGE;
         int requestTime = INFTY;
-
-        int directDist = INFTY;
     };
 }
