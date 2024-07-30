@@ -78,6 +78,7 @@ inline void printUsage() {
               "                                                     and roll line back to last useful edge\n"
               "                                 edge-alternative    if extension edge has been visited before, attempt to find\n"
               "                                                     different viable extension\n"
+              "  -no-verbose-lines          disables output for every single line.\n"
               "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
               "  -output-paths              If set, also outputs paths as GeoJSON and CSV.\n"
               "  -help                      show usage help text.\n";
@@ -146,12 +147,12 @@ template<mixfix::AvoidLoopsStrategy AvoidLoopsStrat, typename VehicleInputGraphT
 std::vector<mixfix::FixedLine>
 runLineFinder(const VehicleInputGraphT &vehicleInputGraph, const VehicleInputGraphT &revVehicleGraph,
               mixfix::PathStartEndInfo &pathStartEndInfo, const std::vector<mixfix::Request> &requests,
-              mixfix::PreliminaryPaths &preliminaryPaths) {
+              mixfix::PreliminaryPaths &preliminaryPaths, const bool noVerboseLinesOutput) {
 
     using namespace mixfix;
     using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraphT, PreliminaryPaths, AvoidLoopsStrat, std::ofstream>;
     FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pathStartEndInfo, requests);
-    return lineFinder.findFixedLines(preliminaryPaths);
+    return lineFinder.findFixedLines(preliminaryPaths, noVerboseLinesOutput);
 }
 
 
@@ -205,7 +206,7 @@ int main(int argc, char *argv[]) {
         const auto requestFileName = clp.getValue<std::string>("r");
         const auto pathsFileName = clp.getValue<std::string>("p");
         const auto pdLocsFileName = clp.getValue<std::string>("pd");
-        const auto vehHierarchyFileName = clp.getValue<std::string>("veh-h");
+        const bool noVerboseLinesOutput = clp.isSet("no-verbose-lines");
         const auto outputFullPaths = clp.isSet("output-paths");
         auto outputFileName = clp.getValue<std::string>("o");
         if (endsWith(outputFileName, ".csv"))
@@ -321,7 +322,9 @@ int main(int argc, char *argv[]) {
         std::cout << "Constructing lines ..." << std::flush;
 
         const auto lines = decideAvoidLoopsStrategy(avoidLoopsStrategy, vehicleInputGraph, revVehicleGraph,
-                                                    pathStartEndInfo, requests, preliminaryPaths);
+                                                    pathStartEndInfo, requests, preliminaryPaths, noVerboseLinesOutput);
+
+        std::cout << " done. Found " << lines.size() << " lines." << std::endl;
 
         if (outputFullPaths) {
 

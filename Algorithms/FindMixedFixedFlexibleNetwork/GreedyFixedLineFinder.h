@@ -83,7 +83,7 @@ namespace mixfix {
         // Each path is expected to be a sequence of edges in the network.
         // Returns pairs of line and according total rider travel time covered by the line.
         std::vector<FixedLine>
-        findFixedLines(PreliminaryPathsT &paths) {
+        findFixedLines(PreliminaryPathsT &paths, const bool noVerboseLinesOutput) {
 
             // Compute total travel times for initial paths and initial flows:
             std::vector<int> residualFlow(inputGraph.numEdges(), 0);
@@ -105,8 +105,6 @@ namespace mixfix {
 
             Timer timer;
             while (!paths.empty()) {
-                std::cout << "\n\n";
-
                 RunningTimePerLineStats runningTimeStats;
 
                 // Construct line:
@@ -116,12 +114,16 @@ namespace mixfix {
                 overlapsWithLine.clear();
                 globalOverlaps.init(paths.getMaxPathId());
                 findMaxFlowEdge(residualFlow, initialEdge, maxFlowOnLine);
-                std::cout << "Initial edge " << initialEdge
-                          << " (tail: " << inputGraph.osmNodeId(inputGraph.edgeTail(initialEdge))
-                          << ", head: " << inputGraph.osmNodeId(inputGraph.edgeHead(initialEdge))
-                          << ") with flow " << maxFlowOnLine << std::endl;
+                if (!noVerboseLinesOutput) {
+                    std::cout << "\nInitial edge " << initialEdge
+                              << " (tail: " << inputGraph.osmNodeId(inputGraph.edgeTail(initialEdge))
+                              << ", head: " << inputGraph.osmNodeId(inputGraph.edgeHead(initialEdge))
+                              << ") with flow " << maxFlowOnLine << std::endl;
+                }
                 if (maxFlowOnLine < inputConfig.minFlowOnLine) {
-                    std::cout << "Stopping line construction due to insufficient flow on initial edge." << std::endl;
+                    if (!noVerboseLinesOutput)
+                        std::cout << "Stopping line construction due to insufficient flow on initial edge."
+                                  << std::endl;
                     break;
                 }
                 constructNextLine(paths, line, initialEdge, maxFlowOnLine, globalOverlaps, overlapsWithLine);
@@ -173,9 +175,10 @@ namespace mixfix {
                     o.reset();
                 }
 
-
-                std::cout << "Found a line of length " << line.size() << " that overlaps " << overlapsWithLine.size()
-                          << " paths and partially serves " << chosenOverlaps.size() << " paths." << std::endl;
+                if (!noVerboseLinesOutput)
+                    std::cout << "Found a line of length " << line.size() << " that overlaps "
+                              << overlapsWithLine.size() << " paths and partially serves "
+                              << chosenOverlaps.size() << " paths." << std::endl;
 
                 // Log line:
                 logLine(line, lines.size(), initialEdge, maxFlowOnLine, chosenOverlaps, globalOverlaps, paths,
