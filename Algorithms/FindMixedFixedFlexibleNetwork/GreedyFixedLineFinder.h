@@ -58,6 +58,7 @@ namespace mixfix {
 
         struct RunningTimePerLineStats {
             uint64_t constructLineTime = 0;
+            uint64_t choosePartiallyServedRidersTime = 0;
             uint64_t updatePathsTime = 0;
         };
 
@@ -129,6 +130,7 @@ namespace mixfix {
                 constructNextLine(paths, line, initialEdge, maxFlowOnLine, globalOverlaps, overlapsWithLine);
                 runningTimeStats.constructLineTime = timer.elapsed<std::chrono::nanoseconds>();
 
+                timer.restart();
 
                 // Greedily choose the overlaps served by the line s.t. the bus capacity is not exceeded anywhere along
                 // the line. Sort the overlaps by the fraction of the original path covered by the line and choose each
@@ -138,7 +140,9 @@ namespace mixfix {
                     const auto &o = globalOverlaps.getOverlapFor(overlapsWithLine[i]);
                     const auto &p = paths.getPathFor(overlapsWithLine[i]);
                     int overlapLength = 0;
-                    for (int j = o.start; j < o.end; ++j)
+                    const int effectiveStartOfOverlap = o.reachesBeginningOfPath ? 0 : o.start;
+                    const int effectiveEndOfOverlap = o.reachesEndOfPath ? p.size() : o.end;
+                    for (int j = effectiveStartOfOverlap; j < effectiveEndOfOverlap; ++j)
                         overlapLength += inputGraph.travelTime(p[j]);
                     score[i] = {i, static_cast<float>(overlapLength) /
                                    static_cast<float>(initialPathTravelTimes[p.getAncestorId()])};
@@ -206,11 +210,12 @@ namespace mixfix {
                               << overlapsWithLine.size() << " paths and partially serves "
                               << chosenOverlaps.size() << " paths." << std::endl;
 
-                // Log line:
-                logLine(line, lines.size(), initialEdge, maxFlowOnLine, chosenOverlaps, globalOverlaps, paths,
-                        runningTimeStats);
+                runningTimeStats.choosePartiallyServedRidersTime = timer.elapsed<std::chrono::nanoseconds>();
+                timer.restart();
 
                 // For each chosen overlap, remove path and add potential subpaths.
+                uint64_t sumRiderTravelTime = 0;
+                uint64_t sumNumRiderEdges = 0;
                 for (const auto &pathId: chosenOverlaps) {
                     const auto &fullPath = paths.getPathFor(pathId);
                     const auto &o = globalOverlaps.getOverlapFor(pathId);
@@ -218,8 +223,11 @@ namespace mixfix {
                     const int endOfSlicedSubpath = o.reachesEndOfPath ? fullPath.size() : o.end;
 
                     // Reduce flow for removed subpath.
-                    for (int i = startOfSlicedSubpath; i < endOfSlicedSubpath; ++i)
+                    for (int i = startOfSlicedSubpath; i < endOfSlicedSubpath; ++i) {
                         --residualFlow[fullPath[i]];
+                        sumRiderTravelTime += inputGraph.travelTime(fullPath[i]);
+                    }
+                    sumNumRiderEdges += endOfSlicedSubpath - startOfSlicedSubpath;
 
                     const auto &[begId, endId] = paths.sliceOutSubpath(pathId, startOfSlicedSubpath,
                                                                        endOfSlicedSubpath);
@@ -238,6 +246,11 @@ namespace mixfix {
                                                                   inputGraph.edgeTail(paths.getPathFor(endId).front()));
                     }
                 }
+                runningTimeStats.updatePathsTime = timer.elapsed<std::chrono::nanoseconds>();
+
+                // Log line:
+                logLine(line, lines.size(), initialEdge, maxFlowOnLine, chosenOverlaps.size(), sumNumRiderEdges,
+                        sumRiderTravelTime, runningTimeStats);
 
                 // Add line
                 lines.emplace_back(std::move(line));
@@ -774,10 +787,13 @@ namespace mixfix {
                 e = reverseGraph.edgeId(e);
         }
 
-        void logLine(const FixedLine &line, const int lineId, const int initialEdge, const int maxFlow,
-                     const std::vector<int> &overlappingWithLine,
-                     const OverlappingPaths &globalOverlaps,
-                     const PreliminaryPathsT &paths,
+        void logLine(const FixedLine &line,
+                     const int lineId,
+                     const int initialEdge,
+                     const int maxFlow,
+                     const int numPartiallyServed,
+                     const int sumNumRiderEdges,
+                     const int sumRiderTravelTime,
                      const RunningTimePerLineStats &runningTimeStats) {
 
             // Travel time for vehicle
@@ -785,29 +801,13 @@ namespace mixfix {
             for (const auto &e: line)
                 vehicleTravelTime += inputGraph.travelTime(e);
 
-            // Sum of travel times and number of edges for passengers subpaths (overlaps)
-            uint64_t sumRiderTravelTime = 0;
-            uint64_t sumNumRiderEdges = 0;
-            for (const auto &pathId: overlappingWithLine) {
-                const auto &p = paths.getPathFor(pathId);
-                const auto &o = globalOverlaps.getOverlapFor(pathId);
-
-                const int begEdgeIdx = o.reachesBeginningOfPath ? 0 : o.start;
-                const int endEdgeIdx = o.reachesEndOfPath ? p.size() : o.end;
-
-                for (int i = begEdgeIdx; i < endEdgeIdx; ++i) {
-                    ++sumNumRiderEdges;
-                    sumRiderTravelTime += inputGraph.travelTime(p[i]);
-                }
-            }
-
 
             lineStatsLogger << lineId << ", "
                             << initialEdge << ","
                             << maxFlow << ","
                             << line.size() << ", "
                             << vehicleTravelTime << ", "
-                            << overlappingWithLine.size() << ", "
+                            << numPartiallyServed << ", "
                             << sumNumRiderEdges << ", "
                             << sumRiderTravelTime << ", "
                             << runningTimeStats.constructLineTime << ", "

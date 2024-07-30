@@ -319,12 +319,15 @@ int main(int argc, char *argv[]) {
         auto& overviewLogger = LogManager<std::ofstream>::getLogger("overview.csv", "total_path_travel_time\n");
         overviewLogger << totalPathTravelTime << "\n";
 
+        Timer timer;
+
         std::cout << "Constructing lines ..." << std::flush;
 
         const auto lines = decideAvoidLoopsStrategy(avoidLoopsStrategy, vehicleInputGraph, revVehicleGraph,
                                                     pathStartEndInfo, requests, preliminaryPaths, noVerboseLinesOutput);
 
-        std::cout << " done. Found " << lines.size() << " lines." << std::endl;
+        const auto timeInSec = static_cast<double>(timer.elapsed<std::chrono::milliseconds>()) / 1000.0;
+        std::cout << " done. Found " << lines.size() << " lines. (" << timeInSec << "s)" << std::endl;
 
         if (outputFullPaths) {
 
