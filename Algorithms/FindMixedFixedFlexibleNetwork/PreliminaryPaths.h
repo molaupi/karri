@@ -47,52 +47,45 @@ namespace mixfix {
                 return allPathEdges->cbegin() + endOffset;
             }
 
-            int &operator[](const int idx) {
-                return (*allPathEdges)[startOffset + idx];
-            }
-
             const int &operator[](const int idx) const {
+                KASSERT(idx < size());
                 return (*allPathEdges)[startOffset + idx];
-            }
-
-            int &front() {
-                return (*allPathEdges)[startOffset];
             }
 
             const int &front() const {
                 return (*allPathEdges)[startOffset];
             }
 
-            int &back() {
-                return (*allPathEdges)[endOffset - 1];
-            }
-
             const int &back() const {
                 return (*allPathEdges)[endOffset - 1];
             }
 
-            int size() const {
-                return endOffset - startOffset;
+            size_t size() const {
+                return static_cast<size_t>(endOffset - startOffset);
             }
 
             const int &getPathId() const {
                 return pathId;
             }
 
+            const int& getAncestorId() const {
+                return ancestorPathId;
+            }
 
         private:
 
             friend PreliminaryPaths;
 
-            Path(const int pathId, int startOffset, int endOffset, std::vector<int> *allPathEdges) :
-                    pathId(pathId), startOffset(startOffset), endOffset(endOffset), allPathEdges(allPathEdges) {
+            Path(const int pathId, const int ancestorPathId, const int startOffset, const int endOffset, std::vector<int> const * allPathEdges)
+                    : pathId(pathId), ancestorPathId(ancestorPathId), startOffset(startOffset), endOffset(endOffset), allPathEdges(allPathEdges) {
                 KASSERT(endOffset > startOffset);
             }
 
             int pathId = INVALID_ID;
-            int startOffset = INVALID_INDEX;
-            int endOffset = INVALID_INDEX;
-            std::vector<int> *allPathEdges;
+            int ancestorPathId = INVALID_ID; // ID of initial path that this is a subpath of
+            int startOffset;
+            int endOffset;
+            std::vector<int> const * allPathEdges;
         };
 
     private:
@@ -115,7 +108,8 @@ namespace mixfix {
             const int endOffset = startOffset + edges.size();
             allPathEdges.insert(allPathEdges.end(), edges.begin(), edges.end());
             pathIdToIdx[pathId] = paths.size();
-            paths.push_back(Path(pathId, startOffset, endOffset, &allPathEdges));
+            // Initial paths are their own ancestors.
+            paths.push_back(Path(pathId, pathId, startOffset, endOffset, &allPathEdges));
         }
 
         int getMaxPathId() const {
@@ -180,14 +174,14 @@ namespace mixfix {
             if (start > 0) {
                 begId = pathIdToIdx.size();
                 pathIdToIdx.push_back(paths.size());
-                paths.push_back(Path(begId, oldPath.startOffset, oldPath.startOffset + start, &allPathEdges));
+                paths.push_back(Path(begId, oldPath.ancestorPathId, oldPath.startOffset, oldPath.startOffset + start, &allPathEdges));
             }
 
             // Add subpath at end (if any remaining)
             if (end < oldPath.size()) {
                 endId = pathIdToIdx.size();
                 pathIdToIdx.push_back(paths.size());
-                paths.push_back(Path(endId, oldPath.startOffset + end, oldPath.endOffset, &allPathEdges));
+                paths.push_back(Path(endId, oldPath.ancestorPathId, oldPath.startOffset + end, oldPath.endOffset, &allPathEdges));
             }
 
             return {begId, endId};
@@ -206,6 +200,7 @@ namespace mixfix {
         std::vector<int> pathIdToIdx;
         std::vector<Path> paths;
         std::vector<int> allPathEdges;
+
 
     };
 

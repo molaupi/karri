@@ -37,6 +37,13 @@ public:
                 : start(start), end(end), reachesBeginningOfPath(reachesBeginningOfPath),
                   reachesEndOfPath(reachesEndOfPath) {}
 
+        void reset() {
+            start = INVALID_INDEX;
+            end = INVALID_INDEX;
+            reachesBeginningOfPath = false;
+            reachesEndOfPath = false;
+        }
+
         int start; // smallest known index in path where path overlaps with line
         int end; // (one past) largest known index in path where path overlaps with line
 

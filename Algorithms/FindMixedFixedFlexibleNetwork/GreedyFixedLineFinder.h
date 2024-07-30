@@ -69,21 +69,22 @@ namespace mixfix {
                   pathStartEndInfo(pathStartEndInfo), requests(requests), inputConfig(InputConfig::getInstance()),
                   residualFlow(inputGraph.numEdges(), 0),
                   lineStatsLogger(LogManager<OverviewLoggerT>::getLogger("lines.csv",
-                                                                            "line_id,"
-                                                                            "initial_edge,"
-                                                                            "max_flow,"
-                                                                            "num_edges,"
-                                                                            "vehicle_travel_time,"
-                                                                            "num_subpaths_covered,"
-                                                                            "num_rider_edges,"
-                                                                            "sum_rider_travel_time,"
-                                                                            "construct_line_time,"
-                                                                            "update_paths_time\n")) {}
+                                                                         "line_id,"
+                                                                         "initial_edge,"
+                                                                         "max_flow,"
+                                                                         "num_edges,"
+                                                                         "vehicle_travel_time,"
+                                                                         "num_subpaths_covered,"
+                                                                         "num_rider_edges,"
+                                                                         "sum_rider_travel_time,"
+                                                                         "construct_line_time,"
+                                                                         "update_paths_time\n")) {}
 
         // Finds fixed lines given preliminary rider paths.
         // Each path is expected to be a sequence of edges in the network.
         // Returns pairs of line and according total rider travel time covered by the line.
-        std::vector<FixedLine> findFixedLines(PreliminaryPathsT &paths) {
+        std::vector<FixedLine>
+        findFixedLines(PreliminaryPathsT &paths, const std::vector<int> &initialPathTravelTimes) {
 
             std::vector<FixedLine> lines;
 
@@ -116,16 +117,61 @@ namespace mixfix {
                 runningTimeStats.constructLineTime = timer.elapsed<std::chrono::nanoseconds>();
 
 
+                // Greedily choose the overlaps served by the line s.t. the bus capacity is not exceeded anywhere along
+                // the line. Sort the overlaps by the fraction of the original path covered by the line and choose each
+                // overlap that does not violate the capacity in this order.
+                std::vector<std::pair<int, float>> score(overlapsWithLine.size(), {INVALID_INDEX, 0.0f});
+                for (int i = 0; i < overlapsWithLine.size(); ++i) {
+                    const auto &o = globalOverlaps.getOverlapFor(overlapsWithLine[i]);
+                    const auto &p = paths.getPathFor(overlapsWithLine[i]);
+                    int overlapLength = 0;
+                    for (int j = o.start; j < o.end; ++j)
+                        overlapLength += inputGraph.travelTime(p[j]);
+                    score[i] = {i, static_cast<float>(overlapLength) /
+                                   static_cast<float>(initialPathTravelTimes[p.getAncestorId()])};
+                }
+                std::sort(score.begin(), score.end(),
+                          [&](const auto &s1, const auto &s2) { return s1.second > s2.second; });
+
+
+                std::vector<int> chosenOverlaps;
+                std::vector<int> occupancy(line.size(), 0);
+                for (const auto &[i, s]: score) {
+                    const auto &pathId = overlapsWithLine[i];
+                    const auto &path = paths.getPathFor(pathId);
+                    auto &o = globalOverlaps.getOverlapFor(pathId);
+
+                    const int startInLine = findStartIdxOfOverlapInLine(line, path, o);
+                    const int endInLine = startInLine + (o.end - o.start);
+
+                    int j = startInLine;
+                    for (; j < endInLine; ++j) {
+                        if (occupancy[j] + 1 > inputConfig.capacity)
+                            break;
+                    }
+
+                    // If capacity is not broken at any point, choose this overlap and add it to the occupancy.
+                    if (j == endInLine) {
+                        chosenOverlaps.push_back(pathId);
+                        for (int k = startInLine; k < endInLine; ++k)
+                            ++occupancy[k];
+                        continue;
+                    }
+
+                    // Otherwise, reset the overlap so future lines can serve the path instead.
+                    o.reset();
+                }
+
+
                 std::cout << "Found a line of length " << line.size() << " that overlaps " << overlapsWithLine.size()
-                          << " paths." << std::endl;
+                          << " paths and partially serves " << chosenOverlaps.size() << " paths." << std::endl;
 
                 // Log line:
-                logLine(line, lines.size(), initialEdge, maxFlowOnLine, overlapsWithLine, globalOverlaps, paths,
+                logLine(line, lines.size(), initialEdge, maxFlowOnLine, chosenOverlaps, globalOverlaps, paths,
                         runningTimeStats);
 
-                // Remove paths that overlap with line and add potential subpaths
-                // TODO: add subpaths that are not covered back as new paths
-                for (const auto &pathId: overlapsWithLine) {
+                // For each chosen overlap, remove path and add potential subpaths
+                for (const auto &pathId: chosenOverlaps) {
                     const auto &fullPath = paths.getPathFor(pathId);
                     const auto &o = globalOverlaps.getOverlapFor(pathId);
                     const int startOfSlicedSubpath = o.reachesBeginningOfPath ? 0 : o.start;
@@ -159,6 +205,20 @@ namespace mixfix {
     private:
 
         using Path = typename PreliminaryPathsT::Path;
+
+        // Naive pattern matching to find start index of an overlap in the line.
+        // (Overlap only contains information about indices in the path.)
+        int findStartIdxOfOverlapInLine(const std::vector<int> &line, const Path &path,
+                                        const OverlappingPaths::Overlap &o) {
+            for (int start = 0; start <= line.size() - (o.end - o.start); ++start) {
+                int i = 0;
+                while (o.start + i < o.end && line[start + i] == path[o.start + i])
+                    ++i;
+                if (o.start + i == o.end)
+                    return start;
+            }
+            return INVALID_INDEX;
+        }
 
         void findInitialEdge(const PreliminaryPathsT &paths, int &initialEdge, int &flowOnInitialEdge) {
 
@@ -703,15 +763,15 @@ namespace mixfix {
 
 
             lineStatsLogger << lineId << ", "
-                               << initialEdge << ","
-                               << maxFlow << ","
-                               << line.size() << ", "
-                               << vehicleTravelTime << ", "
-                               << overlappingWithLine.size() << ", "
-                               << sumNumRiderEdges << ", "
-                               << sumRiderTravelTime << ", "
-                               << runningTimeStats.constructLineTime << ", "
-                               << runningTimeStats.updatePathsTime << "\n";
+                            << initialEdge << ","
+                            << maxFlow << ","
+                            << line.size() << ", "
+                            << vehicleTravelTime << ", "
+                            << overlappingWithLine.size() << ", "
+                            << sumNumRiderEdges << ", "
+                            << sumRiderTravelTime << ", "
+                            << runningTimeStats.constructLineTime << ", "
+                            << runningTimeStats.updatePathsTime << "\n";
         }
 
 

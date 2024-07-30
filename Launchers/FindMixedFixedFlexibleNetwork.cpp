@@ -65,6 +65,7 @@ inline void printUsage() {
               "  -pd <file>                 PD-locations for requests in binary format (see ComputePDLocsForRequests).\n"
               "  -min-flow <int>            stops extending line if flow becomes smaller than given value, stops \n"
               "                             constructing lines if flow on initial edge is smaller than given value\n"
+              "  -cap <int>                 capacity of buses (dflt: 120)\n"
               "  -overlap-score-exp <float> exponent for score of longer overlaps when finding next line edge (dflt: 1.0)\n"
               "  -avoid-loops <strategy>    strategy to avoid loops in lines. Possible values are: \n"
               "                                 none                lines may visit vertices and edges multiple times (dflt)\n"
@@ -150,7 +151,14 @@ runLineFinder(const VehicleInputGraphT &vehicleInputGraph, const VehicleInputGra
     using namespace mixfix;
     using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraphT, PreliminaryPaths, AvoidLoopsStrat, std::ofstream>;
     FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pathStartEndInfo, requests);
-    return lineFinder.findFixedLines(preliminaryPaths);
+    std::vector<int> totalPathTravelTimes(preliminaryPaths.numPaths(), 0);
+    for (int i = 0; i < preliminaryPaths.numPaths(); ++i) {
+        if (!preliminaryPaths.hasPathFor(i))
+            continue;
+        for (const auto& e : preliminaryPaths.getPathFor(i))
+            totalPathTravelTimes[i] += vehicleInputGraph.travelTime(e);
+    }
+    return lineFinder.findFixedLines(preliminaryPaths, totalPathTravelTimes);
 }
 
 
@@ -194,6 +202,7 @@ int main(int argc, char *argv[]) {
         // Parse the command-line options.
         InputConfig &inputConfig = InputConfig::getInstance();
         inputConfig.minFlowOnLine = clp.getValue<int>("min-flow", 100);
+        inputConfig.capacity = clp.getValue<int>("cap", 120);
         inputConfig.overlapScoreExponent = clp.getValue<double>("overlap-score-exp", 1.0);
 
         const auto &avoidLoopsStrategy = EnumParser<AvoidLoopsStrategy>()(
