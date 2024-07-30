@@ -46,7 +46,7 @@ class LogManager {
     auto iter = loggers.find(name);
     if (iter == loggers.end()) {
       iter = loggers.emplace(name, LoggerT(baseFileName + name)).first;
-      assert(iter->second);
+      LIGHT_KASSERT((bool) iter->second, "Could not open logger output stream at " << baseFileName + name << "!");
       iter->second << header;
     }
     return iter->second;

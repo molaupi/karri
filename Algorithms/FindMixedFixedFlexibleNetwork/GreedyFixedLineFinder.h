@@ -143,6 +143,20 @@ namespace mixfix {
                     score[i] = {i, static_cast<float>(overlapLength) /
                                    static_cast<float>(initialPathTravelTimes[p.getAncestorId()])};
                 }
+
+//                // Greedily choose the overlaps served by the line s.t. the bus capacity is not exceeded anywhere along
+//                // the line. Sort the overlaps by the total rider travel time covered.
+//                std::vector<std::pair<int, int>> score(overlapsWithLine.size(), {INVALID_INDEX, 0});
+//                for (int i = 0; i < overlapsWithLine.size(); ++i) {
+//                    const auto &o = globalOverlaps.getOverlapFor(overlapsWithLine[i]);
+//                    const auto &p = paths.getPathFor(overlapsWithLine[i]);
+//                    int overlapLength = 0;
+//                    for (int j = o.start; j < o.end; ++j)
+//                        overlapLength += inputGraph.travelTime(p[j]);
+//                    score[i] = {i, overlapLength};
+//                }
+
+
                 std::sort(score.begin(), score.end(),
                           [&](const auto &s1, const auto &s2) { return s1.second > s2.second; });
 
@@ -174,6 +188,18 @@ namespace mixfix {
                     // Otherwise, reset the overlap so future lines can serve the path instead.
                     o.reset();
                 }
+
+                // Roll line back on both ends as long as edges are not used by any chosen overlaps
+                int unusedFrontEnd = 0;
+                while (unusedFrontEnd < line.size() && occupancy[unusedFrontEnd] == 0)
+                    ++unusedFrontEnd;
+                KASSERT(unusedFrontEnd < line.size());
+                int unusedBackStart = line.size();
+                while (unusedBackStart > 0 && occupancy[unusedBackStart - 1] == 0)
+                    --unusedBackStart;
+                KASSERT(unusedBackStart > 0);
+                line.erase(line.begin(), line.begin() + unusedFrontEnd);
+                line.erase(line.begin() + unusedBackStart, line.end());
 
                 if (!noVerboseLinesOutput)
                     std::cout << "Found a line of length " << line.size() << " that overlaps "
