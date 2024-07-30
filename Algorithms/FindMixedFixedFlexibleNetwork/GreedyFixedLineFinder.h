@@ -67,7 +67,6 @@ namespace mixfix {
                               PathStartEndInfo &pathStartEndInfo, const std::vector<Request> &requests)
                 : inputGraph(inputGraph), reverseGraph(reverseGraph),
                   pathStartEndInfo(pathStartEndInfo), requests(requests), inputConfig(InputConfig::getInstance()),
-                  residualFlow(inputGraph.numEdges(), 0),
                   lineStatsLogger(LogManager<OverviewLoggerT>::getLogger("lines.csv",
                                                                          "line_id,"
                                                                          "initial_edge,"
@@ -84,7 +83,19 @@ namespace mixfix {
         // Each path is expected to be a sequence of edges in the network.
         // Returns pairs of line and according total rider travel time covered by the line.
         std::vector<FixedLine>
-        findFixedLines(PreliminaryPathsT &paths, const std::vector<int> &initialPathTravelTimes) {
+        findFixedLines(PreliminaryPathsT &paths) {
+
+            // Compute total travel times for initial paths and initial flows:
+            std::vector<int> residualFlow(inputGraph.numEdges(), 0);
+            std::vector<int> initialPathTravelTimes(paths.getMaxPathId() + 1, 0);
+            for (int i = 0; i <= paths.getMaxPathId(); ++i) {
+                if (!paths.hasPathFor(i))
+                    continue;
+                for (const auto &e: paths.getPathFor(i)) {
+                    ++residualFlow[e];
+                    initialPathTravelTimes[i] += inputGraph.travelTime(e);
+                }
+            }
 
             std::vector<FixedLine> lines;
 
@@ -104,7 +115,7 @@ namespace mixfix {
                 line.clear();
                 overlapsWithLine.clear();
                 globalOverlaps.init(paths.getMaxPathId());
-                findInitialEdge(paths, initialEdge, maxFlowOnLine);
+                findMaxFlowEdge(residualFlow, initialEdge, maxFlowOnLine);
                 std::cout << "Initial edge " << initialEdge
                           << " (tail: " << inputGraph.osmNodeId(inputGraph.edgeTail(initialEdge))
                           << ", head: " << inputGraph.osmNodeId(inputGraph.edgeHead(initialEdge))
@@ -170,12 +181,17 @@ namespace mixfix {
                 logLine(line, lines.size(), initialEdge, maxFlowOnLine, chosenOverlaps, globalOverlaps, paths,
                         runningTimeStats);
 
-                // For each chosen overlap, remove path and add potential subpaths
+                // For each chosen overlap, remove path and add potential subpaths.
                 for (const auto &pathId: chosenOverlaps) {
                     const auto &fullPath = paths.getPathFor(pathId);
                     const auto &o = globalOverlaps.getOverlapFor(pathId);
                     const int startOfSlicedSubpath = o.reachesBeginningOfPath ? 0 : o.start;
                     const int endOfSlicedSubpath = o.reachesEndOfPath ? fullPath.size() : o.end;
+
+                    // Reduce flow for removed subpath.
+                    for (int i = startOfSlicedSubpath; i < endOfSlicedSubpath; ++i)
+                        --residualFlow[fullPath[i]];
+
                     const auto &[begId, endId] = paths.sliceOutSubpath(pathId, startOfSlicedSubpath,
                                                                        endOfSlicedSubpath);
 
@@ -220,19 +236,14 @@ namespace mixfix {
             return INVALID_INDEX;
         }
 
-        void findInitialEdge(const PreliminaryPathsT &paths, int &initialEdge, int &flowOnInitialEdge) {
-
+        void findMaxFlowEdge(const std::vector<int> &flows, int &initialEdge, int &flowOnInitialEdge) {
             // flowOnInitialEdge may be larger than the number of paths if one paths visits maxFlowEdge multiple times.
-            residualFlow.clear();
             flowOnInitialEdge = 0;
             initialEdge = INVALID_EDGE;
-            for (const auto &path: paths) {
-                for (const auto &e: path) {
-                    ++residualFlow[e];
-                    if (residualFlow[e] > flowOnInitialEdge) {
-                        initialEdge = e;
-                        flowOnInitialEdge = residualFlow[e];
-                    }
+            FORALL_EDGES(inputGraph, e) {
+                if (flows[e] > flowOnInitialEdge) {
+                    initialEdge = e;
+                    flowOnInitialEdge = flows[e];
                 }
             }
         }
@@ -780,8 +791,6 @@ namespace mixfix {
         PathStartEndInfo &pathStartEndInfo;
         const std::vector<Request> &requests;
         const InputConfig &inputConfig;
-
-        TimestampedVector<int> residualFlow;
 
         OverviewLoggerT &lineStatsLogger;
 

@@ -100,19 +100,19 @@ template<typename VehInputGraphT, typename PathStartEndInfoT>
 void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGraphT &inputGraph,
                          const PathStartEndInfoT &pathStartEndInfo) {
 
-//    Subset edgesInPath(inputGraph.numEdges());
+    Subset edgesInPath(inputGraph.numEdges());
 
     for (const auto &path: paths) {
-//        edgesInPath.clear();
+        edgesInPath.clear();
         int prevVertex = path.size() == 0 ? INVALID_VERTEX : inputGraph.edgeTail(path[0]);
         for (int i = 0; i < path.size() - 1; ++i) {
             const auto nextPathEdge = path[i];
             LIGHT_KASSERT(inputGraph.edgeTail(nextPathEdge) == prevVertex,
                           "Previous vertex " << prevVertex << " is not tail of next edge " << nextPathEdge
                                              << " on path.");
-//            if (!edgesInPath.insert(nextPathEdge))
-//                throw std::invalid_argument("Edge " + std::to_string(nextPathEdge) + " is visited twice in path for request " +
-//                                            std::to_string(path.getPathId()));
+            if (!edgesInPath.insert(nextPathEdge))
+                throw std::invalid_argument("Edge " + std::to_string(nextPathEdge) + " is visited twice in path for request " +
+                                            std::to_string(path.getPathId()));
             bool found = false;
             FORALL_INCIDENT_EDGES(inputGraph, prevVertex, e) {
                 if (e == nextPathEdge) {
@@ -151,14 +151,7 @@ runLineFinder(const VehicleInputGraphT &vehicleInputGraph, const VehicleInputGra
     using namespace mixfix;
     using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraphT, PreliminaryPaths, AvoidLoopsStrat, std::ofstream>;
     FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pathStartEndInfo, requests);
-    std::vector<int> totalPathTravelTimes(preliminaryPaths.numPaths(), 0);
-    for (int i = 0; i < preliminaryPaths.numPaths(); ++i) {
-        if (!preliminaryPaths.hasPathFor(i))
-            continue;
-        for (const auto& e : preliminaryPaths.getPathFor(i))
-            totalPathTravelTimes[i] += vehicleInputGraph.travelTime(e);
-    }
-    return lineFinder.findFixedLines(preliminaryPaths, totalPathTravelTimes);
+    return lineFinder.findFixedLines(preliminaryPaths);
 }
 
 

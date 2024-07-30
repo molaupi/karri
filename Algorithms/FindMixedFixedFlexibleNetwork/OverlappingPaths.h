@@ -54,6 +54,7 @@ public:
 public:
 
     void init(const int maxPathId) {
+        KASSERT(maxPathId >= overlaps.size());
         overlaps.resize(maxPathId + 1, Overlap());
     }
 
