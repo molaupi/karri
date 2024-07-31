@@ -26,6 +26,7 @@
 
 #include "DataStructures/Utilities/IteratorRange.h"
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
+#include <ranges>
 
 namespace mixfix {
 
@@ -33,7 +34,7 @@ namespace mixfix {
     class PathStartEndInfo {
 
     public:
-        PathStartEndInfo(const int numVertices)
+        explicit PathStartEndInfo(const int numVertices)
                 : beginningsIndex(numVertices, {0, 0}),
                   pathBeginnings(),
                   beginningsWalkingDists(),
@@ -41,13 +42,16 @@ namespace mixfix {
                   pathEnds(),
                   endsWalkingDists() {}
 
-        PathStartEndInfo(std::ifstream &in) {
+        explicit PathStartEndInfo(std::ifstream &in) {
             bio::read(in, beginningsIndex);
             bio::read(in, pathBeginnings);
             bio::read(in, beginningsWalkingDists);
             bio::read(in, endsIndex);
             bio::read(in, pathEnds);
             bio::read(in, endsWalkingDists);
+
+            LIGHT_KASSERT(getSmallestVertexIdWithUnsortedRange() == INVALID_VERTEX,
+                          "Read path start info with unsorted beginnings / ends ranges.");
 
             // Make sure ID mappings all point to themselves for initial paths
             int maxPathId = -1;
@@ -71,6 +75,7 @@ namespace mixfix {
         // Call defrag() first!
         void writeTo(std::ofstream &out) {
             defrag();
+            LIGHT_KASSERT(getSmallestVertexIdWithUnsortedRange() == INVALID_VERTEX);
             bio::write(out, beginningsIndex);
             bio::write(out, pathBeginnings);
             bio::write(out, beginningsWalkingDists);
@@ -79,41 +84,69 @@ namespace mixfix {
             bio::write(out, endsWalkingDists);
         }
 
-
         // Returns IDs of paths that may start at vertex v.
-        std::vector<int> getPathsPossiblyBeginningAt(const int v) const {
-            assert(v >= 0);
-            assert(v < beginningsIndex.size());
+        auto getPathsPossiblyBeginningAt(const int v) const {
+            KASSERT(v >= 0);
+            KASSERT(v < beginningsIndex.size());
             const auto start = beginningsIndex[v].start;
             const auto end = beginningsIndex[v].end;
-            // TODO: This should use a transform view using ranges if C++20 (or using the range-v3 library)
-            std::vector<int> result(pathBeginnings.begin() + start, pathBeginnings.begin() + end);
-            std::transform(result.cbegin(), result.cend(), result.begin(), [&](const int id) {
-                return mapToBeginningActiveDescendent[id];
-            });
+            return std::ranges::subrange(pathBeginnings.begin() + start, pathBeginnings.begin() + end) |
+                   std::views::transform([&](const int id) {
+                       return mapToBeginningActiveDescendent[id];
+                   });
+        }
+
+        bool hasPathBeginningAt(const int v, const int pathId) const {
+            KASSERT(v >= 0);
+            KASSERT(v < beginningsIndex.size());
+            const auto start = beginningsIndex[v].start;
+            const auto end = beginningsIndex[v].end;
+
+            // We may store the paths ancestor ID (may be equal to path ID) so transform path ID first:
+            const int ancestorId = mapToBeginningAncestor[pathId];
+
+            const int insertIdx = findInsertIndexInSortedRangeBinary(ancestorId, ConstantVectorRange<int>(
+                    pathBeginnings.begin() + start, pathBeginnings.begin() + end));
+            const bool result = insertIdx > 0 && pathBeginnings[start + insertIdx - 1] == ancestorId;
+
+            KASSERT(linearRangeContains(pathId, getPathsPossiblyBeginningAt(v)) == result);
             return result;
         }
 
         // Returns walking distance for passenger if according path beginning at this vertex is used.
         ConstantVectorRange<int> getWalkingDistsToPathBeginningsAt(const int v) const {
-            assert(v >= 0);
-            assert(v < beginningsIndex.size());
+            KASSERT(v >= 0);
+            KASSERT(v < beginningsIndex.size());
             const auto start = beginningsIndex[v].start;
             const auto end = beginningsIndex[v].end;
             return {beginningsWalkingDists.begin() + start, beginningsWalkingDists.begin() + end};
         }
 
         // Returns IDs of paths that may end at vertex v.
-        std::vector<int> getPathsPossiblyEndingAt(const int v) const {
-            assert(v >= 0);
-            assert(v < endsIndex.size());
+        auto getPathsPossiblyEndingAt(const int v) const {
+            KASSERT(v >= 0);
+            KASSERT(v < endsIndex.size());
             const auto start = endsIndex[v].start;
             const auto end = endsIndex[v].end;
-            // TODO: This should use a transform view using ranges if C++20 (or using the range-v3 library)
-            std::vector<int> result(pathEnds.begin() + start, pathEnds.begin() + end);
-            std::transform(result.cbegin(), result.cend(), result.begin(), [&](const int id) {
-                return mapToEndActiveDescendent[id];
-            });
+            return std::ranges::subrange(pathEnds.begin() + start, pathEnds.begin() + end) |
+                   std::views::transform([&](const int id) {
+                       return mapToEndActiveDescendent[id];
+                   });
+        }
+
+        bool hasPathEndAt(const int v, const int pathId) const {
+            KASSERT(v >= 0);
+            KASSERT(v < endsIndex.size());
+            const auto start = endsIndex[v].start;
+            const auto end = endsIndex[v].end;
+
+            // We may store the paths ancestor ID (may be equal to path ID) so transform path ID first:
+            const int ancestorId = mapToEndAncestor[pathId];
+
+            const int insertIdx = findInsertIndexInSortedRangeBinary(ancestorId, ConstantVectorRange<int>(
+                    pathEnds.begin() + start, pathEnds.begin() + end));
+            const bool result = insertIdx > 0 && pathEnds[start + insertIdx - 1] == ancestorId;
+            KASSERT(linearRangeContains(pathId, getPathsPossiblyEndingAt(v)) == result);
             return result;
         }
 
@@ -132,15 +165,29 @@ namespace mixfix {
             const auto start = beginningsIndex[v].start;
             const auto end = beginningsIndex[v].end;
 
-            // TODO: sort value arrays?
+            // Path IDs are stored sorted by ancestor ID. Newly added paths are their own ancestors, so there is no
+            // need to transform the path ID.
+            const int insertIdx = findInsertIndexInSortedRangeBinary(pathId, ConstantVectorRange<int>(
+                    pathBeginnings.begin() + start, pathBeginnings.begin() + end));
+
             // Do not add duplicates
-            if (contains(pathBeginnings.begin() + start, pathBeginnings.begin() + end, pathId))
+            if (insertIdx > 0 && pathBeginnings[start + insertIdx - 1] == pathId)
                 return;
 
-            const int idx = insertion(v, pathId, beginningsIndex, pathBeginnings, beginningsWalkingDists);
-            beginningsWalkingDists[idx] = walkingDist;
+            const int valueArrIdx = stableInsertion(v, insertIdx, pathId, beginningsIndex, pathBeginnings,
+                                                    beginningsWalkingDists);
+            beginningsWalkingDists[valueArrIdx] = walkingDist;
 
             KASSERT(beginningsIndex[v].start >= 0 && beginningsIndex[v].end <= pathBeginnings.size());
+            KASSERT(mapToBeginningActiveDescendent.size() == mapToBeginningAncestor.size() &&
+                    mapToBeginningActiveDescendent.size() == mapToEndActiveDescendent.size() &&
+                    mapToBeginningActiveDescendent.size() == mapToEndAncestor.size());
+            if (pathId + 1 > mapToBeginningActiveDescendent.size()) {
+                mapToBeginningActiveDescendent.resize(pathId + 1, INVALID_ID);
+                mapToBeginningAncestor.resize(pathId + 1, INVALID_ID);
+                mapToEndActiveDescendent.resize(pathId + 1, INVALID_ID);
+                mapToEndAncestor.resize(pathId + 1, INVALID_ID);
+            }
 
             mapToBeginningActiveDescendent[pathId] = pathId;
             mapToBeginningAncestor[pathId] = pathId;
@@ -152,15 +199,28 @@ namespace mixfix {
             const auto start = endsIndex[v].start;
             const auto end = endsIndex[v].end;
 
-            // TODO: sort value arrays?
+            // Path IDs are stored sorted by ancestor ID. Newly added paths are their own ancestors, so there is no
+            // need to transform the path ID.
+            const int insertIdx = findInsertIndexInSortedRangeBinary(pathId, ConstantVectorRange<int>(
+                    pathEnds.begin() + start, pathEnds.begin() + end));
+
             // Do not add duplicates
-            if (contains(pathEnds.begin() + start, pathEnds.begin() + end, pathId))
+            if (insertIdx > 0 && pathEnds[start + insertIdx - 1] == pathId)
                 return;
 
-            const int idx = insertion(v, pathId, endsIndex, pathEnds, endsWalkingDists);
-            endsWalkingDists[idx] = walkingDist;
+            const int valueArrayIdx = stableInsertion(v, insertIdx, pathId, endsIndex, pathEnds, endsWalkingDists);
+            endsWalkingDists[valueArrayIdx] = walkingDist;
 
             KASSERT(endsIndex[v].start >= 0 && endsIndex[v].end <= pathEnds.size());
+            KASSERT(mapToBeginningActiveDescendent.size() == mapToBeginningAncestor.size() &&
+                    mapToBeginningActiveDescendent.size() == mapToEndActiveDescendent.size() &&
+                    mapToBeginningActiveDescendent.size() == mapToEndAncestor.size());
+            if (pathId + 1 > mapToBeginningActiveDescendent.size()) {
+                mapToBeginningActiveDescendent.resize(pathId + 1, INVALID_ID);
+                mapToBeginningAncestor.resize(pathId + 1, INVALID_ID);
+                mapToEndActiveDescendent.resize(pathId + 1, INVALID_ID);
+                mapToEndAncestor.resize(pathId + 1, INVALID_ID);
+            }
 
             mapToEndActiveDescendent[pathId] = pathId;
             mapToEndAncestor[pathId] = pathId;
@@ -226,6 +286,49 @@ namespace mixfix {
 
     private:
 
+        // Assumes range is sorted according to std::less.
+        template<typename T, typename SortedRangeT>
+        static int findInsertIndexInSortedRangeLinear(const T &x, const SortedRangeT &range) {
+            KASSERT(std::is_sorted(range.begin(), range.end(), std::less<>()));
+            for (int i = 0; i < range.size(); ++i) {
+                if (x < range[i])
+                    return i;
+            }
+            return range.size();
+        }
+
+        // Assumes range is sorted according to std::less.
+        template<typename T, typename SortedRangeT>
+        static int findInsertIndexInSortedRangeBinary(const T &x, const SortedRangeT &range) {
+            KASSERT(std::is_sorted(range.begin(), range.end(), std::less<>()));
+            // Check if range is currently empty or new entry needs to become first element:
+            if (range.end() == range.begin() || x < range[0])
+                return 0;
+
+            // Check if new entry needs to become last element:
+            if (!(x < range[range.size() - 1]))
+                return range.size();
+
+            // Binary search with invariant: !(x < range[l]) && x < range[r]
+            int l = 0, r = range.size() - 1;
+            while (l < r - 1) {
+                KASSERT(!(x < range[l]) && x < range[r]);
+                int m = (l + r) / 2;
+                if (x < range[m]) {
+                    r = m;
+                } else {
+                    l = m;
+                }
+            }
+
+            return r;
+        }
+
+        template<typename T, typename RangeT>
+        static bool linearRangeContains(const T& x, const RangeT& range) {
+            return contains(range.begin(), range.end(), x);
+        }
+
         void defragImpl(std::vector<ValueBlockPosition> &index,
                         std::vector<int> &pathIds,
                         std::vector<int> &walkingDists) {
@@ -239,17 +342,37 @@ namespace mixfix {
             newPathIds.reserve(totalPossiblePaths);
             newWalkingDists.reserve(totalPossiblePaths);
 
-            for (int e = 0; e < index.size(); ++e) {
-                newIndex[e].start = newPathIds.size();
-                newPathIds.insert(newPathIds.end(), pathIds.begin() + index[e].start,
-                                  pathIds.begin() + index[e].end);
-                newWalkingDists.insert(newWalkingDists.end(), walkingDists.begin() + index[e].start,
-                                       walkingDists.begin() + index[e].end);
-                newIndex[e].end = newPathIds.size();
+            for (int v = 0; v < index.size(); ++v) {
+                newIndex[v].start = newPathIds.size();
+                newPathIds.insert(newPathIds.end(), pathIds.begin() + index[v].start,
+                                  pathIds.begin() + index[v].end);
+                newWalkingDists.insert(newWalkingDists.end(), walkingDists.begin() + index[v].start,
+                                       walkingDists.begin() + index[v].end);
+                newIndex[v].end = newPathIds.size();
             }
             index = std::move(newIndex);
             pathIds = std::move(newPathIds);
             walkingDists = std::move(newWalkingDists);
+        }
+
+        // Returns first smallest vertex ID for which either beginnings or ends are not sorted or INVALID_VERTEX if
+        // all are sorted.
+        int getSmallestVertexIdWithUnsortedRange() {
+            KASSERT(beginningsIndex.size() == endsIndex.size());
+            for (int v = 0; v < beginningsIndex.size(); ++v) {
+                if (!verifyBeginningsSorted(v) || !verifyEndsSorted(v))
+                    return v;
+            }
+            return INVALID_VERTEX;
+        }
+
+        bool verifyBeginningsSorted(const int v) const {
+            return std::is_sorted(pathBeginnings.begin() + beginningsIndex[v].start,
+                                  pathBeginnings.begin() + beginningsIndex[v].end);
+        }
+
+        bool verifyEndsSorted(const int v) const {
+            return std::is_sorted(pathEnds.begin() + endsIndex[v].start, pathEnds.begin() + endsIndex[v].end);
         }
 
         // We use two DynamicRagged2DArray to store the subset of paths that may begin/end at each vertex.

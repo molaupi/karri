@@ -84,8 +84,8 @@ namespace mixfix {
                   forwardPsgGraph(forwardPsgGraph),
                   reversePsgGraph(reversePsgGraph),
                   walkingRadius(walkingRadius),
-                  pickupSearch(forwardPsgGraph, {walkingRadius}, {searchSpace}),
-                  dropoffSearch(reversePsgGraph, {walkingRadius}, {searchSpace}),
+                  pickupSearch(forwardPsgGraph, {this->walkingRadius}, {searchSpace}),
+                  dropoffSearch(reversePsgGraph, {this->walkingRadius}, {searchSpace}),
                   searchSpace(),
                   progressBar() {}
 

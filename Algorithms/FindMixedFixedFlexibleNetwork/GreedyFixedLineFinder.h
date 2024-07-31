@@ -78,6 +78,7 @@ namespace mixfix {
                                                                          "num_rider_edges,"
                                                                          "sum_rider_travel_time,"
                                                                          "construct_line_time,"
+                                                                         "choose_partially_served_riders_time,"
                                                                          "update_paths_time\n")) {}
 
         // Finds fixed lines given preliminary rider paths.
@@ -297,16 +298,14 @@ namespace mixfix {
                                std::vector<int> &overlapsWithLine) {
 
             line = {initialEdge};
-            const auto startingAtTail = pathStartEndInfo.getPathsPossiblyBeginningAt(inputGraph.edgeTail(initialEdge));
-            const auto endingAtHead = pathStartEndInfo.getPathsPossiblyEndingAt(inputGraph.edgeHead(initialEdge));
+            const int tail = inputGraph.edgeTail(initialEdge);
+            const int head = inputGraph.edgeHead(initialEdge);
             for (const auto &path: paths) {
                 KASSERT(!globalOverlaps.hasKnownOverlap(path.getPathId()));
                 for (int i = 0; i < path.size(); ++i) {
                     if (path[i] == initialEdge) {
-                        const bool possibleStartReached = contains(startingAtTail.begin(), startingAtTail.end(),
-                                                                   path.getPathId());
-                        const bool possibleEndReached = contains(endingAtHead.begin(), endingAtHead.end(),
-                                                                 path.getPathId());
+                        const bool possibleStartReached = pathStartEndInfo.hasPathBeginningAt(tail, path.getPathId());
+                        const bool possibleEndReached = pathStartEndInfo.hasPathEndAt(head, path.getPathId());
                         globalOverlaps.initializeOverlap(path.getPathId(), i, i + 1, possibleStartReached,
                                                          possibleEndReached);
                         overlapsWithLine.push_back(path.getPathId());
@@ -611,13 +610,13 @@ namespace mixfix {
                     int &mostRecentUsefulVertex) {
                 auto &o = globalOverlaps.getOverlapFor(pathId);
                 const int newReachedVertex = inputGraph.edgeHead(extension);
-                const auto endingAtNewVertex = pathStartEndInfo.getPathsPossiblyEndingAt(newReachedVertex);
                 KASSERT(o.end < path.size());
                 if (path[o.end] != extension)
                     return false;
                 ++o.end;
-                if (!contains(endingAtNewVertex.begin(), endingAtNewVertex.end(), path.getPathId())) {
+                if (!pathStartEndInfo.hasPathEndAt(newReachedVertex, path.getPathId())) {
                     // If path continues on extension but no end is reached yet, keep it as overlapping path
+                    KASSERT(o.end < path.size());
                     return true;
                 }
                 o.reachesEndOfPath = true;
@@ -633,15 +632,12 @@ namespace mixfix {
                     std::vector<int> &activeOverlaps,
                     const std::vector<std::pair<int, int>> &startingOverlaps,
                     const int extension) {
-                const auto &endingAtNewVertex = pathStartEndInfo.getPathsPossiblyEndingAt(
-                        inputGraph.edgeHead(extension));
+                const int head = inputGraph.edgeHead(extension);
 
                 for (const auto &[pathId, startEdgeIdx]: startingOverlaps) {
-                    const auto pathIdsBeginningAtTail = pathStartEndInfo.getPathsPossiblyBeginningAt(
-                            inputGraph.edgeTail(extension));
-                    KASSERT(contains(pathIdsBeginningAtTail.begin(), pathIdsBeginningAtTail.end(), pathId),
+                    KASSERT(pathStartEndInfo.hasPathBeginningAt(inputGraph.edgeTail(extension), pathId),
                             "Starting overlap does not have a potential start at the tail of the extension.");
-                    const bool reachesEndOfPath = contains(endingAtNewVertex.begin(), endingAtNewVertex.end(), pathId);
+                    const bool reachesEndOfPath = pathStartEndInfo.hasPathEndAt(head, pathId);
                     globalOverlaps.initializeOverlap(pathId, startEdgeIdx, startEdgeIdx + 1, true, reachesEndOfPath);
                     overlapsWithLine.push_back(pathId);
                     if (!reachesEndOfPath)
@@ -722,12 +718,11 @@ namespace mixfix {
                 auto &o = globalOverlaps.getOverlapFor(pathId);
                 KASSERT(o.start > 0);
                 const auto newReachedVertex = inputGraph.edgeTail(extensionInForw);
-                const auto startingAtNewVertex = pathStartEndInfo.getPathsPossiblyBeginningAt(newReachedVertex);
                 if (path[o.start - 1] != extensionInForw)
                     return false;
 
                 --o.start;
-                if (!contains(startingAtNewVertex.begin(), startingAtNewVertex.end(), pathId)) {
+                if (!pathStartEndInfo.hasPathBeginningAt(newReachedVertex, pathId)) {
                     // If path continues on extension but no possible start has been reached, keep it as overlapping path
                     return true;
                 }
@@ -743,17 +738,13 @@ namespace mixfix {
                     std::vector<int> &activeOverlaps,
                     const std::vector<std::pair<int, int>> &startingOverlaps,
                     const int extensionInForw) {
-                const auto &startingAtNewVertex = pathStartEndInfo.getPathsPossiblyBeginningAt(
-                        inputGraph.edgeTail(extensionInForw));
+                const int tail = inputGraph.edgeTail(extensionInForw);
 
                 for (const auto &[pathId, lastEdgeIdx]: startingOverlaps) {
-                    const auto pathIdsEndingAtHead = pathStartEndInfo.getPathsPossiblyEndingAt(
-                            inputGraph.edgeHead(extensionInForw));
-                    KASSERT(contains(pathIdsEndingAtHead.begin(), pathIdsEndingAtHead.end(), pathId),
+                    KASSERT(pathStartEndInfo.hasPathEndAt(inputGraph.edgeHead(extensionInForw), pathId),
                             "Starting overlap does not have a potential end at the head of the extension.");
 
-                    const bool reachesBegOfPath = contains(startingAtNewVertex.begin(), startingAtNewVertex.end(),
-                                                           pathId);
+                    const bool reachesBegOfPath = pathStartEndInfo.hasPathBeginningAt(tail, pathId);
                     globalOverlaps.initializeOverlap(pathId, lastEdgeIdx, lastEdgeIdx + 1, reachesBegOfPath, true);
                     overlapsWithLine.push_back(pathId);
                     if (!reachesBegOfPath)
@@ -811,6 +802,7 @@ namespace mixfix {
                             << sumNumRiderEdges << ", "
                             << sumRiderTravelTime << ", "
                             << runningTimeStats.constructLineTime << ", "
+                            << runningTimeStats.choosePartiallyServedRidersTime << ", "
                             << runningTimeStats.updatePathsTime << "\n";
         }
 

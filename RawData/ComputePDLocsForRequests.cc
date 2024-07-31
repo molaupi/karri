@@ -178,7 +178,6 @@ int main(int argc, char *argv[]) {
             const int requestId = static_cast<int>(requests.size());
             requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
         }
-        unused(mixfix::getMaxTravelTime);
         std::cout << "done.\n";
 
         std::cout << "Finding PD-Locs and writing them to file..." << std::flush;

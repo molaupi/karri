@@ -23,7 +23,6 @@
 /// ******************************************************************************
 
 
-#include <cassert>
 #include <kassert/kassert.hpp>
 #include "Tools/custom_assertion_levels.h"
 #include <cstdlib>
@@ -38,7 +37,6 @@
 #include "DataStructures/Graph/Attributes/LatLngAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
-#include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
 #include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
 #include "DataStructures/Graph/Attributes/MapToEdgeInPsgAttribute.h"
@@ -48,8 +46,6 @@
 #include "Algorithms/FindMixedFixedFlexibleNetwork/InputConfig.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/AvoidLoopsStrategy.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/LinesGeoJson.h"
-#include "DataStructures/Graph/Attributes/OsmRoadCategoryAttribute.h"
-#include "Algorithms/KaRRi/CHEnvironment.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/PathStartEndInfo.h"
 #include <vector>
@@ -130,13 +126,11 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGr
         }
 
         if (path.size() > 0) {
-            const auto &pickups = pathStartEndInfo.getPathsPossiblyBeginningAt(inputGraph.edgeTail(path.front()));
-            if (!contains(pickups.begin(), pickups.end(), path.getPathId()))
+            if (!pathStartEndInfo.hasPathBeginningAt(inputGraph.edgeTail(path.front()), path.getPathId()))
                 throw std::invalid_argument("Path for request " + std::to_string(path.getPathId()) +
                                             " does not start at a possible pickup vertex for that request.");
 
-            const auto &dropoffs = pathStartEndInfo.getPathsPossiblyEndingAt(inputGraph.edgeHead(path.back()));
-            if (!contains(dropoffs.begin(), dropoffs.end(), path.getPathId()))
+            if (!pathStartEndInfo.hasPathEndAt(inputGraph.edgeHead(path.back()), path.getPathId()))
                 throw std::invalid_argument("Path for request " + std::to_string(path.getPathId()) +
                                             " does not end at a possible dropoff vertex for that request.");
         }
