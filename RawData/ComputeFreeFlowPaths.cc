@@ -55,7 +55,7 @@ inline void printUsage() {
               "Usage: ComputeFreeFlowPaths -g <file> -d <file> -o <file>\n\n"
 
               "Given a set of OD-pairs and a road network, computes the free-flow shortest paths for each pair and\n"
-              "outputs them.\n\n"
+              "outputs them as a binary file. Additionally writes a CSV file containing total travel time per pair.\n\n"
               "  -g <file>                      input graph in binary format\n"
               "  -d <file>                      CSV file that contains OD pairs (columns 'origin' and 'destination')\n"
               "  -edges                         If set, origins and destinations are assumed to be edge IDs instead of vertex IDs.\n"
@@ -81,10 +81,18 @@ void computePathsUsingCH(const std::vector<OriginDestination>& odPairs, const In
 
     // Run queries
     std::cout << "Running queries... " << std::flush;
-    std::ofstream outputFile(outputFileName);
-    if (!outputFile.good())
-        throw std::invalid_argument("could not open file -- '" + outputFileName + "'");
-    outputFile << "request_id, path_as_graph_edge_ids\n";
+
+    std::ofstream pathsOutputFile(outputFileName + ".paths.bin");
+    if (!pathsOutputFile.good())
+        throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".paths.bin'");
+    size_t numPaths = odPairs.size();
+    bio::write(pathsOutputFile, numPaths);
+
+    std::ofstream travelTimesOutputFile(outputFileName + ".travel_times.csv");
+    if (!travelTimesOutputFile.good())
+        throw std::invalid_argument("could not open file -- '" + outputFileName + ".travel_times.csv'");
+    travelTimesOutputFile << "request_id, travel_time\n";
+
     ProgressBar progressBar(odPairs.size(), true);
     CHQuery<LabelSet> chQuery(ch);
     CHPathUnpacker pathUnpacker(ch);
@@ -102,21 +110,16 @@ void computePathsUsingCH(const std::vector<OriginDestination>& odPairs, const In
         chQuery.run(src, dst);
         path.clear();
         pathUnpacker.unpackUpDownPath(chQuery.getUpEdgePath(), chQuery.getDownEdgePath(), path);
-        outputFile << i << ", ";
-//            if (clp.isSet("edges"))
-//                outputFile << od.origin << " : ";
-        for (int j = 0; j < path.size(); ++j) {
-            if (j > 0) {
-                outputFile << " : ";
-            }
-            outputFile << path[j];
-        }
-//            if (clp.isSet("edges"))
-//                outputFile << (path.empty()? "" : " : ") << od.destination;
-        outputFile << '\n';
+
+        bio::write(pathsOutputFile, path);
+        int travelTime = 0;
+        for (const auto& e : path)
+            travelTime += inputGraph.travelTime(e);
+        travelTimesOutputFile << i << "," << travelTime << "\n";
         ++progressBar;
     }
-    outputFile.close();
+    pathsOutputFile.close();
+    travelTimesOutputFile.close();
     std::cout << " done.\n";
 }
 
@@ -143,10 +146,18 @@ void computePathsUsingFloatingPointCCH(const std::vector<OriginDestination>& odP
 
     // Run queries
     std::cout << "Running queries... " << std::flush;
-    std::ofstream outputFile(outputFileName);
-    if (!outputFile.good())
-        throw std::invalid_argument("could not open file -- '" + outputFileName + "'");
-    outputFile << "request_id, path_as_graph_edge_ids\n";
+
+    std::ofstream pathsOutputFile(outputFileName + ".paths.bin");
+    if (!pathsOutputFile.good())
+        throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".paths.bin'");
+    size_t numPaths = odPairs.size();
+    bio::write(pathsOutputFile, numPaths);
+
+    std::ofstream travelTimesOutputFile(outputFileName + ".travel_times.csv");
+    if (!travelTimesOutputFile.good())
+        throw std::invalid_argument("could not open file -- '" + outputFileName + ".travel_times.csv'");
+    travelTimesOutputFile << "request_id, travel_time\n";
+
     ProgressBar progressBar(odPairs.size(), true);
     for (int i = 0; i < odPairs.size(); ++i) {
         const auto &od = odPairs[i];
@@ -162,13 +173,12 @@ void computePathsUsingFloatingPointCCH(const std::vector<OriginDestination>& odP
         auto vertexPath = query.path();
 
         // Reconstruct edge path from vertex path and output
-        outputFile << i << ", ";
+        std::vector<int> edgePath;
+        edgePath.reserve(vertexPath.size() - 1);
+        int travelTime = 0;
         for (int j = 0; j + 1 < vertexPath.size(); ++j) {
             const auto tail = vertexPath[j];
             const auto head = vertexPath[j + 1];
-            if (j > 0) {
-                outputFile << " : ";
-            }
 
             // Find edge from tail to head:
             int edge = INVALID_EDGE;
@@ -181,12 +191,16 @@ void computePathsUsingFloatingPointCCH(const std::vector<OriginDestination>& odP
             if (edge == INVALID_EDGE) {
                 throw std::runtime_error("edge from " + std::to_string(tail) + " to " + std::to_string(head) + " not found");
             }
-            outputFile << edge;
+            edgePath.push_back(edge);
+            travelTime += inputGraph.travelTime(edge);
         }
-        outputFile << '\n';
+
+        bio::write(pathsOutputFile, edgePath);
+        travelTimesOutputFile << i << "," << travelTime << "\n";
         ++progressBar;
     }
-    outputFile.close();
+    pathsOutputFile.close();
+    travelTimesOutputFile.close();
     std::cout << " done.\n";
 }
 
@@ -205,9 +219,6 @@ int main(int argc, char *argv[]) {
         const auto useCosts = clp.getValue<std::string>("traversal-costs");
         const auto avoidCostZero = clp.isSet("avoid-cost-zero") && useCosts == "int";
         auto nodeOrderFileName = clp.getValue<std::string>("node-order");
-        if (!endsWith(outputFileName, ".csv")) {
-            outputFileName += ".csv";
-        }
 
         // Read the graph from file.
         std::cout << "Reading full vehicle network from file... " << std::flush;

@@ -57,8 +57,8 @@ inline void printUsage() {
               "pickup/dropoff locations for every OD-pair. Writes output files to specified base path.\n\n"
               "  -veh-g <file>              vehicle road network in binary format.\n"
               "  -r <file>                  requests in CSV format.\n"
-              "  -p <file>                  preliminary paths in CSV format.\n"
-              "  -pd <file>                 PD-locations for requests in binary format (see ComputePDLocsForRequests).\n"
+              "  -p <file>                  preliminary paths in binary format (see RawData/ComputeFreeFlowPaths).\n"
+              "  -pd <file>                 PD-locations for requests in binary format (see RawData/ComputePDLocsForRequests).\n"
               "  -min-flow <int>            stops extending line if flow becomes smaller than given value, stops \n"
               "                             constructing lines if flow on initial edge is smaller than given value\n"
               "  -cap <int>                 capacity of buses (dflt: 120)\n"
@@ -272,22 +272,23 @@ int main(int argc, char *argv[]) {
 
         // Read the preliminary paths from file.
         std::cout << "Reading preliminary paths from file... " << std::flush;
-        int requestId;
-        std::string pathString;
-        io::CSVReader<2, io::trim_chars<' '>> pathFileReader(pathsFileName);
-        pathFileReader.read_header(io::ignore_extra_column, "request_id", "path_as_graph_edge_ids");
-
+        std::ifstream pathsFile(pathsFileName, std::ios::binary);
+        if (!pathsFile.good())
+            throw std::invalid_argument("file not found -- '" + pathsFileName + "'");
+        size_t numPaths = 0;
+        bio::read(pathsFile, numPaths);
+        LIGHT_KASSERT(numPaths == requests.size());
         PreliminaryPaths preliminaryPaths;
-        preliminaryPaths.init(requests.size());
-        while (pathFileReader.read_row(requestId, pathString)) {
-            if (requestId < 0 || requestId >= requests.size())
-                throw std::invalid_argument("invalid request id -- '" + std::to_string(requestId) + "'");
-            std::vector<int> edges = parseEdgePathString(pathString);
-            LIGHT_KASSERT(std::all_of(edges.begin(), edges.end(),
+        preliminaryPaths.init(numPaths);
+        std::vector<int> pathEdges;
+        for (int i = 0; i < numPaths; ++i) {
+            pathEdges.clear();
+            bio::read(pathsFile, pathEdges);
+            LIGHT_KASSERT(std::all_of(pathEdges.begin(), pathEdges.end(),
                                       [&](const int e) { return e < vehicleInputGraph.numEdges(); }));
-            if (edges.empty())
+            if (pathEdges.empty())
                 continue;
-            preliminaryPaths.addInitialPath(requestId, std::move(edges));
+            preliminaryPaths.addInitialPath(i, std::move(pathEdges));
         }
         std::cout << "done.\n";
 
@@ -309,7 +310,6 @@ int main(int argc, char *argv[]) {
         for (const auto& p : preliminaryPaths)
             for (const auto& e : p)
                 totalPathTravelTime += static_cast<uint64_t>(vehicleInputGraph.travelTime(e));
-        std::cout << "Sum of travel times on all paths: " << totalPathTravelTime << "\n" << std::endl;
         auto& overviewLogger = LogManager<std::ofstream>::getLogger("overview.csv", "total_path_travel_time\n");
         overviewLogger << totalPathTravelTime << "\n";
 
