@@ -54,8 +54,8 @@ public:
 public:
 
     void init(const int maxPathId) {
-        KASSERT(maxPathId >= overlaps.size());
-        overlaps.resize(maxPathId + 1, Overlap());
+        if (maxPathId >= overlaps.size())
+            overlaps.resize(maxPathId + 1, Overlap());
     }
 
     void initializeOverlap(const int pathId, const int start, const int end, const bool reachesBeginningOfPath,

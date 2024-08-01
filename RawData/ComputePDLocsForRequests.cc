@@ -45,17 +45,20 @@
 #include "DataStructures/Graph/Attributes/MapToEdgeInFullVehAttribute.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/Request.h"
 #include "Algorithms/FindMixedFixedFlexibleNetwork/PickupDropoffManager.h"
+#include "Algorithms/FindMixedFixedFlexibleNetwork/PreliminaryPaths.h"
 
 inline void printUsage() {
     std::cout <<
-              "Usage: ComputePDLocsForRequests -veh-g <file> -psg-g <file> -d <file> -o <file>\n\n"
+              "Usage: ComputePDLocsForRequests -veh-g <file> -psg-g <file> -r <file> -p <file> -rho <radius> -o <file>\n\n"
 
-              "Given a set of requests (origin and destination edges accessible to vehicles and passengers) and a road\n"
-              "network, computes possible pickup and dropoff locations within a given radius and stores them.\n"
+              "Given a set of requests (origin and destination edges accessible to vehicles and passengers), paths\n"
+              "from every origin to destination and a road network, computes possible pickup and dropoff locations\n"
+              "on the path within a given walking radius and stores them.\n"
               "Writes set of requests that can be picked up/dropped off at each vertex.\n\n"
               "  -veh-g <file>     vehicle input graph in binary format\n"
               "  -psg-g <file>     passenger input graph binary format\n"
               "  -r <file>         requests file\n"
+              "  -p <file>         paths file in binary format (see RawData/ComputeFreeFlowPaths)\n"
               "  -rho <radius>     walking radius\n"
               "  -o <file>         place output in <file>\n"
               "  -help             display this help and exit\n";
@@ -73,6 +76,7 @@ int main(int argc, char *argv[]) {
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto requestsFileName = clp.getValue<std::string>("r");
+        const auto pathsFileName = clp.getValue<std::string>("p");
         const auto walkingRadius = clp.getValue<int>("rho", 300) * 10;
         auto outputFileName = clp.getValue<std::string>("o");
 
@@ -180,11 +184,72 @@ int main(int argc, char *argv[]) {
         }
         std::cout << "done.\n";
 
+        // Read the preliminary paths from file.
+        std::cout << "Reading preliminary paths from file... " << std::flush;
+        std::ifstream pathsFile(pathsFileName, std::ios::binary);
+        if (!pathsFile.good())
+            throw std::invalid_argument("file not found -- '" + pathsFileName + "'");
+        size_t numPaths = 0;
+        bio::read(pathsFile, numPaths);
+        LIGHT_KASSERT(numPaths == requests.size());
+        mixfix::PreliminaryPaths preliminaryPaths;
+        preliminaryPaths.init(numPaths);
+        std::vector<int> pathEdges;
+        for (int i = 0; i < numPaths; ++i) {
+            pathEdges.clear();
+            bio::read(pathsFile, pathEdges);
+            LIGHT_KASSERT(std::all_of(pathEdges.begin(), pathEdges.end(),
+                                      [&](const int e) { return e < vehicleInputGraph.numEdges(); }));
+            if (pathEdges.empty())
+                continue;
+            preliminaryPaths.addInitialPath(i, std::move(pathEdges));
+        }
+        std::cout << "done.\n";
+
         std::cout << "Finding PD-Locs and writing them to file..." << std::flush;
         mixfix::PathStartEndInfo pdInfo(vehicleInputGraph.numVertices());
         using PickupDropoffManagerImpl = mixfix::PickupDropoffManager<VehicleInputGraph, PsgInputGraph>;
         PickupDropoffManagerImpl pdManager(vehicleInputGraph, psgInputGraph, revPsgGraph, walkingRadius);
-        pdManager.findPossiblePDLocsForRequests(requests, pdInfo);
+        pdManager.findPossiblePDLocsForRequests(requests, preliminaryPaths, pdInfo);
+
+        // Verify edge indices
+        FORALL_VERTICES(vehicleInputGraph, v) {
+            const auto& starting = pdInfo.getPathsPossiblyBeginningAt(v);
+            const auto& edgeIndices = pdInfo.getEdgeIndicesOfPathBeginningsAt(v);
+            KASSERT(starting.size() == edgeIndices.size());
+            for (int i = 0; i < starting.size(); ++i) {
+                const auto& path = preliminaryPaths.getPathFor(starting[i]);
+                const auto& eInPath = path[edgeIndices[i]];
+
+                bool found = false;
+                FORALL_INCIDENT_EDGES(vehicleInputGraph, v, e) {
+                    if (e == eInPath) {
+                        found = true;
+                        break;
+                    }
+                }
+                KASSERT(found);
+            }
+
+            const auto& ending = pdInfo.getPathsPossiblyEndingAt(v);
+            const auto& revEdgeIndices = pdInfo.getRevEdgeIndicesOfPathEndsAt(v);
+            KASSERT(ending.size() == revEdgeIndices.size());
+            for (int i = 0; i < ending.size(); ++i) {
+                const auto& path = preliminaryPaths.getPathFor(ending[i]);
+                const auto& eInPath = path[path.size() - 1 - revEdgeIndices[i]];
+
+                bool found = false;
+                FORALL_INCIDENT_EDGES(revVehicleGraph, v, revE) {
+                    if (revVehicleGraph.edgeId(revE) == eInPath) {
+                        found = true;
+                        break;
+                    }
+                }
+                KASSERT(found);
+            }
+        }
+
+
         if (!endsWith(outputFileName, ".pdlocs.bin"))
             outputFileName += ".pdlocs.bin";
         std::ofstream pdLocsOutputFile(outputFileName);

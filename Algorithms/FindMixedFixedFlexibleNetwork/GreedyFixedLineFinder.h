@@ -236,14 +236,14 @@ namespace mixfix {
                     // If subpath at beginning of full path remains, mark new path starts, ends
                     if (begId != INVALID_ID) {
                         pathStartEndInfo.notifyNewPathIdForBeginnings(pathId, begId);
-                        pathStartEndInfo.addPathEndAtVertex(begId, 0,
+                        pathStartEndInfo.addPathEndAtVertex(begId, 0, 0,
                                                             inputGraph.edgeHead(paths.getPathFor(begId).back()));
                     }
 
                     // If subpath at beginning of full path remains, mark new path starts, ends
                     if (endId != INVALID_ID) {
                         pathStartEndInfo.notifyNewPathIdForEnds(pathId, endId);
-                        pathStartEndInfo.addPathBeginningAtVertex(endId, 0,
+                        pathStartEndInfo.addPathBeginningAtVertex(endId, 0, 0,
                                                                   inputGraph.edgeTail(paths.getPathFor(endId).front()));
                     }
                 }
@@ -575,7 +575,11 @@ namespace mixfix {
                 // There is a new overlap for path p if p may start at the currently last vertex of the line
                 // (the tail vertex of the extension edge) and p visits this vertex.
                 const auto &starting = pathStartEndInfo.getPathsPossiblyBeginningAt(inputGraph.edgeTail(extension));
-                for (const auto &pathId: starting) {
+                const auto &edgeIndicesOfStarting = pathStartEndInfo.getEdgeIndicesOfPathBeginningsAt(
+                        inputGraph.edgeTail(extension));
+                KASSERT(starting.size() == edgeIndicesOfStarting.size());
+                for (int j = 0; j < starting.size(); ++j) {
+                    const auto& pathId = starting[j];
 
                     // If request has already been answered, ignore it
                     if (!paths.hasPathFor(pathId))
@@ -588,13 +592,17 @@ namespace mixfix {
 
                     // Check if extension edge lies on the path for reqId:
                     const auto &path = paths.getPathFor(pathId);
-                    int i = 0;
-                    while (i < path.size() && path[i] != extension)
-                        ++i;
-                    if (i == path.size())
+                    if (edgeIndicesOfStarting[j] >= path.size())
                         continue;
+                    if (path[edgeIndicesOfStarting[j]] != extension)
+                        continue;
+//                    int i = 0;
+//                    while (i < path.size() && path[i] != extension)
+//                        ++i;
+//                    if (i == path.size())
+//                        continue;
 
-                    startingOverlaps.push_back({pathId, i});
+                    startingOverlaps.push_back({pathId, edgeIndicesOfStarting[j]});
                 }
 
                 return startingOverlaps;
@@ -682,7 +690,10 @@ namespace mixfix {
                 // There is a new overlap for path p if p may end at the currently last vertex of the line
                 // (the head vertex of the extension edge) and p visits this vertex.
                 const auto &ending = pathStartEndInfo.getPathsPossiblyEndingAt(inputGraph.edgeHead(extensionInForw));
-                for (const auto &pathId: ending) {
+                const auto& edgeRevIndicesOfEnding = pathStartEndInfo.getRevEdgeIndicesOfPathEndsAt(inputGraph.edgeHead(extensionInForw));
+                KASSERT(ending.size() == edgeRevIndicesOfEnding.size());
+                for (int j = 0; j < ending.size(); ++j) {
+                    const auto& pathId = ending[j];
 
                     // If request has already been answered, ignore it
                     if (!paths.hasPathFor(pathId))
@@ -695,13 +706,19 @@ namespace mixfix {
 
                     // Check if extension edge lies on the path for reqId:
                     const auto &path = paths.getPathFor(pathId);
-                    int i = path.size() - 1;
-                    while (i >= 0 && path[i] != extensionInForw)
-                        --i;
-                    if (i == -1)
+                    const int edgeIdx = path.size() - 1 - edgeRevIndicesOfEnding[j];
+                    if (edgeIdx < 0)
                         continue;
+                    if (path[edgeIdx] != extensionInForw)
+                        continue;
+//                    const auto &path = paths.getPathFor(pathId);
+//                    int i = path.size() - 1;
+//                    while (i >= 0 && path[i] != extensionInForw)
+//                        --i;
+//                    if (i == -1)
+//                        continue;
 
-                    startingOverlaps.push_back({pathId, i});
+                    startingOverlaps.push_back({pathId, edgeIdx});
                 }
 
                 return startingOverlaps;

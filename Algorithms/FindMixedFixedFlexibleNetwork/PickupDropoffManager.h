@@ -34,6 +34,7 @@
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
 #include "Tools/CommandLine/ProgressBar.h"
 #include "PathStartEndInfo.h"
+#include "DataStructures/Containers/Subset.h"
 
 namespace mixfix {
 
@@ -87,20 +88,30 @@ namespace mixfix {
                   pickupSearch(forwardPsgGraph, {this->walkingRadius}, {searchSpace}),
                   dropoffSearch(reversePsgGraph, {this->walkingRadius}, {searchSpace}),
                   searchSpace(),
+                  searchSpaceAsVehEdges(vehGraph.numEdges()),
+                  walkingDistsToVehEdges(vehGraph.numEdges(), INFTY),
                   progressBar() {}
 
 
 
 
-        void findPossiblePDLocsForRequests(const std::vector<Request> &requests,
+        template<typename PathsT>
+        void findPossiblePDLocsForRequests(const std::vector<Request>& requests,
+                                           const PathsT &paths,
                                            PathStartEndInfo& pdInfo) {
 
-            progressBar.init(static_cast<int>(requests.size()));
+            progressBar.init(static_cast<int>(paths.numPaths()));
 
-            // TODO: SIMD-ify, parallelize
-            for (const auto &req: requests) {
-                pdInfo.addPathBeginningAtVertex(req.requestId, 0, vehGraph.edgeHead(req.origin));
-                pdInfo.addPathEndAtVertex(req.requestId, 0, vehGraph.edgeHead(req.destination));
+            for (const auto &req : requests) {
+                if (!paths.hasPathFor(req.requestId))
+                    continue;
+                const auto& path = paths.getPathFor(req.requestId);
+                LIGHT_KASSERT(path.size() > 0);
+                LIGHT_KASSERT(vehGraph.edgeTail(path.front()) == vehGraph.edgeHead(req.origin));
+                LIGHT_KASSERT(vehGraph.edgeHead(path.back()) == vehGraph.edgeHead(req.destination));
+
+                pdInfo.addPathBeginningAtVertex(path.getPathId(), 0, 0, vehGraph.edgeTail(path.front()));
+                pdInfo.addPathEndAtVertex(path.getPathId(), 0, 0, vehGraph.edgeHead(path.back()));
 
                 const int originInPsg = vehGraph.mapToEdgeInPsg(req.origin);
                 const int destInPsg = vehGraph.mapToEdgeInPsg(req.destination);
@@ -108,12 +119,12 @@ namespace mixfix {
                 searchSpace.clear();
                 auto headOfOriginEdge = forwardPsgGraph.edgeHead(originInPsg);
                 pickupSearch.run(headOfOriginEdge);
-                turnSearchSpaceIntoPickupLocations(req.requestId, pdInfo);
+                turnSearchSpaceIntoPickupLocationsAlongPath(req.requestId, path, pdInfo);
 
                 searchSpace.clear();
                 auto headOfDestEdge = forwardPsgGraph.edgeHead(destInPsg);
                 dropoffSearch.run(headOfDestEdge);
-                turnSearchSpaceIntoDropoffLocations(req.requestId, pdInfo);
+                turnSearchSpaceIntoDropoffLocationsAlongPath(req.requestId, path, pdInfo);
 
                 ++progressBar;
             }
@@ -122,22 +133,45 @@ namespace mixfix {
     private:
 
 
-        void turnSearchSpaceIntoPickupLocations(const int requestId, PathStartEndInfo& pdInfo) {
+        template<typename PathT>
+        void turnSearchSpaceIntoPickupLocationsAlongPath(const int requestId, const PathT& path, PathStartEndInfo& pdInfo) {
+            KASSERT(requestId == path.getPathId());
+            // Convert search space from vertices in passenger graph to edges in vehicle graph
+            for (const auto& e : searchSpaceAsVehEdges)
+                walkingDistsToVehEdges[e] = INFTY;
+            KASSERT(std::all_of(walkingDistsToVehEdges.begin(), walkingDistsToVehEdges.end(), [&](const auto& d) {return d == INFTY;}));
+            searchSpaceAsVehEdges.clear();
             for (const auto &v: searchSpace) {
                 const auto distToV = pickupSearch.getDistance(v);
-                assert(distToV <= walkingRadius);
+                KASSERT(distToV <= walkingRadius);
                 FORALL_INCIDENT_EDGES(forwardPsgGraph, v, e) {
                     const int walkingDist = distToV + forwardPsgGraph.travelTime(e);
                     const int eInVehGraph = forwardPsgGraph.mapToEdgeInFullVeh(e);
                     if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue() || walkingDist > walkingRadius)
                         continue;
-
-                    pdInfo.addPathBeginningAtVertex(requestId, walkingDist, vehGraph.edgeHead(eInVehGraph));
+                    searchSpaceAsVehEdges.insert(eInVehGraph);
+                    walkingDistsToVehEdges[eInVehGraph] = std::min(walkingDistsToVehEdges[eInVehGraph], walkingDist);
                 }
+            }
+
+            // Iterate through path. For every edge that is in the search space, add it to the possible starts for the
+            // path (with the right index):
+            for (int i = 0; i < path.size(); ++i) {
+                const auto& e = path[i];
+                if (!searchSpaceAsVehEdges.contains(e))
+                    continue;
+                LIGHT_KASSERT(walkingDistsToVehEdges[e] <= walkingRadius);
+                pdInfo.addPathBeginningAtVertex(requestId, i, walkingDistsToVehEdges[e], vehGraph.edgeTail(e));
             }
         }
 
-        void turnSearchSpaceIntoDropoffLocations(const int requestId, PathStartEndInfo& pdInfo) {
+        template<typename PathT>
+        void turnSearchSpaceIntoDropoffLocationsAlongPath(const int requestId, const PathT& path, PathStartEndInfo& pdInfo) {
+            KASSERT(requestId == path.getPathId());
+            // Convert search space from vertices in passenger graph to edges in vehicle graph
+            for (const auto& e : searchSpaceAsVehEdges)
+                walkingDistsToVehEdges[e] = INFTY;
+            searchSpaceAsVehEdges.clear();
             for (const auto &v: searchSpace) {
                 const auto distToV = dropoffSearch.getDistance(v);
                 assert(distToV <= walkingRadius);
@@ -146,8 +180,19 @@ namespace mixfix {
                     const int eInVehGraph = forwardPsgGraph.mapToEdgeInFullVeh(eInForwGraph);
                     if (eInVehGraph == MapToEdgeInFullVehAttribute::defaultValue())
                         continue;
-                    pdInfo.addPathEndAtVertex(requestId, distToV, vehGraph.edgeHead(eInVehGraph));
+                    searchSpaceAsVehEdges.insert(eInVehGraph);
+                    walkingDistsToVehEdges[eInVehGraph] = std::min(walkingDistsToVehEdges[eInVehGraph], distToV);
                 }
+            }
+
+            // Iterate through path in reverse. For every edge that is in the search space, add it to the possible ends
+            // for the path (with the right reverse index):
+            for (int i = path.size() - 1; i >= 0; --i) {
+                const auto& e = path[i];
+                if (!searchSpaceAsVehEdges.contains(e))
+                    continue;
+                LIGHT_KASSERT(walkingDistsToVehEdges[e] <= walkingRadius);
+                pdInfo.addPathEndAtVertex(requestId, path.size() - 1 - i, walkingDistsToVehEdges[e], vehGraph.edgeHead(e));
             }
         }
 
@@ -160,6 +205,8 @@ namespace mixfix {
         Search pickupSearch;
         Search dropoffSearch;
         std::vector<int> searchSpace;
+        Subset searchSpaceAsVehEdges;
+        std::vector<int> walkingDistsToVehEdges;
 
         ProgressBar progressBar;
 

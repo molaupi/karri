@@ -45,9 +45,11 @@ namespace mixfix {
         explicit PathStartEndInfo(std::ifstream &in) {
             bio::read(in, beginningsIndex);
             bio::read(in, pathBeginnings);
+            bio::read(in, beginningsEdgeIdx);
             bio::read(in, beginningsWalkingDists);
             bio::read(in, endsIndex);
             bio::read(in, pathEnds);
+            bio::read(in, endsEdgeRevIdx);
             bio::read(in, endsWalkingDists);
 
             LIGHT_KASSERT(getSmallestVertexIdWithUnsortedRange() == INVALID_VERTEX,
@@ -78,9 +80,11 @@ namespace mixfix {
             LIGHT_KASSERT(getSmallestVertexIdWithUnsortedRange() == INVALID_VERTEX);
             bio::write(out, beginningsIndex);
             bio::write(out, pathBeginnings);
+            bio::write(out, beginningsEdgeIdx);
             bio::write(out, beginningsWalkingDists);
             bio::write(out, endsIndex);
             bio::write(out, pathEnds);
+            bio::write(out, endsEdgeRevIdx);
             bio::write(out, endsWalkingDists);
         }
 
@@ -111,6 +115,15 @@ namespace mixfix {
 
             KASSERT(linearRangeContains(pathId, getPathsPossiblyBeginningAt(v)) == result);
             return result;
+        }
+
+        // Returns indices of edges in path to the according path beginnings.
+        ConstantVectorRange<int> getEdgeIndicesOfPathBeginningsAt(const int v) const {
+            KASSERT(v >= 0);
+            KASSERT(v < beginningsIndex.size());
+            const auto start = beginningsIndex[v].start;
+            const auto end = beginningsIndex[v].end;
+            return {beginningsEdgeIdx.begin() + start, beginningsEdgeIdx.begin() + end};
         }
 
         // Returns walking distance for passenger if according path beginning at this vertex is used.
@@ -150,6 +163,15 @@ namespace mixfix {
             return result;
         }
 
+        // Returns reverse indices (from the back of the path) of edges in path to the according path ends.
+        ConstantVectorRange<int> getRevEdgeIndicesOfPathEndsAt(const int v) const {
+            KASSERT(v >= 0);
+            KASSERT(v < endsIndex.size());
+            const auto start = endsIndex[v].start;
+            const auto end = endsIndex[v].end;
+            return {endsEdgeRevIdx.begin() + start, endsEdgeRevIdx.begin() + end};
+        }
+
         // Returns walking distance for passenger if according path end at this vertex is used.
         ConstantVectorRange<int> getWalkingDistsFromPathEndsAt(const int v) const {
             assert(v >= 0);
@@ -159,7 +181,7 @@ namespace mixfix {
             return {endsWalkingDists.begin() + start, endsWalkingDists.begin() + end};
         }
 
-        void addPathBeginningAtVertex(const int pathId, const int walkingDist, const int v) {
+        void addPathBeginningAtVertex(const int pathId, const int idxInPath, const int walkingDist, const int v) {
             assert(v >= 0);
             assert(v < beginningsIndex.size());
             const auto start = beginningsIndex[v].start;
@@ -175,7 +197,8 @@ namespace mixfix {
                 return;
 
             const int valueArrIdx = stableInsertion(v, insertIdx, pathId, beginningsIndex, pathBeginnings,
-                                                    beginningsWalkingDists);
+                                                    beginningsEdgeIdx, beginningsWalkingDists);
+            beginningsEdgeIdx[valueArrIdx] = idxInPath;
             beginningsWalkingDists[valueArrIdx] = walkingDist;
 
             KASSERT(beginningsIndex[v].start >= 0 && beginningsIndex[v].end <= pathBeginnings.size());
@@ -193,7 +216,9 @@ namespace mixfix {
             mapToBeginningAncestor[pathId] = pathId;
         }
 
-        void addPathEndAtVertex(const int pathId, const int walkingDist, const int v) {
+        // Parameter revIdxInPath specifies the index of the edge e in the path for which head(e) == v counted from the
+        // back of the path!
+        void addPathEndAtVertex(const int pathId, const int revIdxInPath, const int walkingDist, const int v) {
             assert(v >= 0);
             assert(v < endsIndex.size());
             const auto start = endsIndex[v].start;
@@ -208,7 +233,9 @@ namespace mixfix {
             if (insertIdx > 0 && pathEnds[start + insertIdx - 1] == pathId)
                 return;
 
-            const int valueArrayIdx = stableInsertion(v, insertIdx, pathId, endsIndex, pathEnds, endsWalkingDists);
+            const int valueArrayIdx = stableInsertion(v, insertIdx, pathId, endsIndex, pathEnds,
+                                                      endsEdgeRevIdx, endsWalkingDists);
+            endsEdgeRevIdx[valueArrayIdx]= revIdxInPath;
             endsWalkingDists[valueArrayIdx] = walkingDist;
 
             KASSERT(endsIndex[v].start >= 0 && endsIndex[v].end <= pathEnds.size());
@@ -280,22 +307,11 @@ namespace mixfix {
 
         // De-fragment 2D-arrays
         void defrag() {
-            defragImpl(beginningsIndex, pathBeginnings, beginningsWalkingDists);
-            defragImpl(endsIndex, pathEnds, endsWalkingDists);
+            defragImpl(beginningsIndex, pathBeginnings, beginningsEdgeIdx, beginningsWalkingDists);
+            defragImpl(endsIndex, pathEnds, endsEdgeRevIdx, endsWalkingDists);
         }
 
     private:
-
-        // Assumes range is sorted according to std::less.
-        template<typename T, typename SortedRangeT>
-        static int findInsertIndexInSortedRangeLinear(const T &x, const SortedRangeT &range) {
-            KASSERT(std::is_sorted(range.begin(), range.end(), std::less<>()));
-            for (int i = 0; i < range.size(); ++i) {
-                if (x < range[i])
-                    return i;
-            }
-            return range.size();
-        }
 
         // Assumes range is sorted according to std::less.
         template<typename T, typename SortedRangeT>
@@ -331,6 +347,7 @@ namespace mixfix {
 
         void defragImpl(std::vector<ValueBlockPosition> &index,
                         std::vector<int> &pathIds,
+                        std::vector<int> &edgeIdx,
                         std::vector<int> &walkingDists) {
             int totalPossiblePaths = 0;
             for (const auto &pos: index)
@@ -338,6 +355,7 @@ namespace mixfix {
 
             std::vector<ValueBlockPosition> newIndex(index.size());
             std::vector<int> newPathIds;
+            std::vector<int> newEdgeIdx;
             std::vector<int> newWalkingDists;
             newPathIds.reserve(totalPossiblePaths);
             newWalkingDists.reserve(totalPossiblePaths);
@@ -346,12 +364,15 @@ namespace mixfix {
                 newIndex[v].start = newPathIds.size();
                 newPathIds.insert(newPathIds.end(), pathIds.begin() + index[v].start,
                                   pathIds.begin() + index[v].end);
+                newEdgeIdx.insert(newEdgeIdx.end(), edgeIdx.begin() + index[v].start,
+                                  edgeIdx.begin() + index[v].end);
                 newWalkingDists.insert(newWalkingDists.end(), walkingDists.begin() + index[v].start,
                                        walkingDists.begin() + index[v].end);
                 newIndex[v].end = newPathIds.size();
             }
             index = std::move(newIndex);
             pathIds = std::move(newPathIds);
+            edgeIdx = std::move(newEdgeIdx);
             walkingDists = std::move(newWalkingDists);
         }
 
@@ -386,6 +407,10 @@ namespace mixfix {
         // IDs of paths that may start at vertex. If walking is allowed, a path may start at any possible pickup vertex.
         std::vector<int> pathBeginnings;
 
+        // x := beginningsEdgeIdx[beginningsIndex[v].start + i] describes the index of the edge after v in the path p with
+        // ID pathBeginnings[beginningsIndex[v].start + i], i.e. inputGraph.edgeTail(p[x]) == v.
+        std::vector<int> beginningsEdgeIdx;
+
         // Walking distance for passenger if path beginning at this vertex is used.
         std::vector<int> beginningsWalkingDists;
 
@@ -395,6 +420,11 @@ namespace mixfix {
 
         // IDs of paths that may end at vertex. If walking is allowed, a path may end at any possible dropoff vertex.
         std::vector<int> pathEnds;
+
+        // x := endsEdgeRevIdx[endsIndex[v].start + i] describes the index of the edge before v in the path p with
+        // ID pathEnds[endsIndex[v].start + i] _counted from the back (Rev)_, i.e. inputGraph.edgeHead(p[p.size() - 1 - x]) == v.
+        // Reverse indices are used as they do not change when slicing out subpaths at the end of a path.
+        std::vector<int> endsEdgeRevIdx;
 
         // Walking distance for passenger if path end at this vertex is used.
         std::vector<int> endsWalkingDists;
