@@ -81,7 +81,7 @@ add_subdirectory(External/json)
 
 # Add RoutingKit library (needs to be built beforehand!) and include headers from git submodule
 find_library(RoutingKit_LIBRARY routingkit PATHS External/RoutingKit/lib REQUIRED)
-include_directories(External/RoutingKit/include)
+set(RoutingKit_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/External/RoutingKit/include/")
 
 # Add kassert library from git submodule
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

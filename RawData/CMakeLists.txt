@@ -26,28 +26,32 @@
 
 add_executable(AddSingleEdgeByOsmNodeIds AddSingleEdgeByOsmNodeIds.cc)
 target_compile_definitions(AddSingleEdgeByOsmNodeIds PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(AddSingleEdgeByOsmNodeIds ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+target_link_libraries(AddSingleEdgeByOsmNodeIds kassert ${BOOST_LIBRARIES})
 
 add_executable(AddStaTraversalCost AddStaTraversalCost.cc)
 target_compile_definitions(AddStaTraversalCost PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(AddStaTraversalCost ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+target_link_libraries(AddStaTraversalCost kassert ${BOOST_LIBRARIES})
 
 add_executable(ComputeFreeFlowPaths ComputeFreeFlowPaths.cc)
 target_compile_definitions(ComputeFreeFlowPaths PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ComputeFreeFlowPaths ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+target_link_libraries(ComputeFreeFlowPaths kassert ${RoutingKit_LIBRARY} ${BOOST_LIBRARIES})
+target_include_directories(ComputeFreeFlowPaths SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 
 
 add_executable(ComputePDLocsForRequests ComputePDLocsForRequests.cc)
 target_compile_definitions(ComputePDLocsForRequests PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ComputePDLocsForRequests ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+target_link_libraries(ComputePDLocsForRequests kassert ${RoutingKit_LIBRARY} ${BOOST_LIBRARIES})
+target_include_directories(ComputePDLocsForRequests SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(ConvertGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_include_directories(ConvertGraph SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 
 add_executable(FlowsRoutingKitToCsv FlowsRoutingKitToCsv.cc)
 target_compile_definitions(FlowsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(FlowsRoutingKitToCsv ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_include_directories(FlowsRoutingKitToCsv SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 
 add_executable(GenerateODPairs GenerateODPairs.cc)
 target_compile_definitions(GenerateODPairs PRIVATE CSV_IO_NO_THREAD)
@@ -59,35 +63,39 @@ endif()
 
 add_executable(GenerateRandomVehicles GenerateRandomVehicles.cc)
 target_compile_definitions(GenerateRandomVehicles PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateRandomVehicles kassert  ${BOOST_LIBRARIES})
 
 add_executable(DrawRandomDepartureTimes DrawRandomDepartureTimes.cc)
 target_compile_definitions(DrawRandomDepartureTimes PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(DrawRandomDepartureTimes kassert  ${BOOST_LIBRARIES})
 
 add_executable(ODPairsCsvToRoutingKit ODPairsCsvToRoutingKit.cc)
 target_compile_definitions(ODPairsCsvToRoutingKit PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ODPairsCsvToRoutingKit ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_link_libraries(ODPairsCsvToRoutingKit ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_include_directories(ODPairsCsvToRoutingKit SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 
 add_executable(ODPairsRoutingKitToCsv ODPairsRoutingKitToCsv.cc)
 target_compile_definitions(ODPairsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ODPairsRoutingKitToCsv ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_link_libraries(ODPairsRoutingKitToCsv ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_include_directories(ODPairsRoutingKitToCsv SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 
 add_executable(OsmToCarAndPassengerGraph OsmToCarAndPassengerGraph.cc)
 target_compile_definitions(OsmToCarAndPassengerGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(OsmToCarAndPassengerGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_link_libraries(OsmToCarAndPassengerGraph ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_include_directories(OsmToCarAndPassengerGraph SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 
 add_executable(RequestsToODPairs RequestsToODPairs.cc)
 target_compile_definitions(RequestsToODPairs PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(RequestsToODPairs ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_link_libraries(RequestsToODPairs kassert ${BOOST_LIBRARIES})
 
 add_executable(TransformLocations TransformLocations.cc)
 target_compile_definitions(TransformLocations PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(TransformLocations ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_link_libraries(TransformLocations ${PROJ_LIBRARY} kassert ${BOOST_LIBRARIES})
 
 
-add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc
-)
+add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc)
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(CheckExistingAttributesInNetworkFile kassert)
+target_link_libraries(CheckExistingAttributesInNetworkFile kassert  ${BOOST_LIBRARIES})
 
 add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
 target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
@@ -105,10 +113,8 @@ target_link_libraries(GenerateGeoJsonForRequests PRIVATE nlohmann_json::nlohmann
 
 add_executable(GenerateGeoJsonForPaths GenerateGeoJsonForPaths.cc)
 target_compile_definitions(GenerateGeoJsonForPaths PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForPaths PRIVATE nlohmann_json::nlohmann_json)
-target_link_libraries(GenerateGeoJsonForPaths PRIVATE kassert)
+target_link_libraries(GenerateGeoJsonForPaths PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
 
 add_executable(FielbaumToKaRRiInputGraph FielbaumToKaRRiInputGraph.cc)
 target_compile_definitions(FielbaumToKaRRiInputGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(FielbaumToKaRRiInputGraph PRIVATE nlohmann_json::nlohmann_json)
-target_link_libraries(FielbaumToKaRRiInputGraph PRIVATE kassert)
+target_link_libraries(FielbaumToKaRRiInputGraph PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
