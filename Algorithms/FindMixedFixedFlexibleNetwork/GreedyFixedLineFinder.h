@@ -79,7 +79,12 @@ namespace mixfix {
                                                                          "sum_rider_travel_time,"
                                                                          "construct_line_time,"
                                                                          "choose_partially_served_riders_time,"
-                                                                         "update_paths_time\n")) {}
+                                                                         "update_paths_time\n")),
+                  initialPathsCoverageLogger(LogManager<OverviewLoggerT>::getLogger("initial_paths_coverage.csv",
+                                                                                    "initial_path_id,"
+                                                                                    "num_legs,"
+                                                                                    "num_gaps,"
+                                                                                    "travel_time_not_covered\n")) {}
 
         // Finds fixed lines given preliminary rider paths.
         // Each path is expected to be a sequence of edges in the network.
@@ -104,6 +109,9 @@ namespace mixfix {
             std::vector<int> overlapsWithLine;
             OverlappingPaths globalOverlaps;
             FixedLine line;
+
+            // Statistic for how many legs each initial path has, i.e. how many lines it was chosen to overlap with
+            std::vector<int> initialPathsNumLegs(paths.getMaxPathId() + 1, 0);
 
             Timer timer;
             while (!paths.empty()) {
@@ -219,6 +227,7 @@ namespace mixfix {
                 uint64_t sumNumRiderEdges = 0;
                 for (const auto &pathId: chosenOverlaps) {
                     const auto &fullPath = paths.getPathFor(pathId);
+                    ++initialPathsNumLegs[fullPath.getAncestorId()];
                     const auto &o = globalOverlaps.getOverlapFor(pathId);
                     const int startOfSlicedSubpath = o.reachesBeginningOfPath ? 0 : o.start;
                     const int endOfSlicedSubpath = o.reachesEndOfPath ? fullPath.size() : o.end;
@@ -255,6 +264,22 @@ namespace mixfix {
 
                 // Add line
                 lines.emplace_back(std::move(line));
+            }
+
+            // Gather gaps left in initial paths by counting remaining subpaths for each:
+            std::vector<int> initialPathsNumGaps(initialPathsNumLegs.size(), 0);
+            std::vector<int> initialPathsRemainingRiderTT(initialPathsNumLegs.size(), 0);
+            for (const auto &p: paths) {
+                int tt = 0;
+                for (const auto &e: p)
+                    tt += inputGraph.travelTime(e);
+                ++initialPathsNumGaps[p.getAncestorId()];
+                initialPathsRemainingRiderTT[p.getAncestorId()] += tt;
+            }
+
+            for (int i = 0; i < initialPathsNumLegs.size(); ++i) {
+                initialPathsCoverageLogger << i << "," << initialPathsNumLegs[i] << "," << initialPathsNumGaps[i] << ","
+                                           << initialPathsRemainingRiderTT[i] << "\n";
             }
 
             return lines;
@@ -579,7 +604,7 @@ namespace mixfix {
                         inputGraph.edgeTail(extension));
                 KASSERT(starting.size() == edgeIndicesOfStarting.size());
                 for (int j = 0; j < starting.size(); ++j) {
-                    const auto& pathId = starting[j];
+                    const auto &pathId = starting[j];
 
                     // If request has already been answered, ignore it
                     if (!paths.hasPathFor(pathId))
@@ -596,11 +621,6 @@ namespace mixfix {
                         continue;
                     if (path[edgeIndicesOfStarting[j]] != extension)
                         continue;
-//                    int i = 0;
-//                    while (i < path.size() && path[i] != extension)
-//                        ++i;
-//                    if (i == path.size())
-//                        continue;
 
                     startingOverlaps.push_back({pathId, edgeIndicesOfStarting[j]});
                 }
@@ -690,10 +710,11 @@ namespace mixfix {
                 // There is a new overlap for path p if p may end at the currently last vertex of the line
                 // (the head vertex of the extension edge) and p visits this vertex.
                 const auto &ending = pathStartEndInfo.getPathsPossiblyEndingAt(inputGraph.edgeHead(extensionInForw));
-                const auto& edgeRevIndicesOfEnding = pathStartEndInfo.getRevEdgeIndicesOfPathEndsAt(inputGraph.edgeHead(extensionInForw));
+                const auto &edgeRevIndicesOfEnding = pathStartEndInfo.getRevEdgeIndicesOfPathEndsAt(
+                        inputGraph.edgeHead(extensionInForw));
                 KASSERT(ending.size() == edgeRevIndicesOfEnding.size());
                 for (int j = 0; j < ending.size(); ++j) {
-                    const auto& pathId = ending[j];
+                    const auto &pathId = ending[j];
 
                     // If request has already been answered, ignore it
                     if (!paths.hasPathFor(pathId))
@@ -711,12 +732,6 @@ namespace mixfix {
                         continue;
                     if (path[edgeIdx] != extensionInForw)
                         continue;
-//                    const auto &path = paths.getPathFor(pathId);
-//                    int i = path.size() - 1;
-//                    while (i >= 0 && path[i] != extensionInForw)
-//                        --i;
-//                    if (i == -1)
-//                        continue;
 
                     startingOverlaps.push_back({pathId, edgeIdx});
                 }
@@ -831,6 +846,7 @@ namespace mixfix {
         const InputConfig &inputConfig;
 
         OverviewLoggerT &lineStatsLogger;
+        OverviewLoggerT &initialPathsCoverageLogger;
 
     };
 
