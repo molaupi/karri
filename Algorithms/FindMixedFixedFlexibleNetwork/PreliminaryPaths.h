@@ -81,14 +81,28 @@ namespace mixfix {
                 return ancestorPathId;
             }
 
+            const int &getStartDepTime() const {
+                return (*allMinDepTimes)[startOffset];
+            }
+
+            // Arrival time at end is the departure time at one past end.
+            const int& getEndArrTime() const {
+                return (*allMinDepTimes)[endOffset];
+            }
+
+            const int &getDepTimeAtIdx(const int idx) const {
+                KASSERT(idx < size() + 1);
+                return (*allMinDepTimes)[startOffset + idx];
+            }
+
         private:
 
             friend PreliminaryPaths;
 
             Path(const int pathId, const int ancestorPathId, const int startOffset, const int endOffset,
-                 std::vector<int> const *allPathEdges)
+                 std::vector<int> const *allPathEdges, std::vector<int> const * allMinDepTimes)
                     : pathId(pathId), ancestorPathId(ancestorPathId), startOffset(startOffset), endOffset(endOffset),
-                      allPathEdges(allPathEdges) {
+                      allPathEdges(allPathEdges), allMinDepTimes(allMinDepTimes) {
                 KASSERT(endOffset > startOffset);
             }
 
@@ -97,6 +111,7 @@ namespace mixfix {
             int startOffset;
             int endOffset;
             std::vector<int> const *allPathEdges;
+            std::vector<int> const *allMinDepTimes;
         };
 
     private:
@@ -114,13 +129,18 @@ namespace mixfix {
             paths.clear();
         }
 
-        void addInitialPath(const int pathId, std::vector<int> &&edges) {
+        void addInitialPath(const int pathId, std::vector<int> &&edges, std::vector<int>&& minDepTimes) {
+            LIGHT_KASSERT(minDepTimes.size() == edges.size() + 1,
+                          "minDepTimes must contain one additional value storing the arrival time at the path end.");
             const int startOffset = allPathEdges.size();
             const int endOffset = startOffset + edges.size();
+            KASSERT(std::is_sorted(minDepTimes.begin(), minDepTimes.end()));
             allPathEdges.insert(allPathEdges.end(), edges.begin(), edges.end());
+            allPathEdges.push_back(INVALID_EDGE);
+            allMinDepTimes.insert(allMinDepTimes.end(), minDepTimes.begin(), minDepTimes.end());
             pathIdToIdx[pathId] = paths.size();
             // Initial paths are their own ancestors.
-            paths.push_back(Path(pathId, pathId, startOffset, endOffset, &allPathEdges));
+            paths.push_back(Path(pathId, pathId, startOffset, endOffset, &allPathEdges, &allMinDepTimes));
         }
 
         int getMaxPathId() const {
@@ -186,7 +206,7 @@ namespace mixfix {
                 begId = pathIdToIdx.size();
                 pathIdToIdx.push_back(paths.size());
                 paths.push_back(Path(begId, oldPath.ancestorPathId, oldPath.startOffset, oldPath.startOffset + start,
-                                     &allPathEdges));
+                                     &allPathEdges, &allMinDepTimes));
             }
 
             // Add subpath at end (if any remaining)
@@ -194,7 +214,7 @@ namespace mixfix {
                 endId = pathIdToIdx.size();
                 pathIdToIdx.push_back(paths.size());
                 paths.push_back(Path(endId, oldPath.ancestorPathId, oldPath.startOffset + end, oldPath.endOffset,
-                                     &allPathEdges));
+                                     &allPathEdges, &allMinDepTimes));
             }
 
             return {begId, endId};
@@ -212,7 +232,16 @@ namespace mixfix {
 
         std::vector<int> pathIdToIdx;
         std::vector<Path> paths;
+
+        // Contains edges for all initial paths (and later paths as they are just subpaths).
+        // Edges for one initial path are stored consecutively with one INVALID_EDGE between paths
+        // (used for simpler storing of travel times in allMinDepTimes).
         std::vector<int> allPathEdges;
+
+        // allMinDepTimes[i] is the earliest time at which the rider can set off on edge allPathEdges[i].
+        // If allPathEdges[i] == INVALID_EDGE, i.e. i is one past the end of an initial path, then allMinDepTimes[i]
+        // stores the path's end time.
+        std::vector<int> allMinDepTimes;
 
 
     };

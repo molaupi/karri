@@ -98,10 +98,11 @@ namespace mixfix {
             for (int i = 0; i <= paths.getMaxPathId(); ++i) {
                 if (!paths.hasPathFor(i))
                     continue;
-                for (const auto &e: paths.getPathFor(i)) {
+                const auto &p = paths.getPathFor(i);
+                initialPathTravelTimes[i] = p.getEndArrTime() - p.getStartDepTime();
+
+                for (const auto &e: p)
                     ++residualFlow[e];
-                    initialPathTravelTimes[i] += inputGraph.travelTime(e);
-                }
             }
 
             std::vector<FixedLine> lines;
@@ -175,6 +176,7 @@ namespace mixfix {
 
 
                 std::vector<int> chosenOverlaps;
+                std::vector<int> startIdxOfChosenOverlapsInLine;
                 std::vector<int> occupancy(line.size(), 0);
                 for (const auto &[i, s]: score) {
                     const auto &pathId = overlapsWithLine[i];
@@ -183,6 +185,8 @@ namespace mixfix {
 
                     const int startInLine = findStartIdxOfOverlapInLine(line, path, o);
                     const int endInLine = startInLine + (o.end - o.start);
+
+                    KASSERT(line[startInLine] == path[o.start]);
 
                     int j = startInLine;
                     for (; j < endInLine; ++j) {
@@ -193,6 +197,7 @@ namespace mixfix {
                     // If capacity is not broken at any point, choose this overlap and add it to the occupancy.
                     if (j == endInLine) {
                         chosenOverlaps.push_back(pathId);
+                        startIdxOfChosenOverlapsInLine.push_back(startInLine);
                         for (int k = startInLine; k < endInLine; ++k)
                             ++occupancy[k];
                         continue;
@@ -213,6 +218,10 @@ namespace mixfix {
                 KASSERT(unusedBackStart > 0);
                 line.erase(line.begin(), line.begin() + unusedFrontEnd);
                 line.erase(line.begin() + unusedBackStart, line.end());
+                for (auto& idx : startIdxOfChosenOverlapsInLine) {
+                    idx -= unusedFrontEnd;
+                    KASSERT(idx >= 0);
+                }
 
                 if (!noVerboseLinesOutput)
                     std::cout << "Found a line of length " << line.size() << " that overlaps "
@@ -223,9 +232,21 @@ namespace mixfix {
                 timer.restart();
 
                 // For each chosen overlap, remove path and add potential subpaths.
+
+                // Compute travel times from start of line to each edge on line:
+                std::vector<int> ttFromLineStart(line.size() + 1);
+                int tt = 0;
+                for (int i = 0; i < line.size(); ++i) {
+                    ttFromLineStart[i] = tt;
+                    tt += inputGraph.travelTime(line[i]);
+                }
+                ttFromLineStart[line.size()] = tt;
+
                 uint64_t sumRiderTravelTime = 0;
                 uint64_t sumNumRiderEdges = 0;
-                for (const auto &pathId: chosenOverlaps) {
+                for (int i = 0; i < chosenOverlaps.size(); ++i) {
+                    const auto &pathId = chosenOverlaps[i];
+                    const auto &startIdxInLine = startIdxOfChosenOverlapsInLine[i];
                     const auto &fullPath = paths.getPathFor(pathId);
                     ++initialPathsNumLegs[fullPath.getAncestorId()];
                     const auto &o = globalOverlaps.getOverlapFor(pathId);
@@ -233,11 +254,15 @@ namespace mixfix {
                     const int endOfSlicedSubpath = o.reachesEndOfPath ? fullPath.size() : o.end;
 
                     // Reduce flow for removed subpath.
-                    for (int i = startOfSlicedSubpath; i < endOfSlicedSubpath; ++i) {
-                        --residualFlow[fullPath[i]];
-                        sumRiderTravelTime += inputGraph.travelTime(fullPath[i]);
+                    for (int j = startOfSlicedSubpath; j < endOfSlicedSubpath; ++j) {
+                        --residualFlow[fullPath[j]];
+                        sumRiderTravelTime += inputGraph.travelTime(fullPath[j]);
                     }
                     sumNumRiderEdges += endOfSlicedSubpath - startOfSlicedSubpath;
+
+                    // Log line passenger:
+                    KASSERT(ttFromLineStart[startIdxInLine + o.end - o.start] - ttFromLineStart[startIdxInLine] ==
+                            fullPath.getDepTimeAtIdx(o.end) - fullPath.getDepTimeAtIdx(o.start));
 
                     const auto &[begId, endId] = paths.sliceOutSubpath(pathId, startOfSlicedSubpath,
                                                                        endOfSlicedSubpath);

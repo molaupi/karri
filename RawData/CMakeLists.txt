@@ -34,24 +34,20 @@ target_link_libraries(AddStaTraversalCost kassert ${BOOST_LIBRARIES})
 
 add_executable(ComputeFreeFlowPaths ComputeFreeFlowPaths.cc)
 target_compile_definitions(ComputeFreeFlowPaths PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ComputeFreeFlowPaths kassert ${RoutingKit_LIBRARY} ${BOOST_LIBRARIES})
-target_include_directories(ComputeFreeFlowPaths SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
+target_link_libraries(ComputeFreeFlowPaths kassert routingkit ${BOOST_LIBRARIES})
 
 
 add_executable(ComputePDLocsForRequests ComputePDLocsForRequests.cc)
 target_compile_definitions(ComputePDLocsForRequests PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ComputePDLocsForRequests kassert ${RoutingKit_LIBRARY} ${BOOST_LIBRARIES})
-target_include_directories(ComputePDLocsForRequests SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
+target_link_libraries(ComputePDLocsForRequests kassert routingkit ${BOOST_LIBRARIES})
 
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ConvertGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
-target_include_directories(ConvertGraph SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
+target_link_libraries(ConvertGraph ${PROJ_LIBRARY} routingkit kassert ${BOOST_LIBRARIES})
 
 add_executable(FlowsRoutingKitToCsv FlowsRoutingKitToCsv.cc)
 target_compile_definitions(FlowsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(FlowsRoutingKitToCsv ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
-target_include_directories(FlowsRoutingKitToCsv SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
+target_link_libraries(FlowsRoutingKitToCsv ${PROJ_LIBRARY} routingkit kassert ${BOOST_LIBRARIES})
 
 add_executable(GenerateODPairs GenerateODPairs.cc)
 target_compile_definitions(GenerateODPairs PRIVATE CSV_IO_NO_THREAD)
@@ -71,18 +67,15 @@ target_link_libraries(DrawRandomDepartureTimes kassert  ${BOOST_LIBRARIES})
 
 add_executable(ODPairsCsvToRoutingKit ODPairsCsvToRoutingKit.cc)
 target_compile_definitions(ODPairsCsvToRoutingKit PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ODPairsCsvToRoutingKit ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
-target_include_directories(ODPairsCsvToRoutingKit SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
+target_link_libraries(ODPairsCsvToRoutingKit routingkit kassert ${BOOST_LIBRARIES})
 
 add_executable(ODPairsRoutingKitToCsv ODPairsRoutingKitToCsv.cc)
 target_compile_definitions(ODPairsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ODPairsRoutingKitToCsv ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
-target_include_directories(ODPairsRoutingKitToCsv SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
+target_link_libraries(ODPairsRoutingKitToCsv routingkit kassert ${BOOST_LIBRARIES})
 
 add_executable(OsmToCarAndPassengerGraph OsmToCarAndPassengerGraph.cc)
 target_compile_definitions(OsmToCarAndPassengerGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(OsmToCarAndPassengerGraph ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
-target_include_directories(OsmToCarAndPassengerGraph SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
+target_link_libraries(OsmToCarAndPassengerGraph routingkit kassert ${BOOST_LIBRARIES})
 
 add_executable(RequestsToODPairs RequestsToODPairs.cc)
 target_compile_definitions(RequestsToODPairs PRIVATE CSV_IO_NO_THREAD)

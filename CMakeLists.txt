@@ -79,9 +79,13 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "")
 add_subdirectory(External/json)
 
-# Add RoutingKit library (needs to be built beforehand!) and include headers from git submodule
+# Add RoutingKit library (needs to be built beforehand!) and include headers from git submodule.
+# Use interface target to bundle sources and headers.
 find_library(RoutingKit_LIBRARY routingkit PATHS External/RoutingKit/lib REQUIRED)
 set(RoutingKit_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/External/RoutingKit/include/")
+add_library(routingkit INTERFACE)
+target_link_libraries(routingkit INTERFACE ${RoutingKit_LIBRARY})
+target_include_directories(routingkit SYSTEM INTERFACE ${RoutingKit_INCLUDE_DIR}) # include as SYSTEM to avoid warnings for features deprecated in C++20 as RoutingKit is C++17
 
 # Add kassert library from git submodule
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

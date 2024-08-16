@@ -281,6 +281,7 @@ int main(int argc, char *argv[]) {
         PreliminaryPaths preliminaryPaths;
         preliminaryPaths.init(numPaths);
         std::vector<int> pathEdges;
+        std::vector<int> minDepTimes;
         for (int i = 0; i < numPaths; ++i) {
             pathEdges.clear();
             bio::read(pathsFile, pathEdges);
@@ -288,7 +289,17 @@ int main(int argc, char *argv[]) {
                                       [&](const int e) { return e < vehicleInputGraph.numEdges(); }));
             if (pathEdges.empty())
                 continue;
-            preliminaryPaths.addInitialPath(i, std::move(pathEdges));
+
+            // Compute departure times for each edge on path:
+            minDepTimes.resize(pathEdges.size() + 1);
+            int depTime = requests[i].requestTime;
+            for (int j = 0; j < pathEdges.size(); ++j) {
+                minDepTimes[j] = depTime;
+                depTime += vehicleInputGraph.travelTime(pathEdges[j]);
+            }
+            minDepTimes[pathEdges.size()] = depTime;
+
+            preliminaryPaths.addInitialPath(i, std::move(pathEdges), std::move(minDepTimes));
         }
         std::cout << "done.\n";
 
