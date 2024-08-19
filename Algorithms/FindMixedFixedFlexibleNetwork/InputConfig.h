@@ -48,6 +48,10 @@ namespace mixfix {
 
         int minFlowOnLine = INFTY;
         int capacity = 0;
+        int maxWaitTime = 0;
+        int observationPeriodStart = 0;
+        int observationPeriodEnd = 0;
+
         double overlapScoreExponent = 0.0;
     };
 }

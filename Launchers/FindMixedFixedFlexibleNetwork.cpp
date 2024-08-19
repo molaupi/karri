@@ -62,6 +62,7 @@ inline void printUsage() {
               "  -min-flow <int>            stops extending line if flow becomes smaller than given value, stops \n"
               "                             constructing lines if flow on initial edge is smaller than given value\n"
               "  -cap <int>                 capacity of buses (dflt: 120)\n"
+              "  -max-wait <int>            maximum wait time for riders in seconds (dflt: 600)\n"
               "  -overlap-score-exp <float> exponent for score of longer overlaps when finding next line edge (dflt: 1.0)\n"
               "  -avoid-loops <strategy>    strategy to avoid loops in lines. Possible values are: \n"
               "                                 none                lines may visit vertices and edges multiple times (dflt)\n"
@@ -191,6 +192,7 @@ int main(int argc, char *argv[]) {
         InputConfig &inputConfig = InputConfig::getInstance();
         inputConfig.minFlowOnLine = clp.getValue<int>("min-flow", 100);
         inputConfig.capacity = clp.getValue<int>("cap", 120);
+        inputConfig.maxWaitTime = clp.getValue<int>("max-wait", 600) * 10;
         inputConfig.overlapScoreExponent = clp.getValue<double>("overlap-score-exp", 1.0);
 
         const auto &avoidLoopsStrategy = EnumParser<AvoidLoopsStrategy>()(
@@ -255,6 +257,7 @@ int main(int argc, char *argv[]) {
         io::CSVReader<3, io::trim_chars<' '>> reqFileReader(requestFileName);
         reqFileReader.read_header(io::ignore_extra_column, "origin", "destination", "req_time");
 
+        int minReqTime = INFTY, maxReqTime = 0;
         while (reqFileReader.read_row(origin, destination, requestTime)) {
             if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
@@ -267,6 +270,8 @@ int main(int argc, char *argv[]) {
             LIGHT_KASSERT(vehicleInputGraph.mapToEdgeInPsg(destSeqId) != MapToEdgeInPsgAttribute::defaultValue());
             const int requestId = static_cast<int>(requests.size());
             requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
+            minReqTime = std::min(minReqTime, requestTime * 10);
+            maxReqTime = std::max(maxReqTime, requestTime * 10);
         }
         std::cout << "done.\n";
 
@@ -282,6 +287,7 @@ int main(int argc, char *argv[]) {
         preliminaryPaths.init(numPaths);
         std::vector<int> pathEdges;
         std::vector<int> minDepTimes;
+        int maxArrTimeAtEndOfPath = 0;
         for (int i = 0; i < numPaths; ++i) {
             pathEdges.clear();
             bio::read(pathsFile, pathEdges);
@@ -298,10 +304,16 @@ int main(int argc, char *argv[]) {
                 depTime += vehicleInputGraph.travelTime(pathEdges[j]);
             }
             minDepTimes[pathEdges.size()] = depTime;
+            maxArrTimeAtEndOfPath = std::max(maxArrTimeAtEndOfPath, depTime);
 
             preliminaryPaths.addInitialPath(i, std::move(pathEdges), std::move(minDepTimes));
         }
         std::cout << "done.\n";
+
+
+        // Observation period is minReqTime (rounded down to nearest minute) until the latest path end.
+        inputConfig.observationPeriodStart = (minReqTime / 6000) * 6000;
+        inputConfig.observationPeriodEnd = (maxArrTimeAtEndOfPath / 6000 + 1) * 6000;
 
         std::cout << "Reading PD-Locs from file... " << std::flush;
 

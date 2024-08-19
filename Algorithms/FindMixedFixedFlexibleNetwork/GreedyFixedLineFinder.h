@@ -175,30 +175,86 @@ namespace mixfix {
                           [&](const auto &s1, const auto &s2) { return s1.second > s2.second; });
 
 
+                // Compute travel times from start of line to each edge on line as well as first edge in each line
+                // section of length maxWaitTime.
+                std::vector<int> ttFromLineStart(line.size() + 1);
+
+                std::vector<int> firstEdgeIdxInSection;
+                int tt = 0;
+                for (int i = 0; i < line.size(); ++i) {
+                    if (tt >= firstEdgeIdxInSection.size() * inputConfig.maxWaitTime)
+                        firstEdgeIdxInSection.push_back(i);
+
+                    ttFromLineStart[i] = tt;
+                    tt += inputGraph.travelTime(line[i]);
+                }
+                ttFromLineStart[line.size()] = tt;
+
+                const int numSections = tt == 0? 1 : tt / inputConfig.maxWaitTime + (tt % inputConfig.maxWaitTime != 0);
+                while (firstEdgeIdxInSection.size() < numSections + 1)
+                    firstEdgeIdxInSection.push_back(line.size());
+
+
+                // We assume a line frequency of 1 / inputConfig.maxWaitTime to guarantee a maximum wait time of
+                // inputConfig.maxWaitTime.
+                // We choose overlaps and keep track of the occupancy for every edge and vehicle. We add each overlap
+                // (in order) if it does not break the capacity for its vehicle on any visited edge.
+
+                // We divide the observation period into ceil(obsDuration / maxWaitTime) time slices of length maxWaitTime.
+                // We divide the line into ceil(line length / maxWaitTime) sections of length maxWaitTime.
+                // There is a total of #slices + #sections - 1 vehicles serving (parts of) the line during the observation period.
+                // Vehicle i starts at time slice 0 at section max(#sections - 1 - i, 0) and ends after
+                // section min(#slices + #sections - 1 - i, #sections - 1).
+                // We store the occupancy values for each vehicle in contiguous memory. We memorize the start of each
+                // vehicle's occupancy values in firstOccIdxForVehicle.
+                std::vector<uint32_t> firstOccIdxForVehicle;
+                static const int obsDuration = InputConfig::getInstance().observationPeriodEnd -
+                                               InputConfig::getInstance().observationPeriodStart;
+                const int numSlices = obsDuration / InputConfig::getInstance().maxWaitTime +
+                                      (obsDuration % InputConfig::getInstance().maxWaitTime != 0);
+                const int totalNumVeh = numSlices + numSections - 1;
+                int totalNumEdgeVisits = 0;
+                for (int vehId = 0; vehId < totalNumVeh; ++vehId) {
+                    firstOccIdxForVehicle.push_back(totalNumEdgeVisits);
+                    const auto startSection = std::max(numSections - 1 - vehId, 0);
+                    const auto numEdgesVisitedByVeh = line.size() - firstEdgeIdxInSection[startSection];
+                    totalNumEdgeVisits += numEdgesVisitedByVeh;
+                }
+                firstOccIdxForVehicle.push_back(totalNumEdgeVisits);
+
+                std::vector<uint32_t> occupancy(totalNumEdgeVisits, 0);
                 std::vector<int> chosenOverlaps;
                 std::vector<int> startIdxOfChosenOverlapsInLine;
-                std::vector<int> occupancy(line.size(), 0);
+
                 for (const auto &[i, s]: score) {
                     const auto &pathId = overlapsWithLine[i];
                     const auto &path = paths.getPathFor(pathId);
                     auto &o = globalOverlaps.getOverlapFor(pathId);
 
                     const int startInLine = findStartIdxOfOverlapInLine(line, path, o);
-                    const int endInLine = startInLine + (o.end - o.start);
-
                     KASSERT(line[startInLine] == path[o.start]);
 
-                    int j = startInLine;
-                    for (; j < endInLine; ++j) {
+                    // Find out range where occupancy values for this overlap lie in contiguous memory in occupancy array.
+                    const int startSlice = (path.getDepTimeAtIdx(o.start) - inputConfig.observationPeriodStart) /
+                                            inputConfig.maxWaitTime;
+                    const int startSection = ttFromLineStart[startInLine] / inputConfig.maxWaitTime;
+                    const int vehId = startSlice - startSection + numSections - 1;
+                    const int firstEdgeVisitedByVeh = firstEdgeIdxInSection[std::max(numSections - 1 - vehId, 0)];
+                    const int occStart = firstOccIdxForVehicle[vehId] + startInLine - firstEdgeVisitedByVeh;
+                    const int occEnd = occStart + o.end - o.start;
+                    LIGHT_KASSERT(occStart < occEnd && occEnd <= firstOccIdxForVehicle[vehId + 1]);
+
+                    int j = occStart;
+                    for (; j < occEnd; ++j) {
                         if (occupancy[j] + 1 > inputConfig.capacity)
                             break;
                     }
 
                     // If capacity is not broken at any point, choose this overlap and add it to the occupancy.
-                    if (j == endInLine) {
+                    if (j == occEnd) {
                         chosenOverlaps.push_back(pathId);
                         startIdxOfChosenOverlapsInLine.push_back(startInLine);
-                        for (int k = startInLine; k < endInLine; ++k)
+                        for (int k = occStart; k < occEnd; ++k)
                             ++occupancy[k];
                         continue;
                     }
@@ -208,17 +264,30 @@ namespace mixfix {
                 }
 
                 // Roll line back on both ends as long as edges are not used by any chosen overlaps
+                BitVector isUsed(line.size());
+                for (int vehId = 0; vehId < totalNumVeh; ++vehId) {
+                    const auto firstEdgeVisitedByVeh = firstEdgeIdxInSection[std::max(numSections - 1 - vehId, 0)];
+                    const auto occStart = firstOccIdxForVehicle[vehId];
+                    const auto occEnd = firstOccIdxForVehicle[vehId + 1];
+                    for (int i = 0; occStart + i < occEnd; ++i) {
+                        KASSERT(firstEdgeVisitedByVeh + i < line.size());
+                        const auto occ = occupancy[occStart + i];
+                        auto u = isUsed[firstEdgeVisitedByVeh + i];
+                        u = u || (occ > 0);
+                    }
+                }
+
                 int unusedFrontEnd = 0;
-                while (unusedFrontEnd < line.size() && occupancy[unusedFrontEnd] == 0)
+                while (unusedFrontEnd < line.size() && !isUsed[unusedFrontEnd])
                     ++unusedFrontEnd;
                 KASSERT(unusedFrontEnd < line.size());
                 int unusedBackStart = line.size();
-                while (unusedBackStart > 0 && occupancy[unusedBackStart - 1] == 0)
+                while (unusedBackStart > 0 && !isUsed[unusedBackStart - 1])
                     --unusedBackStart;
                 KASSERT(unusedBackStart > 0);
                 line.erase(line.begin(), line.begin() + unusedFrontEnd);
                 line.erase(line.begin() + unusedBackStart, line.end());
-                for (auto& idx : startIdxOfChosenOverlapsInLine) {
+                for (auto &idx: startIdxOfChosenOverlapsInLine) {
                     idx -= unusedFrontEnd;
                     KASSERT(idx >= 0);
                 }
@@ -233,14 +302,7 @@ namespace mixfix {
 
                 // For each chosen overlap, remove path and add potential subpaths.
 
-                // Compute travel times from start of line to each edge on line:
-                std::vector<int> ttFromLineStart(line.size() + 1);
-                int tt = 0;
-                for (int i = 0; i < line.size(); ++i) {
-                    ttFromLineStart[i] = tt;
-                    tt += inputGraph.travelTime(line[i]);
-                }
-                ttFromLineStart[line.size()] = tt;
+
 
                 uint64_t sumRiderTravelTime = 0;
                 uint64_t sumNumRiderEdges = 0;
@@ -260,7 +322,6 @@ namespace mixfix {
                     }
                     sumNumRiderEdges += endOfSlicedSubpath - startOfSlicedSubpath;
 
-                    // Log line passenger:
                     KASSERT(ttFromLineStart[startIdxInLine + o.end - o.start] - ttFromLineStart[startIdxInLine] ==
                             fullPath.getDepTimeAtIdx(o.end) - fullPath.getDepTimeAtIdx(o.start));
 
