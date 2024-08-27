@@ -77,6 +77,9 @@ namespace mixfix {
                                                                          "num_subpaths_covered,"
                                                                          "num_rider_edges,"
                                                                          "sum_rider_travel_time,"
+                                                                         "mean_avg_occupancy,"
+                                                                         "mean_min_occupancy,"
+                                                                         "mean_max_occupancy,"
                                                                          "construct_line_time,"
                                                                          "choose_partially_served_riders_time,"
                                                                          "update_paths_time\n")),
@@ -182,11 +185,11 @@ namespace mixfix {
                 std::vector<int> firstEdgeIdxInSection;
                 int tt = 0;
                 for (int i = 0; i < line.size(); ++i) {
-                    if (tt >= firstEdgeIdxInSection.size() * inputConfig.maxWaitTime)
-                        firstEdgeIdxInSection.push_back(i);
-
                     ttFromLineStart[i] = tt;
                     tt += inputGraph.travelTime(line[i]);
+
+                    if (tt >= firstEdgeIdxInSection.size() * inputConfig.maxWaitTime)
+                        firstEdgeIdxInSection.push_back(i);
                 }
                 ttFromLineStart[line.size()] = tt;
 
@@ -263,34 +266,63 @@ namespace mixfix {
                     o.reset();
                 }
 
-                // Roll line back on both ends as long as edges are not used by any chosen overlaps
-                BitVector isUsed(line.size());
+                // Compute mean minimum, average, and maximum occupancy for vehicles
+                uint32_t sumMinOccupancies = 0;
+                double sumAvgOccupancies = 0.0;
+                uint32_t sumMaxOccupancies = 0;
                 for (int vehId = 0; vehId < totalNumVeh; ++vehId) {
                     const auto firstEdgeVisitedByVeh = firstEdgeIdxInSection[std::max(numSections - 1 - vehId, 0)];
+                    const auto ttDrivenByVeh = ttFromLineStart[line.size()] - ttFromLineStart[firstEdgeVisitedByVeh];
+                    LIGHT_KASSERT(ttDrivenByVeh > 0, "Veh time driven is 0: num edges = " << line.size() << ", first edge of veh = " << firstEdgeVisitedByVeh);
+                    int sumRiderTTForVeh = 0;
+                    uint32_t minOcc = INFTY;
+                    uint32_t maxOcc = 0;
                     const auto occStart = firstOccIdxForVehicle[vehId];
                     const auto occEnd = firstOccIdxForVehicle[vehId + 1];
                     for (int i = 0; occStart + i < occEnd; ++i) {
                         KASSERT(firstEdgeVisitedByVeh + i < line.size());
                         const auto occ = occupancy[occStart + i];
-                        auto u = isUsed[firstEdgeVisitedByVeh + i];
-                        u = u || (occ > 0);
+                        sumRiderTTForVeh += occ * inputGraph.travelTime(line[firstEdgeVisitedByVeh + i]);
+                        minOcc = std::min(minOcc, occ);
+                        maxOcc = std::max(maxOcc, occ);
                     }
-                }
 
-                int unusedFrontEnd = 0;
-                while (unusedFrontEnd < line.size() && !isUsed[unusedFrontEnd])
-                    ++unusedFrontEnd;
-                KASSERT(unusedFrontEnd < line.size());
-                int unusedBackStart = line.size();
-                while (unusedBackStart > 0 && !isUsed[unusedBackStart - 1])
-                    --unusedBackStart;
-                KASSERT(unusedBackStart > 0);
-                line.erase(line.begin(), line.begin() + unusedFrontEnd);
-                line.erase(line.begin() + unusedBackStart, line.end());
-                for (auto &idx: startIdxOfChosenOverlapsInLine) {
-                    idx -= unusedFrontEnd;
-                    KASSERT(idx >= 0);
+                    sumAvgOccupancies += static_cast<double>(sumRiderTTForVeh) / static_cast<double>(ttDrivenByVeh);
+                    sumMinOccupancies += minOcc;
+                    sumMaxOccupancies += maxOcc;
                 }
+                const double meanAvgOccupancy = sumAvgOccupancies / static_cast<double>(totalNumVeh);
+                const double meanMinOccupancy = static_cast<double>(sumMinOccupancies) / static_cast<double>(totalNumVeh);
+                const double meanMaxOccupancy = static_cast<double>(sumMaxOccupancies) / static_cast<double>(totalNumVeh);
+
+//                // Roll line back on both ends as long as edges are not used by any chosen overlaps
+//                BitVector isUsed(line.size());
+//                for (int vehId = 0; vehId < totalNumVeh; ++vehId) {
+//                    const auto firstEdgeVisitedByVeh = firstEdgeIdxInSection[std::max(numSections - 1 - vehId, 0)];
+//                    const auto occStart = firstOccIdxForVehicle[vehId];
+//                    const auto occEnd = firstOccIdxForVehicle[vehId + 1];
+//                    for (int i = 0; occStart + i < occEnd; ++i) {
+//                        KASSERT(firstEdgeVisitedByVeh + i < line.size());
+//                        const auto occ = occupancy[occStart + i];
+//                        auto u = isUsed[firstEdgeVisitedByVeh + i];
+//                        u = u || (occ > 0);
+//                    }
+//                }
+//
+//                int unusedFrontEnd = 0;
+//                while (unusedFrontEnd < line.size() && !isUsed[unusedFrontEnd])
+//                    ++unusedFrontEnd;
+//                KASSERT(unusedFrontEnd < line.size());
+//                int unusedBackStart = line.size();
+//                while (unusedBackStart > 0 && !isUsed[unusedBackStart - 1])
+//                    --unusedBackStart;
+//                KASSERT(unusedBackStart > 0);
+//                line.erase(line.begin(), line.begin() + unusedFrontEnd);
+//                line.erase(line.begin() + unusedBackStart, line.end());
+//                for (auto &idx: startIdxOfChosenOverlapsInLine) {
+//                    idx -= unusedFrontEnd;
+//                    KASSERT(idx >= 0);
+//                }
 
                 if (!noVerboseLinesOutput)
                     std::cout << "Found a line of length " << line.size() << " that overlaps "
@@ -346,7 +378,7 @@ namespace mixfix {
 
                 // Log line:
                 logLine(line, lines.size(), initialEdge, maxFlowOnLine, chosenOverlaps.size(), sumNumRiderEdges,
-                        sumRiderTravelTime, runningTimeStats);
+                        sumRiderTravelTime, meanAvgOccupancy, meanMinOccupancy, meanMaxOccupancy, runningTimeStats);
 
                 // Add line
                 lines.emplace_back(std::move(line));
@@ -903,6 +935,9 @@ namespace mixfix {
                      const int numPartiallyServed,
                      const int sumNumRiderEdges,
                      const int sumRiderTravelTime,
+                     const double meanAvgOccupancy,
+                     const double meanMinOccupancy,
+                     const double meanMaxOccupancy,
                      const RunningTimePerLineStats &runningTimeStats) {
 
             // Travel time for vehicle
@@ -919,6 +954,9 @@ namespace mixfix {
                             << numPartiallyServed << ", "
                             << sumNumRiderEdges << ", "
                             << sumRiderTravelTime << ", "
+                            << meanAvgOccupancy << ", "
+                            << meanMinOccupancy << ", "
+                            << meanMaxOccupancy << ", "
                             << runningTimeStats.constructLineTime << ", "
                             << runningTimeStats.choosePartiallyServedRidersTime << ", "
                             << runningTimeStats.updatePathsTime << "\n";
