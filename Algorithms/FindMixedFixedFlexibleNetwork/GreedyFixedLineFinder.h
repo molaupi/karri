@@ -273,7 +273,8 @@ namespace mixfix {
                 for (int vehId = 0; vehId < totalNumVeh; ++vehId) {
                     const auto firstEdgeVisitedByVeh = firstEdgeIdxInSection[std::max(numSections - 1 - vehId, 0)];
                     const auto ttDrivenByVeh = ttFromLineStart[line.size()] - ttFromLineStart[firstEdgeVisitedByVeh];
-                    LIGHT_KASSERT(ttDrivenByVeh > 0, "Veh time driven is 0: num edges = " << line.size() << ", first edge of veh = " << firstEdgeVisitedByVeh);
+                    if (ttDrivenByVeh == 0)
+                        continue;
                     int sumRiderTTForVeh = 0;
                     uint32_t minOcc = INFTY;
                     uint32_t maxOcc = 0;
