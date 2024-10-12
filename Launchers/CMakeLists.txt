@@ -23,9 +23,13 @@
 # SOFTWARE.
 # ******************************************************************************
 
+
+set(FULL_WARNINGS_GNU -Werror -Wfatal-errors -Wpedantic -pedantic-errors -Wall -Wextra -ftemplate-backtrace-limit=1 -Wno-unknown-pragmas -Wno-sign-compare)
+
 # Executable for P2P Algorithms
 add_executable(RunP2PAlgo RunP2PAlgo.cc)
 target_compile_definitions(RunP2PAlgo PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(RunP2PAlgo PRIVATE ${FULL_WARNINGS_GNU})
 target_link_libraries(RunP2PAlgo ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 target_include_directories(RunP2PAlgo SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 if(OpenMP_FOUND)
@@ -35,14 +39,17 @@ endif()
 # Mixed Fixed-Flexible PT based on KaRRi
 add_executable(mixfix FindMixedFixedFlexibleNetwork.cpp)
 target_compile_definitions(mixfix PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(mixfix ${RoutingKit_LIBRARY} nlohmann_json)
+target_compile_options(mixfix PRIVATE ${FULL_WARNINGS_GNU})
 target_link_libraries(mixfix kassert)
+target_link_libraries(mixfix ${RoutingKit_LIBRARY} nlohmann_json)
+target_link_libraries(mixfix ortools::ortools)
 target_include_directories(mixfix SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 
 
 # Executable for KaRRi Dynamic Taxi Sharing Simulation
 add_executable(karri KaRRi.cpp)
 target_compile_definitions(karri PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(karri PRIVATE ${FULL_WARNINGS_GNU})
 target_link_libraries(karri ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 target_include_directories(karri SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 if(OpenMP_FOUND)

@@ -123,9 +123,12 @@ namespace mixfix {
 
         PreliminaryPaths() {}
 
-        void init(const int numInitialPaths) {
-            pathIdToIdx.resize(numInitialPaths);
+        void init(const int pNumInitialPaths) {
+            numInitialPaths = pNumInitialPaths;
+            pathIdToIdx.resize(pNumInitialPaths);
+            initialPathIdToIdx.resize(pNumInitialPaths);
             std::fill(pathIdToIdx.begin(), pathIdToIdx.end(), INVALID_INDEX);
+            std::fill(initialPathIdToIdx.begin(), initialPathIdToIdx.end(), INVALID_INDEX);
             paths.clear();
         }
 
@@ -141,6 +144,9 @@ namespace mixfix {
             pathIdToIdx[pathId] = paths.size();
             // Initial paths are their own ancestors.
             paths.push_back(Path(pathId, pathId, startOffset, endOffset, &allPathEdges, &allMinDepTimes));
+
+            initialPathIdToIdx[pathId] = initialPaths.size();
+            initialPaths.push_back(paths.back());
         }
 
         int getMaxPathId() const {
@@ -228,10 +234,28 @@ namespace mixfix {
             return paths.cend();
         }
 
+        bool hasInitialPathFor(const int initialPathId) const {
+            KASSERT(initialPathId >= 0 && initialPathId < initialPathIdToIdx.size());
+            const int &idx = initialPathIdToIdx[initialPathId];
+            KASSERT(idx < static_cast<int>(initialPaths.size()));
+            return idx != INVALID_INDEX;
+        }
+
+        const Path& getInitialPathFor(const int initialPathId) const {
+            KASSERT(initialPathId >= 0 && initialPathId < initialPathIdToIdx.size());
+            KASSERT(hasInitialPathFor(initialPathId),
+                    "No path with ID " << initialPathId << ".", kassert::assert::light);
+            return initialPaths[initialPathIdToIdx[initialPathId]];
+        }
+
     private:
 
         std::vector<int> pathIdToIdx;
         std::vector<Path> paths;
+
+        int numInitialPaths;
+        std::vector<int> initialPathIdToIdx;
+        std::vector<Path> initialPaths; // Stores duplicates of initial paths; Not removed when split unlike in paths.
 
         // Contains edges for all initial paths (and later paths as they are just subpaths).
         // Edges for one initial path are stored consecutively with one INVALID_EDGE between paths

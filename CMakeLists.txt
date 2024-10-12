@@ -24,7 +24,7 @@
 # ******************************************************************************
 
 
-cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 project(RoutingFramework CXX)
 
 # Directories containing .cc source files.
@@ -55,14 +55,14 @@ if(DISABLE_AVX)
   endif()
 endif()
 
-# Request warnings.
-if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wfatal-errors -Wpedantic -pedantic-errors\
-      -Wall -Wextra -ftemplate-backtrace-limit=1 -Wno-unknown-pragmas -Wno-sign-compare")
-elseif(CMAKE_CXX_COMPILER_ID MATCHES Clang)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wall -Wextra -pedantic-errors -ferror-limit=1\
-      -ftemplate-backtrace-limit=1 -Wno-sign-compare")
-endif()
+## Request warnings.
+#if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
+#  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wfatal-errors -Wpedantic -pedantic-errors\
+#      -Wall -Wextra -ftemplate-backtrace-limit=1 -Wno-unknown-pragmas -Wno-sign-compare")
+#elseif(CMAKE_CXX_COMPILER_ID MATCHES Clang)
+#  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wall -Wextra -pedantic-errors -ferror-limit=1\
+#      -ftemplate-backtrace-limit=1 -Wno-sign-compare")
+#endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-backtrace-limit=0")
@@ -94,6 +94,19 @@ else()
   set(KASSERT_ASSERTION_LEVEL 20)
 endif ()
 add_subdirectory(External/kassert)
+
+# Add ortools library from External
+option(BUILD_DEPS "" ON)
+option(BUILD_SAMPLES "" OFF)
+option(BUILD_EXAMPLES "" OFF)
+add_subdirectory(External/ortools)
+#target_compile_options(CoinUtils PUBLIC "-w")
+#
+#find_library(ortools_LIBRARY ortools PATHS External/ortools/lib REQUIRED)
+#set(ortools_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/External/ortools/include/")
+#add_library(ortools INTERFACE)
+#target_link_libraries(ortools INTERFACE ${ortools_LIBRARY})
+#target_include_directories(ortools SYSTEM INTERFACE ${ortools_INCLUDE_DIR}) # include as SYSTEM to avoid warnings
 
 # Include headers for header-only libraries from git submodules and embedded dependencies
 include_directories(SYSTEM External/fast-cpp-csv-parser)
