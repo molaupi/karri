@@ -106,6 +106,7 @@ namespace mixfix {
             int lineId = INVALID_ID;
             int start = INVALID_INDEX; // offset relative to initial path
             int end = INVALID_INDEX; // offset relative to initial path
+            int vehTTFromStartOfLineToStart; // how long it takes a vehicle to travel from line start to start of pc
         };
 
         // Finds fixed lines given preliminary rider paths.
@@ -377,8 +378,9 @@ namespace mixfix {
                     const int startOffsetRelToAnc =
                             (fullPath.begin() + startOfSlicedSubpath) - paths.getInitialPathFor(ancestorPathId).begin();
                     const int endOffsetRelToAnc = startOffsetRelToAnc + (endOfSlicedSubpath - startOfSlicedSubpath);
+
                     partialCovers.push_back(
-                            PartialCover(ancestorPathId, lineId, startOffsetRelToAnc, endOffsetRelToAnc));
+                            PartialCover(ancestorPathId, lineId, startOffsetRelToAnc, endOffsetRelToAnc, ttFromLineStart[startOfSlicedSubpath]));
 
                     // Reduce flow for removed subpath.
                     for (int j = startOfSlicedSubpath; j < endOfSlicedSubpath; ++j) {
@@ -1113,7 +1115,6 @@ namespace mixfix {
                     // Iterate through edges of initial path: If edge is covered by a bus line
                     // (that was chosen for the budget), use vehicle travel time, if not, assume walking
                     // (on the vehicle road) at a pace of 5km/h.
-                    // TODO: waiting times
                     int eIdx = 0;
                     const int pcStart = startInPartialCover[r.requestId];
                     const int pcEnd = startInPartialCover[r.requestId + 1];
@@ -1126,18 +1127,30 @@ namespace mixfix {
                             ++eIdx;
                         }
 
-                        // If line of pc is usable, take bus until end of pc; else walk that same subpath
+                        // Compute travel time for using the bus along partial cover including waiting time
+                        // (if bus line is usable):
+                        int busTimeTillEndOfPc = INFTY;
                         if (solver.BestSolutionContains(pc.lineId)) {
+                            const int arrTimeAtStartOfPc = r.requestTime + busTT;
+                            int waitingTime = (pc.vehTTFromStartOfLineToStart - arrTimeAtStartOfPc) % inputConfig.maxWaitTime;
+                            if (waitingTime < 0) waitingTime += inputConfig.maxWaitTime;
+                            KASSERT(waitingTime >= 0 && waitingTime < inputConfig.maxWaitTime);
+                            busTimeTillEndOfPc = waitingTime;
                             while(eIdx < pc.end) {
-                                busTT += inputGraph.travelTime(path[eIdx]);
+                                busTimeTillEndOfPc += inputGraph.travelTime(path[eIdx]);
                                 ++eIdx;
                             }
-                        } else {
-                            while(eIdx < pc.end) {
-                                busTT += inputGraph.traversalCost(path[eIdx]);
-                                ++eIdx;
-                            }
+                            eIdx = pc.start;
                         }
+
+                        // Compute walking time to replace using the bus:
+                        int walkingTimeTillEndOfPc = 0;
+                        while(eIdx < pc.end) {
+                            walkingTimeTillEndOfPc += inputGraph.traversalCost(path[eIdx]);
+                            ++eIdx;
+                        }
+
+                        busTT += std::min(busTimeTillEndOfPc, walkingTimeTillEndOfPc);
                     }
 
                     // Walk rest of path from end of last pc to end of path
