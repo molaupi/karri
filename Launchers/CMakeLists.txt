@@ -41,7 +41,7 @@ add_executable(mixfix FindMixedFixedFlexibleNetwork.cpp)
 target_compile_definitions(mixfix PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(mixfix PRIVATE ${FULL_WARNINGS_GNU})
 target_link_libraries(mixfix kassert)
-target_link_libraries(mixfix ${RoutingKit_LIBRARY} nlohmann_json)
+target_link_libraries(mixfix ${RoutingKit_LIBRARY} nlohmann_json OpenMP::OpenMP_CXX)
 target_link_libraries(mixfix ortools::ortools)
 target_include_directories(mixfix SYSTEM PRIVATE ${RoutingKit_INCLUDE_DIR})
 

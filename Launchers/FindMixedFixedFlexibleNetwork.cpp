@@ -57,7 +57,6 @@ inline void printUsage() {
               "Runs process to find bus lines with given vehicle road network, OD-pairs, and according OD-paths and "
               "pickup/dropoff locations for every OD-pair. Writes output files to specified base path.\n\n"
               "  -veh-g <file>              vehicle road network in binary format.\n"
-              "  -psg-g <file>              passenger road network in binary format\n"
               "  -r <file>                  requests in CSV format.\n"
               "  -p <file>                  preliminary paths in binary format (see RawData/ComputeFreeFlowPaths).\n"
               "  -pd <file>                 PD-locations for requests in binary format (see RawData/ComputePDLocsForRequests).\n"
@@ -140,16 +139,15 @@ void verifyPathViability(const mixfix::PreliminaryPaths &paths, const VehInputGr
     }
 }
 
-template<mixfix::AvoidLoopsStrategy AvoidLoopsStrat, typename VehicleInputGraphT, typename PsgInputGraphT>
+template<mixfix::AvoidLoopsStrategy AvoidLoopsStrat, typename VehicleInputGraphT>
 std::vector<mixfix::FixedLine>
-runLineFinder(const VehicleInputGraphT &vehicleInputGraph, const VehicleInputGraphT &revVehicleGraph,
-              const PsgInputGraphT& psgInputGraph,
+runLineFinder(VehicleInputGraphT &vehicleInputGraph, const VehicleInputGraphT &revVehicleGraph,
               mixfix::PathStartEndInfo &pathStartEndInfo, const std::vector<mixfix::Request> &requests,
               mixfix::PreliminaryPaths &preliminaryPaths, const bool noVerboseLinesOutput) {
 
     using namespace mixfix;
-    using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraphT, PsgInputGraphT, PreliminaryPaths, AvoidLoopsStrat, std::ofstream>;
-    FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, psgInputGraph, pathStartEndInfo, requests);
+    using FixedLineFinder = GreedyFixedLineFinder<VehicleInputGraphT, PreliminaryPaths, AvoidLoopsStrat, std::ofstream>;
+    FixedLineFinder lineFinder(vehicleInputGraph, revVehicleGraph, pathStartEndInfo, requests);
     return lineFinder.findFixedLines(preliminaryPaths, noVerboseLinesOutput);
 }
 
@@ -202,7 +200,6 @@ int main(int argc, char *argv[]) {
                 clp.getValue<std::string>("avoid-loops", "none"));
 
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
-        const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto requestFileName = clp.getValue<std::string>("r");
         const auto pathsFileName = clp.getValue<std::string>("p");
         const auto pdLocsFileName = clp.getValue<std::string>("pd");
@@ -248,12 +245,12 @@ int main(int argc, char *argv[]) {
                 }
         }
 
-        // Store walking time along road in TraversalCostAttribute
-        static constexpr double WALKING_SPEED = 5.0; // in km/h
-        FORALL_EDGES(vehicleInputGraph, e) {
-            // Conversion: length is in meters, travel time is in tenths of seconds, so 5km/h = 5000m / (36000 s/10) = 5 / 36 m/(s/10)
-            vehicleInputGraph.traversalCost(e) = std::round(36.0 * vehicleInputGraph.length(e) / WALKING_SPEED);
-        }
+//        // Store walking time along road in TraversalCostAttribute
+//        static constexpr double WALKING_SPEED = 5.0; // in km/h
+//        FORALL_EDGES(vehicleInputGraph, e) {
+//            // Conversion: length is in meters, travel time is in tenths of seconds, so 5km/h = 5000m / (36000 s/10) = 5 / 36 m/(s/10)
+//            vehicleInputGraph.traversalCost(e) = std::round(36.0 * vehicleInputGraph.length(e) / WALKING_SPEED);
+//        }
 
         auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
         FORALL_VALID_EDGES(revVehicleGraph, u, e) {
@@ -261,42 +258,6 @@ int main(int argc, char *argv[]) {
             }
 
 
-        std::cout << "done.\n";
-
-
-        // Read the passenger network from file.
-        std::cout << "Reading passenger network from file... " << std::flush;
-        using PsgVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
-        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, MapToEdgeInFullVehAttribute, TravelTimeAttribute>;
-        using PsgInputGraph = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
-        std::ifstream psgNetworkFile(passengerNetworkFileName, std::ios::binary);
-        if (!psgNetworkFile.good())
-            throw std::invalid_argument("file not found -- '" + passengerNetworkFileName + "'");
-        PsgInputGraph psgInputGraph(psgNetworkFile);
-        psgNetworkFile.close();
-        KASSERT(psgInputGraph.numEdges() > 0 && psgInputGraph.edgeId(0) == INVALID_ID);
-        int numEdgesWithMappingToCar = 0;
-        FORALL_VALID_EDGES(psgInputGraph, v, e) {
-                KASSERT(psgInputGraph.edgeId(e) == INVALID_ID);
-                psgInputGraph.edgeTail(e) = v;
-                psgInputGraph.edgeId(e) = e;
-
-                const int eInVehGraph = psgInputGraph.mapToEdgeInFullVeh(e);
-                if (eInVehGraph != MapToEdgeInFullVehAttribute::defaultValue()) {
-                    ++numEdgesWithMappingToCar;
-                    KASSERT(eInVehGraph < vehGraphOrigIdToSeqId.size());
-                    psgInputGraph.mapToEdgeInFullVeh(e) = vehGraphOrigIdToSeqId[eInVehGraph];
-                    KASSERT(psgInputGraph.mapToEdgeInFullVeh(e) < vehicleInputGraph.numEdges());
-                    vehicleInputGraph.mapToEdgeInPsg(psgInputGraph.mapToEdgeInFullVeh(e)) = e;
-
-                    KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
-                           vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).latitude());
-                    KASSERT(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
-                            vehicleInputGraph.edgeHead(psgInputGraph.mapToEdgeInFullVeh(e))).longitude());
-                }
-            }
-        unused(numEdgesWithMappingToCar);
-        assert(numEdgesWithMappingToCar > 0);
         std::cout << "done.\n";
 
         // Read the request data from file.
@@ -389,7 +350,7 @@ int main(int argc, char *argv[]) {
 
         std::cout << "Constructing lines ..." << std::flush;
 
-        const auto lines = decideAvoidLoopsStrategy(avoidLoopsStrategy, vehicleInputGraph, revVehicleGraph, psgInputGraph,
+        const auto lines = decideAvoidLoopsStrategy(avoidLoopsStrategy, vehicleInputGraph, revVehicleGraph,
                                                     pathStartEndInfo, requests, preliminaryPaths, noVerboseLinesOutput);
 
         const auto timeInSec = static_cast<double>(timer.elapsed<std::chrono::milliseconds>()) / 1000.0;

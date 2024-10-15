@@ -42,6 +42,7 @@
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/CH/CHQuery.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
+#include "Algorithms/KaRRi/CCHEnvironment.h"
 
 #include <nlohmann/json.hpp>
 
@@ -60,7 +61,6 @@ namespace mixfix {
     // public transport networks by tracking the paths of on-demand vehicles", Transportation Research Part C: Emerging
     // Technologies, 2024, https://doi.org/10.1016/j.trc.2024.104580.
     template<typename VehicleInputGraphT,
-            typename PsgInputGraphT,
             typename PreliminaryPathsT,
             AvoidLoopsStrategy AvoidLoopsStrat,
             typename OverviewLoggerT = NullLogger>
@@ -74,10 +74,9 @@ namespace mixfix {
 
     public:
 
-        GreedyFixedLineFinder(const VehicleInputGraphT &inputGraph, const VehicleInputGraphT &reverseGraph,
-                              const PsgInputGraphT &psgInputGraph,
+        GreedyFixedLineFinder(VehicleInputGraphT &inputGraph, const VehicleInputGraphT &reverseGraph,
                               PathStartEndInfo &pathStartEndInfo, const std::vector<Request> &requests)
-                : inputGraph(inputGraph), reverseGraph(reverseGraph), psgInputGraph(psgInputGraph),
+                : inputGraph(inputGraph), reverseGraph(reverseGraph),
                   pathStartEndInfo(pathStartEndInfo), requests(requests), inputConfig(InputConfig::getInstance()),
                   lineStatsLogger(LogManager<OverviewLoggerT>::getLogger("lines.csv",
                                                                          "line_id,"
@@ -437,8 +436,11 @@ namespace mixfix {
             }
 
 
-            // Simulate modal choice between walking and bus + walking
-            simulateModalChoice(lines, linesSumRiderTT, paths, initialPathTravelTimes, partialCovers);
+//            // Simulate modal choice between walking and bus + walking
+//            simulateModalChoice(lines, linesSumRiderTT, paths, initialPathTravelTimes, partialCovers);
+
+            // Compute minimum total vehicle operation time for different bus budgets:
+            routeWithBusesAndFeeder(lines, linesSumRiderTT, initialPathTravelTimes);
 
 
             return lines;
@@ -1003,11 +1005,16 @@ namespace mixfix {
                             << runningTimeStats.updatePathsTime << "\n";
         }
 
-        void simulateModalChoice(const std::vector<FixedLine> &lines, const std::vector<int64_t> &linesSumRiderTTs,
-                                 const PreliminaryPathsT &paths, const std::vector<int> &pathsVehTravelTimes,
-                                 std::vector<PartialCover> &partialCovers) {
+        void routeWithBusesAndFeeder(const std::vector<FixedLine> &lines, const std::vector<int64_t> &linesSumRiderTTs,
+                                    const std::vector<int> &pathsVehTravelTimes) {
 
-            // Compute operation duration for lines = latest arrival (according to input paths) - earliest departure
+            // Preprocess CCH based on traversal cost attribute. Later used for routing in presence of bus lines.
+            karri::CCHEnvironment<VehicleInputGraphT, TraversalCostAttribute> cchEnv(inputGraph);
+            auto cchQuery = cchEnv.getFullCHQuery();
+            const auto& ch = cchEnv.getCH();
+
+
+            // Compute operation duration for lines = latest arrival (arrival times according to input paths) - earliest departure
             int maxArr = 0;
             int minDep = INFTY;
             for (const auto &r: requests) {
@@ -1042,137 +1049,223 @@ namespace mixfix {
             if (curBudget != sumLinesVehTTs)
                 budgets.push_back(sumLinesVehTTs);
 
-
-            // Compute pure walking distance for passengers (using actual passenger graph)
-//            CH psgCh;
-//            psgCh.preprocess<TravelTimeAttribute>(psgInputGraph);
-//            CHQuery<BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>> chQuery(psgCh);
-//            std::vector<int> pureWalkingDists(requests.size(), INFTY);
-//            for (const auto &r: requests) {
-//                const auto s = psgInputGraph.edgeHead(inputGraph.mapToEdgeInPsg(r.origin));
-//                const auto t = psgInputGraph.edgeTail(inputGraph.mapToEdgeInPsg(r.destination));
-//                const auto offset = psgInputGraph.travelTime(inputGraph.mapToEdgeInPsg(r.destination));
-//                chQuery.run(psgCh.rank(s), psgCh.rank(t));
-//                pureWalkingDists[r.requestId] = chQuery.getDistance() + offset;
-//            }
-
-            // Walking times along roads have been stored in TraversalCostAttribute after loading the graph
-            CH walkCh;
-            walkCh.preprocess<TraversalCostAttribute>(inputGraph);
-            CHQuery<BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>> chQuery(walkCh);
-            std::vector<int> pureWalkingDists(requests.size(), INFTY);
-            for (const auto &r: requests) {
-                const auto s = inputGraph.edgeHead(r.origin);
-                const auto t = inputGraph.edgeHead(r.destination);
-                chQuery.run(walkCh.rank(s), walkCh.rank(t));
-                pureWalkingDists[r.requestId] = chQuery.getDistance();
-            }
-
-            // Sort partial covers according to requests and location within initial path of request
-            std::sort(partialCovers.begin(), partialCovers.end(), [&](const auto &pc1, const auto &pc2) {
-                return pc1.requestId < pc2.requestId || (pc1.requestId == pc2.requestId && pc1.start < pc2.start);
-            });
-            std::vector<int> startInPartialCover(requests.size() + 1, INVALID_INDEX);
-            int j = 0;
-            startInPartialCover[0] = 0;
-            for (int i = 0; i < requests.size(); ++i) {
-                while (j < partialCovers.size() && partialCovers[j].requestId == i) {
-                    KASSERT(partialCovers[j + 1].requestId != partialCovers[j].requestId ||
-                            partialCovers[j].end <= partialCovers[j + 1].start);
-                    ++j;
-                }
-                startInPartialCover[i + 1] = j;
-            }
-
             using namespace operations_research;
             KnapsackSolver solver(KnapsackSolver::KNAPSACK_MULTIDIMENSION_CBC_MIP_SOLVER, "LinesBudget");
 
             std::vector<std::vector<int64_t>> ksWeights;
             ksWeights.push_back(linesVehTTs);
 
-            auto& logger = LogManager<std::ofstream>::getLogger("modal_choice_sim.csv", "budget,num_bus_better,sum_min_rider_travel_times\n");
-
+            auto& logger = LogManager<std::ofstream>::getLogger("bus_and_feeder_operation_time.csv", "budget,total_vehicle_operation_time\n");
 
 
             for (const auto &b: budgets) {
 
-                int numBusBetter = 0;
-                int64_t sumBetterTTs = 0;
+                int64_t sumVehOpTime = 0;
 
                 std::vector<int64_t> ksCap = {b};
                 solver.Init(linesSumRiderTTs, ksWeights, ksCap);
                 solver.Solve();
 
-                for (const auto& r : requests) {
-                    if (!paths.hasInitialPathFor(r.requestId)) {
-                        sumBetterTTs += pureWalkingDists[r.requestId];
-                        continue;
-                    }
-
-                    const auto& path = paths.getInitialPathFor(r.requestId);
-                    int busTT = 0;
-
-                    // Iterate through edges of initial path: If edge is covered by a bus line
-                    // (that was chosen for the budget), use vehicle travel time, if not, assume walking
-                    // (on the vehicle road) at a pace of 5km/h.
-                    int eIdx = 0;
-                    const int pcStart = startInPartialCover[r.requestId];
-                    const int pcEnd = startInPartialCover[r.requestId + 1];
-                    for (int pcIdx = pcStart; pcIdx < pcEnd; ++pcIdx) {
-                        const auto& pc = partialCovers[pcIdx];
-
-                        // Walk to start of next partial cover:
-                        while (eIdx < pc.start) {
-                            busTT += inputGraph.traversalCost(path[eIdx]);
-                            ++eIdx;
-                        }
-
-                        // Compute travel time for using the bus along partial cover including waiting time
-                        // (if bus line is usable):
-                        int busTimeTillEndOfPc = INFTY;
-                        if (solver.BestSolutionContains(pc.lineId)) {
-                            const int arrTimeAtStartOfPc = r.requestTime + busTT;
-                            int waitingTime = (pc.vehTTFromStartOfLineToStart - arrTimeAtStartOfPc) % inputConfig.maxWaitTime;
-                            if (waitingTime < 0) waitingTime += inputConfig.maxWaitTime;
-                            KASSERT(waitingTime >= 0 && waitingTime < inputConfig.maxWaitTime);
-                            busTimeTillEndOfPc = waitingTime;
-                            while(eIdx < pc.end) {
-                                busTimeTillEndOfPc += inputGraph.travelTime(path[eIdx]);
-                                ++eIdx;
-                            }
-                            eIdx = pc.start;
-                        }
-
-                        // Compute walking time to replace using the bus:
-                        int walkingTimeTillEndOfPc = 0;
-                        while(eIdx < pc.end) {
-                            walkingTimeTillEndOfPc += inputGraph.traversalCost(path[eIdx]);
-                            ++eIdx;
-                        }
-
-                        busTT += std::min(busTimeTillEndOfPc, walkingTimeTillEndOfPc);
-                    }
-
-                    // Walk rest of path from end of last pc to end of path
-                    while (eIdx < path.size()) {
-                        busTT += inputGraph.traversalCost(path[eIdx]);
-                        ++eIdx;
-                    }
-
-                    numBusBetter += busTT < pureWalkingDists[r.requestId];
-                    sumBetterTTs += std::min(busTT, pureWalkingDists[r.requestId]);
+                // Change traversal cost metric to have cost 0 everywhere where there is a bus line and travel time
+                // (for feeders) everywhere else.
+                FORALL_EDGES(inputGraph, e) {
+                    inputGraph.traversalCost(e) = inputGraph.travelTime(e);
                 }
 
-                logger << b << "," << numBusBetter << "," << sumBetterTTs << "\n";
+                for (int i = 0; i < lines.size(); ++i) {
+                    if (!solver.BestSolutionContains(i)) continue;
+                    for (const auto& e : lines[i]) {
+                        inputGraph.traversalCost(e) = 0;
+                    }
+                }
+
+                // Customize for updated metric:
+                cchEnv.customize();
+
+                // Compute shortest paths for updated metric. Shortest path in this metric is minimum usage of feeders.
+                for (const auto& r : requests) {
+                    const auto s = inputGraph.edgeHead(r.origin);
+                    const auto t = inputGraph.edgeHead(r.destination);
+                    cchQuery.run(ch.rank(s), ch.rank(t));
+                    sumVehOpTime += cchQuery.getDistance();
+                }
+
+                logger << b << "," << sumVehOpTime << "\n";
             }
-
-
         }
 
+//
+//        void simulateModalChoice(const std::vector<FixedLine> &lines, const std::vector<int64_t> &linesSumRiderTTs,
+//                                 const PreliminaryPathsT &paths, const std::vector<int> &pathsVehTravelTimes,
+//                                 std::vector<PartialCover> &partialCovers) {
+//
+//            // Walking times along roads have been stored in TraversalCostAttribute after loading the graph
+//            CH walkCh;
+//            walkCh.preprocess<TraversalCostAttribute>(inputGraph);
+//            CHQuery<BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>> chQuery(walkCh);
+//            std::vector<int> pureWalkingDists(requests.size(), INFTY);
+//            for (const auto &r: requests) {
+//                const auto s = inputGraph.edgeHead(r.origin);
+//                const auto t = inputGraph.edgeHead(r.destination);
+//                chQuery.run(walkCh.rank(s), walkCh.rank(t));
+//                pureWalkingDists[r.requestId] = chQuery.getDistance();
+//            }
+//
+//            // Compute operation duration for lines = latest arrival (arrival times with pure walking as upper bound) - earliest departure
+//            int maxArr = 0;
+//            int minDep = INFTY;
+//            for (const auto &r: requests) {
+//                minDep = std::min(minDep, r.requestTime);
+//                maxArr = std::max(maxArr, r.requestTime + pureWalkingDists[r.requestId]);
+//            }
+//            KASSERT(maxArr > minDep);
+//            const int opDur = maxArr - minDep;
+//
+//            // Compute vehicle operation times for lines according to length of line and number of vehicles sent
+//            // during operation time in total.
+//            const int period = inputConfig.maxWaitTime;
+//            const int numTimeSlices = opDur / period + (opDur % period != 0);
+//            int64_t sumLinesVehTTs = 0;
+//            std::vector<int64_t> linesVehTTs(lines.size(), INFTY);
+//            for (int i = 0; i < lines.size(); ++i) {
+//                int endToEndTT = 0;
+//                for (const auto &e: lines[i])
+//                    endToEndTT += inputGraph.travelTime(e);
+//                linesVehTTs[i] = endToEndTT * numTimeSlices;
+//                sumLinesVehTTs += linesVehTTs[i];
+//            }
+//
+//            // Budgets to consider are between 0 and sum of veh tts of all lines, in steps of 10 hours
+//            static constexpr int64_t BUDGET_STEP_WIDTH = 25 * 3600 * 10;
+//            std::vector<int64_t> budgets;
+//            int curBudget = 0;
+//            while (curBudget < sumLinesVehTTs) {
+//                budgets.push_back(curBudget);
+//                curBudget += BUDGET_STEP_WIDTH;
+//            }
+//            if (curBudget != sumLinesVehTTs)
+//                budgets.push_back(sumLinesVehTTs);
+//
+//
+//            // Compute pure walking distance for passengers (using actual passenger graph)
+////            CH psgCh;
+////            psgCh.preprocess<TravelTimeAttribute>(psgInputGraph);
+////            CHQuery<BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>> chQuery(psgCh);
+////            std::vector<int> pureWalkingDists(requests.size(), INFTY);
+////            for (const auto &r: requests) {
+////                const auto s = psgInputGraph.edgeHead(inputGraph.mapToEdgeInPsg(r.origin));
+////                const auto t = psgInputGraph.edgeTail(inputGraph.mapToEdgeInPsg(r.destination));
+////                const auto offset = psgInputGraph.travelTime(inputGraph.mapToEdgeInPsg(r.destination));
+////                chQuery.run(psgCh.rank(s), psgCh.rank(t));
+////                pureWalkingDists[r.requestId] = chQuery.getDistance() + offset;
+////            }
+//
+//
+//
+//            // Sort partial covers according to requests and location within initial path of request
+//            std::sort(partialCovers.begin(), partialCovers.end(), [&](const auto &pc1, const auto &pc2) {
+//                return pc1.requestId < pc2.requestId || (pc1.requestId == pc2.requestId && pc1.start < pc2.start);
+//            });
+//            std::vector<int> startInPartialCover(requests.size() + 1, INVALID_INDEX);
+//            int j = 0;
+//            startInPartialCover[0] = 0;
+//            for (int i = 0; i < requests.size(); ++i) {
+//                while (j < partialCovers.size() && partialCovers[j].requestId == i) {
+//                    KASSERT(partialCovers[j + 1].requestId != partialCovers[j].requestId ||
+//                            partialCovers[j].end <= partialCovers[j + 1].start);
+//                    ++j;
+//                }
+//                startInPartialCover[i + 1] = j;
+//            }
+//
+//            using namespace operations_research;
+//            KnapsackSolver solver(KnapsackSolver::KNAPSACK_MULTIDIMENSION_CBC_MIP_SOLVER, "LinesBudget");
+//
+//            std::vector<std::vector<int64_t>> ksWeights;
+//            ksWeights.push_back(linesVehTTs);
+//
+//            auto& logger = LogManager<std::ofstream>::getLogger("modal_choice_sim.csv", "budget,num_bus_better,sum_min_rider_travel_times\n");
+//
+//
+//
+//            for (const auto &b: budgets) {
+//
+//                int numBusBetter = 0;
+//                int64_t sumBetterTTs = 0;
+//
+//                std::vector<int64_t> ksCap = {b};
+//                solver.Init(linesSumRiderTTs, ksWeights, ksCap);
+//                solver.Solve();
+//
+//                for (const auto& r : requests) {
+//                    if (!paths.hasInitialPathFor(r.requestId)) {
+//                        sumBetterTTs += pureWalkingDists[r.requestId];
+//                        continue;
+//                    }
+//
+//                    const auto& path = paths.getInitialPathFor(r.requestId);
+//                    int busTT = 0;
+//
+//                    // Iterate through edges of initial path: If edge is covered by a bus line
+//                    // (that was chosen for the budget), use vehicle travel time, if not, assume walking
+//                    // (on the vehicle road) at a pace of 5km/h.
+//                    int eIdx = 0;
+//                    const int pcStart = startInPartialCover[r.requestId];
+//                    const int pcEnd = startInPartialCover[r.requestId + 1];
+//                    for (int pcIdx = pcStart; pcIdx < pcEnd; ++pcIdx) {
+//                        const auto& pc = partialCovers[pcIdx];
+//
+//                        // Walk to start of next partial cover:
+//                        while (eIdx < pc.start) {
+//                            busTT += inputGraph.traversalCost(path[eIdx]);
+//                            ++eIdx;
+//                        }
+//
+//                        // Compute travel time for using the bus along partial cover including waiting time
+//                        // (if bus line is usable):
+//                        int busTimeTillEndOfPc = INFTY;
+//                        if (solver.BestSolutionContains(pc.lineId)) {
+//                            const int arrTimeAtStartOfPc = r.requestTime + busTT;
+//                            int waitingTime = (pc.vehTTFromStartOfLineToStart - arrTimeAtStartOfPc) % inputConfig.maxWaitTime;
+//                            if (waitingTime < 0) waitingTime += inputConfig.maxWaitTime;
+//                            KASSERT(waitingTime >= 0 && waitingTime < inputConfig.maxWaitTime);
+//                            busTimeTillEndOfPc = waitingTime;
+//                            while(eIdx < pc.end) {
+//                                busTimeTillEndOfPc += inputGraph.travelTime(path[eIdx]);
+//                                ++eIdx;
+//                            }
+//                            eIdx = pc.start;
+//                        }
+//
+//                        // Compute walking time to replace using the bus:
+//                        int walkingTimeTillEndOfPc = 0;
+//                        while(eIdx < pc.end) {
+//                            walkingTimeTillEndOfPc += inputGraph.traversalCost(path[eIdx]);
+//                            ++eIdx;
+//                        }
+//
+//                        busTT += std::min(busTimeTillEndOfPc, walkingTimeTillEndOfPc);
+//                    }
+//
+//                    // Walk rest of path from end of last pc to end of path
+//                    while (eIdx < path.size()) {
+//                        busTT += inputGraph.traversalCost(path[eIdx]);
+//                        ++eIdx;
+//                    }
+//
+//                    numBusBetter += busTT < pureWalkingDists[r.requestId];
+//                    sumBetterTTs += std::min(busTT, pureWalkingDists[r.requestId]);
+//                }
+//
+//                logger << b << "," << numBusBetter << "," << sumBetterTTs << "\n";
+//            }
+//
+//
+//        }
 
-        const VehicleInputGraphT &inputGraph;
+
+        VehicleInputGraphT &inputGraph;
         const VehicleInputGraphT &reverseGraph;
-        const PsgInputGraphT &psgInputGraph;
         PathStartEndInfo &pathStartEndInfo;
         const std::vector<Request> &requests;
         const InputConfig &inputConfig;
