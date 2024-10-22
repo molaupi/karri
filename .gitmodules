@@ -16,6 +16,3 @@
 [submodule "External/boost"]
 	path = External/boost
 	url = git@github.com:boostorg/boost.git
-[submodule "External/ortools"]
-	path = External/ortools
-	url = git@github.com:google/or-tools.git

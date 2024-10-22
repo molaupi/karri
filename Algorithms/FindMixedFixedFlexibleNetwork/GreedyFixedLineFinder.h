@@ -46,11 +46,11 @@
 
 #include <nlohmann/json.hpp>
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#include <ortools/algorithms/knapsack_solver.h>
-
-#pragma GCC diagnostic pop
+//#pragma GCC diagnostic push
+//#pragma GCC diagnostic ignored "-Wunused-parameter"
+//#include <ortools/algorithms/knapsack_solver.h>
+//
+//#pragma GCC diagnostic pop
 
 namespace mixfix {
 
@@ -439,8 +439,8 @@ namespace mixfix {
 //            // Simulate modal choice between walking and bus + walking
 //            simulateModalChoice(lines, linesSumRiderTT, paths, initialPathTravelTimes, partialCovers);
 
-            // Compute minimum total vehicle operation time for different bus budgets:
-            routeWithBusesAndFeeder(lines, linesSumRiderTT, initialPathTravelTimes);
+//            // Compute minimum total vehicle operation time for different bus budgets:
+//            routeWithBusesAndFeeder(lines, linesSumRiderTT, initialPathTravelTimes);
 
 
             return lines;
@@ -525,8 +525,10 @@ namespace mixfix {
         }
 
         static inline uint64_t computeScoreForOverlapLength(const uint64_t overlapLength) {
-            const auto res = std::pow(overlapLength, InputConfig::getInstance().overlapScoreExponent);
-            return static_cast<uint64_t>(res);
+//            const auto res = std::pow(overlapLength, InputConfig::getInstance().overlapScoreExponent);
+//            return static_cast<uint64_t>(res);
+            unused(overlapLength);
+            return 1;
         }
 
         // Finds the highest scoring extension starting at given vertex.
@@ -703,6 +705,10 @@ namespace mixfix {
 
                 if (flowOnExtension < inputConfig.minFlowOnLine)
                     break;
+
+//                static constexpr double FRACTION_OF_MAX_FLOW_TO_STOP = 0.75;
+//                if (flowOnExtension < int(std::ceil(FRACTION_OF_MAX_FLOW_TO_STOP * maxFlowOnLine)))
+//                    break;
 
                 const int extensionInForwGraph = graph.edgeId(extension);
 
@@ -1004,95 +1010,102 @@ namespace mixfix {
                             << runningTimeStats.choosePartiallyServedRidersTime << ", "
                             << runningTimeStats.updatePathsTime << "\n";
         }
-
-        void routeWithBusesAndFeeder(const std::vector<FixedLine> &lines, const std::vector<int64_t> &linesSumRiderTTs,
-                                    const std::vector<int> &pathsVehTravelTimes) {
-
-            // Preprocess CCH based on traversal cost attribute. Later used for routing in presence of bus lines.
-            karri::CCHEnvironment<VehicleInputGraphT, TraversalCostAttribute> cchEnv(inputGraph);
-            auto cchQuery = cchEnv.getFullCHQuery();
-            const auto& ch = cchEnv.getCH();
-
-
-            // Compute operation duration for lines = latest arrival (arrival times according to input paths) - earliest departure
-            int maxArr = 0;
-            int minDep = INFTY;
-            for (const auto &r: requests) {
-                minDep = std::min(minDep, r.requestTime);
-                maxArr = std::max(maxArr, r.requestTime + pathsVehTravelTimes[r.requestId]);
-            }
-            KASSERT(maxArr > minDep);
-            const int opDur = maxArr - minDep;
-
-            // Compute vehicle operation times for lines according to length of line and number of vehicles sent
-            // during operation time in total.
-            const int period = inputConfig.maxWaitTime;
-            const int numTimeSlices = opDur / period + (opDur % period != 0);
-            int64_t sumLinesVehTTs = 0;
-            std::vector<int64_t> linesVehTTs(lines.size(), INFTY);
-            for (int i = 0; i < lines.size(); ++i) {
-                int endToEndTT = 0;
-                for (const auto &e: lines[i])
-                    endToEndTT += inputGraph.travelTime(e);
-                linesVehTTs[i] = endToEndTT * numTimeSlices;
-                sumLinesVehTTs += linesVehTTs[i];
-            }
-
-            // Budgets to consider are between 0 and sum of veh tts of all lines, in steps of 10 hours
-            static constexpr int64_t BUDGET_STEP_WIDTH = 25 * 3600 * 10;
-            std::vector<int64_t> budgets;
-            int curBudget = 0;
-            while (curBudget < sumLinesVehTTs) {
-                budgets.push_back(curBudget);
-                curBudget += BUDGET_STEP_WIDTH;
-            }
-            if (curBudget != sumLinesVehTTs)
-                budgets.push_back(sumLinesVehTTs);
-
-            using namespace operations_research;
-            KnapsackSolver solver(KnapsackSolver::KNAPSACK_MULTIDIMENSION_CBC_MIP_SOLVER, "LinesBudget");
-
-            std::vector<std::vector<int64_t>> ksWeights;
-            ksWeights.push_back(linesVehTTs);
-
-            auto& logger = LogManager<std::ofstream>::getLogger("bus_and_feeder_operation_time.csv", "budget,total_vehicle_operation_time\n");
-
-
-            for (const auto &b: budgets) {
-
-                int64_t sumVehOpTime = 0;
-
-                std::vector<int64_t> ksCap = {b};
-                solver.Init(linesSumRiderTTs, ksWeights, ksCap);
-                solver.Solve();
-
-                // Change traversal cost metric to have cost 0 everywhere where there is a bus line and travel time
-                // (for feeders) everywhere else.
-                FORALL_EDGES(inputGraph, e) {
-                    inputGraph.traversalCost(e) = inputGraph.travelTime(e);
-                }
-
-                for (int i = 0; i < lines.size(); ++i) {
-                    if (!solver.BestSolutionContains(i)) continue;
-                    for (const auto& e : lines[i]) {
-                        inputGraph.traversalCost(e) = 0;
-                    }
-                }
-
-                // Customize for updated metric:
-                cchEnv.customize();
-
-                // Compute shortest paths for updated metric. Shortest path in this metric is minimum usage of feeders.
-                for (const auto& r : requests) {
-                    const auto s = inputGraph.edgeHead(r.origin);
-                    const auto t = inputGraph.edgeHead(r.destination);
-                    cchQuery.run(ch.rank(s), ch.rank(t));
-                    sumVehOpTime += cchQuery.getDistance();
-                }
-
-                logger << b << "," << sumVehOpTime << "\n";
-            }
-        }
+//
+//        void routeWithBusesAndFeeder(const std::vector<FixedLine> &lines, const std::vector<int64_t> &linesSumRiderTTs,
+//                                    const std::vector<int> &pathsVehTravelTimes) {
+//
+//            // Preprocess CCH based on traversal cost attribute. Later used for routing in presence of bus lines.
+//            karri::CCHEnvironment<VehicleInputGraphT, TraversalCostAttribute> cchEnv(inputGraph);
+//            auto cchQuery = cchEnv.getFullCHQuery();
+//            const auto& ch = cchEnv.getCH();
+//
+//
+//            // Compute operation duration for lines = latest arrival (arrival times according to input paths) - earliest departure
+//            int maxArr = 0;
+//            int minDep = INFTY;
+//            for (const auto &r: requests) {
+//                minDep = std::min(minDep, r.requestTime);
+//                maxArr = std::max(maxArr, r.requestTime + pathsVehTravelTimes[r.requestId]);
+//            }
+//            KASSERT(maxArr > minDep);
+//            const int opDur = maxArr - minDep;
+//
+//            // Compute vehicle operation times for lines according to length of line and number of vehicles sent
+//            // during operation time in total.
+//            const int period = inputConfig.maxWaitTime;
+//            const int numTimeSlices = opDur / period + (opDur % period != 0);
+//            int64_t sumLinesVehTTs = 0;
+//            std::vector<int64_t> linesVehTTs(lines.size(), INFTY);
+//            for (int i = 0; i < lines.size(); ++i) {
+//                int endToEndTT = 0;
+//                for (const auto &e: lines[i])
+//                    endToEndTT += inputGraph.travelTime(e);
+//                linesVehTTs[i] = endToEndTT * numTimeSlices;
+//                sumLinesVehTTs += linesVehTTs[i];
+//            }
+//
+//            // Budgets to consider are between 0 and sum of veh tts of all lines, in steps of 10 hours
+//            static constexpr int64_t BUDGET_STEP_WIDTH = 25 * 3600 * 10;
+//            std::vector<int64_t> budgets;
+//            int curBudget = 0;
+//            while (curBudget < sumLinesVehTTs) {
+//                budgets.push_back(curBudget);
+//                curBudget += BUDGET_STEP_WIDTH;
+//            }
+//            if (curBudget != sumLinesVehTTs)
+//                budgets.push_back(sumLinesVehTTs);
+//
+//            using namespace operations_research;
+//            KnapsackSolver solver(KnapsackSolver::KNAPSACK_MULTIDIMENSION_CBC_MIP_SOLVER, "LinesBudget");
+//
+//            std::vector<std::vector<int64_t>> ksWeights;
+//            ksWeights.push_back(linesVehTTs);
+//
+//            // Profit is potential rider coverage minus operation time of line itself
+//            auto ksProfits = linesSumRiderTTs;
+//            for (int i = 0; i < lines.size(); ++i) {
+//                ksProfits[i] -= linesVehTTs[i];
+//            }
+//
+//            auto& logger = LogManager<std::ofstream>::getLogger("bus_and_feeder_operation_time.csv", "budget,total_vehicle_operation_time\n");
+//
+//
+//            for (const auto &b: budgets) {
+//
+//                int64_t sumVehOpTime = 0;
+//
+//                std::vector<int64_t> ksCap = {b};
+//                solver.Init(ksProfits, ksWeights, ksCap);
+//                solver.Solve();
+//
+//                // Change traversal cost metric to have cost 0 everywhere where there is a bus line and travel time
+//                // (for feeders) everywhere else.
+//                FORALL_EDGES(inputGraph, e) {
+//                    inputGraph.traversalCost(e) = inputGraph.travelTime(e);
+//                }
+//
+//                for (int i = 0; i < lines.size(); ++i) {
+//                    if (!solver.BestSolutionContains(i)) continue;
+//                    sumVehOpTime += linesVehTTs[i];
+//                    for (const auto& e : lines[i]) {
+//                        inputGraph.traversalCost(e) = 0;
+//                    }
+//                }
+//
+//                // Customize for updated metric:
+//                cchEnv.customize();
+//
+//                // Compute shortest paths for updated metric. Shortest path in this metric is minimum usage of feeders.
+//                for (const auto& r : requests) {
+//                    const auto s = inputGraph.edgeHead(r.origin);
+//                    const auto t = inputGraph.edgeHead(r.destination);
+//                    cchQuery.run(ch.rank(s), ch.rank(t));
+//                    sumVehOpTime += cchQuery.getDistance();
+//                }
+//
+//                logger << b << "," << sumVehOpTime << "\n";
+//            }
+//        }
 
 //
 //        void simulateModalChoice(const std::vector<FixedLine> &lines, const std::vector<int64_t> &linesSumRiderTTs,

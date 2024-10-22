@@ -95,11 +95,11 @@ else()
 endif ()
 add_subdirectory(External/kassert)
 
-# Add ortools library from External
-option(BUILD_DEPS "" ON)
-option(BUILD_SAMPLES "" OFF)
-option(BUILD_EXAMPLES "" OFF)
-add_subdirectory(External/ortools)
+## Add ortools library from External
+#option(BUILD_DEPS "" ON)
+#option(BUILD_SAMPLES "" OFF)
+#option(BUILD_EXAMPLES "" OFF)
+#add_subdirectory(External/ortools)
 #target_compile_options(CoinUtils PUBLIC "-w")
 #
 #find_library(ortools_LIBRARY ortools PATHS External/ortools/lib REQUIRED)
