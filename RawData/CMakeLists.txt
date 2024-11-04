@@ -90,6 +90,11 @@ add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNet
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(CheckExistingAttributesInNetworkFile kassert  ${BOOST_LIBRARIES})
 
+
+add_executable(ExtractTravelTimesAsBinary ExtractTravelTimesAsBinary.cc)
+target_compile_definitions(ExtractTravelTimesAsBinary PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(ExtractTravelTimesAsBinary PRIVATE kassert)
+
 add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
 target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(GenerateGeoJsonForGraph PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})

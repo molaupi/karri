@@ -359,47 +359,69 @@ int main(int argc, char *argv[]) {
         if (outputFullPaths) {
 
             std::cout << "Logging line paths..." << std::flush;
-            auto &linePathLogger = LogManager<std::ofstream>::getLogger("line_paths.csv",
-                                                                        "line_id,"
-                                                                        "path_as_edge_ids,"
-                                                                        "path_as_lat_lng\n");
 
-            nlohmann::json topGeoJson;
-            topGeoJson["type"] = "FeatureCollection";
-            for (int lineId = 0; lineId < lines.size(); ++lineId) {
-                const auto &line = lines[lineId];
-                linePathLogger << lineId << ", ";
-                // Log path as edge Ids:
-                for (int i = 0; i < line.size(); ++i)
-                    linePathLogger << line[i] << (i < line.size() - 1 ? " : " : ", ");
 
-                int totalTravelTime = 0;
-                // Log path as latlngs
-                std::vector<LatLng> latLngPath;
-                for (int i = 0; i < line.size(); ++i) {
-                    const auto e = line[i];
-                    const auto tail = vehicleInputGraph.edgeTail(e);
-                    const auto latLng = vehicleInputGraph.latLng(tail);
-                    linePathLogger << latLngForCsv(latLng) << " : ";
-                    latLngPath.push_back(latLng);
-                    totalTravelTime += vehicleInputGraph.travelTime(e);
-                }
-                if (!line.empty()) {
-                    const auto latLng = vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(line.back()));
-                    linePathLogger << latLngForCsv(latLng);
-                    latLngPath.push_back(latLng);
-                }
-                linePathLogger << "\n";
+            std::ofstream linePathsBinOut(outputFileName + ".line_paths.bin");
+            if (!linePathsBinOut.good())
+                throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".line_paths.bin'");
+            bio::write(linePathsBinOut, lines);
+            linePathsBinOut.close();
+            unused(geojson::addGeoJsonFeaturesForLine);
 
-                // Add GeoJson features
-                geojson::addGeoJsonFeaturesForLine(latLngPath, lineId, totalTravelTime, topGeoJson);
+
+            // Collect feeder paths into vector of vectors
+            std::vector<std::vector<int>> feederPaths;
+            for (const auto& p : preliminaryPaths) {
+                feederPaths.emplace_back(p.begin(), p.end());
             }
+            std::ofstream feederPathsBinOut(outputFileName + ".feeder_paths.bin");
+            if (!feederPathsBinOut.good())
+                throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".feeder_paths.bin'");
+            bio::write(feederPathsBinOut, feederPaths);
+            feederPathsBinOut.close();
+            unused(geojson::addGeoJsonFeaturesForLine);
 
-            // Open the output file and write the GeoJson.
-            std::ofstream geoJsonOutputFile(outputFileName + ".geojson");
-            if (!geoJsonOutputFile.good())
-                throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".geojson" + "'");
-            geoJsonOutputFile << std::setw(2) << topGeoJson << std::endl;
+//            auto &linePathLogger = LogManager<std::ofstream>::getLogger("line_paths.csv",
+//                                                                        "line_id,"
+//                                                                        "path_as_edge_ids,"
+//                                                                        "path_as_lat_lng\n");
+//
+//            nlohmann::json topGeoJson;
+//            topGeoJson["type"] = "FeatureCollection";
+//            for (int lineId = 0; lineId < lines.size(); ++lineId) {
+//                const auto &line = lines[lineId];
+//                linePathLogger << lineId << ", ";
+//                // Log path as edge Ids:
+//                for (int i = 0; i < line.size(); ++i)
+//                    linePathLogger << line[i] << (i < line.size() - 1 ? " : " : ", ");
+//
+//                int totalTravelTime = 0;
+//                // Log path as latlngs
+//                std::vector<LatLng> latLngPath;
+//                for (int i = 0; i < line.size(); ++i) {
+//                    const auto e = line[i];
+//                    const auto tail = vehicleInputGraph.edgeTail(e);
+//                    const auto latLng = vehicleInputGraph.latLng(tail);
+//                    linePathLogger << latLngForCsv(latLng) << " : ";
+//                    latLngPath.push_back(latLng);
+//                    totalTravelTime += vehicleInputGraph.travelTime(e);
+//                }
+//                if (!line.empty()) {
+//                    const auto latLng = vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(line.back()));
+//                    linePathLogger << latLngForCsv(latLng);
+//                    latLngPath.push_back(latLng);
+//                }
+//                linePathLogger << "\n";
+//
+//                // Add GeoJson features
+//                geojson::addGeoJsonFeaturesForLine(latLngPath, lineId, totalTravelTime, topGeoJson);
+//            }
+//
+//            // Open the output file and write the GeoJson.
+//            std::ofstream geoJsonOutputFile(outputFileName + ".geojson");
+//            if (!geoJsonOutputFile.good())
+//                throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".geojson" + "'");
+//            geoJsonOutputFile << std::setw(2) << topGeoJson << std::endl;
             std::cout << "done.\n";
         }
 
