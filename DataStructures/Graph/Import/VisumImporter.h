@@ -104,7 +104,7 @@ class VisumImporter {
     VisumFileReader<2> edgeTypeReader(filename + "/LINKTYPE.csv");
     std::string upperCaseTS = transportSystem;
     toUpperCase(upperCaseTS);
-    edgeTypeReader.read_header(io::ignore_extra_column, "NO", "VMAX-PRTSYS(" + upperCaseTS + ")");
+    edgeTypeReader.read_header(io::ignore_extra_column, "NO", "VMAX_PRTSYS(" + upperCaseTS + ")");
     auto i = 0;
     int id;
     char* maxSpeedField;
@@ -170,7 +170,7 @@ class VisumImporter {
       open = true;
       auto j = 0;
       for (auto i = 0; permittedSystems[i] != '\0'; ++i)
-        if (permittedSystems[i] == ',') {
+        if (permittedSystems[i] == ';') {
           if (open && transportSystem[j] == '\0')
             break;
           open = true;
@@ -254,7 +254,7 @@ class VisumImporter {
  private:
   // The CSV dialect used by Visum.
   template <int numFields>
-  using VisumFileReader = io::CSVReader<numFields, io::trim_chars<>, io::no_quote_escape<';'>>;
+  using VisumFileReader = io::CSVReader<numFields, io::trim_chars<>, io::no_quote_escape<','>>;
 
   // A vertex record in Visum network file format.
   struct VertexRecord {

@@ -149,6 +149,7 @@ public:
 
     // Returns the index of the first one-bit. If no such bit exists then -1 is returned.
     int firstSetBit() const {
+        if (blocks.empty()) return -1;
         int blockIndex = 0;
         while (blocks[blockIndex] == 0 && blockIndex < blocks.size()) ++blockIndex;
         if (blockIndex == blocks.size()) return -1;
@@ -172,6 +173,9 @@ public:
 
     // Inverts every bit in the BitVector
     void flip() {
+        if (blocks.empty())
+            return;
+
         for (auto &b: blocks)
             b = ~b;
 
