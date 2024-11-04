@@ -35,8 +35,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/dynamic_bitset.hpp>
-
 #include "DataStructures/Graph/Export/DefaultExporter.h"
 #include "DataStructures/Graph/Import/XatfImporter.h"
 #include "DataStructures/Utilities/Permutation.h"
@@ -550,7 +548,7 @@ public:
     // given bitmask. The bitmask must contain one bit per vertex, which should be set iff the vertex
     // belongs to the subgraph. Optionally, writes a mapping of edge IDs of the full graph to the edge
     // IDs of the subgraph into a given edgeMapping for any edges that are kept.
-    void extractVertexInducedSubgraph(const boost::dynamic_bitset<> bitmask) {
+    void extractVertexInducedSubgraph(const BitVector& bitmask) {
         struct {
             int field;
 
@@ -561,16 +559,16 @@ public:
 
 
     template<typename EdgeMappingT>
-    void extractVertexInducedSubgraph(const boost::dynamic_bitset<> bitmask, EdgeMappingT &origToNewEdgeMapping) {
+    void extractVertexInducedSubgraph(const BitVector& bitmask, EdgeMappingT &origToNewEdgeMapping) {
         assert(bitmask.size() == numVertices());
         using std::swap;
         int nextId = 0;
         std::vector<int> origToNewIds(numVertices(), -1);
-        for (int v = bitmask.find_first(); v != boost::dynamic_bitset<>::npos; v = bitmask.find_next(v))
+        for (int v = bitmask.firstSetBit(); v != -1; v = bitmask.nextSetBit(v))
             origToNewIds[v] = nextId++;
 
         edgeCount = 0;
-        for (int i = 0, u = bitmask.find_first(); i != nextId; ++i, u = bitmask.find_next(u)) {
+        for (int i = 0, u = bitmask.firstSetBit(); i != nextId; ++i, u = bitmask.nextSetBit(u)) {
             // Copy the current vertex belonging to the subgraph.
             const int first = edgeCount; // The index of the first edge out of u.
             if (i != u)
@@ -602,17 +600,17 @@ public:
 
     // Returns the vertex-induced subgraph specified by the given bitmask. The bitmask must contain
     // one bit per vertex, which should be set iff the corresponding vertex belongs to the subgraph.
-    Graph getVertexInducedSubgraph(const boost::dynamic_bitset<> &bitmask) const {
+    Graph getVertexInducedSubgraph(const BitVector &bitmask) const {
         // Assign new sequential IDs to the vertices in the subgraph.
         assert(bitmask.size() == numVertices());
         int nextId = 0;
         std::vector<int> origToNewIds(numVertices(), -1);
-        for (int v = bitmask.find_first(); v != boost::dynamic_bitset<>::npos; v = bitmask.find_next(v))
+        for (int v = bitmask.firstSetBit(); v != -1; v = bitmask.nextSetBit(v))
             origToNewIds[v] = nextId++;
 
         // Count the edges in the subgraph.
         int numEdges = 0;
-        for (int v = bitmask.find_first(); v != boost::dynamic_bitset<>::npos; v = bitmask.find_next(v))
+        for (int v = bitmask.firstSetBit(); v != -1; v = bitmask.nextSetBit(v))
             for (int e = firstEdge(v); e != lastEdge(v); ++e)
                 numEdges += origToNewIds[edgeHeads[e]] != -1;
 
@@ -623,7 +621,7 @@ public:
         RUN_FORALL(subgraph.EdgeAttributes::values.resize(numEdges));
 
         int &edgeCount = subgraph.edgeCount;
-        for (int i = 0, u = bitmask.find_first(); i != nextId; ++i, u = bitmask.find_next(u)) {
+        for (int i = 0, u = bitmask.firstSetBit(); i != nextId; ++i, u = bitmask.nextSetBit(u)) {
             // Copy the current vertex belonging to the subgraph.
             subgraph.outEdges[i].first() = edgeCount;
             RUN_FORALL(subgraph.VertexAttributes::values[i] = VertexAttributes::values[u]);
@@ -884,7 +882,7 @@ public:
 
     // Checks if the graph is consistent.
     bool validate() const {
-        boost::dynamic_bitset<> visited(edgeHeads.size());
+        BitVector visited(static_cast<int>(edgeHeads.size()));
         int numEdges = 0;
         for (int u = 0; u != numVertices(); ++u) {
             // Assert that a valid range of edges is associated with each vertex.
@@ -905,7 +903,7 @@ public:
 
         // Assert that all unvisited edges are invalid.
         visited.flip();
-        for (int e = visited.find_first(); e != boost::dynamic_bitset<>::npos; e = visited.find_next(e))
+        for (int e = visited.firstSetBit(); e != -1; e = visited.nextSetBit(e))
             assert(edgeHeads[e] == INVALID_EDGE);
 
         assert(edgeCount == numEdges);

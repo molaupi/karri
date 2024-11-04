@@ -26,7 +26,7 @@
 #pragma once
 
 #include "Algorithms/KaRRi/RouteState.h"
-#include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
+#include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 #include "PathTracker.h"
 #include "Algorithms/KaRRi/BaseObjects/Offer.h"
 
@@ -45,21 +45,18 @@ namespace karri {
     public:
 
         SystemStateUpdater(const InputGraphT &inputGraph, const Fleet &fleet, RequestState &requestState,
-                           const InputConfig &inputConfig, const CurVehLocsT &curVehLocs,
+                           const CurVehLocsT &curVehLocs,
                            PathTrackerT &pathTracker,
                            RouteState &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
-                           LastStopBucketsEnvT &lastStopBucketsEnv,
-                           LastStopsAtVertices &lastStopsAtVertices)
+                           LastStopBucketsEnvT &lastStopBucketsEnv)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   requestState(requestState),
-                  inputConfig(inputConfig),
                   curVehLocs(curVehLocs),
                   pathTracker(pathTracker),
                   routeState(routeState),
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   lastStopBucketsEnv(lastStopBucketsEnv),
-                  lastStopsAtVertices(lastStopsAtVertices),
                   bestAssignmentsLogger(LogManager<LoggerT>::getLogger("bestassignments.csv",
                                                                        "request_id, "
                                                                        "issuing_time, "
@@ -169,29 +166,32 @@ namespace karri {
             const auto depTimeAtLastStopBefore = routeState.schedDepTimesFor(vehId)[numStopsBefore - 1];
 
             timer.restart();
-            const auto [pickupIndex, dropoffIndex] = routeState.insert(offer);
+
+            auto [pickupIndex, dropoffIndex] = routeState.insert(offer);
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
 
-            if (offer.pickupStopIdx == 0 && numStopsBefore > 1 &&
-                routeState.schedDepTimesFor(vehId)[0] < requestState.originalRequest.minDepTime) {
-                movePreviousStopToCurrentLocationForReroute(vehId);
-            }
-
             updateBucketState(offer, pickupIndex, dropoffIndex, depTimeAtLastStopBefore);
+
+
+            // If the vehicle has to be rerouted at its current location for a PBNS assignment, we introduce an
+            // intermediate stop at its current location representing the rerouting.
+            if (offer.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] <
+                                                                 requestState.originalRequest.issuingTime) {
+                createIntermediateStopStopAtCurrentLocationForReroute(fleet[offer.vehicleId],
+                                                                      requestState.originalRequest.issuingTime);
+                ++pickupIndex;
+                ++dropoffIndex;
+            }
 
             pickupStopId = routeState.stopIdsFor(vehId)[pickupIndex];
             dropoffStopId = routeState.stopIdsFor(vehId)[dropoffIndex];
 
             // Register the inserted pickup and dropoff with the path data
-            const bool pickupAtExistingStop = pickupIndex == offer.pickupStopIdx;
-            const bool dropoffAtExistingStop = dropoffIndex == offer.dropoffStopIdx + !pickupAtExistingStop;
-            pathTracker.updateForBestAssignment(pickupIndex, dropoffIndex, numStopsBefore, dropoffAtExistingStop);
-
+            pathTracker.registerPdEventsForBestAssignment(pickupStopId, dropoffStopId);
         }
 
         void notifyStopStarted(const Vehicle &veh) {
-            pathTracker.logCompletedLeg(veh);
 
             // Update buckets and route state
             ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
@@ -204,12 +204,15 @@ namespace karri {
             }
         }
 
+
+        void notifyStopCompleted(const Vehicle &veh) {
+            pathTracker.logCompletedStop(veh);
+        }
+
         void notifyVehicleReachedEndOfServiceTime(const Vehicle &veh) {
             const auto vehId = veh.vehicleId;
             assert(routeState.numStopsOf(vehId) == 1);
-            const auto loc = inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[0]);
 
-            lastStopsAtVertices.removeLastStopAt(loc, vehId);
             lastStopBucketsEnv.removeIdleBucketEntries(veh, 0);
 
             routeState.removeStartOfCurrentLeg(vehId);
@@ -285,17 +288,18 @@ namespace karri {
 
     private:
 
-        // If vehicle is rerouted from its current position to a newly inserted stop (PBNS assignment), move stop 0
-        // of the vehicle to its current position to maintain the invariant of the schedule for the first stop,
-        // i.e. dist(s_0, s_1) = schedArrTime(s_1) - schedDepTime(s_0).
-        // Update the stop location in the routeState and the bucket entries in the elliptic buckets.
-        void movePreviousStopToCurrentLocationForReroute(const int vehId) {
-            const auto &veh = fleet[vehId];
-            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
+
+        // If vehicle is rerouted from its current position to a newly inserted stop (PBNS assignment), create new
+        // intermediate stop at the vehicle's current position to maintain the invariant of the schedule for the
+        // first stop, i.e. dist(s[i], s[i+1]) = schedArrTime(s[i+1]) - schedDepTime(s[i]).
+        // Intermediate stop gets an arrival time equal to the request time so the stop is reached immediately,
+        // making it the new stop 0. Thus, we do not need to compute target bucket entries for the stop.
+        void createIntermediateStopStopAtCurrentLocationForReroute(const Vehicle &veh, const int now) {
             assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
             auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
-            routeState.updateStartOfCurrentLeg(veh.vehicleId, loc.location, loc.depTimeAtHead);
-            ellipticBucketsEnv.generateSourceBucketEntries(veh, 0);
+            LIGHT_KASSERT(loc.depTimeAtHead >= now);
+            routeState.createIntermediateStopForReroute(veh.vehicleId, loc.location, now, loc.depTimeAtHead);
+            ellipticBucketsEnv.generateSourceBucketEntries(veh, 1);
         }
 
 
@@ -335,6 +339,7 @@ namespace karri {
             const bool pickupAtExistingStop = pickupIndex == offer.pickupStopIdx;
             const bool dropoffAtExistingStop = dropoffIndex == offer.dropoffStopIdx + !pickupAtExistingStop;
 
+
             const auto &veh = fleet[vehId];
             if (!pickupAtExistingStop) {
                 ellipticBucketsEnv.generateTargetBucketEntries(veh, pickupIndex);
@@ -365,22 +370,13 @@ namespace karri {
             } else {
                 lastStopBucketsEnv.removeNonIdleBucketEntries(veh, formerLastStopIdx);
             }
-            lastStopBucketsEnv.generateNonIdleBucketEntries(veh);
 
-            // Update lastStopAtVertices structure
-            Timer timer;
-            const auto oldLocHead = inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[formerLastStopIdx]);
-            const auto newLocHead = inputGraph.edgeHead(offer.dropoffLoc);
-            lastStopsAtVertices.removeLastStopAt(oldLocHead, vehId);
-            lastStopsAtVertices.insertLastStopAt(newLocHead, vehId);
-            const auto lastStopsAtVerticesUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().updateStats.lastStopsAtVerticesUpdateTime += lastStopsAtVerticesUpdateTime;
+            lastStopBucketsEnv.generateNonIdleBucketEntries(fleet[offer.vehicleId]);
         }
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         RequestState &requestState;
-        const InputConfig &inputConfig;
         const CurVehLocsT &curVehLocs;
         PathTrackerT &pathTracker;
 
@@ -390,7 +386,6 @@ namespace karri {
         // Bucket state
         EllipticBucketsEnvT &ellipticBucketsEnv;
         LastStopBucketsEnvT &lastStopBucketsEnv;
-        LastStopsAtVertices &lastStopsAtVertices;
 
         // Performance Loggers
         LoggerT &bestAssignmentsLogger;

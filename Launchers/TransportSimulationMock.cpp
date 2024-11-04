@@ -154,6 +154,8 @@ int main(int argc, char *argv[]) {
 
         // todo: Iterate requests and send via socket
 
+        std::cout << "|V| = " << vehicleInputGraph.numVertices() << ", |E| = " << vehicleInputGraph.numEdges() << std::endl;
+
         MockMobitoppRequests mockMobitopp(requests, port);
         mockMobitopp.run();
 

@@ -71,7 +71,7 @@ public:
         friend LabelMask operator&(const LabelMask &mask1, const LabelMask &mask2) {
             LabelMask res;
             for (int i = 0; i < K; ++i)
-                res.isMarked[i] = mask1.isMarked[i] & mask2.isMarked[i];
+                res.isMarked[i] = mask1.isMarked[i] && mask2.isMarked[i];
             return res;
         }
 
@@ -85,7 +85,7 @@ public:
         friend LabelMask operator|(const LabelMask &mask1, const LabelMask& mask2) {
             LabelMask res;
             for (int i = 0; i < K; ++i) {
-                res.isMarked[i] = mask1.isMarked[i] | mask2.isMarked[i];
+                res.isMarked[i] = mask1.isMarked[i] || mask2.isMarked[i];
             }
             return res;
         }

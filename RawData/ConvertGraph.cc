@@ -31,8 +31,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/dynamic_bitset.hpp>
-
 #include "Algorithms/GraphTraversal/StronglyConnectedComponents.h"
 #include "DataStructures/Geometry/Area.h"
 #include "DataStructures/Geometry/Point.h"
@@ -84,7 +82,7 @@ inline void printUsage() {
       "  -a <attrs>        blank-separated list of vertex/edge attributes to be output\n"
       "                      possible values:\n"
       "                        capacity coordinate edge_id free_flow_speed lat_lng\n"
-      "                        length num_lanes osm_road_category\n"
+      "                        length num_lanes osm_node_id osm_road_category\n"
       "                        road_geometry sequential_vertex_id speed_limit\n"
       "                        travel_time vertex_id xatf_road_category\n"
       "  -i <file>         input file(s) without file extension\n"
@@ -206,7 +204,7 @@ int main(int argc, char* argv[]) {
 
     if (clp.isSet("p")) {
       std::cout << "Extracting the given region..." << std::flush;
-      boost::dynamic_bitset<> isVertexInsideRegion(graph.numVertices());
+      BitVector isVertexInsideRegion(graph.numVertices());
       Area area;
       area.importFromOsmPolyFile(clp.getValue<std::string>("p"));
       const auto box = area.boundingBox();

@@ -102,7 +102,8 @@ public:
         auto getSpeedLimit = [&](const OsmRoadCategory cat, const RoutingKit::TagMap &tags) {
             assert(cat != OsmRoadCategory::ROAD);
             const auto maxspeed = tags["maxspeed"];
-            if (maxspeed) {
+            // Some OSM roads have no speed limit or maxspeed=0, which is not a valid speed limit.
+            if (maxspeed && !stringEq(maxspeed, "0") && !stringEq(maxspeed, "0.0")) {
                 try {
                     if (endsWith(maxspeed, "mph")) {
                         std::string maxspeedWithoutUnit(maxspeed, std::strlen(maxspeed) - 3);

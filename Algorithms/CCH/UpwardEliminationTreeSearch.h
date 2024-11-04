@@ -47,7 +47,7 @@ namespace elimintree {
         // Returns true if the search can be pruned at v.
         template<typename DistanceLabelT, typename DistanceLabelContainerT>
         bool operator()(const int, const DistanceLabelT &distToV, const DistanceLabelContainerT &) const {
-            return !(distToV < INFTY);
+            return !anySet(distToV < INFTY);
         }
     };
 
@@ -269,7 +269,7 @@ private:
                 auto &distToW = distanceLabels[w];
                 const auto distViaV = distToV + searchGraph.traversalCost(e);
                 const auto mask = distViaV < distToW;
-                if (mask) {
+                if (anySet(mask)) {
                     distToW.min(distViaV);
                     parent.setVertex(w, v, mask);
                     parent.setEdge(w, e, mask);

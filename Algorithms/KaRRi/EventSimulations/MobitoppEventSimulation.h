@@ -80,14 +80,13 @@ namespace karri {
     public:
 
         MobitoppEventSimulation(
-                const Fleet &fleet, const RouteState &routeState, const InputConfig &inputConfig,
+                const Fleet &fleet, const RouteState &routeState,
                 AssignmentFinderT &assignmentFinder, SystemStateUpdaterT &systemStateUpdater,
                 const ScheduledStopsT &scheduledStops, const int expectedMinNumRequests = 1000
 //                , const bool verbose = false
         )
                 : fleet(fleet),
                   routeState(routeState),
-                  inputConfig(inputConfig),
                   assignmentFinder(assignmentFinder),
                   systemStateUpdater(systemStateUpdater),
                   scheduledStops(scheduledStops),
@@ -247,13 +246,13 @@ namespace karri {
             using namespace time_utils;
             const auto &asgn = asgnFinderResponse.getBestAssignment();
 
-            const int actualDepTime = getActualDepTimeAtPickup(asgn, asgnFinderResponse, routeState, inputConfig);
+            const int actualDepTime = getActualDepTimeAtPickup(asgn, asgnFinderResponse, routeState);
             const int waitTime = actualDepTime - request.minDepTime;
             const auto initialPickupDetour = calcInitialPickupDetour(asgn, actualDepTime, asgnFinderResponse,
                                                                      routeState);
             const bool dropoffAtExistingStop = isDropoffAtExistingStop(asgn, routeState);
             const int rideTime = getArrTimeAtDropoff(actualDepTime, asgn, initialPickupDetour, dropoffAtExistingStop,
-                                                     routeState, inputConfig);
+                                                     routeState);
 
             // Fare model: 2 euro plus 30ct per minute of direct distance.
             const int fare = static_cast<int>(std::floor(
@@ -495,7 +494,6 @@ namespace karri {
 
         const Fleet &fleet;
         const RouteState &routeState;
-        const InputConfig &inputConfig;
 
         AssignmentFinderT &assignmentFinder;
         SystemStateUpdaterT &systemStateUpdater;

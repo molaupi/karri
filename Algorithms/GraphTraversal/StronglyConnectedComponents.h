@@ -29,8 +29,6 @@
 #include <stack>
 #include <vector>
 
-#include <boost/dynamic_bitset.hpp>
-
 #include "Algorithms/GraphTraversal/DepthFirstSearch.h"
 #include "Tools/Workarounds.h"
 
@@ -65,8 +63,8 @@ class StronglyConnectedComponents {
   }
 
   // Returns a bitmask indexed by vertices where bitmask[v] is set iff v lies in the largest SCC.
-  boost::dynamic_bitset<> getLargestSccAsBitmask() const {
-    boost::dynamic_bitset<> bitmask(components.size());
+  BitVector getLargestSccAsBitmask() const {
+    BitVector bitmask(static_cast<int>(components.size()));
     for (int i = 0; i < components.size(); ++i)
       bitmask[i] = components[i] == largestScc;
     return bitmask;

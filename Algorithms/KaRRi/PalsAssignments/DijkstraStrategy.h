@@ -30,7 +30,7 @@
 #include "Algorithms/Dijkstra/Dijkstra.h"
 #include "Algorithms/KaRRi/LastStopSearches/TentativeLastStopDistances.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
-#include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
+#include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 
 namespace karri::PickupAfterLastStopStrategies {
 
@@ -80,12 +80,10 @@ namespace karri::PickupAfterLastStopStrategies {
                          const LastStopsAtVertices &lastStopsAtVertices,
                          const CostCalculator &calculator,
                          PDDistancesT &pdDistances,
-                         RequestState &requestState,
-                         const InputConfig &inputConfig)
+                         RequestState &requestState)
                 : inputGraph(inputGraph),
                   reverseGraph(reverseGraph),
                   requestState(requestState),
-                  inputConfig(inputConfig),
                   pdDistances(pdDistances),
                   calculator(calculator),
                   fleet(fleet),
@@ -153,8 +151,7 @@ namespace karri::PickupAfterLastStopStrategies {
                         continue;
 
                     // Compute cost lower bound for this pickup specifically
-                    const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState,
-                                                                              routeState, inputConfig);
+                    const auto depTimeAtThisPickup = getActualDepTimeAtPickup(asgn, requestState, routeState);
                     const auto vehTimeTillDepAtThisPickup = depTimeAtThisPickup -
                                                             getVehDepTimeAtStopForRequest(vehId, numStops - 1,
                                                                                           requestState.now(), routeState);
@@ -164,7 +161,8 @@ namespace karri::PickupAfterLastStopStrategies {
                     const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
                                                                                              psgTimeTillDepAtThisPickup,
                                                                                              minDirectDistForThisPickup,
-                                                                                             asgn.pickup->walkingDist, 0,
+                                                                                             asgn.pickup->walkingDist,
+                                                                                             0,
                                                                                              requestState);
                     if (minCost > requestState.getBestCost())
                         continue;
@@ -241,7 +239,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const InputGraphT &inputGraph;
         const InputGraphT &reverseGraph;
         RequestState &requestState;
-        const InputConfig &inputConfig;
 
         std::array<unsigned int, K> curPickupIds;
         DistanceLabel curWalkingDists;
@@ -261,7 +258,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         Dijkstra<InputGraphT, TravelTimeAttribute, DijLabelSet, TryToInsertPickupAfterLastStop> dijSearchToPickup;
 
-        TentativeLastStopDistances <DijLabelSet> lastStopDistances;
+        TentativeLastStopDistances<DijLabelSet> lastStopDistances;
         Subset vehiclesSeen;
 
     };

@@ -85,8 +85,8 @@ namespace karri {
         >;
 
         EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState,
-                                   const InputConfig &inputConfig, karri::stats::UpdatePerformanceStats &stats)
-                : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState), inputConfig(inputConfig),
+                                   karri::stats::UpdatePerformanceStats &stats)
+                : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState),
                   sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
                   forwardSearchFromNewStop(
                           chEnv.getForwardTopologicalSearch(StoreSearchSpace(searchSpace),
@@ -117,7 +117,7 @@ namespace karri {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex + 1],
                                         routeState.schedDepTimesFor(veh.vehicleId)[stopIndex + 1]) -
-                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex] - inputConfig.stopTime;
+                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex] - InputConfig::getInstance().stopTime;
 
             if (leeway <= 0)
                 return;
@@ -143,7 +143,7 @@ namespace karri {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex],
                                         routeState.schedDepTimesFor(veh.vehicleId)[stopIndex]) -
-                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] - inputConfig.stopTime;
+                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] - InputConfig::getInstance().stopTime;
             if (leeway <= 0)
                 return;
 
@@ -343,7 +343,6 @@ namespace karri {
         const InputGraphT &inputGraph;
         const CH &ch;
         const RouteState &routeState;
-        const InputConfig &inputConfig;
 
         BucketContainer sourceBuckets;
         BucketContainer targetBuckets;

@@ -38,7 +38,7 @@
 namespace socketio {
 
     // Number of bytes that can be read in one read via sockets.
-    static constexpr int BUFFER_SIZE = 4096;
+    static constexpr int BUFFER_SIZE = 8192;
 
     struct SocketError : public std::runtime_error {
         explicit SocketError(const std::string &what) : std::runtime_error(what) {}
