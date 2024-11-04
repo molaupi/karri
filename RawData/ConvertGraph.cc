@@ -92,7 +92,7 @@ inline void printUsage() {
 
 // A graph data structure encompassing all vertex and edge attributes available for output.
 using VertexAttributes = VertexAttrs<
-    CoordinateAttribute, LatLngAttribute, SequentialVertexIdAttribute, VertexIdAttribute>;
+    CoordinateAttribute, LatLngAttribute, OsmNodeIdAttribute, SequentialVertexIdAttribute, VertexIdAttribute>;
 using EdgeAttributes = EdgeAttrs<
     CapacityAttribute, EdgeIdAttribute, FreeFlowSpeedAttribute, LengthAttribute,
     NumLanesAttribute, OsmRoadCategoryAttribute, RoadGeometryAttribute, SpeedLimitAttribute,

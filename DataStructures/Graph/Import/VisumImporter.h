@@ -85,7 +85,7 @@ class VisumImporter {
 
   // Opens the input file(s) and reads the header line(s).
   void init(const std::string& filename) {
-    vertexReader.read_header(io::ignore_extra_column, "NO", "XCOORD", "YCOORD");
+    vertexReader.read_header(io::ignore_extra_column, "NO", "XCOORD", "YCOORD", "OSM_NODE_ID");
     edgeReader.read_header(
         io::ignore_extra_column, "FROMNODENO", "TONODENO", "TYPENO", "TSYSSET",
         "LENGTH", "NUMLANES", "CAPPRT", "V0PRT");
@@ -131,7 +131,8 @@ class VisumImporter {
   // Reads the next vertex from disk. Returns false if there are no more vertices.
   bool nextVertex() {
     double easting, northing;
-    if (!vertexReader.read_row(currentVertex.id, easting, northing))
+    uint64_t osmNodeId;
+    if (!vertexReader.read_row(currentVertex.id, easting, northing, osmNodeId))
       return false;
 
     assert(origToNewId.find(currentVertex.id) == origToNewId.end());
@@ -145,6 +146,8 @@ class VisumImporter {
         currentVertex.coordinate.x() / coordinatePrecision,
         currentVertex.coordinate.y() / coordinatePrecision, lng, lat);
     currentVertex.latLng = {lat, lng};
+
+    currentVertex.osmNodeId = osmNodeId;
     return true;
   }
 
@@ -261,6 +264,7 @@ class VisumImporter {
     int id;
     Point coordinate;
     LatLng latLng;
+    uint64_t osmNodeId;
   };
 
   // An edge record in Visum network file format.
@@ -283,7 +287,7 @@ class VisumImporter {
 
   using IdMap = std::unordered_map<int, int>;
 
-  VisumFileReader<3> vertexReader;     // The CSV file that contains the vertex records.
+  VisumFileReader<4> vertexReader;     // The CSV file that contains the vertex records.
   VisumFileReader<8> edgeReader;       // The CSV file that contains the edge records.
   VisumFileReader<5> interPointReader; // The CSV file that contains the intermediate point records.
   const std::string transportSystem;   // The system (car, bicycle) whose network is to be imported.
@@ -312,6 +316,12 @@ inline CoordinateAttribute::Type VisumImporter::getValue<CoordinateAttribute>() 
 template <>
 inline LatLngAttribute::Type VisumImporter::getValue<LatLngAttribute>() const {
   return currentVertex.latLng;
+}
+
+// Returns the value of the OsmNodeId attribute for the current vertex.
+template <>
+inline OsmNodeIdAttribute::Type VisumImporter::getValue<OsmNodeIdAttribute>() const {
+    return currentVertex.osmNodeId;
 }
 
 // Returns the value of the capacity attribute for the current edge.
