@@ -173,7 +173,7 @@ class VisumImporter {
       open = true;
       auto j = 0;
       for (auto i = 0; permittedSystems[i] != '\0'; ++i)
-        if (permittedSystems[i] == ';') {
+        if (permittedSystems[i] == VISUM_CSV_LIST_SEPARATOR) {
           if (open && transportSystem[j] == '\0')
             break;
           open = true;
@@ -255,9 +255,20 @@ class VisumImporter {
   void close() { /* do nothing */ }
 
  private:
+
   // The CSV dialect used by Visum.
+# ifdef VISUM_GERMAN_CSV_STYLE
+    // German-style uses semicolon-separated columns in CSVs.
+    static constexpr char VISUM_CSV_COLUMN_SEPARATOR = ';';
+    static constexpr char VISUM_CSV_LIST_SEPARATOR = ',';
+# else
+    // Default settings for comma-separated columns in CSVs.
+    static constexpr char VISUM_CSV_COLUMN_SEPARATOR = ',';
+    static constexpr char VISUM_CSV_LIST_SEPARATOR = ';';
+#endif
+
   template <int numFields>
-  using VisumFileReader = io::CSVReader<numFields, io::trim_chars<>, io::no_quote_escape<','>>;
+  using VisumFileReader = io::CSVReader<numFields, io::trim_chars<>, io::no_quote_escape<VISUM_CSV_COLUMN_SEPARATOR>>;
 
   // A vertex record in Visum network file format.
   struct VertexRecord {
