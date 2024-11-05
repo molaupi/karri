@@ -131,7 +131,7 @@ class VisumImporter {
   // Reads the next vertex from disk. Returns false if there are no more vertices.
   bool nextVertex() {
     double easting, northing;
-    uint64_t osmNodeId;
+    uint64_t osmNodeId = INVALID_ID;
     if (!vertexReader.read_row(currentVertex.id, easting, northing, osmNodeId))
       return false;
 

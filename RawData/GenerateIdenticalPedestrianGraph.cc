@@ -71,6 +71,8 @@ int main(int argc, char *argv[]) {
         base_filename = base_filename.substr(0, base_filename.size() - std::string(".gr.bin").size());
 
         auto outputDirName = clp.getValue<std::string>("o");
+        if (!endsWith(outputDirName, "/"))
+            outputDirName += "/";
 
         const auto speed = clp.getValue<double>("s", 4.5);
 
