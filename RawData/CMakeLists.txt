@@ -38,6 +38,7 @@ endif()
 
 add_executable(GenerateRandomVehicles GenerateRandomVehicles.cc)
 target_compile_definitions(GenerateRandomVehicles PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateRandomVehicles kassert)
 
 add_executable(DrawRandomDepartureTimes DrawRandomDepartureTimes.cc)
 target_compile_definitions(DrawRandomDepartureTimes PRIVATE CSV_IO_NO_THREAD)
@@ -68,3 +69,7 @@ add_executable(GenerateGeoJsonForRequests GenerateGeoJsonForRequests.cc)
 target_compile_definitions(GenerateGeoJsonForRequests PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(GenerateGeoJsonForRequests PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
 
+
+add_executable(GenerateIdenticalPedestrianGraph GenerateIdenticalPedestrianGraph.cc)
+target_compile_definitions(GenerateIdenticalPedestrianGraph PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateIdenticalPedestrianGraph PRIVATE kassert ${BOOST_LIBRARIES})
