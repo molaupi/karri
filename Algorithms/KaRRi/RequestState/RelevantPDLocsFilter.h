@@ -38,64 +38,54 @@ namespace karri {
 
         RelevantPDLocsFilter(const Fleet &fleet, const InputGraphT &inputGraph, const CHEnvT &chEnv,
                              const CostCalculator &calculator,
-                             RequestState &requestState, const RouteState &routeState,
-                             const FeasibleDistancesT &feasiblePickupDistances,
-                             const FeasibleDistancesT &feasibleDropoffDistances,
-                             RelevantPDLocs &relOrdinaryPickups, RelevantPDLocs &relOrdinaryDropoffs,
-                             RelevantPDLocs &relPickupsBeforeNextStop, RelevantPDLocs &relDropoffsBeforeNextStop)
+                             RequestState &requestState, const RouteState &routeState)
                 : fleet(fleet),
                   inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   chQuery(chEnv.template getFullCHQuery<>()),
                   calculator(calculator),
                   requestState(requestState),
-                  routeState(routeState),
-                  feasiblePickupDistances(feasiblePickupDistances),
-                  feasibleDropoffDistances(feasibleDropoffDistances),
-                  relOrdinaryPickups(relOrdinaryPickups),
-                  relOrdinaryDropoffs(relOrdinaryDropoffs),
-                  relPickupsBeforeNextStop(relPickupsBeforeNextStop),
-                  relDropoffsBeforeNextStop(relDropoffsBeforeNextStop) {}
+                  routeState(routeState) {}
 
 
-        void filterOrdinary() {
+        void filterOrdinaryPickups(const FeasibleDistancesT& feasiblePickupDistances, RelevantPDLocs& relOrdinaryPickups) {
             Timer timer;
 
-            const int numRelStopsForPickups = filterOrdinaryPickups();
-            const int numRelStopsForDropoffs = filterOrdinaryDropoffs();
+            const auto numRelStops =  filter<false, false>(feasiblePickupDistances, relOrdinaryPickups, requestState.numPickups());
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().ordAssignmentsStats.filterRelevantPDLocsTime += time;
-            requestState.stats().ordAssignmentsStats.numRelevantStopsForPickups += numRelStopsForPickups;
-            requestState.stats().ordAssignmentsStats.numRelevantStopsForDropoffs += numRelStopsForDropoffs;
+            requestState.stats().ordAssignmentsStats.numRelevantStopsForPickups += numRelStops;
         }
 
-        int filterOrdinaryPickups() {
-            return filter<false, false>(feasiblePickupDistances, relOrdinaryPickups, requestState.numPickups());
-        }
-
-        int filterOrdinaryDropoffs() {
-            return filter<false, true>(feasibleDropoffDistances, relOrdinaryDropoffs, requestState.numDropoffs());
-        }
-
-        void filterBeforeNextStop() {
+        void filterOrdinaryDropoffs(const FeasibleDistancesT& feasibleDropoffDistances, RelevantPDLocs& relOrdinaryDropoffs) {
             Timer timer;
 
-            const int numRelStopsForPickups = filterPickupsBeforeNextStop();
-            const int numRelStopsForDropoffs = filterDropoffsBeforeNextStop();
+            const auto numRelStops =  filter<false, true>(feasibleDropoffDistances, relOrdinaryDropoffs, requestState.numDropoffs());
+
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().ordAssignmentsStats.filterRelevantPDLocsTime += time;
+            requestState.stats().ordAssignmentsStats.numRelevantStopsForDropoffs += numRelStops;
+        }
+
+        void filterPickupsBeforeNextStop(const FeasibleDistancesT& feasiblePickupDistances, RelevantPDLocs& relPickupsBeforeNextStop) {
+            Timer timer;
+
+            const auto numRelStops = filter<true, false>(feasiblePickupDistances, relPickupsBeforeNextStop, requestState.numPickups());
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pbnsAssignmentsStats.filterRelevantPDLocsTime += time;
-            requestState.stats().pbnsAssignmentsStats.numRelevantStopsForPickups += numRelStopsForPickups;
-            requestState.stats().pbnsAssignmentsStats.numRelevantStopsForDropoffs += numRelStopsForDropoffs;
+            requestState.stats().pbnsAssignmentsStats.numRelevantStopsForPickups += numRelStops;
         }
 
-        int filterPickupsBeforeNextStop() {
-            return filter<true, false>(feasiblePickupDistances, relPickupsBeforeNextStop, requestState.numPickups());
-        }
+        void filterDropoffsBeforeNextStop(const FeasibleDistancesT& feasibleDropoffDistances, RelevantPDLocs& relDropoffsBeforeNextStop) {
+            Timer timer;
 
-        int filterDropoffsBeforeNextStop() {
-            return filter<true, true>(feasibleDropoffDistances, relDropoffsBeforeNextStop, requestState.numDropoffs());
+            const auto numRelStops =  filter<true, true>(feasibleDropoffDistances, relDropoffsBeforeNextStop, requestState.numDropoffs());
+
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().pbnsAssignmentsStats.filterRelevantPDLocsTime += time;
+            requestState.stats().pbnsAssignmentsStats.numRelevantStopsForDropoffs += numRelStops;
         }
 
     private:
@@ -112,7 +102,6 @@ namespace karri {
 
             rel.relevantSpots.clear();
             rel.vehiclesWithRelevantSpots.clear();
-
 
             const auto &vehiclesWithFeasibleDistances = feasible.getVehiclesWithRelevantPDLocs();
 
@@ -331,13 +320,5 @@ namespace karri {
         const CostCalculator &calculator;
         RequestState &requestState;
         const RouteState &routeState;
-
-        const FeasibleDistancesT &feasiblePickupDistances;
-        const FeasibleDistancesT &feasibleDropoffDistances;
-
-        RelevantPDLocs &relOrdinaryPickups;
-        RelevantPDLocs &relOrdinaryDropoffs;
-        RelevantPDLocs &relPickupsBeforeNextStop;
-        RelevantPDLocs &relDropoffsBeforeNextStop;
     };
 }

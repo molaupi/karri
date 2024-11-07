@@ -47,8 +47,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             bool operator()(const int &vehId) const {
                 return strat.routeState.numStopsOf(vehId) > 1 &&
-                       (strat.relevantPickupsBeforeNextStop.hasRelevantSpotsFor(vehId) ||
-                        strat.relevantOrdinaryPickups.hasRelevantSpotsFor(vehId));
+                       (strat.curRelPickupsBns->hasRelevantSpotsFor(vehId) ||
+                        strat.curRelOrdinaryPickups->hasRelevantSpotsFor(vehId));
             }
 
         private:
@@ -68,9 +68,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const CostCalculator &calculator,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
-                              RequestState &requestState,
-                              const RelevantPDLocs &relevantOrdinaryPickups,
-                              const RelevantPDLocs &relevantPickupsBeforeNextStop)
+                              RequestState &requestState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   routeState(routeState),
@@ -80,8 +78,6 @@ namespace karri::DropoffAfterLastStopStrategies {
                                        {chEnv.getCH().upwardGraph()}),
                   ch(chEnv.getCH()),
                   requestState(requestState),
-                  relevantOrdinaryPickups(relevantOrdinaryPickups),
-                  relevantPickupsBeforeNextStop(relevantPickupsBeforeNextStop),
                   isVehEligibleForDropoffAfterLastStop(*this),
                   minCostSearch(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv,
                                 isVehEligibleForDropoffAfterLastStop, routeState, requestState),
@@ -89,9 +85,13 @@ namespace karri::DropoffAfterLastStopStrategies {
                   checkPBNSForVehicle(fleet.size()),
                   fullCHQuery(chEnv.template getFullCHQuery<FallBackCHLabelSet>()) {}
 
-        void tryDropoffAfterLastStop() {
+        void tryDropoffAfterLastStop(const RelevantPDLocs &relevantOrdinaryPickups,
+                                     const RelevantPDLocs &relevantPickupsBeforeNextStop) {
+            curRelOrdinaryPickups = &relevantOrdinaryPickups;
+            curRelPickupsBns = &relevantPickupsBeforeNextStop;
+
             runCollectiveSearch();
-            enumerateAssignments();
+            enumerateAssignments(relevantOrdinaryPickups, relevantPickupsBeforeNextStop);
         }
 
 
@@ -123,7 +123,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         // breakers, and filter them again using cost lower bounds after trying all feasible assignments with pareto best
         // dropoffs. Then, if any constraint breakers remain for a vehicle veh, we compute the distances from the last
         // stop of veh to all dropoffs and try every assignment explicitly.
-        void enumerateAssignments() {
+        void enumerateAssignments(const RelevantPDLocs &relevantOrdinaryPickups,
+                                  const RelevantPDLocs &relevantPickupsBeforeNextStop) {
             const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
                                            curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
             int numAssignmentsTried = 0;
@@ -136,9 +137,9 @@ namespace karri::DropoffAfterLastStopStrategies {
             constraintBreakers.clear();
 
             enumerateAssignmentsWithOrdinaryPickup(numAssignmentsTried, numParetoBestLabels, numFallBackChSearches,
-                                                   ranClosestDropoffSearch);
+                                                   ranClosestDropoffSearch, relevantOrdinaryPickups);
             enumerateAssignmentsWithPBNS(numAssignmentsTried, numParetoBestLabels, numFallBackChSearches,
-                                         ranClosestDropoffSearch);
+                                         ranClosestDropoffSearch, relevantPickupsBeforeNextStop);
 
             // Time spent to locate vehicles and compute distances from current vehicle locations to pickups is counted
             // into PBNS time so subtract it here.
@@ -161,7 +162,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         void enumerateAssignmentsWithOrdinaryPickup(int &numAssignmentsTried, int &numParetoBestLabels,
-                                                    int &numFallBackChSearches, bool &ranClosestDropoffSearch) {
+                                                    int &numFallBackChSearches, bool &ranClosestDropoffSearch,
+                                                    const RelevantPDLocs &relevantOrdinaryPickups) {
             using namespace time_utils;
             Assignment asgn;
 
@@ -274,7 +276,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         void
         enumerateAssignmentsWithPBNS(int &numAssignmentsTried, int &, int &numFallBackChSearches,
-                                     bool &ranClosestDropoffSearch) {
+                                     bool &ranClosestDropoffSearch, const RelevantPDLocs &relevantPickupsBeforeNextStop) {
             using namespace time_utils;
 
             Assignment asgn;
@@ -582,8 +584,10 @@ namespace karri::DropoffAfterLastStopStrategies {
         ClosestDropoffToLastStopQuery closestDropoffSearch;
         const CH &ch;
         RequestState &requestState;
-        const RelevantPDLocs &relevantOrdinaryPickups;
-        const RelevantPDLocs &relevantPickupsBeforeNextStop;
+
+        // Pointers to relevant PD locs so Dijkstra search callback has access to them
+        RelevantPDLocs const *curRelOrdinaryPickups;
+        RelevantPDLocs const *curRelPickupsBns;
 
         IsVehEligibleForDropoffAfterLastStop isVehEligibleForDropoffAfterLastStop;
         MinCostLabelSearch minCostSearch;

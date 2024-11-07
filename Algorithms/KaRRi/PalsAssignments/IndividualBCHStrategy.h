@@ -157,14 +157,12 @@ namespace karri::PickupAfterLastStopStrategies {
                               const CHEnvT &chEnv,
                               const CostCalculator &calculator,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              const PDDistancesT &pdDistances,
                               const RouteState &routeState,
                               RequestState &requestState,
                               const int &bestCostBeforeQuery)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
-                  pdDistances(pdDistances),
                   routeState(routeState),
                   requestState(requestState),
                   bestCostBeforeQuery(bestCostBeforeQuery),
@@ -173,20 +171,20 @@ namespace karri::PickupAfterLastStopStrategies {
                          PickupAfterLastStopPruner(*this, calculator)),
                   vehiclesSeenForPickups(fleet.size()) {}
 
-        void tryPickupAfterLastStop() {
-            runBchSearches();
-            enumerateAssignments();
+        void tryPickupAfterLastStop(const PDDistancesT& pdDistances) {
+            runBchSearches(pdDistances);
+            enumerateAssignments(pdDistances);
         }
 
     private:
 
         // Run BCH searches that find distances from last stops to pickups
-        void runBchSearches() {
+        void runBchSearches(const PDDistancesT& pdDistances) {
             Timer timer;
 
             initPickupSearches();
             for (int i = 0; i < requestState.numPickups(); i += K)
-                runSearchesForPickupBatch(i);
+                runSearchesForPickupBatch(i, pdDistances);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().palsAssignmentsStats.searchTime += searchTime;
@@ -197,7 +195,7 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Enumerate assignments with pickup after last stop
-        void enumerateAssignments() {
+        void enumerateAssignments(const PDDistancesT& pdDistances) {
             using namespace time_utils;
 
 
@@ -270,7 +268,7 @@ namespace karri::PickupAfterLastStopStrategies {
             distances.init(numPickupBatches);
         }
 
-        void runSearchesForPickupBatch(const int firstPickupId) {
+        void runSearchesForPickupBatch(const int firstPickupId, const PDDistancesT& pdDistances) {
             assert(firstPickupId % K == 0 && firstPickupId < requestState.numPickups());
 
 
@@ -298,7 +296,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CostCalculator &calculator;
-        const PDDistancesT &pdDistances;
         const RouteState &routeState;
         RequestState &requestState;
         const int &bestCostBeforeQuery;

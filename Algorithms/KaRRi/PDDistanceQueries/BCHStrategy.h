@@ -37,7 +37,6 @@ namespace karri::PDDistanceQueryStrategies {
 
     template<typename InputGraphT,
             typename CHEnvT,
-            typename VehicleToPDLocQueryT,
             typename LabelSetT>
     class BCHStrategy {
 
@@ -45,6 +44,7 @@ namespace karri::PDDistanceQueryStrategies {
 
         static constexpr int K = LabelSetT::K;
         using DistanceLabel = typename LabelSetT::DistanceLabel;
+        using PDDistancesT = PDDistances<LabelSetT>;
 
     private:
 
@@ -135,14 +135,10 @@ namespace karri::PDDistanceQueryStrategies {
     public:
 
         BCHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                    PDDistances<LabelSetT> &distances,
-                    RequestState &requestState,
-                    VehicleToPDLocQueryT &vehicleToPDLocQuery)
+                    RequestState &requestState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   requestState(requestState),
-                  vehicleToPDLocQuery(vehicleToPDLocQuery),
-                  distances(distances),
                   dropoffBuckets(inputGraph.numVertices()),
                   fillBucketsSearch(
                           chEnv.template getReverseSearch<WriteBucketEntry, StopWhenMaxDistExceeded, LabelSetT>(
@@ -154,10 +150,13 @@ namespace karri::PDDistanceQueryStrategies {
 
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
-        void run() {
+        void run(PDDistancesT& pdDistances) {
             assert(requestState.pickups[0].loc == requestState.originalRequest.origin
                    && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
+
+            // set curPdDistances to allow callback from BCH searches to write distances
+            curPdDistances = &pdDistances;
 
             if (requestState.numPickups() == 1 && requestState.numDropoffs() == 1) {
                 requestState.minDirectPDDist = requestState.originalReqDirectDist;
@@ -250,37 +249,33 @@ namespace karri::PDDistanceQueryStrategies {
             }
 
 
-            requestState.minDirectPDDist = distances.getMinDirectDistance();
+            requestState.minDirectPDDist = pdDistances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
         }
 
         void init() {
-            Timer timer;
-            distances.clear();
-            distances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
-            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime += time;
+            // no op
         }
 
     private:
 
         void
         updatePDDistances(const unsigned int firstPickupId, const unsigned int dropoffId, const DistanceLabel &dist) {
-            distances.updateDistanceBatchIfSmaller(firstPickupId, dropoffId, dist);
+            KASSERT(curPdDistances);
+            curPdDistances->updateDistanceBatchIfSmaller(firstPickupId, dropoffId, dist);
         }
 
         const InputGraphT &inputGraph;
         const CH &ch;
         RequestState &requestState;
-        VehicleToPDLocQueryT &vehicleToPDLocQuery;
-
-        PDDistances<LabelSetT> &distances;
 
         BucketContainer dropoffBuckets;
         FillBucketsSearch fillBucketsSearch;
         FindPDDistancesSearch findPDDistancesSearch;
+
+        PDDistancesT *curPdDistances;
 
         int upperBoundDirectPDDist;
         unsigned int curFirstPickupId;

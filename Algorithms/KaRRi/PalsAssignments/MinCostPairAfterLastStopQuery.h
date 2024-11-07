@@ -56,23 +56,23 @@ namespace karri::PickupAfterLastStopStrategies {
     template<typename InputGraphT,
             typename CHEnvT,
             typename LastStopBucketsEnvT,
-            typename DirectSearchesT,
+            typename PDDistancesT,
             typename QueueT = AddressableQuadHeap,
             bool STALL_LABELS = false>
     class MinCostPairAfterLastStopQuery {
 
         using BucketContainer = LabelBucketContainer<PDPairAfterLastStopLabel>;
 
-        using PDDistanceLabel = typename DirectSearchesT::DistanceLabel;
-        using PDLabelMask = typename DirectSearchesT::LabelMask;
-        static constexpr int PD_K = DirectSearchesT::K;
+        using PDDistanceLabel = typename PDDistancesT::DistanceLabel;
+        using PDLabelMask = typename PDDistancesT::LabelMask;
+        static constexpr int PD_K = PDDistancesT::K;
         static constexpr int INVALID_DIST = -1;
 
     public:
 
         MinCostPairAfterLastStopQuery(const InputGraphT &inputGraph, const Fleet &fleet,
                                       const CHEnvT &chEnv,
-                                      const RouteState &routeState, DirectSearchesT &directSearches,
+                                      const RouteState &routeState,
                                       const CostCalculator &calculator,
                                       const LastStopBucketsEnvT &lastStopBucketsEnv,
                                       const RequestState &requestState)
@@ -84,7 +84,6 @@ namespace karri::PickupAfterLastStopStrategies {
                   routeState(routeState),
                   calculator(calculator),
                   lastStopBuckets(lastStopBucketsEnv.getBuckets()),
-                  directSearches(directSearches),
                   requestState(requestState),
                   reverseLabelBuckets(inputGraph.numVertices()),
                   reverseQueue(queryGraph.numVertices()),
@@ -93,11 +92,11 @@ namespace karri::PickupAfterLastStopStrategies {
                   bestCostWithoutConstraints(INFTY),
                   bestAsgn() {}
 
-        void run(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost) {
+        void run(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost, const PDDistancesT& pdDistances) {
 
             Timer timer;
 
-            initQueryForRun(promisingDropoffIds, bestKnownCost);
+            initQueryForRun(promisingDropoffIds, bestKnownCost, pdDistances);
 
             initializationTime = timer.elapsed<std::chrono::nanoseconds>();
             timer.restart();
@@ -171,7 +170,7 @@ namespace karri::PickupAfterLastStopStrategies {
             return minCostLowerBound > bestCostWithoutConstraints;
         }
 
-        void initQueryForRun(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost) {
+        void initQueryForRun(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost, const PDDistancesT& pdDistances) {
             numLabelsRelaxed = 0;
             numEntriesScanned = 0;
             numInitialLabelsGenerated = 0;
@@ -197,7 +196,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 directDistsForInitialLabels.clear();
                 for (const auto &dropoffId: promisingDropoffIds) {
                     const auto &dropoff = requestState.dropoffs[dropoffId];
-                    const auto &directDistBatch = directSearches.getDirectDistancesForBatchOfPickups(
+                    const auto &directDistBatch = pdDistances.getDirectDistancesForBatchOfPickups(
                             pickupBatchIdx * PD_K, dropoffId);
                     checkDropoffForInitialLabelWithGivenPickupBatch(dropoff, directDistBatch);
                 }
@@ -659,7 +658,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const RouteState &routeState;
         const CostCalculator &calculator;
         const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
-        DirectSearchesT &directSearches;
         const RequestState &requestState;
 
         BucketContainer reverseLabelBuckets;

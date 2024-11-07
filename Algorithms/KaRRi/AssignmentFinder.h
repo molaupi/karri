@@ -36,7 +36,11 @@ namespace karri {
     // Core of the KaRRi algorithm: Given a ride request r, this facility finds the optimal assignment of r to the route
     // of a vehicle and a pickup and dropoff location, according to the current state of all vehicle routes.
     template<
+            typename InputGraphT,
+            typename PDDistancesT,
+            typename FeasibleEllipticDistancesT,
             typename RequestStateInitializerT,
+            typename PDLocsAtExistingStopsFinderT,
             typename EllipticBCHSearchesT,
             typename PDDistanceSearchesT,
             typename OrdAssignmentsT,
@@ -50,7 +54,13 @@ namespace karri {
     public:
 
         AssignmentFinder(RequestState &requestState,
+                         const InputGraphT &inputGraph,
+                         const Fleet &fleet,
+                         PDDistancesT &pdDistances,
+                         FeasibleEllipticDistancesT &feasibleEllipticPickups,
+                         FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
                          RequestStateInitializerT &requestStateInitializer,
+                         PDLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder,
                          EllipticBCHSearchesT &ellipticBchSearches,
                          PDDistanceSearchesT &pdDistanceSearches,
                          OrdAssignmentsT &ordinaryAssigments,
@@ -59,7 +69,16 @@ namespace karri {
                          DalsAssignmentsT &dalsAssignments,
                          RelevantPDLocsFilterT &relevantPdLocsFilter)
                 : reqState(requestState),
+                  inputGraph(inputGraph),
+                  pdDistances(pdDistances),
+                  feasibleEllipticPickups(feasibleEllipticPickups),
+                  feasibleEllipticDropoffs(feasibleEllipticDropoffs),
+                  relOrdinaryPickups(fleet.size()),
+                  relOrdinaryDropoffs(fleet.size()),
+                  relPickupsBeforeNextStop(fleet.size()),
+                  relDropoffsBeforeNextStop(fleet.size()),
                   requestStateInitializer(requestStateInitializer),
+                  pdLocsAtExistingStopsFinder(pdLocsAtExistingStopsFinder),
                   ellipticBchSearches(ellipticBchSearches),
                   pdDistanceSearches(pdDistanceSearches),
                   ordAssignments(ordinaryAssigments),
@@ -74,28 +93,36 @@ namespace karri {
             initializeForRequest(req);
 
             // Compute PD distances:
-            pdDistanceSearches.run();
+            pdDistanceSearches.run(pdDistances);
 
             // Try PALS assignments:
-            palsAssignments.findAssignments();
+            palsAssignments.findAssignments(pdDistances);
 
             // Run elliptic BCH searches:
-            ellipticBchSearches.run();
+            feasibleEllipticPickups.initializeDistancesForPdLocsAtExistingStops(
+                    pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<PICKUP>(reqState.pickups),
+                    inputGraph);
+            feasibleEllipticDropoffs.initializeDistancesForPdLocsAtExistingStops(
+                    pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<DROPOFF>(reqState.dropoffs),
+                    inputGraph);
+            ellipticBchSearches.run(feasibleEllipticPickups, feasibleEllipticDropoffs);
 
             // Filter feasible PD-locations between ordinary stops:
-            relevantPdLocsFilter.filterOrdinary();
+            relevantPdLocsFilter.filterOrdinaryPickups(feasibleEllipticPickups, relOrdinaryPickups);
+            relevantPdLocsFilter.filterOrdinaryDropoffs(feasibleEllipticDropoffs, relOrdinaryDropoffs);
 
             // Try ordinary assignments:
-            ordAssignments.findAssignments();
+            ordAssignments.findAssignments(relOrdinaryPickups, relOrdinaryDropoffs, pdDistances);
 
             // Filter feasible PD-locations before next stops:
-            relevantPdLocsFilter.filterBeforeNextStop();
+            relevantPdLocsFilter.filterPickupsBeforeNextStop(feasibleEllipticPickups, relPickupsBeforeNextStop);
+            relevantPdLocsFilter.filterDropoffsBeforeNextStop(feasibleEllipticDropoffs, relDropoffsBeforeNextStop);
 
             // Try DALS assignments:
-            dalsAssignments.findAssignments();
+            dalsAssignments.findAssignments(relOrdinaryPickups, relPickupsBeforeNextStop);
 
             // Try PBNS assignments:
-            pbnsAssignments.findAssignments();
+            pbnsAssignments.findAssignments(relPickupsBeforeNextStop, relOrdinaryDropoffs, relDropoffsBeforeNextStop, pdDistances);
 
             return reqState;
         }
@@ -104,6 +131,9 @@ namespace karri {
 
         void initializeForRequest(const Request &req) {
             requestStateInitializer.initializeRequestState(req);
+            pdDistances.init();
+            feasibleEllipticPickups.init(reqState.numPickups());
+            feasibleEllipticDropoffs.init(reqState.numDropoffs());
 
             // Initialize components according to new request state:
             ellipticBchSearches.init();
@@ -115,7 +145,17 @@ namespace karri {
         }
 
         RequestState &reqState;
+        const InputGraphT &inputGraph;
+        PDDistancesT &pdDistances;
+        FeasibleEllipticDistancesT &feasibleEllipticPickups;
+        FeasibleEllipticDistancesT &feasibleEllipticDropoffs;
+        RelevantPDLocs relOrdinaryPickups;
+        RelevantPDLocs relOrdinaryDropoffs;
+        RelevantPDLocs relPickupsBeforeNextStop;
+        RelevantPDLocs relDropoffsBeforeNextStop;
+
         RequestStateInitializerT &requestStateInitializer;
+        PDLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder; // Identifies pd locs that coincide with existing stops
         EllipticBCHSearchesT &ellipticBchSearches; // Elliptic BCH searches that find distances between existing stops and PD-locations (except after last stop).
         PDDistanceSearchesT &pdDistanceSearches; // PD-distance searches that compute distances from pickups to dropoffs.
         OrdAssignmentsT &ordAssignments; // Tries ordinary assignments where pickup and dropoff are inserted between existing stops.

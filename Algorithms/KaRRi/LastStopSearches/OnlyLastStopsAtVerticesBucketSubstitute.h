@@ -118,8 +118,8 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const RouteState &routeState;
-        std::vector<ValueBlockPosition> firstLastStopAtVertex;
         const int fleetSize;
+        std::vector<ValueBlockPosition> firstLastStopAtVertex;
         std::vector<int> vehiclesOrderedByLastStop;
     };
 }
