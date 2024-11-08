@@ -31,7 +31,7 @@
 #include "Algorithms/KaRRi/BaseObjects/Offer.h"
 #include "MobitoppErrors.h"
 #include "MobitoppMessageHelpers.h"
-#include "Tools/SocketIO/SingleClientBlockingSocketServer.h"
+#include "Tools/SocketIO/SingleClientBlockingStringSocketServer.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -126,9 +126,15 @@ namespace karri {
             } catch (socketio::SocketError& e) {
                 state = COMM_ERROR;
                 std::cerr << "Socket IO Error: " << e.what() << std::endl;
+                // Socket IO error means that no more communication via sockets is possible. Close connection and exit.
+                io.shutDown();
+                return;
             } catch (MobitoppMessageParseError &e) {
                 state = COMM_ERROR;
                 std::cerr << e.what() << std::endl;
+                // MobitoppMessageParseError means that a string message was received, but it cannot be parsed as a
+                // message according to the communication interface. Send an error and fall through, waiting for
+                // mobiTopp to shut down communication.
                 if (VERBOSE)
                     std::cerr << "Message received: " << e.receivedMessage << std::endl;
                 sendError();
@@ -136,12 +142,11 @@ namespace karri {
             } catch (MobitoppCommError &e) {
                 state = COMM_ERROR;
                 std::cerr << e.what() << std::endl;
+                // MobitoppCommError means that a string message was received and could be parsed, but the message type
+                // or content was not as expected. Send an error and fall through, waiting for mobiTopp to shut
+                // down communication.
                 sendError();
                 // todo: Do we try to recover errors?
-            } catch (std::invalid_argument& e) {
-                state = COMM_ERROR;
-                std::cerr << e.what() << std::endl;
-                sendError();
             }
 
             closeIO();
@@ -165,7 +170,10 @@ namespace karri {
 
 
         bool listen() {
-            auto msg = io.receive();
+            std::string msg;
+            const bool moreMsgs = io.receiveString(msg);
+            if (!moreMsgs) // If communication partner has shut down, return false.
+                return false;
             if (VERBOSE)
                 std::cout << "Received raw message: " << msg << std::endl;
             auto msgJson = parseMobitoppJsonMsg(std::move(msg));
@@ -377,7 +385,7 @@ namespace karri {
             msgStr += '\n';
             if (VERBOSE)
                 std::cout << "Sending raw message: " << msgStr << std::endl;
-            io.send(msgStr);
+            io.sendString(msgStr);
         }
 
         void sendError() {
@@ -385,7 +393,7 @@ namespace karri {
             msg["type"] = "fs_error";
             try {
                 sendJsonMsg(msg);
-            } catch (MobitoppCommError& e) {
+            } catch (socketio::SocketError& e) {
                 std::cerr << "Could not send error." << std::endl;
             }
         }
@@ -577,7 +585,7 @@ namespace karri {
 
 
         FleetSimulationT &sim;
-        socketio::SingleClientBlockingSocketServer io;
+        socketio::SingleClientBlockingStringSocketServer io;
 
         static constexpr bool VERBOSE = true;
 

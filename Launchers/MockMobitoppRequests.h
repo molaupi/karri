@@ -38,7 +38,7 @@
 #include "DataStructures/Queues/AddressableKHeap.h"
 #include "Algorithms/KaRRi/EventSimulations/MobitoppErrors.h"
 #include "Algorithms/KaRRi/EventSimulations/MobitoppMessageHelpers.h"
-#include "Tools/SocketIO/BlockingSocketClient.h"
+#include "Tools/SocketIO/BlockingStringSocketClient.h"
 
 class MockMobitoppRequests {
 
@@ -114,9 +114,6 @@ private:
             sendJsonMsg(reqMsg);
             const auto offerMsg = listenAndGetMsgJson();
             verifyMessage(offerMsg, "offer");
-            if (!offerMsg.contains("offer_id"))
-                throw MobitoppMessageParseError("Offer Message JSON does not contain 'offer_id' field.",
-                                                offerMsg.dump());
             const int offerId = offerMsg["offer_id"];
             if (offerId <= 0)
                 throw MobitoppCommError("Offer ID not greater than 0.");
@@ -138,7 +135,11 @@ private:
 
 
     nlohmann::json listenAndGetMsgJson() {
-        return parseMobitoppJsonMsg(io.receive());
+        std::string msg;
+        const bool received = io.receiveString(msg);
+        if (!received)
+            throw MobitoppCommError("Receiving message from KaRRi failed.");
+        return parseMobitoppJsonMsg(std::move(msg));
     }
 
     void verifyMessage(const nlohmann::json& msg, const std::string& expectedType) {
@@ -157,7 +158,7 @@ private:
     void sendJsonMsg(const nlohmann::json &msg) {
         std::string msgStr = msg.dump();
         msgStr += '\n';
-        io.send(msgStr);
+        io.sendString(msgStr);
     }
 
 
@@ -198,7 +199,7 @@ private:
 
     const std::vector<karri::Request> &requests;
     AddressableQuadHeap requestEvents;
-    socketio::BlockingSocketClient io;
+    socketio::BlockingStringSocketClient io;
 
 
 };

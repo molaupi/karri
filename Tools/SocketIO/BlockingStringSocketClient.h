@@ -34,10 +34,10 @@
 
 namespace socketio {
 
-    class BlockingSocketClient : public SocketCommunicator {
+    class BlockingStringSocketClient : public StringSocketCommunicator {
 
     public:
-        explicit BlockingSocketClient(const int port) : SocketCommunicator(port) {}
+        explicit BlockingStringSocketClient(const int port) : StringSocketCommunicator(port) {}
 
         void init() override {
             struct sockaddr_in address;

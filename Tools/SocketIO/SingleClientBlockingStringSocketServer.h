@@ -34,11 +34,15 @@
 
 namespace socketio {
 
-    class SingleClientBlockingSocketServer : public SocketCommunicator {
+    class SingleClientBlockingStringSocketServer : public StringSocketCommunicator {
 
     public:
 
-        explicit SingleClientBlockingSocketServer(const int port) : SocketCommunicator(port), listening_for_clients_fd(-1) {}
+        explicit SingleClientBlockingStringSocketServer(const int port) : StringSocketCommunicator(port), listening_for_clients_fd(-1) {}
+
+        ~SingleClientBlockingStringSocketServer() {
+            close(listening_for_clients_fd);
+        }
 
         void init() override {
             struct sockaddr_in address;

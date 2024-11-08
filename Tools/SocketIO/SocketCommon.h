@@ -46,38 +46,85 @@ namespace socketio {
 
 
 
-    class SocketCommunicator {
+    // Abstract base class for socket based communication of strings.
+    // Each message is a C-style string terminated by '\0' byte.
+    class StringSocketCommunicator {
     public:
 
-        SocketCommunicator(const int port) : port(port) {}
+        StringSocketCommunicator(const int port) : port(port) {}
 
-        ~SocketCommunicator() {
+        ~StringSocketCommunicator() {
             close(fd);
         }
 
         // Server and client establish socket file descriptor fd in their implementation of init().
         virtual void init() = 0;
 
-        void send(const std::string &msg) {
+        void sendString(const std::string &msg) {
             if (msg.size() + 1 > BUFFER_SIZE)
                 throw SocketError("Message size of " + std::to_string(msg.size()) +
                                   " plus '\\0' terminator exceeds buffer size of " + std::to_string(BUFFER_SIZE));
 
-            ssize_t bytesSent = write(fd, (void *) msg.c_str(), msg.size() + 1);
+            ssize_t bytesSent = send(fd, (void *) msg.c_str(), msg.size() + 1, MSG_NOSIGNAL);
+
+            if (bytesSent < 0)
+                throw SocketError("Communication partner has unexpectedly shut down.");
 
             if (bytesSent != msg.size() + 1)
                 throw SocketError("Tried sending " + std::to_string(msg.size() + 1) + " bytes but could only send " +
                                   std::to_string(bytesSent) + " .");
         }
 
-        std::string receive() {
-            ssize_t numBytesRead = recv(fd, (void *) buf.data(), BUFFER_SIZE - 1, 0);
-            if (numBytesRead == 0)
-                throw SocketError("Remote has unexpectedly closed connection.");
-            if (numBytesRead < 0)
-                throw SocketError("Receiving message failed.");
-            std::string msg = buf.data();
-            return msg;
+        // Receive the next string.
+        //
+        // If any string can be read, the first string is removed from the socket queue, the string is written to msg,
+        // and true is returned.
+        // If communication has been shut down by communication partner, false is returned and socket queue is
+        // left unchanged (so EOF remains in queue and regular shutdown can be performed).
+        //
+        // Throws SocketError for any errors during communication.
+        bool receiveString(std::string& msg) {
+
+            fd_set readfds;
+            FD_ZERO(&readfds);
+            FD_SET(fd, &readfds);
+            struct timeval tv;
+            tv.tv_sec = 60; // waiting for message times out after 60 seconds (resets when part of a message comes in)
+            tv.tv_usec = 0;
+
+            int rv;
+            int lenOfMsg = 0; // length of received string (excluding terminator symbol)
+            while ((rv = select(fd + 1, &readfds, NULL, NULL, &tv))) {
+                if (rv < 0)
+                    throw SocketError("Error during select. No message could be received.");
+                LIGHT_KASSERT(FD_ISSET(fd, &readfds));
+
+                // Peek at queue, reading contents without removing from queue yet.
+                ssize_t numBytesRead = recv(fd, (void *) buf.data(), BUFFER_SIZE - 1, MSG_PEEK);
+
+                // If 0 bytes were received, communication partner has shut down communication.
+                // Leave EOF in queue and return false.
+                if (numBytesRead == 0)
+                    return false;
+
+                // If queue contains at least one string terminator, store number of characters in first string and
+                // break, allowing read of that first string.
+                while (lenOfMsg < numBytesRead && buf[lenOfMsg] != '\0') {
+                    ++lenOfMsg;
+                }
+                if (buf[lenOfMsg] == '\0')
+                    break;
+            }
+            if (rv == 0)
+                throw SocketError("Waiting for message timed out after" + std::to_string(tv.tv_sec) +  " seconds.");
+
+            // Actually read message, removing first string from queue.
+            ssize_t numBytesRead = recv(fd, (void *) buf.data(), lenOfMsg + 1, 0);
+            if (numBytesRead != lenOfMsg + 1)
+                throw SocketError("Receiving message of length " + std::to_string(lenOfMsg + 1) + " failed.");
+            LIGHT_KASSERT(buf[lenOfMsg] == '\0');
+            msg = buf.data();
+            return true;
         }
 
         void shutDown() {
@@ -95,6 +142,7 @@ namespace socketio {
         int fd;
 
     private:
+
         std::array<char, BUFFER_SIZE> buf;
     };
 
