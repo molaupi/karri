@@ -30,8 +30,8 @@
 #include "Tools/EnumParser.h"
 #include "Algorithms/KaRRi/BaseObjects/Offer.h"
 #include "MobitoppErrors.h"
-#include "Tools/SocketIO/BlockingSocketClient.h"
 #include "MobitoppMessageHelpers.h"
+#include "Tools/SocketIO/SingleClientBlockingSocketServer.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -112,8 +112,16 @@ namespace karri {
         MobitoppCommunicator(FleetSimulationT &sim, const int port) : sim(sim), io(port) {}
 
         void run() {
+
             try {
-                init();
+                initIO();
+            } catch (socketio::SocketError& e) {
+                state = COMM_ERROR;
+                std::cerr << "Socket IO could not be initiated. Socket IO Error: " << e.what() << std::endl;
+                return;
+            }
+
+            try {
                 while (listen()) {}
             } catch (socketio::SocketError& e) {
                 state = COMM_ERROR;
@@ -135,14 +143,24 @@ namespace karri {
                 std::cerr << e.what() << std::endl;
                 sendError();
             }
-            shutDown();
+
+            closeIO();
         }
 
     private:
 
-        void init() {
+        void initIO() {
             io.init();
             state = WAITING_FOR_INITIALIZATION;
+        }
+
+        void closeIO() {
+            // Client (mobiTopp) is expected to initiate closing the connection.
+            // Wait until client has closed connection, and only then shut down own IO.
+            std::cout << "Waiting for mobiTopp to close connection..." << std::flush;
+            io.waitForPartnerShutdown();
+            std::cout << " done. Shutting down." << std::endl;
+            io.shutDown();
         }
 
 
@@ -152,10 +170,6 @@ namespace karri {
                 std::cout << "Received raw message: " << msg << std::endl;
             auto msgJson = parseMobitoppJsonMsg(std::move(msg));
             return handleMessage(msgJson);
-        }
-
-        void shutDown() {
-            io.shutDown();
         }
 
 
@@ -563,7 +577,7 @@ namespace karri {
 
 
         FleetSimulationT &sim;
-        socketio::BlockingSocketClient io;
+        socketio::SingleClientBlockingSocketServer io;
 
         static constexpr bool VERBOSE = true;
 

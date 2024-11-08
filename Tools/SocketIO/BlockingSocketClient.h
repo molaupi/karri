@@ -46,13 +46,26 @@ namespace socketio {
                 throw SocketError("Socket creation error.");
             }
 
+            static constexpr int yes = 1;
+            if (setsockopt(fd, SOL_SOCKET,SO_REUSEADDR,&yes,sizeof yes) == -1) {
+                throw SocketError("setsockopt for reusage of address failed.");
+            }
+#ifdef SO_REUSEPORT
+            if (setsockopt(fd, SOL_SOCKET,SO_REUSEPORT,&yes,sizeof yes) == -1) {
+                throw SocketError("setsockopt for reusage of ports failed.");
+            }
+#endif
+
             address.sin_family = AF_LOCAL;
             address.sin_addr.s_addr = htonl(INADDR_ANY); // address is localhost
             address.sin_port = htons(port);
 
             if (connect(fd, (struct sockaddr *) &address, sizeof(address)) < 0) {
-                throw SocketError("Socket connection to mobiTopp failed.");
+                throw SocketError("Socket connection to server failed.");
             }
+            std::cout << "Connected to server on addr " << address.sin_addr.s_addr << " and port " << address.sin_port << std::endl;
+
+
         }
     };
 

@@ -51,6 +51,10 @@ namespace socketio {
 
         SocketCommunicator(const int port) : port(port) {}
 
+        ~SocketCommunicator() {
+            close(fd);
+        }
+
         // Server and client establish socket file descriptor fd in their implementation of init().
         virtual void init() = 0;
 
@@ -67,7 +71,9 @@ namespace socketio {
         }
 
         std::string receive() {
-            ssize_t numBytesRead = read(fd, (void *) buf.data(), BUFFER_SIZE - 1);
+            ssize_t numBytesRead = recv(fd, (void *) buf.data(), BUFFER_SIZE - 1, 0);
+            if (numBytesRead == 0)
+                throw SocketError("Remote has unexpectedly closed connection.");
             if (numBytesRead < 0)
                 throw SocketError("Receiving message failed.");
             std::string msg = buf.data();
@@ -78,7 +84,13 @@ namespace socketio {
             close(fd);
         }
 
+        // Receive messages (and do nothing with them) until partner shuts down.
+        void waitForPartnerShutdown() {
+            while (recv(fd, (void*) buf.data(), BUFFER_SIZE - 1, 0)) {}
+        }
+
     protected:
+
         const int port;
         int fd;
 

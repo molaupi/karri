@@ -37,8 +37,8 @@
 #include "Tools/CommandLine/ProgressBar.h"
 #include "DataStructures/Queues/AddressableKHeap.h"
 #include "Algorithms/KaRRi/EventSimulations/MobitoppErrors.h"
-#include "Tools/SocketIO/SingleClientBlockingSocketServer.h"
 #include "Algorithms/KaRRi/EventSimulations/MobitoppMessageHelpers.h"
+#include "Tools/SocketIO/BlockingSocketClient.h"
 
 class MockMobitoppRequests {
 
@@ -49,7 +49,6 @@ public:
     MockMobitoppRequests(const std::vector<karri::Request> &requests, const int port)
             : requests(requests),
               requestEvents(requests.size()),
-              progressBar(requests.size(), true),
               io(port) {}
 
     void run() {
@@ -67,7 +66,8 @@ public:
                 std::cerr << "Message received: " << e.receivedMessage << std::endl;
             sendError();
         }
-        shutDown();
+
+        io.shutDown();
     }
 
 private:
@@ -89,6 +89,8 @@ private:
         initMsg["status_code"] = initStatusCode;
         sendJsonMsg(initMsg);
         verifyMessage(listenAndGetMsgJson(), "init_communication");
+
+        ProgressBar progressBar(requests.size(), true);
 
         int id, key;
         while (!requestEvents.empty()) {
@@ -132,10 +134,6 @@ private:
         nlohmann::json endMsg;
         endMsg["type"] = "end_of_simulation";
         sendJsonMsg(endMsg);
-    }
-
-    void shutDown() {
-        io.shutDown();
     }
 
 
@@ -200,8 +198,7 @@ private:
 
     const std::vector<karri::Request> &requests;
     AddressableQuadHeap requestEvents;
-    ProgressBar progressBar;
-    socketio::SingleClientBlockingSocketServer io;
+    socketio::BlockingSocketClient io;
 
 
 };
