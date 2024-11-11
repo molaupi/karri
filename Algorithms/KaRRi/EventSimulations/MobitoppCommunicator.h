@@ -93,7 +93,7 @@ void EnumParser<MobitoppMsgType>::initNameToEnumMap() {
 }
 
 namespace karri {
-    template<typename FleetSimulationT>
+    template<typename FleetSimulationT, typename ExternalToInternalEdgeId>
     class MobitoppCommunicator {
 
         enum CommState {
@@ -105,17 +105,16 @@ namespace karri {
         };
 
 
-
-
     public:
 
-        MobitoppCommunicator(FleetSimulationT &sim, const int port) : sim(sim), io(port) {}
+        MobitoppCommunicator(FleetSimulationT &sim, const ExternalToInternalEdgeId &externalToInternalEdgeId,
+                             const int port) : sim(sim), externalToInternalEdgeId(externalToInternalEdgeId), io(port) {}
 
         void run() {
 
             try {
                 initIO();
-            } catch (socketio::SocketError& e) {
+            } catch (socketio::SocketError &e) {
                 state = COMM_ERROR;
                 std::cerr << "Socket IO could not be initiated. Socket IO Error: " << e.what() << std::endl;
                 return;
@@ -123,7 +122,7 @@ namespace karri {
 
             try {
                 while (listen()) {}
-            } catch (socketio::SocketError& e) {
+            } catch (socketio::SocketError &e) {
                 state = COMM_ERROR;
                 std::cerr << "Socket IO Error: " << e.what() << std::endl;
                 // Socket IO error means that no more communication via sockets is possible. Close connection and exit.
@@ -271,15 +270,19 @@ namespace karri {
                         state == WAITING_FOR_INITIALIZATION ? "waiting for initialization."
                                                             : "waiting for response to offer."));
             const int agentId = msg["agent_id"];
-            const int origin = msg["origin"];
-            const int destination = msg["destination"];
+            const int externalOrigin = msg["origin"];
+            const int externalDestination = msg["destination"];
             const int minDepTime = msg["time"];
             const int numRiders = msg["nr_pax"];
+
+            // Map incoming external link IDs to internal IDs:
+            const int internalOrigin = mapExternalEdgeIdToInternal(externalOrigin);
+            const int internalDestination = mapExternalEdgeIdToInternal(externalDestination);
 
             const int requestId = agentIdForRequest.size();
             agentIdForRequest.push_back(agentId);
 
-            Request r = {requestId, origin, destination, numRiders, lastFleetControlTime, minDepTime};
+            Request r = {requestId, internalOrigin, internalDestination, numRiders, lastFleetControlTime, minDepTime};
             const auto &offer = sim.handleRequest(r);
             sendOffer(offer);
             state = WAITING_FOR_OFFER_RESPONSE;
@@ -294,26 +297,28 @@ namespace karri {
                                                             : "waiting for response to offer."));
 
             const int agentId = msg["agent_id"];
-            const int origin = msg["origin"];
-            const nlohmann::json &destinations = msg["destinations"];
+            const int externalOrigin = msg["origin"];
+            const nlohmann::json &externalDestinations = msg["destinations"];
             const int minDepTime = msg["time"];
             const int numRiders = msg["nr_pax"];
 
+            const int internalOrigin = mapExternalEdgeIdToInternal(externalOrigin);
+
             std::vector<TransferAfterFirstMile> transfers;
-            for (const auto &destination: destinations) {
+            for (const auto &destination: externalDestinations) {
                 if (destination["type"] != "intermodal_request")
                     throw MobitoppMessageParseError(
                             "Destination in 'first_mile_request_offer' is not of type 'intermodal_request'.",
                             msg.dump());
                 verifyMessageKeys(INTERMODAL_REQUEST, destination);
-                transfers.push_back({destination["transfer"], destination["time"]});
+                transfers.push_back({mapExternalEdgeIdToInternal(destination["transfer"]), destination["time"]});
             }
 
 
             const int requestId = agentIdForRequest.size();
             agentIdForRequest.push_back(agentId);
 
-            FirstMileRequest r = {requestId, origin, transfers, numRiders, lastFleetControlTime, minDepTime};
+            FirstMileRequest r = {requestId, internalOrigin, transfers, numRiders, lastFleetControlTime, minDepTime};
             const auto offers = sim.handleFirstMileRequest(r);
             sendBestFirstMileOffer(offers, transfers);
             state = WAITING_FOR_OFFER_RESPONSE;
@@ -327,24 +332,27 @@ namespace karri {
                                                             : "waiting for response to offer."));
 
             const int agentId = msg["agent_id"];
-            const nlohmann::json &origins = msg["origins"];
-            const int destination = msg["destination"];
+            const nlohmann::json &externalOrigins = msg["origins"];
+            const int externalDestination = msg["destination"];
             const int numRiders = msg["nr_pax"];
 
+
+            const int internalDestination = mapExternalEdgeIdToInternal(externalDestination);
+
             std::vector<TransferBeforeLastMile> transfers;
-            for (const auto &origin: origins) {
+            for (const auto &origin: externalOrigins) {
                 if (origin["type"] != "intermodal_request")
                     throw MobitoppMessageParseError(
                             "Origin in 'last_mile_request_offer' is not of type 'intermodal_request'.", msg.dump());
                 verifyMessageKeys(INTERMODAL_REQUEST, origin);
-                transfers.push_back({origin["transfer"], origin["time"]});
+                transfers.push_back({mapExternalEdgeIdToInternal(origin["transfer"]), origin["time"]});
             }
 
 
             const int requestId = agentIdForRequest.size();
             agentIdForRequest.push_back(agentId);
 
-            LastMileRequest r = {requestId, transfers, destination, numRiders, lastFleetControlTime};
+            LastMileRequest r = {requestId, transfers, internalDestination, numRiders, lastFleetControlTime};
             const auto offers = sim.handleLastMileRequest(r);
             sendBestLastMileOffer(offers, transfers);
             state = WAITING_FOR_OFFER_RESPONSE;
@@ -393,7 +401,7 @@ namespace karri {
             msg["type"] = "fs_error";
             try {
                 sendJsonMsg(msg);
-            } catch (socketio::SocketError& e) {
+            } catch (socketio::SocketError &e) {
                 std::cerr << "Could not send error." << std::endl;
             }
         }
@@ -583,8 +591,17 @@ namespace karri {
             sendJsonMsg(msg);
         }
 
+        int mapExternalEdgeIdToInternal(const int externalId) const {
+            try {
+                const auto internalId = externalToInternalEdgeId.at(externalId);
+                return internalId;
+            } catch (std::out_of_range& e) {
+                throw MobitoppCommError("External link ID " + std::to_string(externalId) + " cannot be mapped to internal ID.");
+            }
+        }
 
         FleetSimulationT &sim;
+        const ExternalToInternalEdgeId &externalToInternalEdgeId;
         socketio::SingleClientBlockingStringSocketServer io;
 
         static constexpr bool VERBOSE = true;

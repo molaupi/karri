@@ -36,13 +36,14 @@
 #include "Tools/Logging/LogManager.h"
 #include "DataStructures/Graph/Graph.h"
 #include "DataStructures/Graph/Attributes/LatLngAttribute.h"
-#include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
-#include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
-#include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
-#include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
-#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
+#include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
+#include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
+#include "DataStructures/Graph/Attributes/MobitoppLinkIdAttribute.h"
+#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
 
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
@@ -108,6 +109,7 @@
 #elif KARRI_DALS_STRATEGY == KARRI_IND
 
 #include "Algorithms/KaRRi/DalsAssignments//IndividualBCHStrategy.h"
+#include "DataStructures/Graph/Attributes/MobitoppLinkIdAttribute.h"
 
 #else // KARRI_DALS_STRATEGY == KARRI_DIJ
 
@@ -190,7 +192,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Reading vehicle network from file... " << std::flush;
         using VehicleVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
         using VehicleEdgeAttributes = EdgeAttrs<
-                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute>;
+                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute, MobitoppLinkIdAttribute>;
         using VehicleInputGraph = StaticGraph<VehicleVertexAttributes, VehicleEdgeAttributes>;
         std::ifstream vehicleNetworkFile(vehicleNetworkFileName, std::ios::binary);
         if (!vehicleNetworkFile.good())
@@ -219,6 +221,12 @@ int main(int argc, char *argv[]) {
                     vehicleInputGraph.edgeTail(e) = v;
                     vehicleInputGraph.edgeId(e) = e;
                 }
+        }
+        // If run as mobitopp fleet simulation, make sure every edge has mapping to mobitopp link IDs
+        if (runAsMobitoppFS) {
+            FORALL_VALID_EDGES(vehicleInputGraph, u, e) {
+                    LIGHT_KASSERT(vehicleInputGraph.mobitoppLinkId(e) != MobitoppLinkIdAttribute::defaultValue());
+            }
         }
         std::cout << "done.\n";
 
@@ -620,7 +628,16 @@ int main(int argc, char *argv[]) {
             using EventSimulationImpl = MobitoppEventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
             EventSimulationImpl eventSimulation(fleet, routeState, insertionFinder, systemStateUpdater, routeState);
 
-            MobitoppCommunicator<EventSimulationImpl> communicator(eventSimulation, port);
+
+            // Build mapping from mobitopp link IDs to edge IDs in vehicle graph so communicator can transform link
+            // IDs on incoming requests.
+            std::unordered_map<int, int> mobitoppLinkIdToEdgeId;
+            mobitoppLinkIdToEdgeId.reserve(vehicleInputGraph.numEdges());
+            FORALL_VALID_EDGES(vehicleInputGraph, u, e) {
+                mobitoppLinkIdToEdgeId[vehicleInputGraph.mobitoppLinkId(e)] = e;
+            }
+
+            MobitoppCommunicator<EventSimulationImpl, std::unordered_map<int, int>> communicator(eventSimulation, mobitoppLinkIdToEdgeId, port);
             communicator.run();
 
         }

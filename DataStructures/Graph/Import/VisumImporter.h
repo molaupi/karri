@@ -41,6 +41,7 @@
 #include "DataStructures/Graph/Attributes/CapacityAttribute.h"
 #include "DataStructures/Graph/Attributes/CoordinateAttribute.h"
 #include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
+#include "DataStructures/Graph/Attributes/MobitoppLinkIdAttribute.h"
 #include "DataStructures/Graph/Attributes/LatLngAttribute.h"
 #include "DataStructures/Graph/Attributes/LengthAttribute.h"
 #include "DataStructures/Graph/Attributes/NumLanesAttribute.h"
@@ -87,7 +88,7 @@ class VisumImporter {
   void init(const std::string& filename) {
     vertexReader.read_header(io::ignore_extra_column, "NO", "XCOORD", "YCOORD", "OSM_NODE_ID");
     edgeReader.read_header(
-        io::ignore_extra_column, "FROMNODENO", "TONODENO", "TYPENO", "TSYSSET",
+        io::ignore_extra_column, "NO", "FROMNODENO", "TONODENO", "TYPENO", "TSYSSET",
         "LENGTH", "NUMLANES", "CAPPRT", "V0PRT");
     interPointReader.read_header(
         io::ignore_extra_column, "FROMNODENO", "TONODENO", "INDEX", "XCOORD", "YCOORD");
@@ -163,11 +164,17 @@ class VisumImporter {
     bool open;
 
     do {
-      if (!edgeReader.read_row(currentEdge.tail, currentEdge.head, edgeType, permittedSystems,
+      if (!edgeReader.read_row(currentEdge.mobitoppId, currentEdge.tail, currentEdge.head, edgeType, permittedSystems,
           lengthField, currentEdge.numLanes, currentEdge.capacity, speedField)) {
         assert(currentInterPoint.tail == INVALID_ID);
         return false;
       }
+
+      // mobitopp link ID is visum 'NO' field with a sign indicating direction:
+      //    - positive for edge from smaller to larger vertex ID
+      //    - negative for edge from larger to smaller vertex ID
+      if (currentEdge.tail > currentEdge.head)
+          currentEdge.mobitoppId *= -1;
 
       // Set open to true if the selected transport system is permitted on the current edge.
       open = true;
@@ -280,6 +287,7 @@ class VisumImporter {
 
   // An edge record in Visum network file format.
   struct EdgeRecord {
+    int mobitoppId;
     int tail;
     int head;
     int length;
@@ -299,7 +307,7 @@ class VisumImporter {
   using IdMap = std::unordered_map<int, int>;
 
   VisumFileReader<4> vertexReader;     // The CSV file that contains the vertex records.
-  VisumFileReader<8> edgeReader;       // The CSV file that contains the edge records.
+  VisumFileReader<9> edgeReader;       // The CSV file that contains the edge records.
   VisumFileReader<5> interPointReader; // The CSV file that contains the intermediate point records.
   const std::string transportSystem;   // The system (car, bicycle) whose network is to be imported.
   const double coordinatePrecision;    // The number of digits to consider after the decimal point.
@@ -351,6 +359,12 @@ inline FreeFlowSpeedAttribute::Type VisumImporter::getValue<FreeFlowSpeedAttribu
 template <>
 inline LengthAttribute::Type VisumImporter::getValue<LengthAttribute>() const {
   return currentEdge.length;
+}
+
+// Returns the value of the mobitopp link ID attribute for the current edge.
+template <>
+inline MobitoppLinkIdAttribute::Type VisumImporter::getValue<MobitoppLinkIdAttribute>() const {
+    return currentEdge.mobitoppId;
 }
 
 // Returns the value of the number of lanes attribute for the current edge.

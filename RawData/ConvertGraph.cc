@@ -82,7 +82,7 @@ inline void printUsage() {
       "  -a <attrs>        blank-separated list of vertex/edge attributes to be output\n"
       "                      possible values:\n"
       "                        capacity coordinate edge_id free_flow_speed lat_lng\n"
-      "                        length num_lanes osm_node_id osm_road_category\n"
+      "                        length mobitopp_link_id num_lanes osm_node_id osm_road_category\n"
       "                        road_geometry sequential_vertex_id speed_limit\n"
       "                        travel_time vertex_id xatf_road_category\n"
       "  -i <file>         input file(s) without file extension\n"
@@ -94,7 +94,7 @@ inline void printUsage() {
 using VertexAttributes = VertexAttrs<
     CoordinateAttribute, LatLngAttribute, OsmNodeIdAttribute, SequentialVertexIdAttribute, VertexIdAttribute>;
 using EdgeAttributes = EdgeAttrs<
-    CapacityAttribute, EdgeIdAttribute, FreeFlowSpeedAttribute, LengthAttribute,
+    CapacityAttribute, EdgeIdAttribute, FreeFlowSpeedAttribute, LengthAttribute, MobitoppLinkIdAttribute,
     NumLanesAttribute, OsmRoadCategoryAttribute, RoadGeometryAttribute, SpeedLimitAttribute,
     TravelTimeAttribute, XatfRoadCategoryAttribute>;
 using GraphT = StaticGraph<VertexAttributes, EdgeAttributes>;

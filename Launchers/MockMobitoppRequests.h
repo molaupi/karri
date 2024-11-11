@@ -46,8 +46,10 @@ class MockMobitoppRequests {
 
 public:
 
-    MockMobitoppRequests(const std::vector<karri::Request> &requests, const int port)
+    MockMobitoppRequests(const std::vector<karri::Request> &requests, const std::vector<int> &toMobitoppLinkId,
+                         const int port)
             : requests(requests),
+              toMobitoppLinkId(toMobitoppLinkId),
               requestEvents(requests.size()),
               io(port) {}
 
@@ -55,7 +57,7 @@ public:
         try {
             init();
             mockSimulation();
-        } catch (socketio::SocketError& e) {
+        } catch (socketio::SocketError &e) {
             std::cerr << "Socket IO Error: " << e.what() << std::endl;
         } catch (MobitoppCommError &e) {
             std::cerr << e.what() << std::endl;
@@ -107,8 +109,8 @@ private:
             nlohmann::json reqMsg;
             reqMsg["type"] = "request_offer";
             reqMsg["agent_id"] = req.requestId;
-            reqMsg["origin"] = req.origin;
-            reqMsg["destination"] = req.destination;
+            reqMsg["origin"] = toMobitoppLinkId[req.origin];
+            reqMsg["destination"] = toMobitoppLinkId[req.destination];
             reqMsg["time"] = req.minDepTime;
             reqMsg["nr_pax"] = req.numRiders;
             sendJsonMsg(reqMsg);
@@ -142,7 +144,7 @@ private:
         return parseMobitoppJsonMsg(std::move(msg));
     }
 
-    void verifyMessage(const nlohmann::json& msg, const std::string& expectedType) {
+    void verifyMessage(const nlohmann::json &msg, const std::string &expectedType) {
         if (!checkMsgType(msg, expectedType))
             throw MobitoppMessageParseError("Message does not have expected type " + expectedType, msg.dump());
 
@@ -173,18 +175,18 @@ private:
     }
 
     std::unordered_map<std::string, std::vector<std::string>> requiredKeysForMsgType = {
-            {"fs_error", {}},
+            {"fs_error",           {}},
             {"init_communication", {"status_code"}},
-            {"customers_arriving", {"time", "list_arrivals"}},
-            {"arrival", {"agent_id", "t_access", "t_wait", "t_drive", "t_egress", "car_id"}},
-            {"offer", {"agent_id", "offer_id", "t_access", "t_wait", "t_drive", "t_egress", "fare"}},
-            {"first_mile_offers", {"agent_id", "offers"}},
+            {"customers_arriving", {"time",     "list_arrivals"}},
+            {"arrival",            {"agent_id", "t_access",    "t_wait",   "t_drive", "t_egress", "car_id"}},
+            {"offer",              {"agent_id", "offer_id",    "t_access", "t_wait",  "t_drive",  "t_egress", "fare"}},
+            {"first_mile_offers",  {"agent_id", "offers"}},
             {"first_mile_offer",
-             {"offer_id", "destination", "t_access", "t_wait", "t_drive", "t_egress", "fare", "objective"}},
-            {"last_mile_offers", {"agent_id", "offers"}},
+                                   {"offer_id", "destination", "t_access", "t_wait",  "t_drive",  "t_egress", "fare", "objective"}},
+            {"last_mile_offers",   {"agent_id", "offers"}},
             {"last_mile_offer",
-             {"offer_id", "origin", "t_access", "t_wait", "t_drive", "t_egress", "fare", "objective"}},
-            {"confirm_booking", {"agent_id", "offer_id"}}
+                                   {"offer_id", "origin",      "t_access", "t_wait",  "t_drive",  "t_egress", "fare", "objective"}},
+            {"confirm_booking",    {"agent_id", "offer_id"}}
     };
 
     void verifyMessageKeys(const nlohmann::json &msg, const std::string &type) {
@@ -198,6 +200,7 @@ private:
 
 
     const std::vector<karri::Request> &requests;
+    const std::vector<int> &toMobitoppLinkId;
     AddressableQuadHeap requestEvents;
     socketio::BlockingStringSocketClient io;
 

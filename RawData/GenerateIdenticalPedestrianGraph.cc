@@ -38,6 +38,7 @@
 #include "DataStructures/Graph/Attributes/RoadGeometryAttribute.h"
 #include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
+#include "DataStructures/Graph/Attributes/MobitoppLinkIdAttribute.h"
 #include <fstream>
 #include <random>
 
@@ -51,7 +52,7 @@ inline void printUsage() {
               "  -s <float>        travel speed in pedestrian graph in km/h (default: 4.5)\n"
               "  -a <attrs>        blank-separated list of vertex/edge attributes to be output in both graphs\n"
               "                      possible values:\n"
-              "                        coordinate lat_lng length osm_node_id osm_road_category road_geometry\n"
+              "                        coordinate lat_lng length mobitopp_link_id osm_node_id osm_road_category road_geometry\n"
               "  -o <dir>         place output road networks in directory <dir>\n"
               "  -help             display this help and exit\n";
 }
@@ -79,9 +80,9 @@ int main(int argc, char *argv[]) {
         // Read the source network from file.
         std::cout << "Reading source network from file... " << std::flush;
         using CommonVertexAttrs = VertexAttrs<CoordinateAttribute, LatLngAttribute, OsmNodeIdAttribute>;
-        using VehEdgeAttrs = EdgeAttrs<CarEdgeToPsgEdgeAttribute, LengthAttribute,
+        using VehEdgeAttrs = EdgeAttrs<CarEdgeToPsgEdgeAttribute, LengthAttribute, MobitoppLinkIdAttribute,
                 OsmRoadCategoryAttribute, RoadGeometryAttribute, TravelTimeAttribute>;
-        using PedEdgeAttrs = EdgeAttrs<LengthAttribute,
+        using PedEdgeAttrs = EdgeAttrs<LengthAttribute, MobitoppLinkIdAttribute,
                 OsmRoadCategoryAttribute, PsgEdgeToCarEdgeAttribute, RoadGeometryAttribute, TravelTimeAttribute>;
         using VehGraph = StaticGraph<CommonVertexAttrs, VehEdgeAttrs>;
         using PedGraph = StaticGraph<CommonVertexAttrs, PedEdgeAttrs>;

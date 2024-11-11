@@ -44,8 +44,7 @@
 
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "MockMobitoppRequests.h"
-
-
+#include "DataStructures/Graph/Attributes/MobitoppLinkIdAttribute.h"
 
 
 inline void printUsage() {
@@ -86,7 +85,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Reading vehicle network from file... " << std::flush;
         using VehicleVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
         using VehicleEdgeAttributes = EdgeAttrs<
-                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute>;
+                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute, MobitoppLinkIdAttribute>;
         using VehicleInputGraph = StaticGraph<VehicleVertexAttributes, VehicleEdgeAttributes>;
         std::ifstream vehicleNetworkFile(vehicleNetworkFileName, std::ios::binary);
         if (!vehicleNetworkFile.good())
@@ -151,7 +150,14 @@ int main(int argc, char *argv[]) {
         }
         std::cout << "done.\n";
 
-        MockMobitoppRequests mockMobitopp(requests, port);
+        // Extract mapping from KaRRi edge IDs to mobitopp link IDs as KaRRi is run as mobitopp fleet simulation and
+        // thus expects mobitopp IDs:
+        std::vector<int> toMobitoppLinkId(vehicleInputGraph.numEdges());
+        FORALL_VALID_EDGES(vehicleInputGraph, u, e) {
+            toMobitoppLinkId[e] = vehicleInputGraph.mobitoppLinkId(e);
+        }
+
+        MockMobitoppRequests mockMobitopp(requests, toMobitoppLinkId, port);
         mockMobitopp.run();
 
 
