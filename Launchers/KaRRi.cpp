@@ -556,7 +556,6 @@ int main(int argc, char *argv[]) {
 
         using InsertionFinderImpl = AssignmentFinder<
                 VehicleInputGraph,
-                PDDistancesImpl,
                 FeasibleEllipticDistancesImpl,
                 RequestStateInitializerImpl,
                 PDLocsAtExistingStopsFinderImpl,

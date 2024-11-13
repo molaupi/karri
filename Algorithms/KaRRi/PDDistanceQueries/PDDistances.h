@@ -38,28 +38,18 @@ namespace karri {
 
         static constexpr int K = LabelSetT::K;
 
-
-        PDDistances(RequestState &requestState) : requestState(requestState) {}
-
-        void init() {
-            Timer timer;
-            minDirectDist = INFTY;
-            const int numLabelsPerDropoff = (requestState.numPickups() / K + (requestState.numPickups() % K != 0));
-            const int numNeededLabels = numLabelsPerDropoff * requestState.numDropoffs();
-            distances.clear();
-            distances.resize(numNeededLabels, DistanceLabel(INFTY));
-
-
-            // minDirectDistancesPerPickup has one entry per pickup. Initialize to INFTY.
-            minDirectDistancesPerPickup.clear();
-            minDirectDistancesPerPickup.resize(numLabelsPerDropoff, DistanceLabel(INFTY));
-
-            // Initialize distance from origin to destination
-            updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
-
-            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime += time;
+    private:
+        static size_t numLabelsPerDropoff(const int numPickups) {
+            return numPickups / K + (numPickups % K != 0);
         }
+
+    public:
+
+        PDDistances(const int numPickups, const int numDropoffs) :
+                numDropoffs(numDropoffs),
+                distances(numLabelsPerDropoff(numPickups) * numDropoffs, INFTY),
+                minDirectDist(INFTY),
+                minDirectDistancesPerPickup(numLabelsPerDropoff(numPickups), INFTY) {}
 
         // IDs refer to the indices in the vectors of pickups/dropoffs given at the last initialize() call.
         int getDirectDistance(const unsigned int pickupId, const unsigned int dropoffId) const {
@@ -125,18 +115,19 @@ namespace karri {
     private:
 
         DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId) {
-            return distances[(pickupId / K) * requestState.numDropoffs() + dropoffId];
+            return distances[(pickupId / K) * numDropoffs + dropoffId];
         }
 
         const DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId) const {
-            return distances[(pickupId / K) * requestState.numDropoffs() + dropoffId];
+            return distances[(pickupId / K) * numDropoffs + dropoffId];
         }
 
-        RequestState &requestState;
+        int numDropoffs;
 
         // Distances are stored as vectors of size K (DistanceLabel).
         // ceil(numPickups / K) labels per dropoff, sequentially arranged by increasing dropoffId.
         AlignedVector<DistanceLabel> distances;
+
         int minDirectDist;
         AlignedVector<DistanceLabel> minDirectDistancesPerPickup;
     };
