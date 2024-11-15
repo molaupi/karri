@@ -31,7 +31,7 @@ project(RoutingFramework CXX)
 set(SOURCE_DIRECTORIES Launchers RawData)
 
 # Determine the language standard.
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -56,17 +56,11 @@ if(DISABLE_AVX)
 endif()
 
 # Request warnings.
-if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wfatal-errors -Wpedantic -pedantic-errors\
-      -Wall -Wextra -ftemplate-backtrace-limit=1 -Wno-unknown-pragmas -Wno-sign-compare")
+if(CMAKE_CXX_COMPILER_ID MATCHES GNU)
+  set(FULL_WARNINGS "-Werror" "-Wfatal-errors" "-Wpedantic" "-pedantic-errors" "-Wall" "-Wextra" "-ftemplate-backtrace-limit=1" "-Wno-unknown-pragmas" "-Wno-sign-compare")
 elseif(CMAKE_CXX_COMPILER_ID MATCHES Clang)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wall -Wextra -pedantic-errors -ferror-limit=1\
-      -ftemplate-backtrace-limit=1 -Wno-sign-compare")
+  set(FULL_WARNINGS "-Werror" "-Wall" "-Wextra" "-pedantic-errors" "-ferror-limit=1" "-ftemplate-backtrace-limit=1" "-Wno-sign-compare")
 endif()
-
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-backtrace-limit=0")
-endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 include_directories(${CMAKE_SOURCE_DIR})
 
@@ -79,9 +73,16 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "")
 add_subdirectory(External/json)
 
-# Add RoutingKit library (needs to be built beforehand!) and include headers from git submodule
-find_library(RoutingKit_LIBRARY routingkit PATHS External/RoutingKit/lib REQUIRED)
-include_directories(External/RoutingKit/include)
+# Add RoutingKit library (needs to be built beforehand!) and include headers from git submodule.
+# Use interface target to bundle sources and headers.
+find_library(RoutingKit_LIBRARY routingkit PATHS External/RoutingKit/lib)
+if(NOT RoutingKit_LIBRARY)
+  message(FATAL_ERROR "RoutingKit library not found. Did you forget to build the library (see ReadMe)?")
+endif()
+set(RoutingKit_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/External/RoutingKit/include/")
+add_library(routingkit INTERFACE)
+target_link_libraries(routingkit INTERFACE ${RoutingKit_LIBRARY})
+target_include_directories(routingkit SYSTEM INTERFACE ${RoutingKit_INCLUDE_DIR}) # include as SYSTEM to avoid warnings for features deprecated in C++20 as RoutingKit is C++17
 
 # Add kassert library from git submodule
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -91,12 +92,7 @@ else()
 endif ()
 add_subdirectory(External/kassert)
 
-# Include headers for header-only libraries from git submodules and embedded dependencies
-include_directories(SYSTEM External/fast-cpp-csv-parser)
-include_directories(External/randomc)
-include_directories(External/rapidxml)
-include_directories(External/stocc)
-include_directories(External/vectorclass)
+set(EXTERNAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/External)
 
 
 foreach(SRC_DIR ${SOURCE_DIRECTORIES})

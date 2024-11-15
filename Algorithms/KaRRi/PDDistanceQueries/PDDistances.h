@@ -53,10 +53,8 @@ namespace karri {
 
         // IDs refer to the indices in the vectors of pickups/dropoffs given at the last initialize() call.
         int getDirectDistance(const unsigned int pickupId, const unsigned int dropoffId) const {
-            assert(pickupId < requestState.numPickups());
-            assert(dropoffId < requestState.numDropoffs());
             const int res = labelFor(pickupId, dropoffId)[pickupId % K];
-            assert(res < INFTY);
+            KASSERT(res < INFTY);
             return res;
         }
 
@@ -92,7 +90,7 @@ namespace karri {
                 if (dist < minDirectDistancesPerPickup[pickupId / K][offsetInBatch]) {
                     minDirectDistancesPerPickup[pickupId / K][offsetInBatch] = dist;
                 }
-                assert(minDirectDist <= minDirectDistancesPerPickup[pickupId / K].horizontalMin());
+                KASSERT(minDirectDist <= minDirectDistancesPerPickup[pickupId / K].horizontalMin());
             }
         }
 
@@ -107,7 +105,7 @@ namespace karri {
                 label.setIf(dist, smaller);
                 minDirectDist = std::min(minDirectDist, dist.horizontalMin());
                 minDirectDistancesPerPickup[firstPickupId / K].min(dist);
-                assert(minDirectDist <= minDirectDistancesPerPickup[firstPickupId / K].horizontalMin());
+                KASSERT(minDirectDist <= minDirectDistancesPerPickup[firstPickupId / K].horizontalMin());
             }
         }
 
