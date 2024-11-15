@@ -68,7 +68,9 @@ namespace karri {
             Timer timer;
 
             Assignment asgn;
-            asgn.distToPickup = 0;
+            asgn.legs.emplace_back();
+            asgn.legs.back().travelTimeToPickup = 0;
+            asgn.legs.back().detourCostToPickup = 0;
             for (const auto &p: requestState.pickups) {
                 asgn.pickup = &p;
 
@@ -86,13 +88,14 @@ namespace karri {
                         continue;
 
                     // If necessary, check paired insertion with each dropoff
-                    asgn.vehicle = &fleet[vehId];
-                    asgn.pickupStopIdx = numStops - 1;
-                    asgn.dropoffStopIdx = numStops - 1;
+                    asgn.legs.back().vehicle = &fleet[vehId];
+                    asgn.legs.back().pickupStopIdx = numStops - 1;
+                    asgn.legs.back().dropoffStopIdx = numStops - 1;
 
                     for (const auto &d: requestState.dropoffs) {
                         asgn.dropoff = &d;
-                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.legs.back().travelTimeToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.legs.back().detourCostToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                         ++numInsertionsForCoinciding;
                         requestState.tryAssignment(asgn);
                     }

@@ -67,7 +67,7 @@ namespace karri {
         template<bool checkHardConstraints, typename RequestContext>
         int calcBase(const Assignment &asgn, const RequestContext &context) const {
             using namespace time_utils;
-            assert(asgn.vehicle && asgn.pickup && asgn.dropoff);
+            KASSERT(asgn.pickup && asgn.dropoff);
             if (!asgn.vehicle || !asgn.pickup || !asgn.dropoff)
                 return INFTY;
 

@@ -539,11 +539,11 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &directDist = label.directDistance;
 
             Assignment asgn;
-            asgn.distFromPickup = 0;
-            asgn.distFromDropoff = 0;
             asgn.pickup = &pickup;
             asgn.dropoff = &dropoff;
-            asgn.distToDropoff = directDist;
+            asgn.legs.emplace_back();
+            asgn.legs.back().travelTimeToDropoff = directDist;
+            asgn.legs.back().detourCostToDropoff = directDist;
 
             int numEntriesScannedInBucket = 0;
 
@@ -617,10 +617,11 @@ namespace karri::PickupAfterLastStopStrategies {
         inline void tryTentativeAssignment(const int vehId, const int fullDistToPickup, Assignment& asgn) {
 
             const int &numStops = routeState.numStopsOf(vehId);
-            asgn.vehicle = &fleet[vehId];
-            asgn.pickupStopIdx = numStops - 1;
-            asgn.dropoffStopIdx = numStops - 1;
-            asgn.distToPickup = fullDistToPickup;
+            asgn.legs.back().vehicle = &fleet[vehId];
+            asgn.legs.back().pickupStopIdx = numStops - 1;
+            asgn.legs.back().dropoffStopIdx = numStops - 1;
+            asgn.legs.back().travelTimeToPickup = fullDistToPickup;
+            asgn.legs.back().detourCostToPickup = fullDistToPickup;
 
             // Have to ignore service time hard constraint since we only search for promising dropoffs.
             // If all promising dropoffs violate the service time constraint but there is an unpromising dropoff

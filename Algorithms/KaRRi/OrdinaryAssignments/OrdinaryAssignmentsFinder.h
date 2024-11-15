@@ -80,7 +80,9 @@ namespace karri {
                     continue;
 
                 ++numCandidateVehicles;
-                Assignment asgn(&fleet[vehId]);
+                Assignment asgn;
+                asgn.legs.emplace_back();
+                asgn.legs.back().vehicle = &fleet[vehId];
 
                 const auto relevantDropoffs = relDropoffs.relevantSpotsFor(vehId);
                 auto curFirstDropoffIt = relevantDropoffs.begin();
@@ -97,9 +99,11 @@ namespace karri {
                         break; // No dropoffs later in route than current (or subsequent) pickup(s)
 
                     asgn.pickup = &requestState.pickups[pickupEntry.pdId];
-                    asgn.pickupStopIdx = pickupEntry.stopIndex;
-                    asgn.distToPickup = pickupEntry.distToPDLoc;
-                    asgn.distFromPickup = pickupEntry.distFromPDLocToNextStop;
+                    asgn.legs.back().pickupStopIdx = pickupEntry.stopIndex;
+                    asgn.legs.back().travelTimeToPickup = pickupEntry.distToPDLoc;
+                    asgn.legs.back().detourCostToPickup = pickupEntry.distToPDLoc;
+                    asgn.legs.back().travelTimeFromPickup = pickupEntry.distFromPDLocToNextStop;
+                    asgn.legs.back().detourCostFromPickup = pickupEntry.distFromPDLocToNextStop;
 
                     numAssignmentsTried += tryDropoffLaterThanPickup(asgn, curFirstDropoffIt, relDropoffs);
                 }
@@ -119,8 +123,8 @@ namespace karri {
         int tryDropoffLaterThanPickup(Assignment &asgn,
                                       const RelevantPDLocs::It &startItInRegularDropoffs,
                                       const RelevantPDLocs& relDropoffs) {
-            assert(asgn.vehicle && asgn.pickup);
-            const auto &vehId = asgn.vehicle->vehicleId;
+            KASSERT(asgn.pickup && asgn.legs.size() == 1 && asgn.legs.back().vehicle);
+            const auto &vehId = asgn.legs.back().vehicle->vehicleId;
 
             const auto relevantDropoffs = relDropoffs.relevantSpotsFor(vehId);
             assert(startItInRegularDropoffs >= relevantDropoffs.begin() &&
@@ -152,9 +156,11 @@ namespace karri {
                     continue;
                 }
 
-                asgn.dropoffStopIdx = dropoffEntry.stopIndex;
-                asgn.distToDropoff = dropoffEntry.distToPDLoc;
-                asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
+                asgn.legs.back().dropoffStopIdx = dropoffEntry.stopIndex;
+                asgn.legs.back().travelTimeToDropoff = dropoffEntry.distToPDLoc;
+                asgn.legs.back().detourCostToDropoff = dropoffEntry.distToPDLoc;
+                asgn.legs.back().travelTimeFromDropoff = dropoffEntry.distFromPDLocToNextStop;
+                asgn.legs.back().detourCostFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                 requestState.tryAssignment(asgn);
                 ++numAssignmentsTriedWithOrdinaryDropoff;
             }
@@ -170,6 +176,7 @@ namespace karri {
 
             // Try pairs with pickup at existing stop
             Assignment asgn;
+            asgn.legs.emplace_back();
             const auto &minDirectDistance = requestState.minDirectPDDist;
 
             unsigned int minPickupId = INVALID_ID, minDropoffId = INVALID_ID;
@@ -182,7 +189,7 @@ namespace karri {
                 const auto &veh = fleet[vehId];
                 const auto &stopLocations = routeState.stopLocationsFor(vehId);
 
-                asgn.vehicle = &veh;
+                asgn.legs.back().vehicle = &veh;
 
                 const auto relevantPickups = relPickups.relevantSpotsFor(vehId);
                 const auto relevantDropoffs = relDropoffs.relevantSpotsFor(vehId);
@@ -245,11 +252,14 @@ namespace karri {
                         // With collected lower bounds, we check whether an assignment better than the best known is possible with this vehicle
                         asgn.pickup = &requestState.pickups[minPickupId];
                         asgn.dropoff = &requestState.dropoffs[minDropoffId];
-                        asgn.pickupStopIdx = stopPos;
-                        asgn.dropoffStopIdx = stopPos;
-                        asgn.distToPickup = minDistToPickup;
-                        asgn.distToDropoff = minDirectDistance;
-                        asgn.distFromDropoff = minDistFromDropoff;
+                        asgn.legs.back().pickupStopIdx = stopPos;
+                        asgn.legs.back().dropoffStopIdx = stopPos;
+                        asgn.legs.back().travelTimeToPickup = minDistToPickup;
+                        asgn.legs.back().detourCostToPickup = minDistToPickup;
+                        asgn.legs.back().travelTimeToDropoff = minDirectDistance;
+                        asgn.legs.back().detourCostToDropoff = minDirectDistance;
+                        asgn.legs.back().travelTimeFromDropoff = minDistFromDropoff;
+                        asgn.legs.back().detourCostFromDropoff = minDistFromDropoff;
                         const auto lowerBoundCost =
                                 calculator.calcCostLowerBoundForOrdinaryPairedAssignment(asgn, requestState);
                         if (lowerBoundCost > requestState.getBestCost())
@@ -264,14 +274,17 @@ namespace karri {
                             if (stopLocations[stopPos + 1] == asgn.dropoff->loc)
                                 continue; // if dropoff coincides with the following stop, an ordinary non-paired assignment with dropoffIndex = pickupIndex + 1 will cover this case
 
-                            asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
+                            asgn.legs.back().travelTimeFromDropoff = dropoffEntry.distFromPDLocToNextStop;
+                            asgn.legs.back().detourCostFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                             for (auto pickupIt2 = beginOfStopInPickups; pickupIt2 < endOfStopInPickups; ++pickupIt2) {
                                 const auto &pickupEntry = *pickupIt2;
                                 asgn.pickup = &requestState.pickups[pickupEntry.pdId];
-                                asgn.distToPickup = pickupEntry.distToPDLoc;
+                                asgn.legs.back().travelTimeToPickup = pickupEntry.distToPDLoc;
+                                asgn.legs.back().detourCostToPickup = pickupEntry.distToPDLoc;
 
-                                assert(asgn.distToPickup < INFTY && asgn.distFromDropoff < INFTY);
-                                asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                                KASSERT(asgn.legs.back().travelTimeToPickup < INFTY && asgn.legs.back().travelTimeFromDropoff < INFTY);
+                                asgn.legs.back().travelTimeToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                                asgn.legs.back().detourCostToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                                 requestState.tryAssignment(asgn);
                                 ++numAssignmentsTried;
                             }

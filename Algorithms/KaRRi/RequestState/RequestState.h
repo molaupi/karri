@@ -129,7 +129,7 @@ namespace karri {
         }
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
-            assert(calculator.calc(asgn, *this) == cost);
+            KASSERT(calculator.calc(asgn, *this) == cost);
 
             if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
                                     breakCostTie(asgn, bestAssignment)))) {

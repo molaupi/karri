@@ -27,6 +27,12 @@
 
 namespace karri {
 
+    // Vehicle cost type decides how costs for detours are calculated.
+    enum VehicleCostType {
+        TAXI, // Detour cost is tied to free-flow travel times
+        BUS // Detour cost is tied to rider sharing potential (as modeled by traversal costs in synergistic traffic assignment (STA) equilibrium)
+    };
+
 // Models a vehicle with an ID, a capacity, an initial location, and a service time interval.
     struct Vehicle {
         int vehicleId;
@@ -34,6 +40,7 @@ namespace karri {
         int startOfServiceTime;
         int endOfServiceTime;
         int capacity;
+        VehicleCostType costType;
     };
 
     using Fleet = std::vector<Vehicle>;

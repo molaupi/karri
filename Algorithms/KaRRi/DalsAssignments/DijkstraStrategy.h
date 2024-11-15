@@ -184,13 +184,14 @@ namespace karri::DropoffAfterLastStopStrategies {
             Timer timer;
 
             Assignment asgn;
-            auto &dropoffIndex = asgn.dropoffStopIdx;
+            asgn.legs.emplace_back();
+            auto &dropoffIndex = asgn.legs.back().dropoffStopIdx;
 
             for (const auto &vehId: vehiclesWithLastStopAtV) {
                 ++numLastStopsVisited;
 
                 const auto occupancies = routeState.occupanciesFor(vehId);
-                asgn.vehicle = &fleet[vehId];
+                asgn.legs.back().vehicle = &fleet[vehId];
                 dropoffIndex = routeState.numStopsOf(vehId) - 1;
 
                 if (curRelOrdinaryPickups->hasRelevantSpotsFor(vehId)) {
@@ -202,23 +203,26 @@ namespace karri::DropoffAfterLastStopStrategies {
                             continue;
 
                         asgn.dropoff = &requestState.dropoffs[curDropoffIds[searchIdx]];
-                        asgn.distToDropoff = distFromV[searchIdx];
+                        asgn.legs.back().travelTimeToDropoff = distFromV[searchIdx];
+                        asgn.legs.back().detourCostToDropoff = distFromV[searchIdx];
 
                         for (auto pickupIt = relevantPickupsInRevOrder.begin();
                              pickupIt < relevantPickupsInRevOrder.end(); ++pickupIt) {
                             const auto &entry = *pickupIt;
 
                             if (occupancies[entry.stopIndex] + requestState.originalRequest.numRiders >
-                                asgn.vehicle->capacity)
+                                asgn.legs.back().vehicle->capacity)
                                 break;
 
                             asgn.pickup = &requestState.pickups[entry.pdId];
                             if (asgn.pickup->loc == asgn.dropoff->loc)
                                 continue;
 
-                            asgn.pickupStopIdx = entry.stopIndex;
-                            asgn.distToPickup = entry.distToPDLoc;
-                            asgn.distFromPickup = entry.distFromPDLocToNextStop;
+                            asgn.legs.back().pickupStopIdx = entry.stopIndex;
+                            asgn.legs.back().travelTimeToPickup = entry.distToPDLoc;
+                            asgn.legs.back().detourCostToPickup = entry.distToPDLoc;
+                            asgn.legs.back().travelTimeFromPickup = entry.distFromPDLocToNextStop;
+                            asgn.legs.back().detourCostFromPickup = entry.distFromPDLocToNextStop;
 
                             requestState.tryAssignment(asgn);
                             ++numAssignmentsTried;
@@ -227,16 +231,17 @@ namespace karri::DropoffAfterLastStopStrategies {
                 }
 
                 if (curRelPickupsBns->hasRelevantSpotsFor(vehId) &&
-                    occupancies[0] != asgn.vehicle->capacity) {
+                    occupancies[0] != asgn.legs.back().vehicle->capacity) {
                     vehiclesSeen.insert(vehId);
-                    asgn.pickupStopIdx = 0;
+                    asgn.legs.back().pickupStopIdx = 0;
 
                     for (int searchIdx = 0; searchIdx < endOfCurBatch; ++searchIdx) {
                         if (minCosts[searchIdx] > requestState.getBestCost())
                             continue;
 
                         asgn.dropoff = &requestState.dropoffs[curDropoffIds[searchIdx]];
-                        asgn.distToDropoff = distFromV[searchIdx];
+                        asgn.legs.back().travelTimeToDropoff = distFromV[searchIdx];
+                        asgn.legs.back().detourCostToDropoff = distFromV[searchIdx];
 
                         pickupsToTryBeforeNextStop.clear();
 
@@ -246,13 +251,15 @@ namespace karri::DropoffAfterLastStopStrategies {
                             if (asgn.pickup->loc == asgn.dropoff->loc)
                                 continue;
 
-                            asgn.distFromPickup = entry.distFromPDLocToNextStop;
+                            asgn.legs.back().travelTimeFromPickup = entry.distFromPDLocToNextStop;
+                            asgn.legs.back().detourCostFromPickup = entry.distFromPDLocToNextStop;
 
                             if (curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id)) {
                                 // If we know the exact distance to the pickup via the vehicles current location, we try
                                 // the precise assignment.
-                                asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
-                                if (asgn.distToPickup >= INFTY)
+                                asgn.legs.back().travelTimeToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
+                                asgn.legs.back().detourCostToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
+                                if (asgn.legs.back().travelTimeToPickup >= INFTY)
                                     continue;
 
                                 requestState.tryAssignment(asgn);
@@ -260,7 +267,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                             } else {
                                 // If we don't know that distance, we set dist to pickup to a lower bound not taking into
                                 // account the path via the current vehicle location first.
-                                asgn.distToPickup = entry.distToPDLoc;
+                                asgn.legs.back().travelTimeToPickup = entry.distToPDLoc;
+                                asgn.legs.back().detourCostToPickup = entry.distToPDLoc;
 
                                 const auto cost = calculator.calc(asgn, requestState);
                                 if (cost < requestState.getBestCost() || (cost == requestState.getBestCost() &&
@@ -270,9 +278,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                                     // vehicle. We postpone computation of that distance to be able to bundle it with the
                                     // computation of distances to other pickups via the vehicle location. Then all remaining
                                     // assignments with this pickup can be tried with the exact distance later.
-                                    pickupsToTryBeforeNextStop.push_back({asgn.pickup->id, asgn.distFromPickup});
-                                    curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id,
-                                                                                     asgn.distToPickup);
+                                    pickupsToTryBeforeNextStop.push_back({asgn.pickup->id, asgn.legs.back().travelTimeFromPickup});
+                                    curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id, asgn.legs.back().travelTimeToPickup);
                                 }
                             }
                         }
@@ -281,11 +288,13 @@ namespace karri::DropoffAfterLastStopStrategies {
                         curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId]);
                         for (const auto &pair: pickupsToTryBeforeNextStop) {
                             asgn.pickup = &requestState.pickups[pair.first];
-                            asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
-                            if (asgn.distToPickup >= INFTY)
+                            asgn.legs.back().travelTimeToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
+                            asgn.legs.back().detourCostToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
+                            if (asgn.legs.back().travelTimeToPickup >= INFTY)
                                 continue;
 
-                            asgn.distFromPickup = pair.second;
+                            asgn.legs.back().travelTimeFromPickup = pair.second;
+                            asgn.legs.back().detourCostFromPickup = pair.second;
                             requestState.tryAssignment(asgn);
                             ++numAssignmentsTried;
                         }

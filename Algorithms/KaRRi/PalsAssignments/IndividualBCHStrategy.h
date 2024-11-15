@@ -203,20 +203,22 @@ namespace karri::PickupAfterLastStopStrategies {
             Timer timer;
 
             Assignment asgn;
+            asgn.legs.emplace_back();
             for (const auto &vehId: vehiclesSeenForPickups) {
 
                 const int numStops = routeState.numStopsOf(vehId);
                 if (numStops == 0)
                     continue;
 
-                asgn.vehicle = &fleet[vehId];
-                asgn.pickupStopIdx = numStops - 1;
-                asgn.dropoffStopIdx = numStops - 1;
+                asgn.legs.back().vehicle = &fleet[vehId];
+                asgn.legs.back().pickupStopIdx = numStops - 1;
+                asgn.legs.back().dropoffStopIdx = numStops - 1;
 
                 for (auto &p: requestState.pickups) {
                     asgn.pickup = &p;
-                    asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
-                    if (asgn.distToPickup >= INFTY)
+                    asgn.legs.back().travelTimeToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
+                    asgn.legs.back().detourCostToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
+                    if (asgn.legs.back().travelTimeToPickup >= INFTY)
                         continue;
 
                     // Compute cost lower bound for this pickup specifically
@@ -241,7 +243,8 @@ namespace karri::PickupAfterLastStopStrategies {
 
                         // Try inserting pair with pickup after last stop:
                         ++numAssignmentsTried;
-                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.legs.back().travelTimeToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.legs.back().detourCostToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                         requestState.tryAssignment(asgn);
                     }
                 }
