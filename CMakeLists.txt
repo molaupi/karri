@@ -98,11 +98,6 @@ include_directories(External/rapidxml)
 include_directories(External/stocc)
 include_directories(External/vectorclass)
 
-set(REQ_BOOST_LIBS align assert config core static_assert)
-foreach(BOOST_LIB_NAME ${REQ_BOOST_LIBS})
-  include_directories(External/boost/libs/${BOOST_LIB_NAME}/include)
-endforeach()
-
 
 foreach(SRC_DIR ${SOURCE_DIRECTORIES})
   add_subdirectory(${SRC_DIR})

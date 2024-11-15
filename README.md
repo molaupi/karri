@@ -41,7 +41,6 @@ type the following commands at the top-level directory of the framework:
 
 ```
 $ git submodule update --init
-$ cd External/boost && git submodule update --init -- libs/align libs/assert libs/config libs/core libs/static_assert && cd ../..
 $ make -C External/RoutingKit
 ```
 
