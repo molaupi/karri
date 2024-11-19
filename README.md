@@ -31,9 +31,8 @@ To build KaRRi, you need to have some tools and libraries installed. On Debian a
 $ sudo apt-get install build-essential
 $ sudo apt-get install cmake
 $ sudo apt-get install python3 python3-pip; pip3 install -r python_requirements.txt
-$ sudo apt-get install libproj-dev
+$ sudo apt-get install sqlite3 libsqlite3-dev
 $ sudo apt-get install zlib1g-dev
-$ sudo apt-get install osmium-tool
 ```
 
 Next, you need to clone the libraries in the `External` subdirectory and build the `RoutingKit` library. To do so,
@@ -41,14 +40,20 @@ type the following commands at the top-level directory of the framework:
 
 ```
 $ git submodule update --init
-$ make -C External/RoutingKit
+$ make -C External/RoutingKit lib/libroutingkit.so
 ```
 
 
 ## Constructing KaRRi Input
 We provide bash scripts to generate the input data for the `Berlin-1pct`, `Berlin-10pct`,
-`Ruhr-1pct`, and `Ruhr-10pct` problem instances for the KaRRi algorithm. For example, you
-can generate the input data for the `Berlin-1pct` instance by typing the following commands
+`Ruhr-1pct`, and `Ruhr-10pct` problem instances for the KaRRi algorithm.
+Inputs are generated based on OpenStreetMap (OSM) data, which requires the [osmium tool](https://osmcode.org/osmium-tool/). 
+On Debian and its derivatives osmium can be installed using
+```
+sudo apt-get install osmium-tool
+```
+
+As an example, you can generate the input data for the `Berlin-1pct` instance by typing the following commands
 at the top-level directory: (Downloads multiple GiB of raw OSM data and requires at least 10 GiB of RAM.)
 
 ```
