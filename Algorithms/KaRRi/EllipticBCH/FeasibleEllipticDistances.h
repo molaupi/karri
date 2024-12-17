@@ -44,6 +44,7 @@
 #include <thread>
 #include <tbb/concurrent_vector.h>
 #include <tbb/enumerable_thread_specific.h>
+#include "Tools/Timer.h"
 
 namespace karri {
 
@@ -62,7 +63,6 @@ namespace karri {
 
     public:
 
-
         // Represents information that one thread computes during one elliptic BCH search. Can be incorporated into
         // global result at end of search.
         class ThreadLocalFeasibleEllipticDistances {
@@ -75,9 +75,9 @@ namespace karri {
 
                 int stopId = INVALID_ID;
 
+
                 DistanceLabel distFromStopToPdLoc = INFTY;
                 DistanceLabel meetingVertexFromStopToPdLoc = INVALID_VERTEX;
-
                 DistanceLabel distFromPdLocToNextStop = INFTY;
                 DistanceLabel meetingVertexFromPdLocToNextStop = INVALID_VERTEX;
             };
@@ -158,15 +158,17 @@ namespace karri {
 
         };
 
-        explicit FeasibleEllipticDistances(const RouteState &routeState, const int fleetSize)
+        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState, stats::EllipticBCHPerformanceStats& stats)
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
                   vehiclesWithFeasibleDistances(fleetSize),
                   indexInEntriesVector(),
                   localResults(),
-                  numRelPdLocsPerStop() {}
+                  numRelPdLocsPerStop(),
+                  stats(stats) {}
 
         void init() {
+            Timer timer;
             globalResults.clear();
             vehiclesWithFeasibleDistances.clear();
 
@@ -175,6 +177,9 @@ namespace karri {
             }
             for (auto &n: numRelPdLocsPerStop)
                 n.store(0);
+
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            stats.initializationTime += time;
         }
 
         // Each thread gets an instance of a ThreadLocalFeasibleEllipticDistances at the beginning of a search. This
@@ -251,7 +256,7 @@ namespace karri {
             return globalResults;
         }
 
-        const ThreadSafeSubset& getVehiclesWithFeasibleDistances() const {
+        const ThreadSafeSubset &getVehiclesWithFeasibleDistances() const {
             return vehiclesWithFeasibleDistances;
         }
 
@@ -276,6 +281,8 @@ namespace karri {
         tbb::enumerable_thread_specific<std::vector<typename ThreadLocalFeasibleEllipticDistances::LocalResultEntry>> localResults;
 
         std::vector<CAtomic<int>> numRelPdLocsPerStop;
+
+        stats::EllipticBCHPerformanceStats &stats;
 
     };
 

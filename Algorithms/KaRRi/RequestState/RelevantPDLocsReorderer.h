@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "Tools/Timer.h"
+#include "DataStructures/Containers/TimestampedVector.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
 
 namespace karri {
@@ -38,32 +40,21 @@ namespace karri {
 
         RelevantPDLocsReorderer(const Fleet &fleet,
                                 RequestState &requestState,
-                                const RouteState &routeState,
-                                const FeasibleDistancesT &feasiblePickupDistances,
-                                const FeasibleDistancesT &feasibleDropoffDistances,
-                                RelevantPDLocs &relOrdinaryPickups, RelevantPDLocs &relOrdinaryDropoffs,
-                                RelevantPDLocs &relPickupsBeforeNextStop, RelevantPDLocs &relDropoffsBeforeNextStop)
+                                const RouteState &routeState)
                 : fleet(fleet),
                   requestState(requestState),
                   routeState(routeState),
-                  feasiblePickupDistances(feasiblePickupDistances),
-                  feasibleDropoffDistances(feasibleDropoffDistances),
-                  relOrdinaryPickups(relOrdinaryPickups),
-                  relOrdinaryDropoffs(relOrdinaryDropoffs),
-                  relPickupsBeforeNextStop(relPickupsBeforeNextStop),
-                  relDropoffsBeforeNextStop(relDropoffsBeforeNextStop),
                   nextIdxForStop(0, INVALID_INDEX) {}
 
 
-        void reorderAll() {
-            reorderPickups();
-            reorderDropoffs();
-        }
 
-        void reorderPickups() {
+        std::pair<RelevantPDLocs, RelevantPDLocs> reorderPickups(const FeasibleDistancesT& feasiblePickupDistances) {
             int numRelOrdinaryStops = 0;
             int numRelBnsStops = 0;
             Timer timer;
+
+            RelevantPDLocs relOrdinaryPickups(fleet.size());
+            RelevantPDLocs relPickupsBeforeNextStop(fleet.size());
 
             reorder(feasiblePickupDistances, relOrdinaryPickups, relPickupsBeforeNextStop, numRelOrdinaryStops,
                     numRelBnsStops);
@@ -72,12 +63,17 @@ namespace karri {
             requestState.stats().ordAssignmentsStats.filterRelevantPDLocsTime += time;
             requestState.stats().ordAssignmentsStats.numRelevantStopsForPickups += numRelOrdinaryStops;
             requestState.stats().pbnsAssignmentsStats.numRelevantStopsForPickups += numRelBnsStops;
+
+            return {relOrdinaryPickups, relPickupsBeforeNextStop};
         }
 
-        void reorderDropoffs() {
+        std::pair<RelevantPDLocs, RelevantPDLocs> reorderDropoffs(const FeasibleDistancesT& feasibleDropoffDistances) {
             int numRelOrdinaryStops = 0;
             int numRelBnsStops = 0;
             Timer timer;
+
+            RelevantPDLocs relOrdinaryDropoffs(fleet.size());
+            RelevantPDLocs relDropoffsBeforeNextStop(fleet.size());
 
             reorder(feasibleDropoffDistances, relOrdinaryDropoffs, relDropoffsBeforeNextStop, numRelOrdinaryStops,
                     numRelBnsStops);
@@ -86,6 +82,8 @@ namespace karri {
             requestState.stats().ordAssignmentsStats.filterRelevantPDLocsTime += time;
             requestState.stats().ordAssignmentsStats.numRelevantStopsForDropoffs += numRelOrdinaryStops;
             requestState.stats().pbnsAssignmentsStats.numRelevantStopsForDropoffs += numRelBnsStops;
+
+            return {relOrdinaryDropoffs, relDropoffsBeforeNextStop};
         }
 
     private:
@@ -99,22 +97,27 @@ namespace karri {
                 nextIdxForStop.resize(routeState.getMaxStopId() + 1);
             nextIdxForStop.clear();
 
-            for (const auto& vehId : relOrdinary.vehiclesWithRelevantSpots)
-                relOrdinary.rangeOfRelevantPdLocs[vehId] = {0, 0};
-            relOrdinary.vehiclesWithRelevantSpots.clear();
-
-            for (const auto& vehId : relBns.vehiclesWithRelevantSpots)
-                relBns.rangeOfRelevantPdLocs[vehId] = {0, 0};
-            relBns.vehiclesWithRelevantSpots.clear();
+//            for (const auto& vehId : relOrdinary.vehiclesWithRelevantSpots)
+//                relOrdinary.rangeOfRelevantPdLocs[vehId] = {0, 0};
+//            relOrdinary.vehiclesWithRelevantSpots.clear();
+//
+//            for (const auto& vehId : relBns.vehiclesWithRelevantSpots)
+//                relBns.rangeOfRelevantPdLocs[vehId] = {0, 0};
+//            relBns.vehiclesWithRelevantSpots.clear();
 
             int sumOrdinary = 0;
             int sumBns = 0;
 
-            for (const int& vehId : feasible.getVehiclesWithFeasibleDistances()) {
+            const auto& vehiclesWithFeasibleDistances = feasible.getVehiclesWithFeasibleDistances();
+            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
+                relOrdinary.startOfRelevantPDLocs[vehId] = sumOrdinary;
+                relBns.startOfRelevantPDLocs[vehId] = sumBns;
+
+                if (!vehiclesWithFeasibleDistances.contains(vehId))
+                    continue;
+
                 const int &numStops = routeState.numStopsOf(vehId);
                 assert(numStops > 1);
-                relOrdinary.rangeOfRelevantPdLocs[vehId].start = sumOrdinary;
-                relBns.rangeOfRelevantPdLocs[vehId].start = sumBns;
 
                 const auto &stopIds = routeState.stopIdsFor(vehId);
                 nextIdxForStop[stopIds[0]] = sumBns;
@@ -134,15 +137,47 @@ namespace karri {
                 sumOrdinary += numRelPdLocsForVehOrdinary;
                 sumBns += numRelPdLocsForVehBns;
 
-                relOrdinary.rangeOfRelevantPdLocs[vehId].end = sumOrdinary;
-                relBns.rangeOfRelevantPdLocs[vehId].end = sumBns;
-
                 // If vehicle has at least one stop with relevant PD loc, add the vehicle
                 if (numRelPdLocsForVehOrdinary > 0)
                     relOrdinary.vehiclesWithRelevantSpots.insert(vehId);
                 if (numRelPdLocsForVehBns > 0)
                     relBns.vehiclesWithRelevantSpots.insert(vehId);
             }
+//
+//            for (const int& vehId : feasible.getVehiclesWithFeasibleDistances()) {
+//                const int &numStops = routeState.numStopsOf(vehId);
+//                assert(numStops > 1);
+//
+//                const auto &stopIds = routeState.stopIdsFor(vehId);
+//                nextIdxForStop[stopIds[0]] = sumBns;
+//                const int numRelPdLocsForVehBns = feasible.getNumRelPdLocsForStop(stopIds[0]);
+//                numRelBnsStops += (numRelPdLocsForVehBns > 0);
+//
+//                int numRelPdLocsForVehOrdinary = 0;
+//                for (int stopPos = 1; stopPos < numStops; ++stopPos) {
+//                    const auto &stopId = stopIds[stopPos];
+//                    nextIdxForStop[stopId] = sumOrdinary + numRelPdLocsForVehOrdinary;
+//                    const auto &numRelForStop = feasible.getNumRelPdLocsForStop(stopId);
+//                    numRelPdLocsForVehOrdinary += numRelForStop;
+//
+//                    numRelOrdinaryStops += (numRelForStop > 0);
+//                }
+//
+//                sumOrdinary += numRelPdLocsForVehOrdinary;
+//                sumBns += numRelPdLocsForVehBns;
+//
+//                relOrdinary.startOfRelevantPDLocs[vehId] = sumOrdinary;
+//                relBns.startOfRelevantPDLocs[vehId] = sumBns;
+//
+//                relOrdinary.rangeOfRelevantPdLocs[vehId].end = sumOrdinary;
+//                relBns.rangeOfRelevantPdLocs[vehId].end = sumBns;
+//
+//                // If vehicle has at least one stop with relevant PD loc, add the vehicle
+//                if (numRelPdLocsForVehOrdinary > 0)
+//                    relOrdinary.vehiclesWithRelevantSpots.insert(vehId);
+//                if (numRelPdLocsForVehBns > 0)
+//                    relBns.vehiclesWithRelevantSpots.insert(vehId);
+//            }
 
             relOrdinary.relevantSpots.resize(sumOrdinary);
             relBns.relevantSpots.resize(sumBns);
@@ -167,14 +202,6 @@ namespace karri {
         RequestState &requestState;
         const RouteState &routeState;
 
-        const FeasibleDistancesT &feasiblePickupDistances;
-        const FeasibleDistancesT &feasibleDropoffDistances;
-
-        RelevantPDLocs &relOrdinaryPickups;
-        RelevantPDLocs &relOrdinaryDropoffs;
-        RelevantPDLocs &relPickupsBeforeNextStop;
-        RelevantPDLocs &relDropoffsBeforeNextStop;
-
-        TimestampedVector<int> nextIdxForStop;
+        TimestampedVector<int, std::vector> nextIdxForStop;
     };
 }

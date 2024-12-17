@@ -30,6 +30,9 @@
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "PDDistances.h"
 
+#include <tbb/parallel_for.h>
+#include <tbb/enumerable_thread_specific.h>
+
 namespace karri::PDDistanceQueryStrategies {
 
     template<typename InputGraphT,
@@ -41,26 +44,35 @@ namespace karri::PDDistanceQueryStrategies {
 
         static constexpr int K = LabelSetT::K;
         using DistanceLabel = typename LabelSetT::DistanceLabel;
+        using PDDistancesT = PDDistances<LabelSetT>;
 
         CHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                    PDDistances<LabelSetT> &distances,
                     RequestState &requestState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   requestState(requestState),
-                  distances(distances),
                   queries([&]{return chEnv.template getFullCHQuery<LabelSetT>();}) {}
 
 
+
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
-        void run() {
+        PDDistancesT run() {
             assert(requestState.pickups[0].loc == requestState.originalRequest.origin
                    && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
 
+            PDDistancesT pdDistances(requestState);
+
+            // Initialize distance from origin to dropoff
+            pdDistances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
+
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().pdDistancesStats.initializationTime += time;
+            timer.restart();
+
             if (requestState.numPickups() == 1 && requestState.numDropoffs() == 1) {
                 requestState.minDirectPDDist = requestState.originalReqDirectDist;
-                return;
+                return pdDistances;
             }
 
             std::vector<std::pair<int, int>> jobs;
@@ -69,27 +81,24 @@ namespace karri::PDDistanceQueryStrategies {
                     jobs.emplace_back(firstPickupIdInBatch, dropoffId);
 
             tbb::parallel_for(int(0), static_cast<int>(jobs.size()), 1, [&](int jobIdx) {
-                runQueryForPickupBatchAndDropoff(jobs[jobIdx].first, jobs[jobIdx].second);
+                runQueryForPickupBatchAndDropoff(jobs[jobIdx].first, jobs[jobIdx].second, pdDistances);
             });
 
-
-            requestState.minDirectPDDist = distances.getMinDirectDistance();
+            requestState.minDirectPDDist = pdDistances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
+
+            return pdDistances;
         }
 
         void init() {
-            Timer timer;
-            distances.clear();
-            distances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
-            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime += time;
+            // no op
         }
 
     private:
 
-        void runQueryForPickupBatchAndDropoff(const int firstPickupIdInBatch, const int dropoffId) {
+        void runQueryForPickupBatchAndDropoff(const int firstPickupIdInBatch, const int dropoffId, PDDistancesT& distances) {
             // Run query for batch of pickups and single
             std::array<int, K> pickupHeadRanks = {};
             for (int i = 0; i < K; ++i) {
@@ -115,9 +124,8 @@ namespace karri::PDDistanceQueryStrategies {
         const CH &ch;
         RequestState &requestState;
 
-        PDDistances<LabelSetT> &distances;
-
         tbb::enumerable_thread_specific<typename CHEnvT::template FullCHQuery<LabelSetT>> queries;
+
     };
 
 }

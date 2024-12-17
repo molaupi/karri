@@ -1,7 +1,7 @@
 /// ******************************************************************************
 /// MIT License
 ///
-/// Copyright (c) 2023 Moritz Laupichler <moritz.laupichler@kit.edu>
+/// Copyright (c) 2024 Moritz Laupichler <moritz.laupichler@kit.edu>
 ///
 /// Permission is hereby granted, free of charge, to any person obtaining a copy
 /// of this software and associated documentation files (the "Software"), to deal
@@ -25,16 +25,11 @@
 
 #pragma once
 
-#include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
+#include "Tools/Constants.h"
 
-namespace karri {
-
-    struct NoOpLastStopBucketsEnvironment {
-
-        inline void generateBucketEntries(const Vehicle &, const int) {/* no op */}
-
-        inline void updateBucketEntries(const Vehicle &veh, const int stopIndex) {/* no op*/}
-
-        inline void removeBucketEntries(const Vehicle &, const int) {/* no op */}
-    };
-}
+// Info about a PD loc that coincides with an existing stop of a vehicle.
+struct PDLocAtExistingStop {
+    int pdId = INVALID_ID;
+    int vehId = INVALID_ID;
+    int stopIndex = INVALID_INDEX;
+};

@@ -127,6 +127,7 @@ namespace karri::PickupAfterLastStopStrategies {
                                                                                            strat.routeState);
                 auto depTimeAtPickups = vehDepTimeAtLastStop + distancesToPickups + InputConfig::getInstance().stopTime;
                 depTimeAtPickups.max(curPassengerArrTimesAtPickups);
+
                 const auto tripTimeTillDepAtPickup = depTimeAtPickups - strat.requestState.originalRequest.requestTime;
                 DistanceLabel costLowerBound = calc.template calcLowerBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
                         detourTillDepAtPickup, tripTimeTillDepAtPickup, directDist, currentPickupWalkingDists,
@@ -176,14 +177,12 @@ namespace karri::PickupAfterLastStopStrategies {
                               const CHEnvT &chEnv,
                               const CostCalculator &pCalculator,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              const PDDistancesT &pdDistances,
                               const RouteState &routeState,
                               RequestState &requestState,
                               const int &bestCostBeforeQuery)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(pCalculator),
-                  pdDistances(pdDistances),
                   routeState(routeState),
                   requestState(requestState),
                   bestCostBeforeQuery(bestCostBeforeQuery),
@@ -196,7 +195,7 @@ namespace karri::PickupAfterLastStopStrategies {
                   search(lastStopBucketsEnv, distances, chEnv, routeState,
                          threadLocalPruners) {}
 
-        void tryPickupAfterLastStop() {
+        void tryPickupAfterLastStop(const PDDistancesT& pdDistances) {
             // Helper lambda to get sum of stats from thread local queries
             static const auto sumInts = [](const int &n1, const int &n2) { return n1 + n2; };
 
@@ -205,7 +204,7 @@ namespace karri::PickupAfterLastStopStrategies {
             initPickupSearches();
 
             tbb::parallel_for(int(0), static_cast<int>(requestState.numPickups()), K, [&](int i) {
-                runBchSearchesAndEnumerate(i);
+                runBchSearchesAndEnumerate(i, pdDistances);
             });
 
             // Try assignment sequentially for local best assignment calculated by the individual thread
@@ -230,7 +229,6 @@ namespace karri::PickupAfterLastStopStrategies {
             requestState.stats().palsAssignmentsStats.numCandidateVehicles += distances.getVehiclesSeen().size();
             requestState.stats().palsAssignmentsStats.numAssignmentsTried += numAssignmentsTried.load(
                     std::memory_order_relaxed);
-
         }
 
     private:
@@ -250,6 +248,7 @@ namespace karri::PickupAfterLastStopStrategies {
             totalNumVerticesSettled.store(0);
             totalNumEntriesScanned.store(0);
 
+
             upperBoundCost.store(bestCostBeforeQuery);
 
             const int numPickupBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
@@ -257,21 +256,24 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Run BCH searches and enumerate assignments within a thread
-        void runBchSearchesAndEnumerate(const int firstPickupId) {
+        void runBchSearchesAndEnumerate(const int firstPickupId, const PDDistancesT& pdDistances) {
+
             Timer timer;
-            runSearchesForPickupBatch(firstPickupId);
+            runSearchesForPickupBatch(firstPickupId, pdDistances);
             localSearchTime.local() += timer.elapsed<std::chrono::nanoseconds>();
 
             timer.restart();
-            enumeratePickupBatch(firstPickupId);
+            enumeratePickupBatch(firstPickupId, pdDistances);
             localTryAssignmentsTime.local() += timer.elapsed<std::chrono::nanoseconds>();
+
         }
 
         inline int getDistanceToPickup(const int vehId, const unsigned int pickupId) {
             return distances.getDistance(vehId, pickupId);
         }
 
-        void runSearchesForPickupBatch(const int firstPickupId) {
+        void runSearchesForPickupBatch(const int firstPickupId, const PDDistancesT& pdDistances) {
+
             assert(firstPickupId % K == 0 && firstPickupId < requestState.numPickups());
 
             auto &localPruner = threadLocalPruners.local();
@@ -300,7 +302,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         }
 
-        void enumeratePickupBatch(const int firstPickupId) {
+        void enumeratePickupBatch(const int firstPickupId, const PDDistancesT& pdDistances) {
             using namespace time_utils;
 
             int &localBestCost = localBestCosts.local();
@@ -314,13 +316,13 @@ namespace karri::PickupAfterLastStopStrategies {
                         firstPickupId + i < requestState.numPickups() ? requestState.pickups[firstPickupId + i]
                                                                       : requestState.pickups[firstPickupId];
 
-                enumeratePickup(pickup, localBestCost, localBestAssignment, numAssignmentsTriedLocal);
+                enumeratePickup(pickup, localBestCost, localBestAssignment, numAssignmentsTriedLocal, pdDistances);
             }
             
             numAssignmentsTried.add_fetch(numAssignmentsTriedLocal, std::memory_order_relaxed);
         }
 
-        void enumeratePickup(const PDLoc &pickup, int &localBestCost, Assignment &localBestAssignment, int &numAssignmentsTriedLocal) {
+        void enumeratePickup(const PDLoc &pickup, int &localBestCost, Assignment &localBestAssignment, int &numAssignmentsTriedLocal, const PDDistancesT& pdDistances) {
             using namespace time_utils;
             Assignment asgn;
             asgn.pickup = &pickup;
@@ -380,7 +382,6 @@ namespace karri::PickupAfterLastStopStrategies {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CostCalculator &calculator;
-        const PDDistancesT &pdDistances;
         const RouteState &routeState;
         RequestState &requestState;
         const int &bestCostBeforeQuery;

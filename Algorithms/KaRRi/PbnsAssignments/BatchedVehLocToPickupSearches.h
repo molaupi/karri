@@ -117,7 +117,6 @@ namespace karri {
     public:
 
         BatchedVehLocToPickupSearches(const InputGraphT &graph,
-                                      const RelevantPDLocs &relevantPickupsBns,
                                       const CHEnvT &chEnv,
                                       const Fleet &fleet,
                                       const RouteState &routeState,
@@ -126,7 +125,6 @@ namespace karri {
                                       VehLocToPickupDistances &distances)
                 : inputGraph(graph),
                   vehicleLocator(locator),
-                  relevantPickupsBns(relevantPickupsBns),
                   ch(chEnv.getCH()),
                   fleet(fleet),
                   routeState(routeState),
@@ -161,7 +159,7 @@ namespace karri {
 
         // Construct bucket entries for all marked vehicles.
         template<typename VehicleIdsT>
-        void buildBucketsForMarkedVehiclesSequential(const VehicleIdsT &markedVehicles) {
+        void buildBucketsForMarkedVehiclesSequential(const VehicleIdsT &markedVehicles, const RelevantPDLocs& relPickupsBns) {
             Timer timer;
 
             for (const auto &vehId: markedVehicles) {
@@ -171,7 +169,7 @@ namespace karri {
 
                 // Skip vehicles that are at their first stop:
                 if (vehLocation.location == routeState.stopLocationsFor(vehId)[0]) {
-                    fillDistancesForVehicleAtPrevStop(veh);
+                    fillDistancesForVehicleAtPrevStop(veh, relPickupsBns);
                     continue;
                 }
 
@@ -253,9 +251,9 @@ namespace karri {
 
     private:
 
-        void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle) {
+        void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle, const RelevantPDLocs& relPickupsBns) {
 
-            for (const auto& e : relevantPickupsBns.relevantSpotsFor(vehicle.vehicleId)) {
+            for (const auto& e : relPickupsBns.relevantSpotsFor(vehicle.vehicleId)) {
                 distances.updateDistance(vehicle.vehicleId, e.pdId, e.distToPDLoc);
             }
 
@@ -267,9 +265,10 @@ namespace karri {
             }
         }
 
+
+
         const InputGraphT &inputGraph;
         VehicleLocatorT &vehicleLocator;
-        const RelevantPDLocs &relevantPickupsBns;
         const CH &ch;
         const Fleet &fleet;
         const RouteState &routeState;

@@ -147,8 +147,9 @@ namespace karri {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex],
                                         routeState.schedDepTimesFor(veh.vehicleId)[stopIndex]) -
-                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] -
-                               InputConfig::getInstance().stopTime;
+            routeState.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] -
+            InputConfig::getInstance().stopTime;
+
             if (leeway <= 0)
                 return;
 

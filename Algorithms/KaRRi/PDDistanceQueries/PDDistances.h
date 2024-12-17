@@ -39,34 +39,24 @@ namespace karri {
 
         static constexpr int K = LabelSetT::K;
 
+    private:
+        static size_t numLabelsPerDropoff(const int numPickups) {
+            return numPickups / K + (numPickups % K != 0);
+        }
+
     public:
 
-        PDDistances(const RequestState &requestState)
-                : requestState(requestState) {}
-
-
-        void clear() {
-            const int numLabelsPerDropoff = (requestState.numPickups() / K + (requestState.numPickups() % K != 0));
-            const int numNeededLabels = numLabelsPerDropoff * requestState.numDropoffs();
-            distances.clear();
-            distances.resize(numNeededLabels, DistanceLabel(INFTY));
-
-
-            minDirectDist = INFTY;
-            if (minDirectDistancesPerPickup.size() < numLabelsPerDropoff) {
-                minDirectDistancesPerPickup.resize(numLabelsPerDropoff);
-            }
-            std::fill(minDirectDistancesPerPickup.begin(), minDirectDistancesPerPickup.begin() + numLabelsPerDropoff,
-                      DistanceLabel(INFTY));
-
-        }
+        PDDistances(const int numPickups, const int numDropoffs) :
+                numPickups(numPickups),
+                numDropoffs(numDropoffs),
+                distances(numLabelsPerDropoff(numPickups) * numDropoffs, INFTY),
+                minDirectDist(INFTY),
+                minDirectDistancesPerPickup(numLabelsPerDropoff(numPickups), INFTY) {}
 
         // IDs refer to the indices in the vectors of pickups/dropoffs given at the last initialize() call.
         int getDirectDistance(const unsigned int pickupId, const unsigned int dropoffId) const {
-            assert(pickupId < requestState.numPickups());
-            assert(dropoffId < requestState.numDropoffs());
             const int res = labelFor(pickupId, dropoffId)[pickupId % K];
-            assert(res < INFTY);
+            KASSERT(res < INFTY);
             return res;
         }
 
@@ -107,15 +97,16 @@ namespace karri {
 
         void computeGlobalMinDirectDistance() {
             for (int firstPickupIdInBatch = 0;
-                 firstPickupIdInBatch < requestState.numPickups(); firstPickupIdInBatch += K) {
+                 firstPickupIdInBatch < numPickups; firstPickupIdInBatch += K) {
                 DistanceLabel &minLabelForBatch = minDirectDistancesPerPickup[firstPickupIdInBatch / K];
                 minDirectDist = std::min(minDirectDist, minLabelForBatch.horizontalMin());
+
             }
         }
 
         void computeMinDirectDistancesForPickupBatch(const int firstPickupIdInBatch) {
             DistanceLabel &minLabelForBatch = minDirectDistancesPerPickup[firstPickupIdInBatch / K];
-            for (int dropoffId = 0; dropoffId < requestState.numDropoffs(); ++dropoffId) {
+            for (int dropoffId = 0; dropoffId < numDropoffs; ++dropoffId) {
                 const auto &label = labelFor(firstPickupIdInBatch, dropoffId);
                 minLabelForBatch.min(label);
             }
@@ -124,18 +115,20 @@ namespace karri {
     private:
 
         DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId) {
-            return distances[(pickupId / K) * requestState.numDropoffs() + dropoffId];
+            return distances[(pickupId / K) * numDropoffs + dropoffId];
         }
 
         const DistanceLabel &labelFor(const unsigned int pickupId, const unsigned int dropoffId) const {
-            return distances[(pickupId / K) * requestState.numDropoffs() + dropoffId];
+            return distances[(pickupId / K) * numDropoffs + dropoffId];
         }
 
-        const RequestState &requestState;
+        int numPickups;
+        int numDropoffs;
 
         // Distances are stored as vectors of size K (DistanceLabel).
         // Layout is [ [p(i * K)..p((i+1) * K - 1)] x d(0) .. [p(i * K)..p((i+1) * K - 1)] x d(Nd-1) ] for i=0 to Np / K
         AlignedVector<DistanceLabel> distances;
+
         int minDirectDist;
         std::vector<DistanceLabel> minDirectDistancesPerPickup;
     };

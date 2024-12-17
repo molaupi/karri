@@ -48,7 +48,8 @@ namespace karri {
             int bestCost = INFTY;
             int numAssignmentsTried = 0;
 
-            bool tryAssignment(const Assignment &asgn, const CostCalculator& pCalculator, const RequestState& pRequestState) {
+            bool tryAssignment(const Assignment &asgn, const CostCalculator &pCalculator,
+                               const RequestState &pRequestState) {
                 ++numAssignmentsTried;
                 const auto cost = pCalculator.calc(asgn, pRequestState);
 
@@ -66,23 +67,20 @@ namespace karri {
 
     public:
 
-        OrdinaryAssignmentsFinder(const RelevantPDLocs &relPickups, const RelevantPDLocs &relDropoffs,
-                                  const PDDistancesT &pdDistances, const Fleet &fleet,
-                                  const CostCalculator &calculator, const RouteState &routeState,
+        OrdinaryAssignmentsFinder(const Fleet &fleet, const CostCalculator &calculator, const RouteState &routeState,
                                   RequestState &requestState)
-                : relPickups(relPickups),
-                  relDropoffs(relDropoffs),
-                  pdDistances(pdDistances),
-                  fleet(fleet),
+                : fleet(fleet),
                   calculator(calculator),
                   routeState(routeState),
                   requestState(requestState),
                   localBestAsgnInfo() {}
 
-        void findAssignments() {
-//            findOrdinaryAssignments();
-//            findOrdinaryPairedAssignments();
-            parFindOrdinaryAssignments();
+
+        void findAssignments(const RelevantPDLocs &relPickups, const RelevantPDLocs &relDropoffs,
+                             const PDDistancesT &pdDistances) {
+//            findOrdinaryAssignments(relPickups, relDropoffs);
+//            findOrdinaryPairedAssignments(pdDistances, relPickups, relDropoffs);
+            parFindOrdinaryAssignments(relPickups, relDropoffs, pdDistances);
         }
 
         void init() {
@@ -94,7 +92,8 @@ namespace karri {
         // Try assignments where pickup is inserted at or just after stop i and dropoff is inserted at or just after stop j
         // with j > i. Does not deal with inserting the pickup at or after a last stop. Does not deal with inserting the
         // dropoff after a last stop.
-        void parFindOrdinaryAssignments() {
+        void parFindOrdinaryAssignments(const RelevantPDLocs &relPickups, const RelevantPDLocs &relDropoffs,
+                                        const PDDistancesT &pdDistances) {
 
             Timer timer;
             CAtomic<int> numCandidateVehicles{0};
@@ -165,7 +164,6 @@ namespace karri {
                     }
 
                 });
-
             });
 
             int totalNumAssignmentsTried = 0;
@@ -173,13 +171,15 @@ namespace karri {
                 if (localInfo.bestCost < INFTY)
                     requestState.tryAssignmentWithKnownCost(localInfo.bestAsgn, localInfo.bestCost);
                 totalNumAssignmentsTried += localInfo.numAssignmentsTried;
-            }
 
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ordAssignmentsStats.tryNonPairedAssignmentsTime += time;
-            requestState.stats().ordAssignmentsStats.numCandidateVehicles += numCandidateVehicles.load(
-                    std::memory_order_seq_cst);
-            requestState.stats().ordAssignmentsStats.numAssignmentsTried += totalNumAssignmentsTried;
+
+                const auto time = timer.elapsed<std::chrono::nanoseconds>();
+                requestState.stats().ordAssignmentsStats.tryNonPairedAssignmentsTime += time;
+                requestState.stats().ordAssignmentsStats.numCandidateVehicles += numCandidateVehicles.load(
+                        std::memory_order_seq_cst);
+                requestState.stats().ordAssignmentsStats.numAssignmentsTried += totalNumAssignmentsTried;
+
+            }
         }
 //
 //        // Try assignments where pickup is inserted at or just after stop i and dropoff is inserted at or just after stop j
@@ -415,9 +415,6 @@ namespace karri {
 //            requestState.stats().ordAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
 //        }
 
-        const RelevantPDLocs &relPickups;
-        const RelevantPDLocs &relDropoffs;
-        const PDDistancesT &pdDistances;
         const Fleet &fleet;
         const CostCalculator &calculator;
         const RouteState &routeState;

@@ -903,7 +903,7 @@ public:
 
         // Assert that all unvisited edges are invalid.
         visited.flip();
-        for (int e = visited.firstSetBit(); e != 1; e = visited.nextSetBit(e))
+        for (int e = visited.firstSetBit(); e != -1; e = visited.nextSetBit(e))
             assert(edgeHeads[e] == INVALID_EDGE);
 
         assert(edgeCount == numEdges);

@@ -46,6 +46,7 @@ namespace karri::PDDistanceQueryStrategies {
 
         static constexpr int K = LabelSetT::K;
         using DistanceLabel = typename LabelSetT::DistanceLabel;
+        using PDDistancesT = PDDistances<LabelSetT>;
 
     private:
 
@@ -87,7 +88,7 @@ namespace karri::PDDistanceQueryStrategies {
 
         struct ScanDropoffBucketAndUpdatePDDistances {
             explicit ScanDropoffBucketAndUpdatePDDistances(RequestState &requestState, BucketContainer &dropoffBuckets,
-                                                           PDDistances<LabelSetT>& distances,
+                                                           PDDistances<LabelSetT>* const distances,
                                                            int& firstPickupId)
                     : requestState(requestState),
                       dropoffBuckets(dropoffBuckets),
@@ -96,6 +97,7 @@ namespace karri::PDDistanceQueryStrategies {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, const DistLabelT &distToV, const DistLabelContT &) {
+                KASSERT(distances);
 
                 const auto &bucket = dropoffBuckets.getBucketOf(v);
 
@@ -104,7 +106,7 @@ namespace karri::PDDistanceQueryStrategies {
 
                 for (int i = 0; i < requestState.numDropoffs(); ++i) {
                     const int &distFromVToDropoff = bucket[i / K][i % K];
-                    distances.updateDistanceBatchIfSmaller(firstPickupId, i, distToV + distFromVToDropoff);
+                    distances->updateDistanceBatchIfSmaller(firstPickupId, i, distToV + distFromVToDropoff);
                 }
 
                 return false;
@@ -114,7 +116,7 @@ namespace karri::PDDistanceQueryStrategies {
 
             RequestState &requestState;
             BucketContainer &dropoffBuckets;
-            PDDistances<LabelSetT> &distances;
+            PDDistances<LabelSetT> * const distances;
             int &firstPickupId;
         };
 
@@ -128,12 +130,10 @@ namespace karri::PDDistanceQueryStrategies {
     public:
 
         BCHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                    PDDistances<LabelSetT> &distances,
                     RequestState &requestState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   requestState(requestState),
-                  distances(distances),
                   searchSpaceWithDistances(),
                   dropoffBuckets(inputGraph.numVertices()),
                   fillBucketsSearch([&]() {
@@ -143,21 +143,33 @@ namespace karri::PDDistanceQueryStrategies {
                   }),
                   findPDDistancesSearch([&]() {
                       return chEnv.template getForwardSearch<ScanDropoffBucketAndUpdatePDDistances, StopWhenMaxDistExceeded, LabelSetT>(
-                              ScanDropoffBucketAndUpdatePDDistances(requestState, dropoffBuckets, distances,
+                              ScanDropoffBucketAndUpdatePDDistances(requestState, dropoffBuckets, curPdDistances,
                                                                     firstPickupIdInBatch.local()),
                               StopWhenMaxDistExceeded(upperBoundDirectPDDist));
                   }) {}
 
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
-        void run() {
+        PDDistancesT run() {
             assert(requestState.pickups[0].loc == requestState.originalRequest.origin
                    && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
 
+            PDDistancesT pdDistances(requestState.numPickups(), requestState.numDropoffs());
+
+            // Initialize distance from origin to dropoff
+            pdDistances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
+
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().pdDistancesStats.initializationTime += time;
+            timer.restart();
+
+            // set curPdDistances to allow callback from BCH searches to write distances
+            curPdDistances = &pdDistances;
+
             if (requestState.numPickups() == 1 && requestState.numDropoffs() == 1) {
                 requestState.minDirectPDDist = requestState.originalReqDirectDist;
-                return;
+                return pdDistances;
             }
 
             const auto numDropoffSearches = requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
@@ -203,19 +215,17 @@ namespace karri::PDDistanceQueryStrategies {
                 runPickupSearches(i, std::min(i + K, static_cast<int>(requestState.numPickups())));
             });
 
-            distances.computeGlobalMinDirectDistance();
-            requestState.minDirectPDDist = distances.getMinDirectDistance();
+            pdDistances.computeGlobalMinDirectDistance();
+            requestState.minDirectPDDist = pdDistances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
+
+            return pdDistances;
         }
 
         void init() {
-            Timer timer;
-            distances.clear();
-            distances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
-            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime += time;
+            // no op
         }
 
     private:
@@ -277,14 +287,16 @@ namespace karri::PDDistanceQueryStrategies {
             FindPDDistancesSearch &localFindPDDistancesSearch = findPDDistancesSearch.local();
             localFindPDDistancesSearch.runWithOffset(headRanks, zeroOffsets);
 
-            distances.computeMinDirectDistancesForPickupBatch(startId);
+            curPdDistances->computeMinDirectDistancesForPickupBatch(startId);
         }
 
         const InputGraphT &inputGraph;
         const CH &ch;
         RequestState &requestState;
 
-        PDDistances<LabelSetT> &distances;
+
+
+        PDDistancesT *curPdDistances;
 
         int upperBoundDirectPDDist;
 

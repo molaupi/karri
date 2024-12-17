@@ -108,26 +108,26 @@ namespace karri {
         static int calcCostForNotUsingVehicle(const int walkingDist, const int travelTimeOfDestEdge,
                                               const RequestContext &context) {
             assert(walkingDist >= travelTimeOfDestEdge);
-            auto &inputConfig = InputConfig::getInstance();
 
             if (walkingDist >= INFTY)
                 return INFTY;
 
             int destSideDist;
-            if (walkingDist <= inputConfig.pickupRadius + inputConfig.dropoffRadius) {
+            if (walkingDist <= InputConfig::getInstance().pickupRadius + InputConfig::getInstance().dropoffRadius) {
                 // Wait time violation only necessary if travel time of destination edge is already larger than dropoff
                 // radius (since we always have to traverse destination edge from tail to head).
-                destSideDist = std::max(inputConfig.dropoffRadius, travelTimeOfDestEdge);
+                destSideDist = std::max(InputConfig::getInstance().dropoffRadius, travelTimeOfDestEdge);
             } else {
                 // Optimally split walking distance in origin side and destination side to minimize wait time violations:
                 const int halfOfVioDist = std::floor(
-                        0.5 * (walkingDist - (inputConfig.pickupRadius + inputConfig.dropoffRadius)));
-                destSideDist = std::max(inputConfig.dropoffRadius + halfOfVioDist, travelTimeOfDestEdge);
+                        0.5 * (walkingDist -
+                               (InputConfig::getInstance().pickupRadius + InputConfig::getInstance().dropoffRadius)));
+                destSideDist = std::max(InputConfig::getInstance().dropoffRadius + halfOfVioDist, travelTimeOfDestEdge);
             }
 
             const auto originSideDist = walkingDist - destSideDist;
-            const auto walkingCost = F::calcWalkingCost(originSideDist, inputConfig.pickupRadius) +
-                                     F::calcWalkingCost(destSideDist, inputConfig.dropoffRadius);
+            const auto walkingCost = F::calcWalkingCost(originSideDist, InputConfig::getInstance().pickupRadius) +
+                                     F::calcWalkingCost(destSideDist, InputConfig::getInstance().dropoffRadius);
             const auto tripCost = F::calcTripCost(originSideDist + destSideDist, context);
             // no costs for detour, wait violation or change in trip time of other passengers
             return walkingCost + tripCost;

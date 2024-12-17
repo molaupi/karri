@@ -93,7 +93,8 @@ namespace karri {
                   pickupRand(seed),
                   dropoffRand(seed) {}
 
-        void findPickups(const int origin, int& numVerticesVisitedPickups) {
+
+        void findPickups(const int origin, int &numVerticesVisitedPickups) {
             assert(origin < forwardGraph.numEdges());
             pickups.clear();
             pickupSearchSpace.clear();
@@ -105,7 +106,7 @@ namespace karri {
             numVerticesVisitedPickups = pickupSearchSpace.size();
         }
 
-        void findDropoffs(const int destination, int& numVerticesVisitedDropoffs) {
+        void findDropoffs(const int destination, int &numVerticesVisitedDropoffs) {
             assert(destination < forwardGraph.numEdges());
             dropoffs.clear();
             dropoffSearchSpace.clear();
@@ -149,7 +150,8 @@ namespace karri {
             }
         }
 
-        void finalizePDLocs(const int centerInPsgGraph, std::vector<PDLoc> &pdLocs, const int maxNumber, std::minstd_rand& rand) {
+        void finalizePDLocs(const int centerInPsgGraph, std::vector<PDLoc> &pdLocs, const int maxNumber,
+                            std::minstd_rand &rand) {
             assert(maxNumber > 0);
             // Add center to PD locs
             const int nextSeqId = pdLocs.size();

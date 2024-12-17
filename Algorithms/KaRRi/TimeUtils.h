@@ -162,6 +162,7 @@ namespace karri::time_utils {
 
         const auto depTimeAtPrevious = std::max(minDepTimes[dropoffIndex],
                                                 arrTimeAtPrevious + InputConfig::getInstance().stopTime);
+
         return depTimeAtPrevious + asgn.distToDropoff;
     }
 

@@ -31,11 +31,14 @@ To build KaRRi, you need to have some tools and libraries installed. On Debian a
 $ sudo apt-get install build-essential
 $ sudo apt-get install cmake
 $ sudo apt-get install python3 python3-pip; pip3 install -r python_requirements.txt
-$ sudo apt-get install libproj-dev
+$ sudo apt-get install sqlite3 libsqlite3-dev
 $ sudo apt-get install zlib1g-dev
+<<<<<<< HEAD
 $ sudo apt-get install osmium-tool
 $ sudo apt-get install intel-tbb intel-tbb-devel
 $ sudo apt-get install libhwloc-dev
+=======
+>>>>>>> main
 ```
 For the ```intel-tbb``` packages, you may need to set up the repository first, as instructed [here](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html?operatingsystem=linux&distributions=aptpackagemanager).
 
@@ -44,15 +47,20 @@ type the following commands at the top-level directory of the framework:
 
 ```
 $ git submodule update --init
-$ cd External/boost && git submodule update --init -- libs/align libs/assert libs/config libs/core libs/static_assert && cd ../..
-$ make -C External/RoutingKit
+$ make -C External/RoutingKit lib/libroutingkit.so
 ```
 
 
 ## Constructing KaRRi Input
 We provide bash scripts to generate the input data for the `Berlin-1pct`, `Berlin-10pct`,
-`Ruhr-1pct`, and `Ruhr-10pct` problem instances for the KaRRi algorithm. For example, you
-can generate the input data for the `Berlin-1pct` instance by typing the following commands
+`Ruhr-1pct`, and `Ruhr-10pct` problem instances for the KaRRi algorithm.
+Inputs are generated based on OpenStreetMap (OSM) data, which requires the [osmium tool](https://osmcode.org/osmium-tool/). 
+On Debian and its derivatives osmium can be installed using
+```
+sudo apt-get install osmium-tool
+```
+
+As an example, you can generate the input data for the `Berlin-1pct` instance by typing the following commands
 at the top-level directory: (Downloads multiple GiB of raw OSM data and requires at least 10 GiB of RAM.)
 
 ```

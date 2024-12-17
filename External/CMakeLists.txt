@@ -1,8 +1,7 @@
 # ******************************************************************************
 # MIT License
 #
-# Copyright (c) 2020 Valentin Buchhold
-# Copyright (c) 2023 Moritz Laupichler <moritz.laupichler@kit.edu>
+# Copyright (c) 2024 Moritz Laupichler
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,29 +22,19 @@
 # SOFTWARE.
 # ******************************************************************************
 
-# Executable for P2P Algorithms
-add_executable(RunP2PAlgo RunP2PAlgo.cc)
-target_compile_definitions(RunP2PAlgo PRIVATE CSV_IO_NO_THREAD)
-target_compile_options(RunP2PAlgo PRIVATE ${FULL_WARNINGS})
-target_link_libraries(RunP2PAlgo routingkit kassert fast_cpp_csv_parser)
-if(OpenMP_FOUND)
-    target_link_libraries(RunP2PAlgo OpenMP::OpenMP_CXX)
-endif()
 
+# Add RoutingKit library (needs to be built beforehand!) and include headers from git submodule.
+# Use interface target to bundle sources and headers.
+find_library(RoutingKit_LIBRARY routingkit PATHS RoutingKit/lib)
+if (NOT RoutingKit_LIBRARY)
+    message(FATAL_ERROR "RoutingKit library (e.g. libroutingkit.so) not found. Did you forget to build the library (see ReadMe)?")
+endif ()
+set(RoutingKit_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/RoutingKit/include/")
+add_library(routingkit INTERFACE)
+target_link_libraries(routingkit INTERFACE ${RoutingKit_LIBRARY})
+# include as SYSTEM to avoid warnings for features deprecated in C++20 as RoutingKit is C++17
+target_include_directories(routingkit SYSTEM INTERFACE ${RoutingKit_INCLUDE_DIR})
 
-# Executable for KaRRi Dynamic Taxi Sharing Simulation
-add_executable(karri KaRRi.cpp)
-target_compile_definitions(karri PRIVATE CSV_IO_NO_THREAD)
-target_compile_options(karri PRIVATE ${FULL_WARNINGS})
-target_link_libraries(karri routingkit kassert fast_cpp_csv_parser vectorclass)
-if(OpenMP_FOUND)
-    target_link_libraries(karri OpenMP::OpenMP_CXX)
-endif()
-
-if (TBB_FOUND)
-    message("TBB found")
-    target_link_libraries(karri TBB::tbb)
-endif()
-
-# include KaRRi compile time parameters
-include(KaRRi_compile_time_parameters.cmake)
+# Add bundled rapidxml header only library as interface target
+add_library(rapidxml INTERFACE)
+target_include_directories(rapidxml SYSTEM INTERFACE rapidxml)

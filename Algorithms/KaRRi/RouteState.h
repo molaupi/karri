@@ -40,7 +40,7 @@ namespace karri {
     class RouteState {
 
     public:
-        RouteState(const Fleet &fleet, const int stopTime)
+        RouteState(const Fleet &fleet)
                 : pos(fleet.size()),
                   stopIds(fleet.size()),
                   stopLocations(fleet.size()),
@@ -65,8 +65,7 @@ namespace karri {
                   stopIdOfMaxLegLength(INVALID_ID),
                   unusedStopIds(),
                   nextUnusedStopId(fleet.size()),
-                  maxStopId(fleet.size() - 1),
-                  stopTime(stopTime) {
+                  maxStopId(fleet.size() - 1) {
             for (auto i = 0; i < fleet.size(); ++i) {
                 pos[i].start = i;
                 pos[i].end = i + 1;
@@ -250,12 +249,12 @@ namespace karri {
                 // time is defined by the passenger arrival time at the pickup, not the maximum wait time.
                 const int psgMaxDepTime =
                         std::max(requestState.getMaxDepTimeAtPickup(), requestState.getPassengerArrAtPickup(pickup.id));
-                maxArrTimes[start + pickupIndex] = std::min(maxArrTimes[start + pickupIndex], psgMaxDepTime - stopTime);
+                maxArrTimes[start + pickupIndex] = std::min(maxArrTimes[start + pickupIndex], psgMaxDepTime - InputConfig::getInstance().stopTime);
             } else {
                 // If vehicle is currently idle, the vehicle can leave its current stop at the earliest when the
                 // request is made. In that case, we update the arrival time to count the idling as one stopTime.
                 schedDepTimes[end - 1] = std::max(schedDepTimes[end - 1], requestState.originalRequest.requestTime);
-                schedArrTimes[end - 1] = schedDepTimes[end - 1] - stopTime;
+                schedArrTimes[end - 1] = schedDepTimes[end - 1] - InputConfig::getInstance().stopTime;
                 ++pickupIndex;
                 ++dropoffIndex;
                 stableInsertion(vehId, pickupIndex, getUnusedStopId(), pos, stopIds, stopLocations,
@@ -263,9 +262,9 @@ namespace karri {
                                 numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
                 stopLocations[start + pickupIndex] = pickup.loc;
                 schedArrTimes[start + pickupIndex] = schedDepTimes[start + pickupIndex - 1] + asgn.distToPickup;
-                schedDepTimes[start + pickupIndex] = std::max(schedArrTimes[start + pickupIndex] + stopTime,
+                schedDepTimes[start + pickupIndex] = std::max(schedArrTimes[start + pickupIndex] + InputConfig::getInstance().stopTime,
                                                               requestState.getPassengerArrAtPickup(pickup.id));
-                maxArrTimes[start + pickupIndex] = requestState.getMaxDepTimeAtPickup() - stopTime;
+                maxArrTimes[start + pickupIndex] = requestState.getMaxDepTimeAtPickup() - InputConfig::getInstance().stopTime;
                 occupancies[start + pickupIndex] = occupancies[start + pickupIndex - 1];
                 numDropoffsPrefixSum[start + pickupIndex] = numDropoffsPrefixSum[start + pickupIndex - 1];
                 pickupInsertedAsNewStop = true;
@@ -289,7 +288,7 @@ namespace karri {
                 stopLocations[start + dropoffIndex] = dropoff.loc;
                 schedArrTimes[start + dropoffIndex] =
                         schedDepTimes[start + dropoffIndex - 1] + asgn.distToDropoff;
-                schedDepTimes[start + dropoffIndex] = schedArrTimes[start + dropoffIndex] + stopTime;
+                schedDepTimes[start + dropoffIndex] = schedArrTimes[start + dropoffIndex] + InputConfig::getInstance().stopTime;
                 // compare maxVehArrTime to next stop later
                 maxArrTimes[start + dropoffIndex] = requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id);
                 occupancies[start + dropoffIndex] = occupancies[start + dropoffIndex - 1];
@@ -447,7 +446,7 @@ namespace karri {
             }
 
             const auto leeway =
-                    std::max(maxArrTimes[start + 2], schedDepTimes[start + 2]) - schedDepTimes[start + 1] - stopTime;
+                    std::max(maxArrTimes[start + 2], schedDepTimes[start + 2]) - schedDepTimes[start + 1] - InputConfig::getInstance().stopTime;
             assert(leeway >= 0);
             stopIdToLeeway[newStopId] = leeway;
 
@@ -516,12 +515,12 @@ namespace karri {
 
                 // If the planned departure time is already later than the new arrival time demands, then the planned
                 // departure time remains unaffected and subsequent arrival/departure times will not change either.
-                if (schedDepTimes[l] >= schedArrTimes[l] + stopTime) {
+                if (schedDepTimes[l] >= schedArrTimes[l] + InputConfig::getInstance().stopTime) {
                     break;
                 }
 
                 const auto oldMinDepTime = schedDepTimes[l];
-                schedDepTimes[l] = schedArrTimes[l] + stopTime; // = max(schedDepTimes[l], schedArrTimes[l] + stopTime);
+                schedDepTimes[l] = schedArrTimes[l] + InputConfig::getInstance().stopTime; // = max(schedDepTimes[l], schedArrTimes[l] + stopTime);
                 if (l < toIdx) distPrevToCurrent = schedArrTimes[l + 1] - oldMinDepTime;
             }
         }
@@ -530,7 +529,7 @@ namespace karri {
         void propagateMaxArrTimeBackward(const int fromIdx, const int toIdx) {
             for (int l = fromIdx; l >= toIdx; --l) {
                 const auto distToNext = schedArrTimes[l + 1] - schedDepTimes[l];
-                const auto propagatedMaxArrTime = maxArrTimes[l + 1] - distToNext - stopTime;
+                const auto propagatedMaxArrTime = maxArrTimes[l + 1] - distToNext - InputConfig::getInstance().stopTime;
                 if (maxArrTimes[l] <= propagatedMaxArrTime)
                     break; // Stop propagating if known maxArrTime at l is stricter already
                 maxArrTimes[l] = propagatedMaxArrTime;
@@ -546,7 +545,7 @@ namespace karri {
 
                 // Set leeway of stop, possibly update max leeway
                 const auto leeway =
-                        std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1]) - schedDepTimes[idx] - stopTime;
+                        std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1]) - schedDepTimes[idx] - InputConfig::getInstance().stopTime;
                 assert(leeway >= 0);
                 stopIdToLeeway[stopId] = leeway;
 
@@ -599,7 +598,7 @@ namespace karri {
         void recalculateVehWaitTimesPrefixSum(const int fromIdx, const int toIdx, const int baseline) {
             int prevSum = baseline;
             for (int l = fromIdx; l <= toIdx; ++l) {
-                const auto stopLength = schedDepTimes[l] - stopTime - schedArrTimes[l];
+                const auto stopLength = schedDepTimes[l] - InputConfig::getInstance().stopTime - schedArrTimes[l];
                 assert(stopLength >= 0);
                 vehWaitTimesPrefixSum[l] = prevSum + stopLength;
                 prevSum = vehWaitTimesPrefixSum[l];
@@ -622,7 +621,7 @@ namespace karri {
             for (const auto &[start, end]: pos) {
                 for (int idx = start; idx < end - 1; ++idx) {
                     const auto leeway = std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1])
-                                        - schedDepTimes[idx] - stopTime;
+                                        - schedDepTimes[idx] - InputConfig::getInstance().stopTime;
                     if (leeway > maxLeeway) {
                         maxLeeway = leeway;
                         stopIdOfMaxLeeway = stopIds[idx];
@@ -724,7 +723,5 @@ namespace karri {
         std::stack<int, std::vector<int>> unusedStopIds;
         int nextUnusedStopId;
         int maxStopId;
-
-        const int stopTime;
     };
 }

@@ -58,6 +58,10 @@ public:
         return endingPoint - startingPoint;
     }
 
+    bool empty() const noexcept {
+        return endingPoint == startingPoint;
+    }
+
 private:
     IteratorT startingPoint;
     IteratorT endingPoint;

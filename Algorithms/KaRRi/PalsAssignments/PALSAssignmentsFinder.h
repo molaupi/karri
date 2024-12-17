@@ -28,31 +28,30 @@
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
-#include "Algorithms/KaRRi/LastStopSearches/LastStopsAtVertices.h"
+#include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 
 namespace karri {
 
 // Finds pickup-after-last-stop (PALS) insertions using the encapsulated strategy.
-    template<typename InputGraphT, typename PDDistancesT, typename StrategyT>
+    template<typename InputGraphT, typename PDDistancesT, typename StrategyT, typename LastStopsAtVerticesT>
     class PALSAssignmentsFinder {
 
     public:
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
-                              const CostCalculator &calculator, const LastStopsAtVertices &lastStopsAtVertices,
-                              const RouteState &routeState, const PDDistancesT &pdDistances, RequestState &requestState)
+                              const CostCalculator &calculator, const LastStopsAtVerticesT &lastStopsAtVertices,
+                              const RouteState &routeState, RequestState &requestState)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   lastStopsAtVertices(lastStopsAtVertices),
                   routeState(routeState),
-                  pdDistances(pdDistances),
                   requestState(requestState) {}
 
-        void findAssignments() {
-            findAssignmentsWherePickupCoincidesWithLastStop();
-            strategy.tryPickupAfterLastStop();
+        void findAssignments(const PDDistancesT& pdDistances) {
+            findAssignmentsWherePickupCoincidesWithLastStop(pdDistances);
+            strategy.tryPickupAfterLastStop(pdDistances);
         }
 
         void init() {
@@ -63,7 +62,7 @@ namespace karri {
 
         // Simple case for pickups that coincide with last stops of vehicles is the same regardless of strategy, so it
         // is treated here.
-        void findAssignmentsWherePickupCoincidesWithLastStop() {
+        void findAssignmentsWherePickupCoincidesWithLastStop(const PDDistancesT& pdDistances) {
             int numInsertionsForCoinciding = 0;
             int numCandidateVehiclesForCoinciding = 0;
             Timer timer;
@@ -74,9 +73,6 @@ namespace karri {
                 asgn.pickup = &p;
 
                 const int head = inputGraph.edgeHead(asgn.pickup->loc);
-                if (!lastStopsAtVertices.isAnyLastStopAtVertex(head))
-                    continue;
-
                 for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(head)) {
                     ++numCandidateVehiclesForCoinciding;
                     const auto numStops = routeState.numStopsOf(vehId);
@@ -114,9 +110,8 @@ namespace karri {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CostCalculator &calculator;
-        const LastStopsAtVertices &lastStopsAtVertices;
+        const LastStopsAtVerticesT &lastStopsAtVertices;
         const RouteState &routeState;
-        const PDDistancesT &pdDistances;
         RequestState &requestState;
 
     };

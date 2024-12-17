@@ -34,6 +34,7 @@
 #include "tbb/concurrent_vector.h"
 #include "RelevantPDLoc.h"
 
+
 namespace karri {
 
 
@@ -44,19 +45,14 @@ namespace karri {
 
         using RelevantPDLocVector = AlignedVector<RelevantPDLoc>;
 
-        struct IndexRange {
-            int start = 0;
-            int end = 0;
-        };
-
     public:
 
         using It = typename RelevantPDLocVector::const_iterator;
         using RevIt = typename RelevantPDLocVector::const_reverse_iterator;
 
-        RelevantPDLocs(const int fleetSize)
+        explicit RelevantPDLocs(const int fleetSize)
                 : fleetSize(fleetSize),
-                  rangeOfRelevantPdLocs(fleetSize),
+                  startOfRelevantPDLocs(fleetSize + 1),
                   relevantSpots(),
                   vehiclesWithRelevantSpots(fleetSize) {}
 
@@ -66,28 +62,26 @@ namespace karri {
 
         bool hasRelevantSpotsFor(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
-            return rangeOfRelevantPdLocs[vehId].start != rangeOfRelevantPdLocs[vehId].end;
+            return startOfRelevantPDLocs[vehId] != startOfRelevantPDLocs[vehId + 1];
         }
 
         IteratorRange<It> relevantSpotsFor(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
-            const auto& range = rangeOfRelevantPdLocs[vehId];
-            return {relevantSpots.begin() + range.start,relevantSpots.begin() + range.end};
+            return {relevantSpots.begin() + startOfRelevantPDLocs[vehId],
+                    relevantSpots.begin() + startOfRelevantPDLocs[vehId + 1]};
         }
 
         IteratorRange<RevIt> relevantSpotsForInReverseOrder(const int vehId) const {
             assert(vehId >= 0 && vehId < fleetSize);
-            const auto& range = rangeOfRelevantPdLocs[vehId];
-            const int rstart = relevantSpots.size() - range.end;
-            const int rend = relevantSpots.size() - range.start;
+            const int rstart = relevantSpots.size() - startOfRelevantPDLocs[vehId + 1];
+            const int rend = relevantSpots.size() - startOfRelevantPDLocs[vehId];
             return {relevantSpots.rbegin() + rstart, relevantSpots.rbegin() + rend};
         }
 
     private:
 
-        const int fleetSize;
-        std::vector<IndexRange> rangeOfRelevantPdLocs;
-//        std::vector<int> startOfRelevantPDLocs;
+        int fleetSize;
+        std::vector<int> startOfRelevantPDLocs;
         RelevantPDLocVector relevantSpots;
         Subset vehiclesWithRelevantSpots;
 
