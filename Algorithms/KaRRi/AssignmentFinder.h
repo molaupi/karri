@@ -97,8 +97,8 @@ namespace karri {
             palsAssignments.findAssignments(ffPdDistances);
 
             // Run elliptic BCH searches (populates feasibleEllipticPickups and feasibleEllipticDropoffs):
-            const auto pickupsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<PICKUP>(reqState.pickups);
-            const auto dropoffsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<DROPOFF>(reqState.dropoffs);
+            auto pickupsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<PICKUP>(reqState.pickups);
+            auto dropoffsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<DROPOFF>(reqState.dropoffs);
             ellipticBchSearches.run(pickupsAtExistingStops, dropoffsAtExistingStops, feasibleEllipticPickups, feasibleEllipticDropoffs);
 
             // Filter feasible PD-locations between ordinary stops:

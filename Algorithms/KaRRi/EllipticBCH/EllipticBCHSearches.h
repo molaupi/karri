@@ -45,6 +45,7 @@
 #include <atomic>
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 #include "Algorithms/KaRRi/BaseObjects/PDLocAtExistingStop.h"
+#include "ParFeasibleEllipticDistances.h"
 
 namespace karri {
 
@@ -88,7 +89,7 @@ namespace karri {
 
         template<typename UpdateDistancesT>
         struct ScanOrdinaryBucket {
-            explicit ScanOrdinaryBucket(const Buckets &buckets, UpdateDistancesT &updateDistances,
+            explicit ScanOrdinaryBucket(const Buckets &buckets, UpdateDistancesT updateDistances,
                                         int &numEntriesVisited, int &numEntriesVisitedWithDistSmallerLeeway)
                     : buckets(buckets),
                       updateDistances(updateDistances),
@@ -121,7 +122,7 @@ namespace karri {
 
         private:
             const Buckets &buckets;
-            UpdateDistancesT &updateDistances;
+            UpdateDistancesT updateDistances;
             int &numEntriesVisited;
             int &numEntriesVisitedWithDistSmallerLeeway;
         };
@@ -129,50 +130,47 @@ namespace karri {
 
         struct UpdateDistancesToPDLocs {
 
-            UpdateDistancesToPDLocs() : curFeasible(nullptr) {}
+            UpdateDistancesToPDLocs(ThreadLocalFeasibleDistances &distances, const int &firstPdLocInBatch)
+                    : distances(distances), firstPdLocIdInBatch(firstPdLocInBatch) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsToPDLocs) {
 
-                assert(curFeasible);
-                return curFeasible->updateDistanceFromStopToPDLoc(entry.targetId,
-                                                                  distsToPDLocs, meetingVertex);
+                return distances.updateDistanceFromStopToPDLoc(entry.targetId, firstPdLocIdInBatch, distsToPDLocs,
+                                                               meetingVertex);
             }
 
-
-            void setCurLocalFeasible(ThreadLocalFeasibleDistances *const newCurFeasible) {
-                curFeasible = newCurFeasible;
-            }
 
         private:
-            ThreadLocalFeasibleDistances *curFeasible;
+            ThreadLocalFeasibleDistances &distances;
+            const int &firstPdLocIdInBatch;
         };
+
 
         struct UpdateDistancesFromPDLocs {
 
-            explicit UpdateDistancesFromPDLocs(RouteState const *const routeState)
-                    : routeState(routeState), curFeasible(nullptr) {}
+            UpdateDistancesFromPDLocs(const RouteState &routeState, ParFeasibleEllipticDistances<LabelSetT> &distances,
+                                      const int &firstPdLocInBatch)
+                    : routeState(routeState), distances(distances), firstPdLocIdInBatch(firstPdLocInBatch) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsFromPDLocs) {
 
-                const auto &prevStopId = routeState->idOfPreviousStopOf(entry.targetId);
+                const auto &prevStopId = routeState.idOfPreviousStopOf(entry.targetId);
 
                 // If the given stop is the first stop in the vehicle's route, there is no previous stop.
                 if (prevStopId == INVALID_ID)
                     return LabelMask(false);
 
-                assert(curFeasible);
-                return curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, distsFromPDLocs, meetingVertex);
+                return distances.updateDistanceFromPDLocToNextStop(prevStopId, firstPdLocIdInBatch, distsFromPDLocs,
+                                                                   meetingVertex);
             }
 
-            void setCurLocalFeasible(ThreadLocalFeasibleDistances *const newCurFeasible) {
-                curFeasible = newCurFeasible;
-            }
 
         private:
-            RouteState const *const routeState;
-            ThreadLocalFeasibleDistances *curFeasible;
+            const RouteState &routeState;
+            ParFeasibleEllipticDistances<LabelSetT> &distances;
+            const int &firstPdLocIdInBatch;
         };
 
 
@@ -196,38 +194,40 @@ namespace karri {
                             RequestState &requestState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
+                  chEnv(chEnv),
                   ch(chEnv.getCH()),
                   routeState(routeState),
                   requestState(requestState),
                   sourceBuckets(ellipticBucketsEnv.getSourceBuckets()),
+                  targetBuckets(ellipticBucketsEnv.getTargetBuckets()),
                   lastStopsAtVertices(lastStopsAtVertices),
                   distUpperBound(INFTY),
-                  updateDistancesToPdLocs(),
-                  updateDistancesFromPdLocs(&routeState),
-                  numEntriesScanned(0),
-                  numEntriesScannedWithDistSmallerLeeway(0),
-                  toQuery([&]() {
-                      return chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
-                              ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs.local(),
-                                                numEntriesScanned.local(),
-                                                numEntriesScannedWithDistSmallerLeeway.local()),
-                              StopBCHQuery(distUpperBound));
-                  }),
-                  fromQuery([&]() {
-                      return chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
-                              ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(),
-                                                updateDistancesFromPdLocs.local(),
-                                                numEntriesScanned.local(),
-                                                numEntriesScannedWithDistSmallerLeeway.local()),
-                              StopBCHQuery(distUpperBound));
-                  }),
+//                  updateDistancesToPdLocs(),
+//                  updateDistancesFromPdLocs(&routeState),
+//                  numEntriesScanned(0),
+//                  numEntriesScannedWithDistSmallerLeeway(0),
+//                  toQuery([&]() {
+//                      return chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
+//                              ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs.local(),
+//                                                numEntriesScanned.local(),
+//                                                numEntriesScannedWithDistSmallerLeeway.local()),
+//                              StopBCHQuery(distUpperBound));
+//                  }),
+//                  fromQuery([&]() {
+//                      return chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
+//                              ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(),
+//                                                updateDistancesFromPdLocs.local(),
+//                                                numEntriesScanned.local(),
+//                                                numEntriesScannedWithDistSmallerLeeway.local()),
+//                              StopBCHQuery(distUpperBound));
+//                  }),
                   totalNumEdgeRelaxations(0),
                   totalNumVerticesVisited(0) {}
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
-        void run(const PDLocsAtExistingStops& pickupsAtExistingStops,
-                 const PDLocsAtExistingStops& dropoffsAtExistingStops,
+        void run(PDLocsAtExistingStops &&pickupsAtExistingStops,
+                 PDLocsAtExistingStops &&dropoffsAtExistingStops,
                  FeasibleEllipticDistancesT &feasibleEllipticPickups,
                  FeasibleEllipticDistancesT &feasibleEllipticDropoffs) {
             // Helper lambda to get sum of stats from thread local queries
@@ -235,10 +235,10 @@ namespace karri {
 
             // Run for pickups and dropoffs in parallel:
             Timer timer;
-            for (auto &local: numEntriesScanned)
-                local = 0;
-            for (auto &local: numEntriesScannedWithDistSmallerLeeway)
-                local = 0;
+//            for (auto &local: numEntriesScanned)
+//                local = 0;
+//            for (auto &local: numEntriesScannedWithDistSmallerLeeway)
+//                local = 0;
             totalNumEdgeRelaxations.store(0);
             totalNumVerticesVisited.store(0);
 
@@ -276,16 +276,72 @@ namespace karri {
         friend UpdateDistancesFromPDLocs;
         friend UpdateDistancesToPDLocs;
 
+
+//        class RunBchSearchParBody {
+//
+//            void operator()(const blocked_range<size_t>& r ) {
+//
+//            }
+//
+//            ThreadLocalFeasibleDistances localFeasibleDistances;
+//
+//        };
+
+
         template<PDLocType type, typename SpotContainerT, typename FeasibleDistancesT, typename IsStopEligibleT>
         void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs, FeasibleDistancesT &feasibleDistances,
-                                     const PDLocsAtExistingStops &pdLocsAtExistingStops,
+                                     PDLocsAtExistingStops &&pdLocsAtExistingStops,
                                      const IsStopEligibleT &isStopEligible) {
+
+
+            ParFeasibleEllipticDistances<LabelSetT> globalResult(routeState, fleet.size());
+            globalResult.initializeDistancesForPdLocsAtExistingStops(pdLocsAtExistingStops, inputGraph);
+
+
+#pragma omp parallel
+            {
+
+                int localNumEntriesScanned = 0;
+                int localNumEntriesScannedWithDistSmallerLeeway = 0;
+                int localCurFirstPdLocInBatch = INVALID_ID;
+                ThreadLocalFeasibleDistances localResult(routeState.getMaxStopId());
+                ToQueryType localToQuery = chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
+                        ScanSourceBuckets(sourceBuckets,
+                                          UpdateDistancesToPDLocs(localResult, localCurFirstPdLocInBatch),
+                        localNumEntriesScanned, localNumEntriesScannedWithDistSmallerLeeway),
+                        StopBCHQuery(distUpperBound));
+                FromQueryType localFromQuery =
+                        chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
+                                ScanTargetBuckets(targetBuckets, UpdateDistancesFromPDLocs(routeState, localResult,
+                                                                                           localCurFirstPdLocInBatch),
+                                                  localNumEntriesScanned, localNumEntriesScannedWithDistSmallerLeeway),
+                        StopBCHQuery(distUpperBound));
+
+#pragma omp for schedule(dynamic, 1) nowait
+                for (auto i = 0; i < pdLocs.size(); i += K) {
+                    localCurFirstPdLocInBatch = i * K; // localCurFirstPdLocInBatch is also read by update callbacks in queries
+                    const auto toPdId = std::min(i * (K + 1), static_cast<int>(pdLocs.size()));
+
+                    runRegularBCHSearchesTo(localCurFirstPdLocInBatch, toPdId, pdLocs, localToQuery);
+                    runRegularBCHSearchesFrom(localCurFirstPdLocInBatch, toPdId, pdLocs, localFromQuery);
+
+                    filterLocalEllipticDistances<type, LabelSetT>(localCurFirstPdLocInBatch, localResult, fleet, requestState, routeState, isStopEligible);
+                }
+
+#pragma omp critical (combineResults)
+                {
+                    globalResult.join(localResult);
+                }
+            }
+
 
             // Process in batches of size K
             parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [&](int i) {
                 // Get one thread local data structure for storing results of both to and from search.
-                auto localFeasibleDistances = feasibleDistances.getThreadLocalFeasibleDistances();
-                localFeasibleDistances.initForSearch();
+//                auto localFeasibleDistances = feasibleDistances.getThreadLocalFeasibleDistances();
+//                localFeasibleDistances.initForSearch();
+
+                auto localFeasibleDistances = ThreadLocalFeasibleDistances(routeState.getMaxStopId());
 
                 initializePdLocsAtExistingStopsInLocal(pdLocsAtExistingStops, localFeasibleDistances, i);
 
@@ -308,15 +364,11 @@ namespace karri {
             });
         }
 
-        template<typename SpotContainerT, typename LocalFeasibleDistancesT>
+        template<typename SpotContainerT>
         void runRegularBCHSearchesTo(const int startId, const int endId,
                                      const SpotContainerT &pdLocs,
-                                     LocalFeasibleDistancesT &localFeasibleDistances) {
+                                     ToQueryType &query) {
             assert(endId > startId && endId - startId <= K);
-
-            // Have search store results in thread local feasible distances object.
-            auto &localUpdateDistances = updateDistancesToPdLocs.local();
-            localUpdateDistances.setCurLocalFeasible(&localFeasibleDistances);
 
             std::array<int, K> travelTimes;
             std::array<int, K> pdLocTails;
@@ -332,23 +384,17 @@ namespace karri {
                 pdLocTails[i] = ch.rank(inputGraph.edgeTail(location));
             }
 
-            ToQueryType &localToQuery = toQuery.local();
-            localToQuery.runWithOffset(pdLocTails, travelTimes);
-
-            totalNumEdgeRelaxations.add_fetch(localToQuery.getNumEdgeRelaxations(), std::memory_order_relaxed);
-            totalNumVerticesVisited.add_fetch(localToQuery.getNumVerticesSettled(), std::memory_order_relaxed);
+            query.runWithOffset(pdLocTails, travelTimes);
+            totalNumEdgeRelaxations.add_fetch(query.getNumEdgeRelaxations(), std::memory_order_relaxed);
+            totalNumVerticesVisited.add_fetch(query.getNumVerticesSettled(), std::memory_order_relaxed);
 
         }
 
-        template<typename SpotContainerT, typename LocalFeasibleDistancesT>
+        template<typename SpotContainerT>
         void runRegularBCHSearchesFrom(const int startId, const int endId,
                                        const SpotContainerT &pdLocs,
-                                       LocalFeasibleDistancesT &localFeasibleDistances) {
+                                       FromQueryType& query) {
             assert(endId > startId && endId - startId <= K);
-
-            // Have search store results in thread local feasible distances object.
-            auto &localUpdateDistances = updateDistancesFromPdLocs.local();
-            localUpdateDistances.setCurLocalFeasible(&localFeasibleDistances);
 
             std::array<int, K> pdLocHeads;
 
@@ -362,11 +408,10 @@ namespace karri {
                 pdLocHeads[i] = ch.rank(inputGraph.edgeHead(location));
             }
 
-            FromQueryType &localFromQuery = fromQuery.local();
-            localFromQuery.runWithOffset(pdLocHeads, {});
+            query.runWithOffset(pdLocHeads, {});
 
-            totalNumEdgeRelaxations.add_fetch(localFromQuery.getNumEdgeRelaxations(), std::memory_order_relaxed);
-            totalNumVerticesVisited.add_fetch(localFromQuery.getNumVerticesSettled(), std::memory_order_relaxed);
+            totalNumEdgeRelaxations.add_fetch(query.getNumEdgeRelaxations(), std::memory_order_relaxed);
+            totalNumVerticesVisited.add_fetch(query.getNumVerticesSettled(), std::memory_order_relaxed);
         }
 
         template<PDLocType type, typename PDLocsT>
@@ -434,22 +479,24 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
+        const CHEnvT &chEnv;
         const CH &ch;
         const RouteState &routeState;
         RequestState &requestState;
 
         const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
+        const typename EllipticBucketsEnvT::BucketContainer &targetBuckets;
         const LastStopsAtVerticesT &lastStopsAtVertices;
 
         int distUpperBound;
-        enumerable_thread_specific<UpdateDistancesToPDLocs> updateDistancesToPdLocs;
-        enumerable_thread_specific<UpdateDistancesFromPDLocs> updateDistancesFromPdLocs;
+//        enumerable_thread_specific<UpdateDistancesToPDLocs> updateDistancesToPdLocs;
+//        enumerable_thread_specific<UpdateDistancesFromPDLocs> updateDistancesFromPdLocs;
+//
+//        enumerable_thread_specific<int> numEntriesScanned;
+//        enumerable_thread_specific<int> numEntriesScannedWithDistSmallerLeeway;
 
-        enumerable_thread_specific<int> numEntriesScanned;
-        enumerable_thread_specific<int> numEntriesScannedWithDistSmallerLeeway;
-
-        enumerable_thread_specific<ToQueryType> toQuery;
-        enumerable_thread_specific<FromQueryType> fromQuery;
+//        enumerable_thread_specific<ToQueryType> toQuery;
+//        enumerable_thread_specific<FromQueryType> fromQuery;
 
         CAtomic<int> totalNumEdgeRelaxations;
         CAtomic<int> totalNumVerticesVisited;

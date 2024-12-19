@@ -210,4 +210,77 @@ namespace karri {
         entries.erase(entries.end() - numEntriesRemoved, entries.end());
 
     }
+
+
+    // Removes all result entries from localDistances that are certain to not be relevant for the best assignment
+    // based on existence of valid distances to and from the PDLocs as well as assignment cost bounds.
+    // May pass additional filter for eligibility of stops s.t. any entry of this stop is always considered irrelevant.
+    template<PDLocType type, typename LocalFeasibleDistancesT, typename IsStopEligibleT = StopAlwaysEligible>
+    static void filterLocalEllipticDistances(const int firstPdLocIdInBatch,
+                                             LocalFeasibleDistancesT &localDistances,
+                                             const Fleet &fleet,
+                                             const RequestState &requestState,
+                                             const RouteState &routeState,
+                                             const IsStopEligibleT &isStopEligible = StopAlwaysEligible()) {
+
+        static constexpr int K = LocalFeasibleDistancesT::K;
+        using DistanceLabel = typename LocalFeasibleDistancesT::LabelSet;
+
+        typename LabelSet::DistanceLabel pdLocLocations = {};
+        typename LabelSet::DistanceLabel pdLocWalkingTimes = {};
+        const auto& pdLocs = type == PICKUP? requestState.pickups : requestState.dropoffs;
+        for (int j = firstPdLocIdInBatch; j < firstPdLocIdInBatch + K; ++j) {
+            pdLocLocations[j - firstPdLocIdInBatch] = j < pdLocs.size()? pdLocs[j].loc : INVALID_EDGE;
+            pdLocWalkingTimes[j - firstPdLocIdInBatch] = j < pdLocs.size()? pdLocs[j].walkingDist : INFTY;
+        }
+
+        auto &indices = localDistances.indexInEntriesVector;
+        auto &entries = localDistances.entries;
+
+        int numEntriesRemoved = 0;
+        for (int i = 0; i < entries.size(); ++i) {
+            auto &e = entries[i];
+
+            const auto &veh = fleet[routeState.vehicleIdOf(e.stopId)];
+            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto &occupancies = routeState.occupanciesFor(veh.vehicleId);
+            assert(numStops > 1);
+
+            const auto &stopIdx = routeState.stopPositionOf(e.stopId);
+
+            if (!isStopEligible(e.stopId) ||
+                (stopIdx == numStops - 1 && type == PICKUP) ||
+                (occupancies[stopIdx] == veh.capacity && (type == PICKUP || stopIdx == 0))) {
+                indices[e.stopId] = INVALID_INDEX;
+                ++numEntriesRemoved;
+                continue;
+            }
+
+            auto &distTo = e.distFromStopToPdLoc;
+            auto &distFrom = e.distFromPdLocToNextStop;
+
+            const typename LabelSet::LabelMask notRelevant = type == PICKUP ?
+                                                             ~isPickupRelevant<LabelSet>(veh, stopIdx, pdLocLocations,
+                                                                                         pdLocWalkingTimes, distTo, distFrom,
+                                                                                         requestState, routeState) :
+                                                             ~isDropoffRelevant<LabelSet>(veh, stopIdx, pdLocLocations,
+                                                                                          pdLocWalkingTimes, distTo, distFrom,
+                                                                                          requestState, routeState);
+
+            if (allSet(notRelevant)) {
+                indices[e.stopId] = INVALID_INDEX;
+                ++numEntriesRemoved;
+                continue;
+            }
+
+            distTo.setIf(INFTY, notRelevant);
+            distFrom.setIf(INFTY, notRelevant);
+
+            assert(numEntriesRemoved <= i);
+            entries[i - numEntriesRemoved] = entries[i];
+            indices[e.stopId] = i - numEntriesRemoved;
+        }
+        entries.erase(entries.end() - numEntriesRemoved, entries.end());
+
+    }
 }

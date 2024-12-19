@@ -86,21 +86,19 @@ namespace karri {
 
             static constexpr int K = FeasibleEllipticDistances::K;
 
-            ThreadLocalFeasibleEllipticDistances(const int &maxStopId,
-                                                 std::vector<int> &indexInEntriesVector,
-                                                 std::vector<LocalResultEntry> &entries)
-                    : indexInEntriesVector(indexInEntriesVector),
-                      entries(entries),
+            ThreadLocalFeasibleEllipticDistances(const int &maxStopId)
+                    : indexInEntriesVector(maxStopId + 1, INVALID_INDEX),
+                      entries(),
                       maxStopId(maxStopId) {}
 
-            void initForSearch() {
-                assert(entries.empty());
-                assert(std::all_of(indexInEntriesVector.begin(), indexInEntriesVector.end(),
-                                   [this](const int &i) { return i == indexInEntriesVector[0]; }));
-
-                if (indexInEntriesVector.size() < maxStopId + 1)
-                    indexInEntriesVector.resize(maxStopId + 1, INVALID_INDEX);
-            }
+//            void initForSearch() {
+//                assert(entries.empty());
+//                assert(std::all_of(indexInEntriesVector.begin(), indexInEntriesVector.end(),
+//                                   [this](const int &i) { return i == indexInEntriesVector[0]; }));
+//
+//                if (indexInEntriesVector.size() < maxStopId + 1)
+//                    indexInEntriesVector.resize(maxStopId + 1, INVALID_INDEX);
+//            }
 
             // Updates the distance from stop to the PD loc. Distance is written if there are
             // entries for the stop already or dynamic allocation of entries is allowed.
@@ -150,8 +148,8 @@ namespace karri {
                 return improvedLocal;
             }
 
-            std::vector<int> &indexInEntriesVector;
-            std::vector<LocalResultEntry> &entries;
+            std::vector<int> indexInEntriesVector;
+            std::vector<LocalResultEntry> entries;
 
         private:
             const int &maxStopId;
@@ -162,8 +160,8 @@ namespace karri {
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
                   vehiclesWithFeasibleDistances(fleetSize),
-                  indexInEntriesVector(),
-                  localResults(),
+//                  indexInEntriesVector(),
+//                  localResults(),
                   numRelPdLocsPerStop(),
                   stats(stats) {}
 
@@ -182,12 +180,12 @@ namespace karri {
             stats.initializationTime += time;
         }
 
-        // Each thread gets an instance of a ThreadLocalFeasibleEllipticDistances at the beginning of a search. This
-        // object encapsulates the local result of the thread for that search. This way, the underlying TLS structures
-        // are only queried once per search.
-        ThreadLocalFeasibleEllipticDistances getThreadLocalFeasibleDistances() {
-            return ThreadLocalFeasibleEllipticDistances(maxStopId, indexInEntriesVector.local(), localResults.local());
-        }
+//        // Each thread gets an instance of a ThreadLocalFeasibleEllipticDistances at the beginning of a search. This
+//        // object encapsulates the local result of the thread for that search. This way, the underlying TLS structures
+//        // are only queried once per search.
+//        ThreadLocalFeasibleEllipticDistances getThreadLocalFeasibleDistances() {
+//            return ThreadLocalFeasibleEllipticDistances(maxStopId, indexInEntriesVector.local(), localResults.local());
+//        }
 
         // Transfers the distances computed by a single thread for a batch of K PDLocs to the global result and clears
         // the local result in the process.
@@ -276,9 +274,9 @@ namespace karri {
         ConcurrentResultEntriesVector globalResults;
         ThreadSafeSubset vehiclesWithFeasibleDistances;
 
-        // Thread Local Storage for local distances calculation
-        tbb::enumerable_thread_specific<std::vector<int>> indexInEntriesVector;
-        tbb::enumerable_thread_specific<std::vector<typename ThreadLocalFeasibleEllipticDistances::LocalResultEntry>> localResults;
+//        // Thread Local Storage for local distances calculation
+//        tbb::enumerable_thread_specific<std::vector<int>> indexInEntriesVector;
+//        tbb::enumerable_thread_specific<std::vector<typename ThreadLocalFeasibleEllipticDistances::LocalResultEntry>> localResults;
 
         std::vector<CAtomic<int>> numRelPdLocsPerStop;
 
