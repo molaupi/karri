@@ -99,11 +99,11 @@ namespace karri {
             // Run elliptic BCH searches (populates feasibleEllipticPickups and feasibleEllipticDropoffs):
             auto pickupsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<PICKUP>(reqState.pickups);
             auto dropoffsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<DROPOFF>(reqState.dropoffs);
-            ellipticBchSearches.run(pickupsAtExistingStops, dropoffsAtExistingStops, feasibleEllipticPickups, feasibleEllipticDropoffs);
+            const auto [relevantPickups, relevantDropoffs] = ellipticBchSearches.run(std::move(pickupsAtExistingStops), std::move(dropoffsAtExistingStops));
 
-            // Filter feasible PD-locations between ordinary stops:
-            const auto [relOrdinaryPickups, relPickupsBeforeNextStop] = relevantPdLocsReorderer.reorderPickups(feasibleEllipticPickups);
-            const auto [relOrdinaryDropoffs, relDropoffsBeforeNextStop] = relevantPdLocsReorderer.reorderDropoffs(feasibleEllipticDropoffs);
+            // Reorder feasible PD-locations and distinguish between ordinary and before next stop:
+            const auto [relOrdinaryPickups, relPickupsBeforeNextStop] = relevantPdLocsReorderer.reorderPickups(relevantPickups);
+            const auto [relOrdinaryDropoffs, relDropoffsBeforeNextStop] = relevantPdLocsReorderer.reorderDropoffs(relevantDropoffs);
 
 
             // Try ordinary assignments:

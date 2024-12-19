@@ -40,7 +40,7 @@ namespace karri {
 
     struct RelevantPDLocs {
 
-        template<typename, typename, typename> friend
+        template<typename, typename> friend
         class RelevantPDLocsReorderer;
 
         using RelevantPDLocVector = AlignedVector<RelevantPDLoc>;

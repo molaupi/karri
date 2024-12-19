@@ -477,7 +477,7 @@ int main(int argc, char *argv[]) {
                                                  *vehChEnv, routeState, reqState);
 
 
-        using RelevantPDLocsReordererImpl = RelevantPDLocsReorderer<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
+        using RelevantPDLocsReordererImpl = RelevantPDLocsReorderer<VehicleInputGraph, VehCHEnv>;
         RelevantPDLocsReordererImpl relevantPdLocsReorderer(fleet, reqState, routeState);
 
 

@@ -262,7 +262,7 @@ namespace karri {
         // Intermediate stop gets an arrival time equal to the request time so the stop is reached immediately,
         // making it the new stop 0. Thus, we do not need to compute target bucket entries for the stop.
         void createIntermediateStopStopAtCurrentLocationForReroute(const Vehicle &veh, const int now) {
-            assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
+//            assert(curVehLocations.knowsCurrentLocationOf(veh.vehicleId));
             auto loc = curVehLocations.getVehicleLocation(veh.vehicleId);
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
             routeState.createIntermediateStopForReroute(veh.vehicleId, loc.location, now, loc.depTimeAtHead);

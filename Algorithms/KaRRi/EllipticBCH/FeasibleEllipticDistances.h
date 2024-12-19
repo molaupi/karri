@@ -75,7 +75,6 @@ namespace karri {
 
                 int stopId = INVALID_ID;
 
-
                 DistanceLabel distFromStopToPdLoc = INFTY;
                 DistanceLabel meetingVertexFromStopToPdLoc = INVALID_VERTEX;
                 DistanceLabel distFromPdLocToNextStop = INFTY;

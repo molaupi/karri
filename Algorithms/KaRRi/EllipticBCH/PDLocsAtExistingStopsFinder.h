@@ -76,6 +76,8 @@ namespace karri {
                     // Additionally find dropoffs that coincide with the last stop:
                     for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(head)) {
                         const auto numStops = routeState.numStopsOf(vehId);
+                        if (numStops == 1)
+                            continue; // If vehicle has only one stop, insertions with dropoff at last stop are not possible
                         if (routeState.stopLocationsFor(vehId)[numStops - 1] == pdLoc.loc) {
                             res.push_back({pdLoc.id, vehId, numStops - 1});
                         }

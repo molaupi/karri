@@ -39,13 +39,13 @@
 #include "Algorithms/KaRRi/EllipticBCH/ClosestPDLocToStopBCHQuery.h"
 #include "Algorithms/KaRRi/EllipticBCH/LocalFeasibleDistancesFilter.h"
 
-#include <tbb/enumerable_thread_specific.h>
-#include <tbb/parallel_for.h>
+#include <tbb/parallel_invoke.h>
 
 #include <atomic>
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 #include "Algorithms/KaRRi/BaseObjects/PDLocAtExistingStop.h"
 #include "ParFeasibleEllipticDistances.h"
+#include "EllipticBchBatchQueryResult.h"
 
 namespace karri {
 
@@ -69,7 +69,7 @@ namespace karri {
 
 
         using Buckets = typename EllipticBucketsEnvT::BucketContainer;
-        using ThreadLocalFeasibleDistances = typename FeasibleEllipticDistancesT::ThreadLocalFeasibleEllipticDistances;
+        using ThreadLocalFeasibleDistances = EllipticBchBatchQueryResult<LabelSetT>;
 
         struct StopBCHQuery {
 
@@ -130,28 +130,26 @@ namespace karri {
 
         struct UpdateDistancesToPDLocs {
 
-            UpdateDistancesToPDLocs(ThreadLocalFeasibleDistances &distances, const int &firstPdLocInBatch)
-                    : distances(distances), firstPdLocIdInBatch(firstPdLocInBatch) {}
+            UpdateDistancesToPDLocs(ThreadLocalFeasibleDistances &distances)
+                    : distances(distances) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsToPDLocs) {
 
-                return distances.updateDistanceFromStopToPDLoc(entry.targetId, firstPdLocIdInBatch, distsToPDLocs,
+                return distances.updateDistanceFromStopToPDLoc(entry.targetId, distsToPDLocs,
                                                                meetingVertex);
             }
 
 
         private:
             ThreadLocalFeasibleDistances &distances;
-            const int &firstPdLocIdInBatch;
         };
 
 
         struct UpdateDistancesFromPDLocs {
 
-            UpdateDistancesFromPDLocs(const RouteState &routeState, ParFeasibleEllipticDistances<LabelSetT> &distances,
-                                      const int &firstPdLocInBatch)
-                    : routeState(routeState), distances(distances), firstPdLocIdInBatch(firstPdLocInBatch) {}
+            UpdateDistancesFromPDLocs(const RouteState &routeState, ThreadLocalFeasibleDistances &distances)
+                    : routeState(routeState), distances(distances) {}
 
             LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsFromPDLocs) {
@@ -162,15 +160,14 @@ namespace karri {
                 if (prevStopId == INVALID_ID)
                     return LabelMask(false);
 
-                return distances.updateDistanceFromPDLocToNextStop(prevStopId, firstPdLocIdInBatch, distsFromPDLocs,
+                return distances.updateDistanceFromPDLocToNextStop(prevStopId, distsFromPDLocs,
                                                                    meetingVertex);
             }
 
 
         private:
             const RouteState &routeState;
-            ParFeasibleEllipticDistances<LabelSetT> &distances;
-            const int &firstPdLocIdInBatch;
+            ThreadLocalFeasibleDistances &distances;
         };
 
 
@@ -201,7 +198,7 @@ namespace karri {
                   sourceBuckets(ellipticBucketsEnv.getSourceBuckets()),
                   targetBuckets(ellipticBucketsEnv.getTargetBuckets()),
                   lastStopsAtVertices(lastStopsAtVertices),
-                  distUpperBound(INFTY),
+                  distUpperBound(INFTY)
 //                  updateDistancesToPdLocs(),
 //                  updateDistancesFromPdLocs(&routeState),
 //                  numEntriesScanned(0),
@@ -221,17 +218,17 @@ namespace karri {
 //                                                numEntriesScannedWithDistSmallerLeeway.local()),
 //                              StopBCHQuery(distUpperBound));
 //                  }),
-                  totalNumEdgeRelaxations(0),
-                  totalNumVerticesVisited(0) {}
+//                  totalNumEdgeRelaxations(0),
+//                  totalNumVerticesVisited(0)
+        {}
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
-        void run(PDLocsAtExistingStops &&pickupsAtExistingStops,
-                 PDLocsAtExistingStops &&dropoffsAtExistingStops,
-                 FeasibleEllipticDistancesT &feasibleEllipticPickups,
-                 FeasibleEllipticDistancesT &feasibleEllipticDropoffs) {
+        std::pair<std::vector<RelevantPDLoc>, std::vector<RelevantPDLoc>>
+        run(const PDLocsAtExistingStops &pickupsAtExistingStops,
+            const PDLocsAtExistingStops &dropoffsAtExistingStops) {
             // Helper lambda to get sum of stats from thread local queries
-            static const auto sumInts = [](const int &n1, const int &n2) { return n1 + n2; };
+//            static const auto sumInts = [](const int &n1, const int &n2) { return n1 + n2; };
 
             // Run for pickups and dropoffs in parallel:
             Timer timer;
@@ -239,8 +236,8 @@ namespace karri {
 //                local = 0;
 //            for (auto &local: numEntriesScannedWithDistSmallerLeeway)
 //                local = 0;
-            totalNumEdgeRelaxations.store(0);
-            totalNumVerticesVisited.store(0);
+//            totalNumEdgeRelaxations.store(0);
+//            totalNumVerticesVisited.store(0);
 
             // Set an upper bound distance for the searches comprised of the maximum leeway or an upper bound based on the
             // current best costs (we compute the maximum detour that would still allow an assignment with costs smaller
@@ -250,21 +247,42 @@ namespace karri {
                     requestState.getBestCost(), routeState.getMaxLegLength());
             distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
 
-            parallel_invoke([&] {
-                                runBCHSearchesFromAndTo<PICKUP>(requestState.pickups, feasibleEllipticPickups, pickupsAtExistingStops,
-                                                                [](const int) { return true; });
-                            },
-                            [&] {
-                                runBCHSearchesFromAndTo<DROPOFF>(requestState.dropoffs, feasibleEllipticDropoffs,
-                                                                 dropoffsAtExistingStops,
-                                                                 [](const int) { return true; });
-                            });
+            std::vector<RelevantPDLoc> relevantPickups;
+            std::vector<RelevantPDLoc> relevantDropoffs;
+            int pickupNumEdgeRelaxations = 0;
+            int dropoffNumEdgeRelaxations = 0;
+            int pickupNumVerticesVisited = 0;
+            int dropoffNumVerticesVisited = 0;
+            int pickupNumEntriesScanned = 0;
+            int dropoffNumEntriesScanned = 0;
+            int pickupNumEntriesScannedWithDistSmallerLeeway = 0;
+            int dropoffNumEntriesScannedWithDistSmallerLeeway = 0;
+//            parallel_invoke([&] {
+            relevantPickups = runBCHSearchesFromAndTo<PICKUP>(requestState.pickups,
+                                                              pickupsAtExistingStops,
+                                                              [](const int) { return true; },
+                                                              pickupNumEdgeRelaxations,
+                                                              pickupNumVerticesVisited,
+                                                              pickupNumEntriesScanned,
+                                                              pickupNumEntriesScannedWithDistSmallerLeeway);
+//                            },
+//                            [&] {
+            relevantDropoffs = runBCHSearchesFromAndTo<DROPOFF>(requestState.dropoffs,
+                                                                dropoffsAtExistingStops,
+                                                                [](const int) { return true; },
+                                                                dropoffNumEdgeRelaxations,
+                                                                dropoffNumVerticesVisited,
+                                                                dropoffNumEntriesScanned,
+                                                                dropoffNumEntriesScannedWithDistSmallerLeeway);
+//                            });
 
-            const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ellipticBchStats.searchTime += pickupTime;
-            requestState.stats().ellipticBchStats.numEdgeRelaxations += totalNumEdgeRelaxations.load();
-            requestState.stats().ellipticBchStats.numVerticesSettled += totalNumVerticesVisited.load();
-            requestState.stats().ellipticBchStats.numEntriesScanned += numEntriesScanned.combine(sumInts);
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().ellipticBchStats.searchTime += time;
+            requestState.stats().ellipticBchStats.numEdgeRelaxations += pickupNumEdgeRelaxations + dropoffNumEdgeRelaxations;
+            requestState.stats().ellipticBchStats.numVerticesSettled += pickupNumVerticesVisited + dropoffNumVerticesVisited;
+            requestState.stats().ellipticBchStats.numEntriesScanned += pickupNumEntriesScanned + dropoffNumEntriesScanned;
+
+            return {relevantPickups, relevantDropoffs};
         }
 
         void init() {
@@ -288,86 +306,135 @@ namespace karri {
 //        };
 
 
-        template<PDLocType type, typename SpotContainerT, typename FeasibleDistancesT, typename IsStopEligibleT>
-        void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs, FeasibleDistancesT &feasibleDistances,
-                                     PDLocsAtExistingStops &&pdLocsAtExistingStops,
-                                     const IsStopEligibleT &isStopEligible) {
+        template<PDLocType type, typename SpotContainerT, typename IsStopEligibleT>
+        std::vector<RelevantPDLoc> runBCHSearchesFromAndTo(const SpotContainerT &pdLocs,
+                                                           const PDLocsAtExistingStops &pdLocsAtExistingStops,
+                                                           const IsStopEligibleT &isStopEligible,
+                                                           int &totalNumEdgeRelaxations,
+                                                           int &totalNumVerticesVisited,
+                                                           int &totalNumEntriesScanned,
+                                                           int &totalNumEntriesScannedWithDistSmallerLeeway) {
 
 
-            ParFeasibleEllipticDistances<LabelSetT> globalResult(routeState, fleet.size());
-            globalResult.initializeDistancesForPdLocsAtExistingStops(pdLocsAtExistingStops, inputGraph);
+//            ParFeasibleEllipticDistances<LabelSetT> globalResult(routeState, fleet.size());
+//            globalResult.initializeDistancesForPdLocsAtExistingStops(pdLocsAtExistingStops, inputGraph);
+
+            std::vector<RelevantPDLoc> globalResult;
 
 
 #pragma omp parallel
             {
 
+                int localNumEdgeRelaxations = 0;
+                int localNumVerticesVisited = 0;
                 int localNumEntriesScanned = 0;
                 int localNumEntriesScannedWithDistSmallerLeeway = 0;
-                int localCurFirstPdLocInBatch = INVALID_ID;
-                ThreadLocalFeasibleDistances localResult(routeState.getMaxStopId());
+                int localCurFirstPdLocIdInBatch = INVALID_ID;
+                ThreadLocalFeasibleDistances resultForBatch(routeState.getMaxStopId());
+                std::vector<RelevantPDLoc> localRelevantPdLocs;
                 ToQueryType localToQuery = chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
                         ScanSourceBuckets(sourceBuckets,
-                                          UpdateDistancesToPDLocs(localResult, localCurFirstPdLocInBatch),
-                        localNumEntriesScanned, localNumEntriesScannedWithDistSmallerLeeway),
+                                          UpdateDistancesToPDLocs(resultForBatch),
+                                          localNumEntriesScanned, localNumEntriesScannedWithDistSmallerLeeway),
                         StopBCHQuery(distUpperBound));
                 FromQueryType localFromQuery =
                         chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
-                                ScanTargetBuckets(targetBuckets, UpdateDistancesFromPDLocs(routeState, localResult,
-                                                                                           localCurFirstPdLocInBatch),
+                                ScanTargetBuckets(targetBuckets, UpdateDistancesFromPDLocs(routeState, resultForBatch),
                                                   localNumEntriesScanned, localNumEntriesScannedWithDistSmallerLeeway),
-                        StopBCHQuery(distUpperBound));
+                                StopBCHQuery(distUpperBound));
 
 #pragma omp for schedule(dynamic, 1) nowait
-                for (auto i = 0; i < pdLocs.size(); i += K) {
-                    localCurFirstPdLocInBatch = i * K; // localCurFirstPdLocInBatch is also read by update callbacks in queries
-                    const auto toPdId = std::min(i * (K + 1), static_cast<int>(pdLocs.size()));
+                for (auto i = 0; i < pdLocs.size() / K; ++i) {
+                    KASSERT(std::all_of(resultForBatch.indexInEntriesVector.begin(),
+                                        resultForBatch.indexInEntriesVector.end(),
+                                        [&](const auto i) { return i == INVALID_INDEX; }));
+                    KASSERT(resultForBatch.entries.empty());
 
-                    runRegularBCHSearchesTo(localCurFirstPdLocInBatch, toPdId, pdLocs, localToQuery);
-                    runRegularBCHSearchesFrom(localCurFirstPdLocInBatch, toPdId, pdLocs, localFromQuery);
+                    localCurFirstPdLocIdInBatch =
+                            i * K; // localCurFirstPdLocIdInBatch is also read by update callbacks in queries
+                    const auto toPdId = std::min((i + 1) * K, static_cast<int>(pdLocs.size()));
 
-                    filterLocalEllipticDistances<type, LabelSetT>(localCurFirstPdLocInBatch, localResult, fleet, requestState, routeState, isStopEligible);
+                    initializePdLocsAtExistingStopsInLocal(pdLocsAtExistingStops, resultForBatch,
+                                                           localCurFirstPdLocIdInBatch);
+
+                    runRegularBCHSearchesTo(localCurFirstPdLocIdInBatch, toPdId, pdLocs, localToQuery,
+                                            localNumEdgeRelaxations, localNumVerticesVisited);
+                    runRegularBCHSearchesFrom(localCurFirstPdLocIdInBatch, toPdId, pdLocs, localFromQuery,
+                                              localNumEdgeRelaxations, localNumVerticesVisited);
+
+
+                    // Filter entries for current batch for relevancy and convert to RelevantPDLocs
+                    DistanceLabel pdLocLocations = {};
+                    DistanceLabel pdLocWalkingTimes = {};
+                    int j = localCurFirstPdLocIdInBatch;
+                    for (j = localCurFirstPdLocIdInBatch; j < toPdId; ++j) {
+                        pdLocLocations[j - localCurFirstPdLocIdInBatch] = pdLocs[j].loc;
+                        pdLocWalkingTimes[j - localCurFirstPdLocIdInBatch] = pdLocs[j].walkingDist;
+                    }
+                    for (; j < (i + 1) * K; ++j) {
+                        pdLocLocations[j - localCurFirstPdLocIdInBatch] = INVALID_EDGE;
+                        pdLocWalkingTimes[j - localCurFirstPdLocIdInBatch] = INFTY;
+                    }
+                    for (const auto &e: resultForBatch.entries) {
+                        const auto &veh = fleet[routeState.vehicleIdOf(e.stopId)];
+                        const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+                        const auto &occupancies = routeState.occupanciesFor(veh.vehicleId);
+                        assert(numStops > 1);
+
+                        const auto &stopIdx = routeState.stopPositionOf(e.stopId);
+
+                        if (!isStopEligible(e.stopId) ||
+                            (stopIdx == numStops - 1 && type == PICKUP) ||
+                            (occupancies[stopIdx] == veh.capacity && (type == PICKUP || stopIdx == 0))) {
+                            continue;
+                        }
+
+                        const auto &distTo = e.distFromStopToPdLoc;
+                        const auto &distFrom = e.distFromPdLocToNextStop;
+
+                        const LabelMask notRelevant =
+                                type == PICKUP ? ~isPickupRelevant<LabelSetT>(veh, stopIdx, pdLocLocations,
+                                                                              pdLocWalkingTimes, distTo, distFrom,
+                                                                              requestState, routeState) :
+                                ~isDropoffRelevant<LabelSetT>(veh, stopIdx, pdLocLocations,
+                                                              pdLocWalkingTimes, distTo, distFrom,
+                                                              requestState, routeState);
+                        if (allSet(notRelevant))
+                            continue;
+                        for (int idxInBatch = 0; idxInBatch < toPdId - localCurFirstPdLocIdInBatch; ++idxInBatch) {
+                            if (notRelevant[idxInBatch])
+                                continue;
+                            const int distToPd = distTo[idxInBatch];
+                            const int distFromPd = distFrom[idxInBatch];
+                            localRelevantPdLocs.push_back(
+                                    RelevantPDLoc(e.stopId, localCurFirstPdLocIdInBatch + idxInBatch, distToPd,
+                                                  distFromPd));
+                        }
+                    }
+
+                    // Reset resultForBatch
+                    for (const auto &e: resultForBatch.entries)
+                        resultForBatch.indexInEntriesVector[e.stopId] = INVALID_INDEX;
+                    resultForBatch.entries.clear();
                 }
 
 #pragma omp critical (combineResults)
                 {
-                    globalResult.join(localResult);
+                    globalResult.insert(globalResult.end(), localRelevantPdLocs.begin(), localRelevantPdLocs.end());
+                    totalNumEdgeRelaxations += localNumEdgeRelaxations;
+                    totalNumVerticesVisited += localNumVerticesVisited;
+                    totalNumEntriesScanned += localNumEntriesScanned;
+                    totalNumEntriesScannedWithDistSmallerLeeway += localNumEntriesScannedWithDistSmallerLeeway;
                 }
             }
 
-
-            // Process in batches of size K
-            parallel_for(int(0), static_cast<int>(pdLocs.size()), K, [&](int i) {
-                // Get one thread local data structure for storing results of both to and from search.
-//                auto localFeasibleDistances = feasibleDistances.getThreadLocalFeasibleDistances();
-//                localFeasibleDistances.initForSearch();
-
-                auto localFeasibleDistances = ThreadLocalFeasibleDistances(routeState.getMaxStopId());
-
-                initializePdLocsAtExistingStopsInLocal(pdLocsAtExistingStops, localFeasibleDistances, i);
-
-
-                runRegularBCHSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs,
-                                        localFeasibleDistances);
-
-                runRegularBCHSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs,
-                                          localFeasibleDistances);
-
-
-                filterLocalEllipticDistances<type, LabelSetT>(i, localFeasibleDistances, fleet, requestState,
-                                                              routeState,
-                                                              isStopEligible);
-
-                // After thread finishes a search batch of K PDLocs, write the distances back to the global vectors
-                feasibleDistances.transferThreadLocalResultToGlobalResult(i, std::min(i + K,
-                                                                                      static_cast<int>(pdLocs.size())),
-                                                                          localFeasibleDistances);
-            });
+            return globalResult;
         }
 
         template<typename SpotContainerT>
         void runRegularBCHSearchesTo(const int startId, const int endId,
                                      const SpotContainerT &pdLocs,
-                                     ToQueryType &query) {
+                                     ToQueryType &query, int &numEdgeRelaxations, int &numVerticesVisited) {
             assert(endId > startId && endId - startId <= K);
 
             std::array<int, K> travelTimes;
@@ -385,15 +452,14 @@ namespace karri {
             }
 
             query.runWithOffset(pdLocTails, travelTimes);
-            totalNumEdgeRelaxations.add_fetch(query.getNumEdgeRelaxations(), std::memory_order_relaxed);
-            totalNumVerticesVisited.add_fetch(query.getNumVerticesSettled(), std::memory_order_relaxed);
-
+            numEdgeRelaxations += query.getNumEdgeRelaxations();
+            numVerticesVisited += query.getNumVerticesSettled();
         }
 
         template<typename SpotContainerT>
         void runRegularBCHSearchesFrom(const int startId, const int endId,
                                        const SpotContainerT &pdLocs,
-                                       FromQueryType& query) {
+                                       FromQueryType &query, int &numEdgeRelaxations, int &numVerticesVisited) {
             assert(endId > startId && endId - startId <= K);
 
             std::array<int, K> pdLocHeads;
@@ -409,9 +475,8 @@ namespace karri {
             }
 
             query.runWithOffset(pdLocHeads, {});
-
-            totalNumEdgeRelaxations.add_fetch(query.getNumEdgeRelaxations(), std::memory_order_relaxed);
-            totalNumVerticesVisited.add_fetch(query.getNumVerticesSettled(), std::memory_order_relaxed);
+            numEdgeRelaxations += query.getNumEdgeRelaxations();
+            numVerticesVisited += query.getNumVerticesSettled();
         }
 
         template<PDLocType type, typename PDLocsT>
@@ -498,7 +563,7 @@ namespace karri {
 //        enumerable_thread_specific<ToQueryType> toQuery;
 //        enumerable_thread_specific<FromQueryType> fromQuery;
 
-        CAtomic<int> totalNumEdgeRelaxations;
-        CAtomic<int> totalNumVerticesVisited;
+//        CAtomic<int> totalNumEdgeRelaxations;
+//        CAtomic<int> totalNumVerticesVisited;
     };
 }

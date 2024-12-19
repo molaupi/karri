@@ -30,6 +30,8 @@
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
 #include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
 
+#include <tbb/parallel_for.h>
+
 namespace karri {
 
 // Finds ordinary assignments, i.e. those assignments where pickup and dropoff are both inserted after the vehicle's
