@@ -129,6 +129,13 @@ namespace karri {
             return PASSENGER_COST_SCALE * addedTripTimeForExistingPassengers;
         }
 
+        template<typename DistanceLabel>
+        static inline DistanceLabel
+        calcKChangesInTripCostsOfExistingPassengers(DistanceLabel addedTripTimeForExistingPassengers) {
+            addedTripTimeForExistingPassengers.multiplyWithScalar(PASSENGER_COST_SCALE);
+            return addedTripTimeForExistingPassengers;
+        }
+
         static inline int calcUpperBoundVehicleCostDifference(const int detourDiff) {
             return calcVehicleCost(detourDiff);
         }

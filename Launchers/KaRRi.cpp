@@ -57,6 +57,7 @@
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
 #include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocsFilter.h"
+#include "Algorithms/KaRRi/RequestState/RelevantPDLocsReorderer.h"
 #include "Algorithms/KaRRi/OrdinaryAssignments/OrdinaryAssignmentsFinder.h"
 #include "Algorithms/KaRRi/PbnsAssignments/PBNSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/PalsAssignments/PALSAssignmentsFinder.h"
@@ -68,6 +69,7 @@
 #include "Algorithms/KaRRi/AssignmentFinder.h"
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
+#include "Parallel/hardware_topology.h"
 
 #ifdef KARRI_USE_CCHS
 #include "Algorithms/KaRRi/CCHEnvironment.h"
@@ -139,6 +141,7 @@ inline void printUsage() {
               "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
+              "  -max-num-threads <int> set the maximum number of threads to use (dflt: 1).\n"
               "  -help                  show usage help text.\n";
 }
 
@@ -150,6 +153,17 @@ int main(int argc, char *argv[]) {
             printUsage();
             return EXIT_SUCCESS;
         }
+
+
+        auto maxNumThreads = clp.getValue<size_t>("max-num-threads", 1);
+        size_t numAvailableCpus = parallel::HardwareTopology<>::instance().num_cpus();
+        if (numAvailableCpus < maxNumThreads) {
+            std::cout << "There are currently only " << numAvailableCpus << " cpus available. "
+                      << "Setting number of threads from " << maxNumThreads << " to " << numAvailableCpus << std::endl;
+            maxNumThreads = numAvailableCpus;
+        }
+        omp_set_num_threads(maxNumThreads);
+        std::cout << "Running KaRRi with " << maxNumThreads << " threads." << std::endl;
 
 
         // Parse the command-line options.
@@ -444,20 +458,22 @@ int main(int argc, char *argv[]) {
         using EllipticBCHLabelSet = std::conditional_t<KARRI_ELLIPTIC_BCH_USE_SIMD,
                 SimdLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>,
                 BasicLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>>;
-        using FeasibleEllipticDistancesImpl = FeasibleEllipticDistances<EllipticBCHLabelSet>;
+//        using FeasibleEllipticDistancesImpl = FeasibleEllipticDistances<EllipticBCHLabelSet>;
 
         using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, typename EllipticBucketsEnv::BucketContainer, LastStopAtVerticesInfo>;
         PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, *vehChEnv, ellipticBucketsEnv.getSourceBuckets(), lastStopBucketsEnv, routeState, reqState.stats().ellipticBchStats);
 
         using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
-                EllipticBucketsEnv, LastStopAtVerticesInfo, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
+                EllipticBucketsEnv, LastStopAtVerticesInfo, EllipticBCHLabelSet>;
         EllipticBCHSearchesImpl ellipticSearches(vehicleInputGraph, fleet, ellipticBucketsEnv, lastStopBucketsEnv,
                                                  *vehChEnv, routeState, reqState);
 
 
         // Construct remaining request state
-        using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
-        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, vehicleInputGraph, *vehChEnv, calc, reqState, routeState);
+//        using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
+//        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, vehicleInputGraph, *vehChEnv, calc, reqState, routeState);
+        using RelevantPDLocsReordererImpl = RelevantPDLocsReorderer<VehicleInputGraph, VehCHEnv>;
+        RelevantPDLocsReordererImpl relevantPdLocsReorderer(fleet, reqState, routeState);
 
 
         const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
@@ -556,7 +572,6 @@ int main(int argc, char *argv[]) {
 
         using InsertionFinderImpl = AssignmentFinder<
                 VehicleInputGraph,
-                FeasibleEllipticDistancesImpl,
                 RequestStateInitializerImpl,
                 PDLocsAtExistingStopsFinderImpl,
                 EllipticBCHSearchesImpl,
@@ -565,11 +580,11 @@ int main(int argc, char *argv[]) {
                 PBNSInsertionsFinderImpl,
                 PALSInsertionsFinderImpl,
                 DALSInsertionsFinderImpl,
-                RelevantPDLocsFilterImpl>;
+                RelevantPDLocsReordererImpl>;
         InsertionFinderImpl insertionFinder(reqState, vehicleInputGraph, fleet, routeState,
                                             requestStateInitializer, pdLocsAtExistingStops, ellipticSearches, ffPDDistanceQuery,
                                             ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
-                                            dalsInsertionsFinder, relevantPdLocsFilter);
+                                            dalsInsertionsFinder, relevantPdLocsReorderer);
 
 
 #if KARRI_OUTPUT_VEHICLE_PATHS

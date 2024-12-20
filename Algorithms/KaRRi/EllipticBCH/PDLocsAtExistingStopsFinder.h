@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "Algorithms/KaRRi/BaseObjects/PDLocAtExistingStop.h"
+
 namespace karri {
 
     template<
@@ -33,14 +35,6 @@ namespace karri {
             typename EllipticSourceBucketsT,
             typename LastStopsAtVerticesT>
     class PDLocsAtExistingStopsFinder {
-
-
-        // Info about a PD loc that coincides with an existing stop of a vehicle.
-        struct PDLocAtExistingStop {
-            int pdId = INVALID_ID;
-            int vehId = INVALID_ID;
-            int stopIndex = INVALID_INDEX;
-        };
 
     public:
 

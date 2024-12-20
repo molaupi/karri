@@ -29,21 +29,15 @@
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
+#include "Algorithms/KaRRi/RequestState/RelevantPDLoc.h"
 
 namespace karri {
 
 
     struct RelevantPDLocs {
 
-        template<typename, typename, typename> friend
-        class RelevantPDLocsFilter;
-
-        struct RelevantPDLoc {
-            int stopIndex;
-            unsigned int pdId;
-            int distToPDLoc;
-            int distFromPDLocToNextStop;
-        };
+        template<typename, typename> friend
+        class RelevantPDLocsReorderer;
 
         using RelevantPDLocVector = AlignedVector<RelevantPDLoc>;
 

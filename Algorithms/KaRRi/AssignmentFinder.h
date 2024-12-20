@@ -37,7 +37,6 @@ namespace karri {
     // of a vehicle and a pickup and dropoff location, according to the current state of all vehicle routes.
     template<
             typename InputGraphT,
-            typename FeasibleEllipticDistancesT,
             typename RequestStateInitializerT,
             typename PdLocsAtExistingStopsFinderT,
             typename EllipticBchSearchesT,
@@ -46,7 +45,7 @@ namespace karri {
             typename PbnsAssignmentsT,
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
-            typename RelevantPdLocsFilterT
+            typename RelevantPdLocsReordererT
     >
     class AssignmentFinder {
 
@@ -64,13 +63,11 @@ namespace karri {
                          PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments,
                          DalsAssignmentsT &dalsAssignments,
-                         RelevantPdLocsFilterT &relevantPdLocsFilter)
+                         RelevantPdLocsReordererT &relevantPdLocsReorderer)
                 : reqState(requestState),
                   inputGraph(inputGraph),
                   fleet(fleet),
                   routeState(routeState),
-                  feasibleEllipticPickups(fleet.size(), routeState, reqState.stats().ellipticBchStats),
-                  feasibleEllipticDropoffs(fleet.size(), routeState, reqState.stats().ellipticBchStats),
                   requestStateInitializer(requestStateInitializer),
                   pdLocsAtExistingStopsFinder(pdLocsAtExistingStopsFinder),
                   ellipticBchSearches(ellipticBchSearches),
@@ -79,7 +76,7 @@ namespace karri {
                   pbnsAssignments(pbnsAssignments),
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
-                  relevantPdLocsFilter(relevantPdLocsFilter) {}
+                  relevantPdLocsReorderer(relevantPdLocsReorderer) {}
 
         const RequestState &findBestAssignment(const Request &req) {
 
@@ -93,25 +90,19 @@ namespace karri {
             palsAssignments.findAssignments(ffPdDistances);
 
             // Run elliptic BCH searches (populates feasibleEllipticPickups and feasibleEllipticDropoffs):
-            ellipticBchSearches.run(feasibleEllipticPickups, feasibleEllipticDropoffs);
+            auto pickupsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<PICKUP>(reqState.pickups);
+            auto dropoffsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<DROPOFF>(reqState.dropoffs);
+            const auto [relevantPickups, relevantDropoffs] = ellipticBchSearches.run(std::move(pickupsAtExistingStops), std::move(dropoffsAtExistingStops));
 
-            // Filter feasible PD-locations between ordinary stops:
-            const auto relOrdinaryPickups = relevantPdLocsFilter.filterOrdinaryPickups(feasibleEllipticPickups);
-            const auto relOrdinaryDropoffs = relevantPdLocsFilter.filterOrdinaryDropoffs(feasibleEllipticDropoffs);
+            // Reorder feasible PD-locations and distinguish between ordinary and before next stop:
+            const auto [relOrdinaryPickups, relPickupsBeforeNextStop] = relevantPdLocsReorderer.reorderPickups(relevantPickups);
+            const auto [relOrdinaryDropoffs, relDropoffsBeforeNextStop] = relevantPdLocsReorderer.reorderDropoffs(relevantDropoffs);
 
             // Try ordinary assignments:
             ordAssignments.findAssignments(relOrdinaryPickups, relOrdinaryDropoffs, ffPdDistances);
 
-            // Filter feasible pickups before next stops:
-            const auto relPickupsBeforeNextStop = relevantPdLocsFilter.filterPickupsBeforeNextStop(
-                    feasibleEllipticPickups);
-
             // Try DALS assignments:
             dalsAssignments.findAssignments(relOrdinaryPickups, relPickupsBeforeNextStop);
-
-            // Filter feasible dropoffs before next stop:
-            const auto relDropoffsBeforeNextStop = relevantPdLocsFilter.filterDropoffsBeforeNextStop(
-                    feasibleEllipticDropoffs);
 
             // Try PBNS assignments:
             pbnsAssignments.findAssignments(relPickupsBeforeNextStop, relOrdinaryDropoffs, relDropoffsBeforeNextStop,
@@ -124,14 +115,6 @@ namespace karri {
 
         void initializeForRequest(const Request &req) {
             requestStateInitializer.initializeRequestState(req);
-            feasibleEllipticPickups.init(reqState.numPickups());
-            feasibleEllipticPickups.initializeDistancesForPdLocsAtExistingStops(
-                    pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<PICKUP>(reqState.pickups),
-                    inputGraph);
-            feasibleEllipticDropoffs.init(reqState.numDropoffs());
-            feasibleEllipticDropoffs.initializeDistancesForPdLocsAtExistingStops(
-                    pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<DROPOFF>(reqState.dropoffs),
-                    inputGraph);
 
             // Initialize components according to new request state:
             ellipticBchSearches.init();
@@ -146,8 +129,6 @@ namespace karri {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const RouteState &routeState;
-        FeasibleEllipticDistancesT feasibleEllipticPickups;
-        FeasibleEllipticDistancesT feasibleEllipticDropoffs;
 
         RequestStateInitializerT &requestStateInitializer;
         PdLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder; // Identifies pd locs that coincide with existing stops
@@ -157,7 +138,7 @@ namespace karri {
         PbnsAssignmentsT &pbnsAssignments; // Tries PBNS assignments where pickup (and possibly dropoff) is inserted before the next vehicle stop.
         PalsAssignmentsT &palsAssignments; // Tries PALS assignments where pickup and dropoff are inserted after the last stop.
         DalsAssignmentsT &dalsAssignments; // Tries DALS assignments where only the dropoff is inserted after the last stop.
-        RelevantPdLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
+        RelevantPdLocsReordererT &relevantPdLocsReorderer; // Reorders pickups/dropoffs found by elliptic BCH searches for more efficient access.
 
 
     };

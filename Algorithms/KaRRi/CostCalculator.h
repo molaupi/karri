@@ -554,6 +554,36 @@ namespace karri {
                    + walkingCost + waitViolation;
         }
 
+        template<typename LabelSet, typename RequestContext>
+        typename LabelSet::DistanceLabel calcMinKnownPickupSideCost(const Vehicle &veh, const int pickupIndex,
+                                                                    const typename LabelSet::DistanceLabel &initialPickupDetour,
+                                                                    const typename LabelSet::DistanceLabel &walkingDist,
+                                                                    const typename LabelSet::DistanceLabel &depTimeAtPickup,
+                                                                    const RequestContext &context) const {
+            using namespace time_utils;
+
+            const auto numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto residualDetourAtEnd = calcResidualPickupDetour(veh.vehicleId, pickupIndex, numStops - 1,
+                                                                      initialPickupDetour, routeState);
+            const auto violates = isServiceTimeConstraintViolated<LabelSet>(veh, context, residualDetourAtEnd,
+                                                                            routeState);
+
+            const auto walkingCost = F::calcKWalkingCosts(walkingDist, InputConfig::getInstance().pickupRadius);
+            const auto addedTripTimeOfOthers = calcAddedTripTimeInInterval(veh.vehicleId, pickupIndex, numStops - 1,
+                                                                           initialPickupDetour, routeState);
+
+            const auto changeInTripTimeCosts = F::calcKChangesInTripCostsOfExistingPassengers(addedTripTimeOfOthers);
+            const auto waitViolation = F::calcKWaitViolationCosts(depTimeAtPickup, context);
+            const auto minTripTime = (depTimeAtPickup - context.originalRequest.requestTime) + context.minDirectPDDist;
+            const auto minTripCost = F::calcKTripCosts(minTripTime, context);
+
+            auto cost = F::calcKVehicleCosts(initialPickupDetour) + changeInTripTimeCosts + minTripCost + walkingCost +
+                        waitViolation;
+            cost.setIf(INFTY, violates);
+            cost.setIf(INFTY, (initialPickupDetour == INFTY) | (depTimeAtPickup == INFTY));
+            return cost;
+        }
+
         // Calculates the cost for the dropoff side of an assignment that can be known without knowing which
         // pickup is used or where the pickup will be inserted.
         template<typename RequestContext>
@@ -579,6 +609,38 @@ namespace karri {
 
             return F::calcVehicleCost(initialDropoffDetour) + walkingCost + minChangeInTripTimeCosts + minTripCost;
         }
+
+        template<typename LabelSet, typename RequestContext>
+        typename LabelSet::DistanceLabel calcMinKnownDropoffSideCost(const Vehicle &veh, const int dropoffIndex,
+                                                                     const typename LabelSet::DistanceLabel &initialDropoffDetour,
+                                                                     const typename LabelSet::DistanceLabel &walkingDist,
+                                                                     const RequestContext &context) const {
+            using namespace time_utils;
+
+            const auto numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto residualDetourAtEnd = calcResidualTotalDetour(veh.vehicleId, dropoffIndex, dropoffIndex,
+                                                                     numStops - 1, typename LabelSet::DistanceLabel(0),
+                                                                     initialDropoffDetour, routeState);
+            const auto violates = isServiceTimeConstraintViolated<LabelSet>(veh, context, residualDetourAtEnd,
+                                                                            routeState);
+
+
+            const auto walkingCost = F::calcKWalkingCosts(walkingDist, InputConfig::getInstance().dropoffRadius);
+            const auto minAddedTripTimeOfOthers = calcAddedTripTimeInInterval(veh.vehicleId, dropoffIndex, numStops - 1,
+                                                                              initialDropoffDetour, routeState);
+            const auto minChangeInTripTimeCosts = F::calcKChangesInTripCostsOfExistingPassengers(
+                    minAddedTripTimeOfOthers);
+
+            const auto minTripTime = context.minDirectPDDist + walkingDist;
+            const auto minTripCost = F::calcKTripCosts(minTripTime, context);
+
+            auto cost =
+                    F::calcKVehicleCosts(initialDropoffDetour) + walkingCost + minChangeInTripTimeCosts + minTripCost;
+            cost.setIf(INFTY, violates);
+            cost.setIf(INFTY, initialDropoffDetour == INFTY);
+            return cost;
+        }
+
 
         template<typename RequestContext>
         inline bool

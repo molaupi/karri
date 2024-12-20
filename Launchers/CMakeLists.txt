@@ -38,9 +38,10 @@ add_executable(karri KaRRi.cpp)
 target_compile_definitions(karri PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(karri PRIVATE ${FULL_WARNINGS})
 target_link_libraries(karri routingkit kassert fast_cpp_csv_parser vectorclass)
-if(OpenMP_FOUND)
-    target_link_libraries(karri OpenMP::OpenMP_CXX)
-endif()
+#if(OpenMP_FOUND)
+#    message("Linking OpenMP to KaRRi")
+    target_link_libraries(karri OpenMP::OpenMP_CXX hwloc)
+#endif()
 
 # include KaRRi compile time parameters
 include(KaRRi_compile_time_parameters.cmake)

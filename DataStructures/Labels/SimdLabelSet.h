@@ -214,12 +214,24 @@ public:
             return sum;
         }
 
+        // Packed add of rhs to this.
+        DistanceLabel &operator+=(const DistanceLabel &rhs) {
+            *this = *this + rhs;
+            return *this;
+        }
+
         // Packed minus.
         friend DistanceLabel operator-(const DistanceLabel &lhs, const DistanceLabel &rhs) {
             DistanceLabel diff;
             for (int i = 0; i < NUM_VECTORS; ++i)
                 diff.values[i] = lhs.values[i] - rhs.values[i];
             return diff;
+        }
+
+        // Packed subtract of rhs to this.
+        DistanceLabel &operator-=(const DistanceLabel &rhs) {
+            *this = *this - rhs;
+            return *this;
         }
 
         // Returns a mask that indicates for which components i it holds that lhs[i] < rhs[i].
@@ -251,6 +263,11 @@ public:
             for (int i = 0; i < NUM_VECTORS; ++i)
                 mask.isMarked[i] = lhs.values[i] == rhs.values[i];
             return mask;
+        }
+
+        // Returns a mask that indicates for which components i it holds that lhs[i] != rhs[i].
+        friend LabelMask operator!=(const DistanceLabel &lhs, const DistanceLabel &rhs) {
+            return ~(lhs == rhs);
         }
 
         // Given a label l and a mask m, this returns a label l' s.t. l'[i] = l[i] if mask[i] = true and l'[i] = 0 if mask[i] = false
