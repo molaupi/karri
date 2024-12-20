@@ -150,7 +150,7 @@ public:
     // Returns the index of the first one-bit. If no such bit exists then -1 is returned.
     int firstSetBit() const {
         int blockIndex = 0;
-        while (blocks[blockIndex] == 0 && blockIndex < blocks.size()) ++blockIndex;
+        while (blockIndex < blocks.size() && blocks[blockIndex] == 0) ++blockIndex;
         if (blockIndex == blocks.size()) return -1;
         return blockIndex * BITS_PER_BLOCK + numTrailingZeros(blocks[blockIndex]);
     }
