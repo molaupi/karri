@@ -176,7 +176,7 @@ namespace karri {
             asgn.distToPickup = distToPickup;
             asgn.distToDropoff = minDistToDropoff;
 
-            const int minActualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, 0, distToPickup, pickup, context,
+            const int minActualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, 0, pickup.loc, distToPickup, context.getPassengerArrAtPickup(pickup.id), context,
                                                                           routeState);
 
             const auto initialPickupDetour = calcInitialPickupDetour(asgn, minActualDepTimeAtPickup, context,
