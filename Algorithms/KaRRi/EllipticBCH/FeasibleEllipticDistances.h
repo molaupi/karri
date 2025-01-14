@@ -34,6 +34,7 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
+#include "Tools/Timer.h"
 
 namespace karri {
 
@@ -51,17 +52,18 @@ namespace karri {
 
     public:
 
-        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState)
+        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState,
+                                           stats::EllipticBCHPerformanceStats& stats)
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
                   startOfRangeInValueArray(fleetSize),
                   vehiclesWithRelevantPDLocs(fleetSize),
                   minDistToPDLoc(fleetSize),
-                  minDistFromPDLocToNextStop(fleetSize) {}
+                  minDistFromPDLocToNextStop(fleetSize),
+                  stats(stats) {}
 
-        template<typename PDLocsAtExistingStopsT, typename InputGraphT>
-        void init(const int newNumPDLocs, const PDLocsAtExistingStopsT &pdLocsAtExistingStops,
-                  const InputGraphT &inputGraph) {
+        void init(const int newNumPDLocs) {
+            Timer timer;
             numLabelsPerStop = newNumPDLocs / K + (newNumPDLocs % K != 0);
 
             if (maxStopId >= startOfRangeInValueArray.size()) {
@@ -79,6 +81,14 @@ namespace karri {
             meetingVerticesToRelevantPDLocs.clear();
             meetingVerticesFromRelevantPDLocsToNextStop.clear();
 
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            stats.initializationTime += time;
+        }
+
+        template<typename PDLocsAtExistingStopsT, typename InputGraphT>
+        void initializeDistancesForPdLocsAtExistingStops(PDLocsAtExistingStopsT &&pdLocsAtExistingStops,
+                                                          const InputGraphT &inputGraph) {
+            Timer timer;
 
             // Pre-allocate entries for PD locs at existing stops. The distance 0 may otherwise not be found by the
             // BCH searches. Also, this way, the distance for such a PD loc never has to be updated, and we already
@@ -102,6 +112,9 @@ namespace karri {
                 lengthOfLegLabel[pdLocAtExistingStop.pdId % K] = lengthOfLegStartingHere;
                 updateDistanceFromPDLocToNextStop(stopId, firstIdInBatch, lengthOfLegLabel, stopVertex);
             }
+
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            stats.initializationTime += time;
         }
 
         // Allocate entries for the given stop if none exist already.
@@ -283,6 +296,8 @@ namespace karri {
 
         std::vector<DistanceLabel> minDistToPDLoc;
         std::vector<DistanceLabel> minDistFromPDLocToNextStop;
+
+        stats::EllipticBCHPerformanceStats& stats;
 
     };
 

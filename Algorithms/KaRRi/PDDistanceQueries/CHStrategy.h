@@ -41,20 +41,35 @@ namespace karri::PDDistanceQueryStrategies {
 
         static constexpr int K = LabelSetT::K;
         using DistanceLabel = typename LabelSetT::DistanceLabel;
+        using PDDistancesT = PDDistances<LabelSetT>;
 
         CHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                    PDDistances<LabelSetT> &distances,
                     RequestState &requestState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   requestState(requestState),
-                  distances(distances),
                   query(chEnv.template getFullCHQuery<LabelSetT>()) {}
 
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
-        void run() {
+        PDDistancesT run() {
+            assert(requestState.pickups[0].loc == requestState.originalRequest.origin
+                   && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
+
+            PDDistancesT pdDistances(requestState);
+
+            // Initialize distance from origin to dropoff
+            pdDistances.updateDistanceIfSmaller(0, 0, requestState.directDistInFullVeh);
+
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().pdDistancesStats.initializationTime += time;
+            timer.restart();
+
+            if (requestState.numPickups() == 1 && requestState.numDropoffs() == 1) {
+                requestState.minDirectPDDist = requestState.directDistInFullVeh;
+                return pdDistances;
+            }
 
             // Run batched queries from all pickups to all dropoffs
             std::array<int, K> pickupHeadRanks;
@@ -64,7 +79,7 @@ namespace karri::PDDistanceQueryStrategies {
                 pickupHeadRanks[pickupId % K] = ch.rank(inputGraph.edgeHead(requestState.pickups[pickupId].loc));
                 ++pickupId;
                 if (pickupId % K == 0) {
-                    runWithAllDropoffs(pickupHeadRanks, pickupId - K);
+                    runWithAllDropoffs(pickupHeadRanks, pickupId - K, pdDistances);
                 }
             }
 
@@ -72,26 +87,24 @@ namespace karri::PDDistanceQueryStrategies {
             if (pickupId % K != 0) {
                 for (int i = pickupId % K; i < K; ++i)
                     pickupHeadRanks[i] = pickupHeadRanks[0];
-                runWithAllDropoffs(pickupHeadRanks, requestState.numPickups() / K * K);
+                runWithAllDropoffs(pickupHeadRanks, requestState.numPickups() / K * K, pdDistances);
             }
 
-            requestState.minDirectPDDist = distances.getMinDirectDistance();
+            requestState.minDirectPDDist = pdDistances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
+
+            return pdDistances;
         }
 
         void init() {
-            Timer timer;
-            distances.clear();
-//            distances.updateDistanceIfSmaller(0, 0, requestState.directDistInFullVeh);
-            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().pdDistancesStats.initializationTime += time;
+            // no op
         }
 
     private:
 
-        void runWithAllDropoffs(const std::array<int, K>& pickupHeadRanks, const int firstPickupIdInBatch) {
+        void runWithAllDropoffs(const std::array<int, K>& pickupHeadRanks, const int firstPickupIdInBatch, PDDistancesT & pdDistances) {
             std::array<int, K> dropoffTailRank = {};
 
             for (const auto& d : requestState.dropoffs) {
@@ -100,15 +113,13 @@ namespace karri::PDDistanceQueryStrategies {
 
                 query.run(pickupHeadRanks, dropoffTailRank);
                 const DistanceLabel dist = query.getAllDistances() + DistanceLabel(offset);
-                distances.updateDistanceBatchIfSmaller(firstPickupIdInBatch, d.id, dist);
+                pdDistances.updateDistanceBatchIfSmaller(firstPickupIdInBatch, d.id, dist);
             }
         }
 
         const InputGraphT &inputGraph;
         const CH &ch;
         RequestState &requestState;
-
-        PDDistances<LabelSetT> &distances;
 
         typename CHEnvT::template FullCHQuery<LabelSetT> query;
     };

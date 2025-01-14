@@ -52,7 +52,7 @@ namespace karri {
         using It = typename RelevantPDLocVector::const_iterator;
         using RevIt = typename RelevantPDLocVector::const_reverse_iterator;
 
-        RelevantPDLocs(const int fleetSize)
+        explicit RelevantPDLocs(const int fleetSize)
                 : fleetSize(fleetSize),
                   startOfRelevantPDLocs(fleetSize + 1),
                   relevantSpots(),
@@ -82,7 +82,7 @@ namespace karri {
 
     private:
 
-        const int fleetSize;
+        int fleetSize;
         std::vector<int> startOfRelevantPDLocs;
         RelevantPDLocVector relevantSpots;
         Subset vehiclesWithRelevantSpots;

@@ -57,7 +57,6 @@ namespace karri::PickupAfterLastStopStrategies {
                               const CHEnvT &chEnv,
                               VehicleToPDLocQueryT &vehicleToPDLocQuery,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              PDDistancesT &pdDistances,
                               const CostCalculator &calculator,
                               const RouteState &routeState,
                               RequestState &requestState)
@@ -67,14 +66,13 @@ namespace karri::PickupAfterLastStopStrategies {
                   ch(chEnv.getCH()),
                   routeState(routeState),
                   requestState(requestState),
-                  minCostSearch(inputGraph, fleet, chEnv, routeState, pdDistances, calculator, lastStopBucketsEnv,
+                  minCostSearch(inputGraph, fleet, chEnv, routeState, calculator, lastStopBucketsEnv,
                                 requestState),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
-                  pdDistances(pdDistances),
-                  fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, pdDistances, routeState,
+                  fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, routeState,
                                    requestState, minCostSearch.getUpperBoundCostWithHardConstraints()) {}
 
-        void tryPickupAfterLastStop() {
+        void tryPickupAfterLastStop(const PDDistancesT& pdDistances) {
 
             auto &stats = requestState.stats().palsAssignmentsStats;
             Timer timer;
@@ -88,10 +86,32 @@ namespace karri::PickupAfterLastStopStrategies {
             if (costLowerBound > requestState.getBestCost())
                 return;
 
+            std::vector<int> promisingDropoffIds;
+
+            static constexpr bool ONLY_PROMISING_DROPOFFS = KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS;
+            if constexpr (ONLY_PROMISING_DROPOFFS) {
+                // Preparation: Compute vehicle distances from dropoffs to destination. Used to decide which dropoffs are
+                // promising.
+                vehicleToPDLocQuery.runReverse(requestState.dropoffs);
+
+                for (const auto &dropoff: requestState.dropoffs) {
+                    if (dropoff.walkingDist <= dropoff.vehDistToCenter ||
+                        calculator.isDropoffCostPromisingForAfterLastStop(dropoff, requestState)) {
+                        promisingDropoffIds.push_back(dropoff.id);
+                    }
+                }
+                assert(promisingDropoffIds.front() == 0); // Assert destination itself is always promising
+                stats.collective_pickupVehDistQueryTime += vehicleToPDLocQuery.getRunTime();
+            } else {
+                promisingDropoffIds.resize(requestState.numDropoffs());
+                std::iota(promisingDropoffIds.begin(), promisingDropoffIds.end(), 0u);
+            }
+
             const auto colInitTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.collective_initializationTime += colInitTime;
 
-            minCostSearch.run(requestState.getBestCost());
+            minCostSearch.run(promisingDropoffIds, requestState.getBestCost(), pdDistances);
+
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.searchTime += searchTime;
@@ -132,7 +152,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_usedFallback = true;
 
             // Otherwise fall back to computing distances explicitly:
-            fallbackStrategy.tryPickupAfterLastStop();
+            fallbackStrategy.tryPickupAfterLastStop(pdDistances);
         }
 
     private:
@@ -146,8 +166,6 @@ namespace karri::PickupAfterLastStopStrategies {
 
         MinCostPairAfterLastStopQueryInst minCostSearch;
         VehicleToPDLocQueryT &vehicleToPDLocQuery;
-
-        PDDistancesT &pdDistances;
 
 
         FallbackIndividualBCHStrategy fallbackStrategy;

@@ -34,7 +34,7 @@
 
 namespace karri::PickupAfterLastStopStrategies {
 
-    template<typename InputGraphT, typename PDDistancesT, typename DijLabelSet>
+    template<typename InputGraphT, typename LastStopsAtVerticesT, typename PDDistancesT, typename DijLabelSet>
     struct DijkstraStrategy {
 
     private:
@@ -77,14 +77,12 @@ namespace karri::PickupAfterLastStopStrategies {
                          const InputGraphT &reverseGraph,
                          const Fleet &fleet,
                          const RouteState &routeState,
-                         const LastStopsAtVertices &lastStopsAtVertices,
+                         const LastStopsAtVerticesT &lastStopsAtVertices,
                          const CostCalculator &calculator,
-                         PDDistancesT &pdDistances,
                          RequestState &requestState)
                 : inputGraph(inputGraph),
                   reverseGraph(reverseGraph),
                   requestState(requestState),
-                  pdDistances(pdDistances),
                   calculator(calculator),
                   fleet(fleet),
                   routeState(routeState),
@@ -93,14 +91,14 @@ namespace karri::PickupAfterLastStopStrategies {
                   lastStopDistances(fleet.size()),
                   vehiclesSeen(fleet.size()) {}
 
-        void tryPickupAfterLastStop() {
-            runDijkstraSearches();
-            enumerateAssignments();
+        void tryPickupAfterLastStop(const PDDistancesT& pdDistances) {
+            runDijkstraSearches(pdDistances);
+            enumerateAssignments(pdDistances);
         }
 
     private:
 
-        void runDijkstraSearches() {
+        void runDijkstraSearches(const PDDistancesT& pdDistances) {
             numLastStopsVisited = 0;
             upperBoundCost = requestState.getBestCost();
             const int numBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
@@ -113,7 +111,7 @@ namespace karri::PickupAfterLastStopStrategies {
             Timer timer;
 
             for (unsigned int i = 0; i < numBatches; ++i) {
-                runSearchesForPickupBatch(i);
+                runSearchesForPickupBatch(i, pdDistances);
 
                 numEdgeRelaxations += dijSearchToPickup.getNumEdgeRelaxations();
                 numVerticesSettled += dijSearchToPickup.getNumVerticesSettled();
@@ -128,7 +126,7 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Enumerate PALS assignments:
-        void enumerateAssignments() {
+        void enumerateAssignments(const PDDistancesT& pdDistances) {
             using namespace time_utils;
             int numAssignmentsTried = 0;
             Timer timer;
@@ -184,7 +182,7 @@ namespace karri::PickupAfterLastStopStrategies {
             requestState.stats().palsAssignmentsStats.tryAssignmentsTime += enumAssignmentsTime;
         }
 
-        void runSearchesForPickupBatch(const int batchIdx) {
+        void runSearchesForPickupBatch(const int batchIdx, const PDDistancesT& pdDistances) {
 
             std::array<int, K> pickupTails;
             std::array<int, K> offsets;
@@ -210,11 +208,14 @@ namespace karri::PickupAfterLastStopStrategies {
 
         void updateDistancesForLastStopsAt(const int v, const DistanceLabel &distFromV) {
 
-            if (!lastStopsAtVertices.isAnyLastStopAtVertex(v))
+            const auto& vehiclesWithLastStopAtV = lastStopsAtVertices.vehiclesWithLastStopAt(v);
+
+            if (vehiclesWithLastStopAtV.empty())
                 return;
 
             const auto minCost =
                     calculator.calcLowerBoundCostForKPairedAssignmentsAfterLastStop<DijLabelSet>(distFromV,
+                                                                                                 distFromV,
                                                                                                  curMinDirectDistances,
                                                                                                  curWalkingDists,
                                                                                                  requestState);
@@ -223,14 +224,14 @@ namespace karri::PickupAfterLastStopStrategies {
             if (!anySet(notExceedingUpperBound))
                 return;
 
-            for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(v)) {
+            for (const auto &vehId: vehiclesWithLastStopAtV) {
                 ++numLastStopsVisited;
                 lastStopDistances.setDistancesForCurBatchIf(vehId, distFromV, notExceedingUpperBound);
                 vehiclesSeen.insert(vehId);
 
                 const DistanceLabel cost = calculator.calcUpperBoundCostForKPairedAssignmentsAfterLastStop<DijLabelSet>(
                         fleet[vehId], distFromV, curPassengerArrTimesAtPickups,
-                        curDistancesToDest, curWalkingDists, requestState);
+                        curWalkingDists, curDistancesToDest, DistanceLabel(0), requestState);
 
                 upperBoundCost = std::min(upperBoundCost, cost.horizontalMin());
             }
@@ -249,11 +250,10 @@ namespace karri::PickupAfterLastStopStrategies {
 
         int numLastStopsVisited;
 
-        PDDistancesT &pdDistances;
         const CostCalculator &calculator;
         const Fleet &fleet;
         const RouteState &routeState;
-        const LastStopsAtVertices &lastStopsAtVertices;
+        const LastStopsAtVerticesT &lastStopsAtVertices;
 
 
         Dijkstra<InputGraphT, TravelTimeAttribute, DijLabelSet, TryToInsertPickupAfterLastStop> dijSearchToPickup;

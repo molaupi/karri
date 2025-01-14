@@ -114,8 +114,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             bool isVehicleEligible(const int vehId) const {
                 return strat.routeState.numStopsOf(vehId) > 1 &&
-                       (strat.relevantPickupsBeforeNextStop.hasRelevantSpotsFor(vehId) ||
-                        strat.relevantOrdinaryPickups.hasRelevantSpotsFor(vehId));
+                       (strat.curRelPickupsBns->hasRelevantSpotsFor(vehId) ||
+                        strat.curRelOrdinaryPickups->hasRelevantSpotsFor(vehId));
             }
 
         private:
@@ -134,17 +134,13 @@ namespace karri::DropoffAfterLastStopStrategies {
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearchesT,
                               const RouteState &routeState,
-                              RequestState &requestState,
-                              const RelevantPDLocs &relevantOrdinaryPickups,
-                              const RelevantPDLocs &relevantPickupsBeforeNextStop)
+                              RequestState &requestState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   curVehLocToPickupSearches(curVehLocToPickupSearchesT),
                   routeState(routeState),
                   requestState(requestState),
-                  relevantOrdinaryPickups(relevantOrdinaryPickups),
-                  relevantPickupsBeforeNextStop(relevantPickupsBeforeNextStop),
                   checkPBNSForVehicle(fleet.size()),
                   vehiclesSeenForDropoffs(fleet.size()),
                   search(lastStopBucketsEnv, lastStopDistances, chEnv, routeState,
@@ -152,9 +148,13 @@ namespace karri::DropoffAfterLastStopStrategies {
                          DropoffAfterLastStopPruner(*this, calculator)),
                   lastStopDistances(fleet.size()) {}
 
-        void tryDropoffAfterLastStop() {
+        void tryDropoffAfterLastStop(const RelevantPDLocs &relevantOrdinaryPickups,
+                                     const RelevantPDLocs &relevantPickupsBeforeNextStop) {
+            curRelOrdinaryPickups = &relevantOrdinaryPickups;
+            curRelPickupsBns = &relevantPickupsBeforeNextStop;
+
             runBchQueries();
-            enumerateAssignments();
+            enumerateAssignments(relevantOrdinaryPickups, relevantPickupsBeforeNextStop);
         }
 
     private:
@@ -176,14 +176,15 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         // Enumerate DALS assignments
-        void enumerateAssignments() {
+        void enumerateAssignments(const RelevantPDLocs &relevantOrdinaryPickups,
+                                  const RelevantPDLocs &relevantPickupsBeforeNextStop) {
             int numAssignmentsTried = 0;
             const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
                                            curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
             Timer timer;
 
-            enumerateAssignmentsWithOrdinaryPickup(numAssignmentsTried);
-            enumerateAssignmentsWithPBNS(numAssignmentsTried);
+            enumerateAssignmentsWithOrdinaryPickup(numAssignmentsTried, relevantOrdinaryPickups);
+            enumerateAssignmentsWithPBNS(numAssignmentsTried, relevantPickupsBeforeNextStop);
 
             // Time spent to locate vehicles and compute distances from current vehicle locations to pickups is counted
             // into PBNS time so subtract it here.
@@ -204,7 +205,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         // Enumerate assignments where pickup is after next stop (ordinary pickup):
-        void enumerateAssignmentsWithOrdinaryPickup(int &numAssignmentsTried) {
+        void enumerateAssignmentsWithOrdinaryPickup(int &numAssignmentsTried,
+                                                    const RelevantPDLocs &relevantOrdinaryPickups) {
             Assignment asgn;
 
             checkPBNSForVehicle.reset();
@@ -272,7 +274,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         // Enumerate assignments where the pickup is before the next stop (PBNS + DALS):
-        void enumerateAssignmentsWithPBNS(int &numAssignmentsTried) {
+        void enumerateAssignmentsWithPBNS(int &numAssignmentsTried,
+                                          const RelevantPDLocs &relevantPickupsBeforeNextStop) {
             Assignment asgn;
             asgn.pickupStopIdx = 0;
 
@@ -409,8 +412,6 @@ namespace karri::DropoffAfterLastStopStrategies {
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         const RouteState &routeState;
         RequestState &requestState;
-        const RelevantPDLocs &relevantOrdinaryPickups;
-        const RelevantPDLocs &relevantPickupsBeforeNextStop;
 
         // Flag per vehicle that tells us if we still have to consider a pickup before the next stop of the vehicle.
         FastResetFlagArray<> checkPBNSForVehicle;
@@ -431,6 +432,10 @@ namespace karri::DropoffAfterLastStopStrategies {
         DropoffBCHQuery search;
         DistanceLabel currentDropoffWalkingDists;
         TentativeLastStopDistances<LabelSet> lastStopDistances;
+
+        // Pointers to relevant PD locs so Dijkstra search callback has access to them
+        RelevantPDLocs const *curRelOrdinaryPickups;
+        RelevantPDLocs const *curRelPickupsBns;
 
         int totalNumEdgeRelaxations;
         int totalNumVerticesSettled;

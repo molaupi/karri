@@ -27,17 +27,14 @@ add_executable(BuildTrafficFlowBasedSubgraph BuildTrafficFlowBasedSubgraph.cc)
 target_compile_definitions(BuildTrafficFlowBasedSubgraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert ${RoutingKit_LIBRARY} kassert)
 
-add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc)
-target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(CheckExistingAttributesInNetworkFile ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
-
 add_executable(ComputeFreeFlowFlows ComputeFreeFlowFlows.cc)
 target_compile_definitions(ComputeFreeFlowFlows PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(ComputeFreeFlowFlows ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
 
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ConvertGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_compile_options(ConvertGraph PRIVATE ${FULL_WARNINGS})
+target_link_libraries(ConvertGraph proj routingkit kassert rapidxml fast_cpp_csv_parser)
 
 add_executable(FlowsRoutingKitToCsv FlowsRoutingKitToCsv.cc)
 target_compile_definitions(FlowsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
@@ -61,28 +58,33 @@ target_link_libraries(GenerateGeoJsonForVehicles PRIVATE nlohmann_json::nlohmann
 
 add_executable(GenerateODPairs GenerateODPairs.cc)
 target_compile_definitions(GenerateODPairs PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateODPairs kassert ${BOOST_LIBRARIES})
+target_compile_options(GenerateODPairs PRIVATE ${FULL_WARNINGS})
+target_link_libraries(GenerateODPairs kassert fast_cpp_csv_parser)
 if(OpenMP_FOUND)
   target_link_libraries(GenerateODPairs OpenMP::OpenMP_CXX)
 endif()
 
 add_executable(GenerateRandomVehicles GenerateRandomVehicles.cc)
 target_compile_definitions(GenerateRandomVehicles PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateRandomVehicles ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+target_compile_options(GenerateRandomVehicles PRIVATE ${FULL_WARNINGS})
+target_link_libraries(GenerateRandomVehicles kassert fast_cpp_csv_parser)
 
 add_executable(DrawRandomDepartureTimes DrawRandomDepartureTimes.cc)
 target_compile_definitions(DrawRandomDepartureTimes PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(DrawRandomDepartureTimes ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
-
-
-add_executable(ODPairsCsvToRoutingKit ODPairsCsvToRoutingKit.cc)
-target_compile_definitions(ODPairsCsvToRoutingKit PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ODPairsCsvToRoutingKit ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert)
+target_compile_options(DrawRandomDepartureTimes PRIVATE ${FULL_WARNINGS})
+target_link_libraries(DrawRandomDepartureTimes fast_cpp_csv_parser)
 
 add_executable(OsmToCarAndPassengerGraph OsmToCarAndPassengerGraph.cc)
 target_compile_definitions(OsmToCarAndPassengerGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(OsmToCarAndPassengerGraph ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_compile_options(OsmToCarAndPassengerGraph PRIVATE ${FULL_WARNINGS})
+target_link_libraries(OsmToCarAndPassengerGraph proj routingkit kassert fast_cpp_csv_parser)
 
 add_executable(TransformLocations TransformLocations.cc)
 target_compile_definitions(TransformLocations PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(TransformLocations ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_compile_options(TransformLocations PRIVATE ${FULL_WARNINGS})
+target_link_libraries(TransformLocations proj routingkit kassert fast_cpp_csv_parser)
+
+add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNetworkFile.cc)
+target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(CheckExistingAttributesInNetworkFile PRIVATE ${FULL_WARNINGS})
+target_link_libraries(CheckExistingAttributesInNetworkFile kassert fast_cpp_csv_parser)

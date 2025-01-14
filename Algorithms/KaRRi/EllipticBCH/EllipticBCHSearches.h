@@ -183,12 +183,7 @@ namespace karri {
         using ScanSourceBuckets = ScanOrdinaryBucket<UpdateDistancesToPDLocs>;
         using ScanTargetBuckets = ScanOrdinaryBucket<UpdateDistancesFromPDLocs>;
 
-        // Info about a PD loc that coincides with an existing stop of a vehicle.
-        struct PDLocAtExistingStop {
-            int pdId = INVALID_ID;
-            int vehId = INVALID_ID;
-            int stopIndex = INVALID_INDEX;
-        };
+
 
     public:
 
@@ -198,8 +193,7 @@ namespace karri {
                             const LastStopsAtVerticesT &lastStopsAtVertices,
                             const CHEnvT &chEnv,
                             const RouteState &routeState,
-                            FeasibleEllipticDistancesT &feasibleEllipticPickups,
-                            FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
+
                             RequestState &requestState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
@@ -208,8 +202,6 @@ namespace karri {
                   requestState(requestState),
                   sourceBuckets(ellipticBucketsEnv.getSourceBuckets()),
                   lastStopsAtVertices(lastStopsAtVertices),
-                  feasibleEllipticPickups(feasibleEllipticPickups),
-                  feasibleEllipticDropoffs(feasibleEllipticDropoffs),
                   distUpperBound(INFTY),
                   updateDistancesToPdLocs(),
                   updateDistancesFromPdLocs(routeState),
@@ -224,7 +216,8 @@ namespace karri {
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
-        void run() {
+        void run(FeasibleEllipticDistancesT &feasibleEllipticPickups,
+                 FeasibleEllipticDistancesT &feasibleEllipticDropoffs) {
 
             // Run for pickups:
             Timer timer;
@@ -250,21 +243,8 @@ namespace karri {
             requestState.stats().ellipticBchStats.dropoffNumEntriesScanned += totalNumEntriesScanned;
         }
 
-        // Initialize searches for new request
         void init() {
-
-            Timer timer;
-
-            // Find pickups at existing stops for new request and initialize distances.
-            const auto pickupsAtExistingStops = findPDLocsAtExistingStops<PICKUP>(requestState.pickups);
-            feasibleEllipticPickups.init(requestState.numPickups(), pickupsAtExistingStops, inputGraph);
-
-            // Find dropoffs at existing stops for new request and initialize distances.
-            const auto dropoffsAtExistingStops = findPDLocsAtExistingStops<DROPOFF>(requestState.dropoffs);
-            feasibleEllipticDropoffs.init(requestState.numDropoffs(), dropoffsAtExistingStops, inputGraph);
-
-            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ellipticBchStats.initializationTime += time;
+            // no op
         }
 
     private:
@@ -351,39 +331,6 @@ namespace karri {
             totalNumVerticesSettled += toQuery.getNumVerticesSettled();
         }
 
-        template<PDLocType type, typename PDLocsT>
-        std::vector<PDLocAtExistingStop>
-        findPDLocsAtExistingStops(const PDLocsT &pdLocs) {
-            std::vector<PDLocAtExistingStop> res;
-
-            for (const auto &pdLoc: pdLocs) {
-                const auto head = inputGraph.edgeHead(pdLoc.loc);
-                const auto headRank = ch.rank(head);
-                for (const auto &e: sourceBuckets.getBucketOf(headRank)) {
-                    if (e.distToTarget == 0) {
-                        const int vehId = routeState.vehicleIdOf(e.targetId);
-                        const int stopIdx = routeState.stopPositionOf(e.targetId);
-                        const auto &stopLoc = routeState.stopLocationsFor(vehId)[stopIdx];
-                        if (stopLoc == pdLoc.loc) {
-                            res.push_back({pdLoc.id, vehId, stopIdx});
-                        }
-                    }
-                }
-
-                if constexpr (type == DROPOFF) {
-                    // Additionally find dropoffs that coincide with the last stop:
-                    for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(head)) {
-                        const auto numStops = routeState.numStopsOf(vehId);
-                        if (routeState.stopLocationsFor(vehId)[numStops - 1] == pdLoc.loc) {
-                            res.push_back({pdLoc.id, vehId, numStops - 1});
-                        }
-                    }
-                }
-            }
-
-            return res;
-        }
-
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CH &ch;
@@ -392,9 +339,6 @@ namespace karri {
 
         const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
         const LastStopsAtVerticesT &lastStopsAtVertices;
-
-        FeasibleEllipticDistancesT &feasibleEllipticPickups;
-        FeasibleEllipticDistancesT &feasibleEllipticDropoffs;
 
         int distUpperBound;
         UpdateDistancesToPDLocs updateDistancesToPdLocs;

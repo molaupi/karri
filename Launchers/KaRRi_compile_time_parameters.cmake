@@ -173,3 +173,11 @@ if (KARRI_LAST_STOP_BCH_SORTED_BUCKETS)
 else(KARRI_LAST_STOP_BCH_SORTED_BUCKETS)
     target_compile_definitions(karri PRIVATE KARRI_LAST_STOP_BCH_SORTED_BUCKETS=false)
 endif (KARRI_LAST_STOP_BCH_SORTED_BUCKETS)
+
+### Applies for COL
+option(KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS "Precompute promising dropoffs and use only those in MinCostPair search. (Applies for PALS Strategy = COL)" OFF)
+if (KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS)
+    target_compile_definitions(karri PRIVATE KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS=true)
+else(KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS)
+    target_compile_definitions(karri PRIVATE KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS=false)
+endif (KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS)

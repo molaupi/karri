@@ -35,7 +35,7 @@
 namespace karri {
 
 
-// Given a set H of pdDistances locs, for each vehicle veh, this search finds the closest pdDistances loc
+// Given a set H of ffPDDistances locs, for each vehicle veh, this search finds the closest ffPDDistances loc
 // argmin_{h \in H} dist(lastStop(veh), h).
     template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsT, typename PruningCriterionT = dij::NoCriterion, typename LabelSetT = BasicLabelSet<0, ParentInfo::PARENT_VERTICES_ONLY>>
     class ClosestPDLocToLastStopBCHQuery {
