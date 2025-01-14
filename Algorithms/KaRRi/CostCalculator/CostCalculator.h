@@ -46,7 +46,9 @@ namespace karri {
                 return INFTY;
 
             // Check hard constraints of vehicle on each leg.
-            int riderArrTimeAtPickupOfLeg = context.getPassengerArrAtPickup(asgn.pickup->id);
+            std::vector<int> riderArrTimesAtPickupsOfLegs;
+            riderArrTimesAtPickupsOfLegs.push_back(context.getPassengerArrAtPickup(asgn.pickup->id));
+            int totalWaitTime = riderArrTimesAtPickupsOfLegs.back() - context.originalRequest.requestTime;
             for (const auto &leg: asgn.legs) {
                 if (leg.travelTimeToPickup == INFTY || leg.travelTimeFromPickup == INFTY ||
                     leg.travelTimeToDropoff == INFTY || leg.travelTimeFromDropoff == INFTY ||
@@ -55,8 +57,9 @@ namespace karri {
                     return INFTY;
 
                 if constexpr (checkHardConstraints) {
-                    const auto actualDepTimeAtPickup = getActualDepTimeAtPickup(leg, riderArrTimeAtPickupOfLeg, context,
+                    const auto actualDepTimeAtPickup = getActualDepTimeAtPickup(leg, riderArrTimesAtPickupsOfLegs.back(), context,
                                                                                 routeState);
+                    totalWaitTime += actualDepTimeAtPickup - riderArrTimesAtPickupsOfLegs.back();
                     const auto initialPickupDetour = calcInitialPickupDetour(leg, actualDepTimeAtPickup, context,
                                                                              routeState);
                     const bool dropoffAtExistingStop = isDropoffAtExistingStop(leg, routeState);
@@ -64,27 +67,53 @@ namespace karri {
                     if (isAnyHardConstraintViolated(leg, initialPickupDetour, dropoffAtExistingStop, context))
                         return INFTY;
 
-                    riderArrTimeAtPickupOfLeg = getArrTimeAtDropoff(actualDepTimeAtPickup, leg, initialPickupDetour,
-                                                                    dropoffAtExistingStop, routeState);
+                    riderArrTimesAtPickupsOfLegs.push_back(getArrTimeAtDropoff(actualDepTimeAtPickup, leg, initialPickupDetour,
+                                                                    dropoffAtExistingStop, routeState));
                 }
             }
 
 
             // Compute vehicle cost for each leg:
             int totalVehCost = 0;
-            for (const auto &leg: asgn.legs) {
+            for (int i = 0; i < asgn.legs.size(); ++i) {
+                const auto& leg = asgn.legs[i];
+                const auto riderArrTimeAtPickupOfLeg = riderArrTimesAtPickupsOfLegs[i];
 
                 // TODO: Implement vehicle cost dependent on vehicle type
 
             }
 
-            // Compute trip cost for new rider:
+            // Compute wait cost for new rider:
+            const int waitViolationCost = RiderTripCostFunctionT::calcWaitViolationCost(totalWaitTime, context);
 
-            // TODO
+            // Compute trip cost for new rider:
+            const int arrAtDropoff = riderArrTimesAtPickupsOfLegs.back();
+            const int totalTripTime = arrAtDropoff + asgn.dropoff->walkingDist - context.originalRequest.requestTime;
+            const int tripCost = RiderTripCostFunctionT::calcTripCost(totalTripTime, context);
 
             // Compute added trip cost for existing riders on each leg:
             int existingRidersAddedTripCost = 0;
-            // TODO
+            for (int i = 0; i < asgn.legs.size(); ++i) {
+                const auto& leg = asgn.legs[i];
+                const auto riderArrTimeAtPickupOfLeg = riderArrTimesAtPickupsOfLegs[i];
+
+                const auto actualDepTimeAtPickup = getActualDepTimeAtPickup(leg, riderArrTimeAtPickupOfLeg, context,
+                                                                            routeState);
+                const auto initialPickupDetour = calcInitialPickupDetour(leg, actualDepTimeAtPickup, context,
+                                                                         routeState);
+                const bool dropoffAtExistingStop = isDropoffAtExistingStop(leg, routeState);
+                const auto initialDropoffDetour = calcInitialDropoffDetour(leg, dropoffAtExistingStop, routeState);
+                const auto detourRightAfterDropoff = calcDetourRightAfterDropoff(leg, initialPickupDetour,
+                                                                                 initialDropoffDetour, routeState);
+
+                // addedTripTime may be negative!
+                const int addedTripTime =
+                        calcAddedTripTimeInInterval(leg.vehicle->vehicleId, leg.pickupStopIdx, leg.dropoffStopIdx,
+                                                    initialPickupDetour, routeState) +
+                        calcAddedTripTimeAffectedByPickupAndDropoff(leg, detourRightAfterDropoff, routeState);
+                existingRidersAddedTripCost += RiderTripCostFunctionT::calcChangeInTripCostsOfExistingPassengers(
+                        addedTripTime);
+            }
         }
 
         template<typename RequestContext>

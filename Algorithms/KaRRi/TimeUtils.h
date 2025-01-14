@@ -350,9 +350,9 @@ namespace karri::time_utils {
     }
 
     static INLINE int
-    calcAddedTripTimeAffectedByPickupAndDropoff(const Assignment &asgn, const int detourRightAfterDropoff,
+    calcAddedTripTimeAffectedByPickupAndDropoff(const Assignment::Leg &leg, const int detourRightAfterDropoff,
                                                 const RouteState &routeState) {
-        return calcAddedTripTimeAffectedByPickupAndDropoff(asgn.vehicle->vehicleId, asgn.dropoffStopIdx,
+        return calcAddedTripTimeAffectedByPickupAndDropoff(leg.vehicle->vehicleId, leg.dropoffStopIdx,
                                                            detourRightAfterDropoff, routeState);
     }
 
