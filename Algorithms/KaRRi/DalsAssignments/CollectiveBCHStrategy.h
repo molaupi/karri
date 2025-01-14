@@ -192,8 +192,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                     const auto &occupancies = routeState.occupanciesFor(vehId);
 
                     asgn.vehicle = &fleet[vehId];
-                    asgn.costToDropoff = distFromLastStopToDropoff;
-                    assert(asgn.costToDropoff >= 0 && asgn.costToDropoff < INFTY);
+                    asgn.distToDropoff = distFromLastStopToDropoff;
+                    assert(asgn.distToDropoff >= 0 && asgn.distToDropoff < INFTY);
                     asgn.dropoffStopIdx = numStops - 1;
 
                     const auto relevantPickupsInRevOrder = relevantOrdinaryPickups.relevantSpotsForInReverseOrder(
@@ -230,8 +230,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                             continue;
 
                         asgn.pickupStopIdx = entry.stopIndex;
-                        asgn.costToPickup = entry.distToPDLoc;
-                        asgn.costFromPickup = entry.distFromPDLocToNextStop;
+                        asgn.distToPickup = entry.distToPDLoc;
+                        asgn.distFromPickup = entry.distFromPDLocToNextStop;
 
                         const int initialPickupDetour = calcInitialPickupDetour(asgn, requestState, routeState);
                         const int residualDetourAtEnd = calcResidualPickupDetour(vehId, asgn.pickupStopIdx,
@@ -311,7 +311,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                 for (const auto &label: minCostSearch.getParetoBestDropoffLabelsFor(vehId)) {
                     asgn.dropoff = &requestState.dropoffs[label.dropoffId];
                     const auto &distFromLastStopToDropoff = label.distToDropoff;
-                    asgn.costToDropoff = distFromLastStopToDropoff;
+                    asgn.distToDropoff = distFromLastStopToDropoff;
 
 
                     // Labels are ordered by their dropoff side cost so if dropoff side cost is worse than best known
@@ -346,8 +346,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (!curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id)) {
                             // If we do not know the exact distance from the vehicle's current location to the pickup, use
                             // the known lower bound distance first to compute a cost lower bound.
-                            asgn.costFromPickup = entry.distFromPDLocToNextStop;
-                            asgn.costToPickup = entry.distToPDLoc;
+                            asgn.distFromPickup = entry.distFromPDLocToNextStop;
+                            asgn.distToPickup = entry.distToPDLoc;
                             const auto lowerBoundCost = calculator.calcWithoutHardConstraints(asgn, requestState);
                             // If the cost lower bound is worse than the best known cost, this pickup/dropoff
                             // combination is not relevant.
@@ -374,12 +374,12 @@ namespace karri::DropoffAfterLastStopStrategies {
                     asgn.pickup = &requestState.pickups[pair.pickupId];
                     asgn.dropoff = &requestState.dropoffs[pair.dropoffId];
                     assert(curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id));
-                    asgn.costToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
-                    if (asgn.costToPickup >= INFTY)
+                    asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
+                    if (asgn.distToPickup >= INFTY)
                         continue;
 
-                    asgn.costFromPickup = pair.costFromPickup;
-                    asgn.costToDropoff = pair.costToDropoff;
+                    asgn.distFromPickup = pair.distFromPickup;
+                    asgn.distToDropoff = pair.distToDropoff;
 
                     const int initialPickupDetour = calcInitialPickupDetour(asgn, requestState, routeState);
                     const int residualDetourAtEnd = calcResidualPickupDetour(vehId, asgn.pickupStopIdx, numStops - 1,
@@ -451,10 +451,10 @@ namespace karri::DropoffAfterLastStopStrategies {
                 const auto &constraintBreaker = constraintBreakers[cur];
                 const auto &vehId = constraintBreaker.vehicle->vehicleId;
 
-                const auto lengthOfPickupLeg = calcTravelTimeOfLegStartingAt(constraintBreaker.pickupStopIdx,
-                                                                             vehId, routeState);
+                const auto lengthOfPickupLeg = calcLengthOfLegStartingAt(constraintBreaker.pickupStopIdx,
+                                                                         vehId, routeState);
                 const auto totalDetour =
-                        constraintBreaker.costToPickup + InputConfig::getInstance().stopTime + constraintBreaker.costFromPickup -
+                        constraintBreaker.distToPickup + InputConfig::getInstance().stopTime + constraintBreaker.distFromPickup -
                         lengthOfPickupLeg + closestDropoffSearch.getDistToClosestPDLocFromVeh(vehId) +
                                 InputConfig::getInstance().stopTime;
 
@@ -506,7 +506,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                             asgn.dropoff = &dropoff;
                             if (asgn.pickup->loc == asgn.dropoff->loc) continue;
 
-                            asgn.costToDropoff = distsFromLastStopToDropoffs[asgn.dropoff->id];
+                            asgn.distToDropoff = distsFromLastStopToDropoffs[asgn.dropoff->id];
                             ++numAssignmentsTried;
                             requestState.tryAssignment(asgn);
                         }

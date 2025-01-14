@@ -94,15 +94,15 @@ namespace karri::time_utils {
     template<typename RequestContext>
     static INLINE int
     getActualDepTimeAtPickup(const Assignment &asgn, const RequestContext &context, const RouteState &routeState) {
-        return getActualDepTimeAtPickup(asgn.vehicle->vehicleId, asgn.pickupStopIdx, asgn.travelTimeToPickup,
-                                        *asgn.pickup, context, routeState);
+        return getActualDepTimeAtPickup(asgn.vehicle->vehicleId, asgn.pickupStopIdx, asgn.distToPickup, *asgn.pickup,
+                                        context, routeState);
     }
 
 
     template<typename LabelSet, typename RequestContext>
     static INLINE typename LabelSet::DistanceLabel
     getActualDepTimeAtPickup(const int vehId, const int stopIndexBeforePickup,
-                             const typename LabelSet::DistanceLabel &travelTimesToPickups,
+                             const typename LabelSet::DistanceLabel &distToPickup,
                              const typename LabelSet::DistanceLabel &pickupLocs,
                              const typename LabelSet::DistanceLabel &passengerArrTimesAtPickups,
                              const RequestContext &context,
@@ -116,13 +116,13 @@ namespace karri::time_utils {
         // passenger arrives there. The vehicle can depart as soon as both the vehicle and the passenger are at the
         // location. This is how LOUD originally did it, so we adhere to it.
         auto minDepTimeAtPickup = getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, context, routeState) +
-                                  select(atStop, 0, travelTimesToPickups + InputConfig::getInstance().stopTime);
+                                  select(atStop, 0, distToPickup + InputConfig::getInstance().stopTime);
         minDepTimeAtPickup.max(passengerArrTimesAtPickups);
         return minDepTimeAtPickup;
     }
 
     static INLINE int
-    calcTravelTimeOfLegStartingAt(const int stopIndex, const int vehicleId, const RouteState &routeState) {
+    calcLengthOfLegStartingAt(const int stopIndex, const int vehicleId, const RouteState &routeState) {
         if (stopIndex + 1 == routeState.numStopsOf(vehicleId))
             return 0;
         const auto &minDepTimes = routeState.schedDepTimesFor(vehicleId);
@@ -145,7 +145,7 @@ namespace karri::time_utils {
         const auto &vehWaitTimesPrefixSum = routeState.vehWaitTimesPrefixSumFor(asgn.vehicle->vehicleId);
 
         if (pickupIndex == dropoffIndex) {
-            return actualDepTimeAtPickup + asgn.travelTimeToDropoff;
+            return actualDepTimeAtPickup + asgn.distToDropoff;
         }
 
         assert(dropoffIndex > 0);
@@ -158,7 +158,7 @@ namespace karri::time_utils {
         }
 
         const auto depTimeAtPrevious = std::max(minDepTimes[dropoffIndex], arrTimeAtPrevious + InputConfig::getInstance().stopTime);
-        return depTimeAtPrevious + asgn.travelTimeToDropoff;
+        return depTimeAtPrevious + asgn.distToDropoff;
     }
 
     // Returns the accumulated vehicle wait time in the stop interval (fromIndex, toIndex].
@@ -173,7 +173,7 @@ namespace karri::time_utils {
     template<typename RequestContext>
     static INLINE int
     calcInitialPickupDetour(const int vehId, const int pickupIndex, const int dropoffIndex, const int depTimeAtPickup,
-                            const int travelTimeFromPickup, const RequestContext &context,
+                            const int distFromPickup, const RequestContext &context,
                             const RouteState &routeState) {
         const auto vehDepTimeAtPrevStop = getVehDepTimeAtStopForRequest(vehId, pickupIndex, context, routeState);
         const auto timeUntilDep = depTimeAtPickup - vehDepTimeAtPrevStop;
@@ -181,7 +181,7 @@ namespace karri::time_utils {
         if (pickupIndex == dropoffIndex)
             return timeUntilDep;
 
-        return timeUntilDep + travelTimeFromPickup - calcTravelTimeOfLegStartingAt(pickupIndex, vehId, routeState);
+        return timeUntilDep + distFromPickup - calcLengthOfLegStartingAt(pickupIndex, vehId, routeState);
     }
 
     // Returns the additional time that is needed for the vehicle asgn.vehicle to drive from its stop at index
@@ -193,7 +193,7 @@ namespace karri::time_utils {
     calcInitialPickupDetour(const Assignment &asgn, const int depTimeAtPickup, const RequestContext &context,
                             const RouteState &routeState) {
         return calcInitialPickupDetour(asgn.vehicle->vehicleId, asgn.pickupStopIdx, asgn.dropoffStopIdx,
-                                       depTimeAtPickup, asgn.travelTimeFromPickup,
+                                       depTimeAtPickup, asgn.distFromPickup,
                                        context, routeState);
     }
 
@@ -203,6 +203,17 @@ namespace karri::time_utils {
                             const RouteState &routeState) {
         const auto actualDepTime = getActualDepTimeAtPickup(asgn, context, routeState);
         return calcInitialPickupDetour(asgn, actualDepTime, context, routeState);
+    }
+
+    static INLINE int
+    calcOnlyDrivingTimeInInitialPickupDetour(const Assignment &asgn, const bool isPickupAtExistingStop,
+                                             const RouteState &routeState) {
+        if (isPickupAtExistingStop) return 0;
+        if (asgn.pickupStopIdx == asgn.dropoffStopIdx)
+            return asgn.distToPickup;
+        const auto lengthOfReplacedLeg = calcLengthOfLegStartingAt(asgn.pickupStopIdx, asgn.vehicle->vehicleId,
+                                                                   routeState);
+        return asgn.distToPickup + asgn.distFromPickup - lengthOfReplacedLeg;
     }
 
     // Returns the additional time needed for the vehicle to perform a pickup with initialPickupDetour after its stop
@@ -224,13 +235,13 @@ namespace karri::time_utils {
     // asgn.dropoffStopIdx + 1 instead of driving from the stop at asgn.dropoffStopIdx directly to the stop
     // at asgn.dropoffStopIdx + 1.
     static INLINE int
-    calcInitialDropoffDetour(const int vehId, const int dropoffIndex, const int travelTimeToDropoff,
-                             const int travelTimeFromDropoff,
+    calcInitialDropoffDetour(const int vehId, const int dropoffIndex, const int distToDropoff,
+                             const int distFromDropoff,
                              const bool dropoffAtExistingStop,
                              const RouteState &routeState) {
         if (dropoffAtExistingStop) return 0;
-        const auto lengthOfReplacedLeg = calcTravelTimeOfLegStartingAt(dropoffIndex, vehId, routeState);
-        return travelTimeToDropoff + InputConfig::getInstance().stopTime + travelTimeFromDropoff - lengthOfReplacedLeg;
+        const auto lengthOfReplacedLeg = calcLengthOfLegStartingAt(dropoffIndex, vehId, routeState);
+        return distToDropoff + InputConfig::getInstance().stopTime + distFromDropoff - lengthOfReplacedLeg;
     }
 
     // Returns the additional time that is needed for the vehicle asgn.vehicle to drive from its stop at index
@@ -240,8 +251,8 @@ namespace karri::time_utils {
     static INLINE int
     calcInitialDropoffDetour(const Assignment &asgn, const bool dropoffAtExistingStop,
                              const RouteState &routeState) {
-        return calcInitialDropoffDetour(asgn.vehicle->vehicleId, asgn.dropoffStopIdx, asgn.travelTimeToDropoff,
-                                        asgn.travelTimeFromDropoff, dropoffAtExistingStop, routeState);
+        return calcInitialDropoffDetour(asgn.vehicle->vehicleId, asgn.dropoffStopIdx, asgn.distToDropoff,
+                                        asgn.distFromDropoff, dropoffAtExistingStop, routeState);
     }
 
     static INLINE int

@@ -47,15 +47,12 @@ namespace karri::PDDistanceQueryStrategies {
 
     private:
 
-        using TravelTimes = StampedDistanceLabelContainer<DistanceLabel>;
-
         struct DropoffBatchLabel {
 
             static constexpr unsigned int invalid_target = std::numeric_limits<unsigned int>::max();
 
             unsigned int targetId = invalid_target; // the batch id for this batch of K dropoffs with sequential ids (i.e. targetId ranges from 0 to numDropoffs / K ( + 1)).
-            DistanceLabel costToDropoff = INFTY; // the traversal costs from this vertex to the K dropoffs (shortest distances)
-            DistanceLabel travelTimeToDropoff = INFTY; // the travel times from this vertex to the K dropoffs (not necessarily shortest distances)
+            DistanceLabel distToDropoff = INFTY; // the distances from this vertex to the K dropoffs
 
             friend bool operator==(const DropoffBatchLabel &lhs, const DropoffBatchLabel &rhs) noexcept {
                 return lhs.targetId == rhs.targetId;
@@ -63,10 +60,7 @@ namespace karri::PDDistanceQueryStrategies {
 
             void cmpAndUpdate(const DropoffBatchLabel &other) {
                 assert(targetId == invalid_target || targetId == other.targetId);
-                const auto improved = other.costToDropoff < costToDropoff |
-                        (other.costToDropoff == costToDropoff & other.travelTimeToDropoff < travelTimeToDropoff);
-                costToDropoff.setIf(other.costToDropoff, improved);
-                travelTimeToDropoff.setIf(other.travelTimeToDropoff, improved);
+                distToDropoff.min(other.distToDropoff);
                 if (targetId == invalid_target)
                     targetId = other.targetId;
             }
@@ -75,12 +69,30 @@ namespace karri::PDDistanceQueryStrategies {
         using BucketContainer = SharedSearchSpaceBucketContainer<DropoffBatchLabel>;
 
 
+        struct StopWhenMaxDistExceeded {
+
+            explicit StopWhenMaxDistExceeded(const int &maxDist) : maxDist(maxDist) {}
+
+            template<typename DistLabelT, typename DistLabelContainerT>
+            bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
+                const auto exceedsMaxDist = maxDist < distToV;
+                const auto doesNotExceedMaxDist = ~exceedsMaxDist;
+                const bool anyDoesNoExceedMaxDist = anySet(doesNotExceedMaxDist);
+                return !anyDoesNoExceedMaxDist;
+//                return !anySet(~(exceedsMaxDist));
+            }
+
+
+        private:
+            const int &maxDist;
+        };
+
         struct WriteBucketEntry {
             explicit WriteBucketEntry(BCHStrategy &computer) : computer(computer) {}
 
             template<typename DistLabelT, typename DistLabelContT>
-            bool operator()(const int v, const DistLabelT &costToV, const DistLabelContT &) {
-                computer.dropoffBuckets.insertOrUpdate(v, {computer.dropoffBatchId, costToV, computer.travelTimes[v]});
+            bool operator()(const int v, const DistLabelT &distToV, const DistLabelContT &) {
+                computer.dropoffBuckets.insertOrUpdate(v, {computer.dropoffBatchId, distToV});
                 return false;
             }
 
@@ -93,7 +105,7 @@ namespace karri::PDDistanceQueryStrategies {
             explicit ScanDropoffBucketAndUpdatePDDistances(BCHStrategy &computer) : computer(computer) {}
 
             template<typename DistLabelT, typename DistLabelContT>
-            bool operator()(const int v, const DistLabelT &costToV, const DistLabelContT &) {
+            bool operator()(const int v, const DistLabelT &distToV, const DistLabelContT &) {
                 for (const auto &dropoffBatchLabel: computer.dropoffBuckets.getBucketOf(v)) {
                     // Update distances to each dropoff in the batch label:
                     const auto firstDropoffIdInBatch = dropoffBatchLabel.targetId * K;
@@ -101,8 +113,7 @@ namespace karri::PDDistanceQueryStrategies {
                         continue;
                     for (int i = 0; i < K && firstDropoffIdInBatch + i < computer.requestState.numDropoffs(); ++i) {
                         computer.updatePDDistances(computer.curFirstPickupId, firstDropoffIdInBatch + i,
-                                                   costToV + dropoffBatchLabel.costToDropoff[i],
-                                                   computer.travelTimes[v] + dropoffBatchLabel.travelTimeToDropoff[i]);
+                                                   distToV + dropoffBatchLabel.distToDropoff[i]);
                     }
                 }
                 return false;
@@ -113,26 +124,12 @@ namespace karri::PDDistanceQueryStrategies {
             BCHStrategy &computer;
         };
 
-        struct UpdateTravelTimeCallback {
-
-            UpdateTravelTimeCallback(const typename CH::SearchGraph &searchGraph,
-                                     TravelTimes &travelTimes) : searchGraph(searchGraph), travelTimes(travelTimes) {}
-
-            template<typename LabelMaskT, typename DistanceLabelContainerT>
-            void operator()(const int v, const int w, const int e, const LabelMaskT &improved,
-                            const DistanceLabelContainerT &) {
-                travelTimes[w].setIf(travelTimes[v] + searchGraph.travelTime(e), improved);
-            }
-
-            const CH::SearchGraph &searchGraph;
-            TravelTimes &travelTimes;
-        };
-
-        using FillBucketsSearch = typename CHEnvT::template UpwardSearch<WriteBucketEntry, dij::NoCriterion, UpdateTravelTimeCallback, LabelSetT>;
-        using FindPDDistancesSearch = typename CHEnvT::template UpwardSearch<ScanDropoffBucketAndUpdatePDDistances, dij::NoCriterion, UpdateTravelTimeCallback, LabelSetT>;
+        using FillBucketsSearch = typename CHEnvT::template UpwardSearch<WriteBucketEntry, StopWhenMaxDistExceeded, LabelSetT>;
+        using FindPDDistancesSearch = typename CHEnvT::template UpwardSearch<ScanDropoffBucketAndUpdatePDDistances, StopWhenMaxDistExceeded, LabelSetT>;
 
         friend WriteBucketEntry;
         friend ScanDropoffBucketAndUpdatePDDistances;
+        friend StopWhenMaxDistExceeded;
 
     public:
 
@@ -143,14 +140,14 @@ namespace karri::PDDistanceQueryStrategies {
                   ch(chEnv.getCH()),
                   requestState(requestState),
                   distances(distances),
-                  travelTimes(inputGraph.numVertices()),
                   dropoffBuckets(inputGraph.numVertices()),
                   fillBucketsSearch(
-                          chEnv.template getReverseSearch<WriteBucketEntry, dij::NoCriterion, UpdateTravelTimeCallback, LabelSetT>(
-                                  WriteBucketEntry(*this), {}, UpdateTravelTimeCallback(ch.downwardGraph(), travelTimes))),
+                          chEnv.template getReverseSearch<WriteBucketEntry, StopWhenMaxDistExceeded, LabelSetT>(
+                                  WriteBucketEntry(*this), StopWhenMaxDistExceeded(upperBoundDirectPDDist))),
                   findPDDistancesSearch(
-                          chEnv.template getForwardSearch<ScanDropoffBucketAndUpdatePDDistances, dij::NoCriterion, UpdateTravelTimeCallback, LabelSetT>(
-                                  ScanDropoffBucketAndUpdatePDDistances(*this), {}, UpdateTravelTimeCallback(ch.upwardGraph(), travelTimes))) {}
+                          chEnv.template getForwardSearch<ScanDropoffBucketAndUpdatePDDistances, StopWhenMaxDistExceeded, LabelSetT>(
+                                  ScanDropoffBucketAndUpdatePDDistances(*this),
+                                  StopWhenMaxDistExceeded(upperBoundDirectPDDist))) {}
 
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
@@ -159,6 +156,33 @@ namespace karri::PDDistanceQueryStrategies {
 
             const auto numDropoffSearches = requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
             dropoffBuckets.init(numDropoffSearches);
+
+
+//            // Compute upper bound on every PD distance by adding the longest vehicle distance from any pickup to the
+//            // origin, the distance from the origin to the destination, and the longest distance from the destination
+//            // to any dropoff (all in the full vehicle graph).
+//            int maxPickupToOriginVehDist = 0;
+//            for (const auto &pickup: requestState.pickups) {
+//                KASSERT(pickup.vehDistToCenter != INFTY);
+//                maxPickupToOriginVehDist = std::max(maxPickupToOriginVehDist, pickup.vehDistToCenter);
+//            }
+//
+//            int maxDestToDropoffVehDist = 0;
+//            for (const auto &dropoff: requestState.dropoffs) {
+//                KASSERT(dropoff.vehDistFromCenter != INFTY);
+//                maxDestToDropoffVehDist = std::max(maxDestToDropoffVehDist, dropoff.vehDistFromCenter);
+//            }
+//
+//            if (maxPickupToOriginVehDist >= INFTY || maxDestToDropoffVehDist >= INFTY) {
+//                upperBoundDirectPDDist = INFTY;
+//            } else {
+//                upperBoundDirectPDDist = maxPickupToOriginVehDist + requestState.directDistInFullVeh +
+//                                         maxDestToDropoffVehDist; // read by stopping criterion of searches
+//            }
+
+            upperBoundDirectPDDist = INFTY;
+
+
 
             const int64_t initTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.initializationTime += initTime;
@@ -169,16 +193,13 @@ namespace karri::PDDistanceQueryStrategies {
             std::array<int, K> dropoffOffsets{};
             // Run searches for full pickup batches
             int dropoffId = 0;
-            travelTimes.init();
             for (; dropoffId < requestState.numDropoffs();) {
                 tailRanks[dropoffId % K] = ch.rank(inputGraph.edgeTail(requestState.dropoffs[dropoffId].loc));
-                dropoffOffsets[dropoffId % K] = inputGraph.traversalCost(requestState.dropoffs[dropoffId].loc);
-                travelTimes[tailRanks[dropoffId % K]][dropoffId % K] = inputGraph.travelTime(requestState.dropoffs[dropoffId].loc);
+                dropoffOffsets[dropoffId % K] = inputGraph.travelTime(requestState.dropoffs[dropoffId].loc);
                 ++dropoffId;
                 if (dropoffId % K == 0) {
                     dropoffBatchId = dropoffId / K - 1;
                     fillBucketsSearch.runWithOffset(tailRanks, dropoffOffsets);
-                    travelTimes.init();
                 }
             }
             // Finish potential partially filled batch
@@ -201,7 +222,6 @@ namespace karri::PDDistanceQueryStrategies {
             zeroOffsets.fill(0);
 
             std::array<int, K> headRanks{};
-            travelTimes.init();
             // Run searches for full pickup batches
             int pickupId = 0;
             for (; pickupId < requestState.numPickups();) {
@@ -210,7 +230,6 @@ namespace karri::PDDistanceQueryStrategies {
                 if (pickupId % K == 0) {
                     curFirstPickupId = pickupId - K;
                     findPDDistancesSearch.runWithOffset(headRanks, zeroOffsets);
-                    travelTimes.init();
                 }
             }
 
@@ -224,8 +243,8 @@ namespace karri::PDDistanceQueryStrategies {
                 findPDDistancesSearch.runWithOffset(headRanks, zeroOffsets);
             }
 
-            requestState.minDirectPDCost = distances.getMinCost();
-            requestState.minDirectPDTravelTime = distances.getMinTravelTime();
+
+            requestState.minDirectPDDist = distances.getMinDirectDistance();
 
             const int64_t pickupSearchesTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.pickupBchSearchTime += pickupSearchesTime;
@@ -242,8 +261,8 @@ namespace karri::PDDistanceQueryStrategies {
     private:
 
         void
-        updatePDDistances(const unsigned int firstPickupId, const unsigned int dropoffId, const DistanceLabel &cost, const DistanceLabel & travelTime) {
-            distances.updateDistanceBatchIfSmaller(firstPickupId, dropoffId, cost, travelTime);
+        updatePDDistances(const unsigned int firstPickupId, const unsigned int dropoffId, const DistanceLabel &dist) {
+            distances.updateDistanceBatchIfSmaller(firstPickupId, dropoffId, dist);
         }
 
         const InputGraphT &inputGraph;
@@ -252,11 +271,11 @@ namespace karri::PDDistanceQueryStrategies {
 
         PDDistances<LabelSetT> &distances;
 
-        TravelTimes travelTimes;
         BucketContainer dropoffBuckets;
         FillBucketsSearch fillBucketsSearch;
         FindPDDistancesSearch findPDDistancesSearch;
 
+        int upperBoundDirectPDDist;
         unsigned int curFirstPickupId;
         unsigned int dropoffBatchId;
     };

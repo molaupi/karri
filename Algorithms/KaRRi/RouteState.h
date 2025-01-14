@@ -61,8 +61,8 @@ namespace karri {
                   requestsDroppedOffAtStop(),
                   maxLeeway(0),
                   stopIdOfMaxLeeway(INVALID_ID),
-                  maxLegTravelTime(0),
-                  stopIdOfMaxLegTravelTime(INVALID_ID),
+                  maxLegLength(0),
+                  stopIdOfMaxLegLength(INVALID_ID),
                   unusedStopIds(),
                   nextUnusedStopId(fleet.size()),
                   maxStopId(fleet.size() - 1) {
@@ -79,7 +79,6 @@ namespace karri {
                 numDropoffsPrefixSum[i] = 0;
                 vehWaitTimesUntilDropoffsPrefixSum[i] = 0;
                 maxArrTimes[i] = INFTY;
-                legCost[i] = 0;
             }
         }
 
@@ -183,14 +182,6 @@ namespace karri {
                     vehWaitTimesUntilDropoffsPrefixSum.begin() + end};
         }
 
-        ConstantVectorRange<int> legCostsFor(const int vehId) const {
-            assert(vehId >= 0);
-            assert(vehId < pos.size());
-            const auto start = pos[vehId].start;
-            const auto end = pos[vehId].end;
-            return {legCost.begin() + start, legCost.begin() + end};
-        }
-
         // Returns the id of the vehicle whose route the stop with the given ID is currently part of.
         int vehicleIdOf(const int stopId) const {
             assert(stopId >= 0 && stopId < stopIdToPosition.size());
@@ -217,8 +208,8 @@ namespace karri {
             return maxLeeway;
         }
 
-        const int &getMaxLegTravelTime() const {
-            return maxLegTravelTime;
+        const int &getMaxLegLength() const {
+            return maxLegLength;
         }
 
         template<typename RequestStateT>
@@ -244,7 +235,7 @@ namespace karri {
 
             if ((pickupIndex > 0 || schedDepTimes[start] > now) && pickup.loc == stopLocations[start + pickupIndex]) {
                 assert(start + pickupIndex == end - 1 || pickupIndex == dropoffIndex ||
-                               asgn.travelTimeFromPickup ==
+                       asgn.distFromPickup ==
                        schedArrTimes[start + pickupIndex + 1] - schedDepTimes[start + pickupIndex]);
 
                 // Pickup at existing stop
@@ -270,21 +261,19 @@ namespace karri {
                                 schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
                                 numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
                 stopLocations[start + pickupIndex] = pickup.loc;
-                schedArrTimes[start + pickupIndex] = schedDepTimes[start + pickupIndex - 1] + asgn.travelTimeToPickup;
+                schedArrTimes[start + pickupIndex] = schedDepTimes[start + pickupIndex - 1] + asgn.distToPickup;
                 schedDepTimes[start + pickupIndex] = std::max(schedArrTimes[start + pickupIndex] + InputConfig::getInstance().stopTime,
                                                               requestState.getPassengerArrAtPickup(pickup.id));
                 maxArrTimes[start + pickupIndex] = requestState.getMaxDepTimeAtPickup() - InputConfig::getInstance().stopTime;
                 occupancies[start + pickupIndex] = occupancies[start + pickupIndex - 1];
                 numDropoffsPrefixSum[start + pickupIndex] = numDropoffsPrefixSum[start + pickupIndex - 1];
-                legCost[start + pickupIndex - 1] = asgn.costToPickup;
-                legCost[start + pickupIndex] = asgn.costFromPickup; // may be overwritten later if pickupIndex == dropoffIndex
                 pickupInsertedAsNewStop = true;
             }
 
             if (pickupIndex != dropoffIndex) {
                 // Propagate changes to minArrTime/minDepTime forward from inserted pickup stop until dropoff stop
-                assert(asgn.travelTimeFromPickup > 0);
-                propagateSchedArrAndDepForward(start + pickupIndex + 1, start + dropoffIndex, asgn.travelTimeFromPickup);
+                assert(asgn.distFromPickup > 0);
+                propagateSchedArrAndDepForward(start + pickupIndex + 1, start + dropoffIndex, asgn.distFromPickup);
             }
 
             if (pickup.loc != dropoff.loc && dropoff.loc == stopLocations[start + dropoffIndex]) {
@@ -298,22 +287,20 @@ namespace karri {
                                 maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
                 stopLocations[start + dropoffIndex] = dropoff.loc;
                 schedArrTimes[start + dropoffIndex] =
-                        schedDepTimes[start + dropoffIndex - 1] + asgn.travelTimeToDropoff;
+                        schedDepTimes[start + dropoffIndex - 1] + asgn.distToDropoff;
                 schedDepTimes[start + dropoffIndex] = schedArrTimes[start + dropoffIndex] + InputConfig::getInstance().stopTime;
                 // compare maxVehArrTime to next stop later
                 maxArrTimes[start + dropoffIndex] = requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id);
                 occupancies[start + dropoffIndex] = occupancies[start + dropoffIndex - 1];
                 numDropoffsPrefixSum[start + dropoffIndex] = numDropoffsPrefixSum[start + dropoffIndex - 1];
                 dropoffInsertedAsNewStop = true;
-                legCost[start + dropoffIndex - 1] = asgn.costToDropoff;
-                legCost[start + dropoffIndex] = asgn.costFromDropoff;
             }
 
             // Propagate updated scheduled arrival and departure times as well as latest permissible arrival times.
             if (start + dropoffIndex < end - 1) {
                 // At this point minDepTimes[start + dropoffIndex] is correct. If dropoff has been inserted not as the last
                 // stop, propagate the changes to minDep and minArr times forward until the last stop.
-                propagateSchedArrAndDepForward(start + dropoffIndex + 1, end - 1, asgn.travelTimeFromDropoff);
+                propagateSchedArrAndDepForward(start + dropoffIndex + 1, end - 1, asgn.distFromDropoff);
 
                 // If there are stops after the dropoff, consider them for propagating changes to the maxArrTimes
                 propagateMaxArrTimeBackward(start + dropoffIndex, start + pickupIndex);
@@ -372,7 +359,7 @@ namespace karri {
             }
 
             updateLeeways(vehId);
-            updateMaxLegTravelTime(vehId, pickupIndex, dropoffIndex);
+            updateMaxLegLength(vehId, pickupIndex, dropoffIndex);
 
 
             // Remember that request is picked up and dropped of at respective stops:
@@ -463,7 +450,7 @@ namespace karri {
             assert(leeway >= 0);
             stopIdToLeeway[newStopId] = leeway;
 
-            updateMaxLegTravelTime(vehId, 1, 1);
+            updateMaxLegLength(vehId, 1, 1);
         }
 
         // Scheduled stop interface for event simulation
@@ -575,7 +562,7 @@ namespace karri {
             }
         }
 
-        void updateMaxLegTravelTime(const int vehId, const int pickupIndex, const int dropoffIndex) {
+        void updateMaxLegLength(const int vehId, const int pickupIndex, const int dropoffIndex) {
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
 
@@ -584,10 +571,10 @@ namespace karri {
 
             auto updateLegLengthAt = [&](const int stopIdx) {
                 const auto toPickup = schedArrTimes[start + stopIdx + 1] - schedDepTimes[start + stopIdx];
-                lengthOfFormerLongestChanged |= stopIds[start + stopIdx] == stopIdOfMaxLegTravelTime;
-                if (toPickup >= maxLegTravelTime) {
-                    maxLegTravelTime = toPickup;
-                    stopIdOfMaxLegTravelTime = stopIds[start + stopIdx];
+                lengthOfFormerLongestChanged |= stopIds[start + stopIdx] == stopIdOfMaxLegLength;
+                if (toPickup >= maxLegLength) {
+                    maxLegLength = toPickup;
+                    stopIdOfMaxLegLength = stopIds[start + stopIdx];
                     maxLengthIncreased = true;
                 }
             };
@@ -603,7 +590,7 @@ namespace karri {
             // If we did not find a new maximum leg length but the length of the formerly longest leg changed, we need
             // to recompute the max leg length from scratch.
             if (!maxLengthIncreased && lengthOfFormerLongestChanged)
-                recomputeMaxLegTravelTime();
+                recomputeMaxLegLength();
         }
 
         // Recalculate the prefix sum of vehicle wait times from fromIdx up to toIdx (both inclusive) based on current
@@ -643,15 +630,15 @@ namespace karri {
             }
         }
 
-        void recomputeMaxLegTravelTime() {
-            maxLegTravelTime = 0;
-            stopIdOfMaxLegTravelTime = INVALID_ID;
+        void recomputeMaxLegLength() {
+            maxLegLength = 0;
+            stopIdOfMaxLegLength = INVALID_ID;
             for (const auto &[start, end]: pos) {
                 for (int idx = start; idx < end - 1; ++idx) {
                     const auto legLength = schedArrTimes[idx + 1] - schedDepTimes[idx];
-                    if (legLength > maxLegTravelTime) {
-                        maxLegTravelTime = legLength;
-                        stopIdOfMaxLegTravelTime = stopIds[idx];
+                    if (legLength > maxLegLength) {
+                        maxLegLength = legLength;
+                        stopIdOfMaxLegLength = stopIds[idx];
                     }
                 }
             }
@@ -700,10 +687,6 @@ namespace karri {
         // at stop i for the vehicle with ID vehId.
         std::vector<int> numDropoffsPrefixSum;
 
-        // legCost[i] is the traversal cost of the leg between stop i and i+1, i.e. the sum of traversal costs of
-        // edges on this leg. (legCost[numStops - 1] := 0)
-        std::vector<int> legCost;
-
 
 
         // Mappings of stop ids to other aspects of the respective vehicle route:
@@ -734,8 +717,8 @@ namespace karri {
         int maxLeeway;
         int stopIdOfMaxLeeway;
 
-        int maxLegTravelTime;
-        int stopIdOfMaxLegTravelTime;
+        int maxLegLength;
+        int stopIdOfMaxLegLength;
 
         std::stack<int, std::vector<int>> unusedStopIds;
         int nextUnusedStopId;

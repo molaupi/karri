@@ -52,7 +52,6 @@ namespace karri {
 template <
     typename GraphT, typename WeightT, typename LabelSetT,
     typename PruningCriterionT = dij::NoCriterion,
-    typename RelaxationCallbackT = dij::NoRelaxationCallback,
     template <typename> class DistanceLabelContainerT = StampedDistanceLabelContainer,
     typename QueueT = AddressableQuadHeap>
 class DagShortestPaths {
@@ -63,13 +62,12 @@ class DagShortestPaths {
 
  public:
   // Constructs a shortest-path search instance for the specified directed acyclic graph.
-  explicit DagShortestPaths(const GraphT& graph, PruningCriterionT pruneSearch = {}, RelaxationCallbackT relaxationCallback = {})
+  explicit DagShortestPaths(const GraphT& graph, PruningCriterionT pruneSearch = {})
       : graph(graph),
         distanceLabels(graph.numVertices()),
         parent(graph),
         queue(graph.numVertices()),
-        pruneSearch(pruneSearch),
-        relaxationCallback(relaxationCallback) {}
+        pruneSearch(pruneSearch) {}
 
   // Runs a shortest-path search from s.
   void run(const int s) {
@@ -149,7 +147,6 @@ class DagShortestPaths {
       auto& distToW = distanceLabels[w];
       const auto distViaV = distToV + graph.template get<WeightT>(e);
       const auto mask = distViaV < distToW;
-      relaxationCallback(v, w, e, mask, distanceLabels);
       if (anySet(mask)) {
         distToW.min(distViaV);
         parent.setVertex(w, v, mask);
@@ -169,5 +166,4 @@ class DagShortestPaths {
   ParentLabelCont parent;           // The parent information for each vertex.
   QueueT queue;                     // The priority queue of unsettled vertices.
   PruningCriterionT pruneSearch;    // The criterion used to prune the search.
-  RelaxationCallbackT relaxationCallback; // Called for every edge relaxation.
 };

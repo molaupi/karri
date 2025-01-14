@@ -46,21 +46,19 @@ namespace karri {
 
         struct DoesEntryHaveLargerRemainingLeeway {
             bool operator()(const Entry &e1, const Entry &e2) const {
-                return e1.leeway - e1.travelTimeToTarget > e2.leeway - e2.travelTimeToTarget;
+                return e1.leeway - e1.distToTarget > e2.leeway - e2.distToTarget;
             }
         };
 
 
         struct StopWhenLeewayExceeded {
-            explicit StopWhenLeewayExceeded(const std::vector<int> &travelTimes, const int &currentLeeway)
-                    : travelTimes(travelTimes), currentLeeway(currentLeeway) {}
+            explicit StopWhenLeewayExceeded(const int &currentLeeway) : currentLeeway(currentLeeway) {}
 
             template<typename DistLabelT, typename DistLabelContT>
-            bool operator()(const int v, const DistLabelT &, const DistLabelContT &) const noexcept {
-                return travelTimes[v] > currentLeeway;
+            bool operator()(const int, const DistLabelT &distToV, const DistLabelContT &) const noexcept {
+                return allSet(distToV > currentLeeway);
             }
 
-            const std::vector<int> &travelTimes;
             const int &currentLeeway;
         };
 
@@ -75,24 +73,6 @@ namespace karri {
 
             std::vector<int> &searchSpace;
         };
-
-        struct UpdateTravelTimeCallback {
-
-            UpdateTravelTimeCallback(const typename CH::SearchGraph &searchGraph,
-                                     std::vector<int> &travelTimes) : searchGraph(searchGraph), travelTimes(travelTimes) {}
-
-            template<typename LabelMaskT, typename DistanceLabelContainerT>
-            void operator()(const int v, const int w, const int e, const LabelMaskT &improved,
-                            const DistanceLabelContainerT &) {
-                if (improved[0])
-                    travelTimes[w] = travelTimes[v] + searchGraph.travelTime(e);
-            }
-
-            const CH::SearchGraph &searchGraph;
-            std::vector<int> &travelTimes;
-        };
-
-
 
     public:
 
@@ -137,8 +117,7 @@ namespace karri {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex + 1],
                                         routeState.schedDepTimesFor(veh.vehicleId)[stopIndex + 1]) -
-                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex] -
-                               InputConfig::getInstance().stopTime;
+                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex] - InputConfig::getInstance().stopTime;
 
             if (leeway <= 0)
                 return;
@@ -164,8 +143,7 @@ namespace karri {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex],
                                         routeState.schedDepTimesFor(veh.vehicleId)[stopIndex]) -
-                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] -
-                               InputConfig::getInstance().stopTime;
+                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] - InputConfig::getInstance().stopTime;
             if (leeway <= 0)
                 return;
 
@@ -184,13 +162,13 @@ namespace karri {
                                   targetBuckets);
         }
 
-        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle &veh) {
+        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle& veh) {
             const auto numStops = routeState.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
             int64_t numVerticesVisited = 0, numEntriesScanned = 0;
             Timer timer;
-            auto updateSourceLeeway = [&](BucketEntryWithLeeway &e) {
+            auto updateSourceLeeway = [&](BucketEntryWithLeeway& e) {
                 if (routeState.vehicleIdOf(e.targetId) != veh.vehicleId)
                     return false;
                 const auto oldLeeway = e.leeway;
@@ -220,13 +198,13 @@ namespace karri {
             stats.elliptic_update_numEntriesScanned += numEntriesScanned;
         }
 
-        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle &veh) {
+        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle& veh) {
             const auto numStops = routeState.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
             int64_t numVerticesVisited = 0, numEntriesScanned = 0;
             Timer timer;
-            auto updateTargetLeeway = [&](BucketEntryWithLeeway &e) {
+            auto updateTargetLeeway = [&](BucketEntryWithLeeway& e) {
                 if (routeState.vehicleIdOf(e.targetId) != veh.vehicleId)
                     return false;
                 const auto oldLeeway = e.leeway;
