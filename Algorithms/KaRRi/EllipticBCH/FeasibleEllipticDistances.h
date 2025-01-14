@@ -57,9 +57,7 @@ namespace karri {
                   startOfRangeInValueArray(fleetSize),
                   vehiclesWithRelevantPDLocs(fleetSize),
                   minCostToPDLoc(fleetSize),
-                  minCostFromPDLocToNextStop(fleetSize),
-                  minTravelTimeToPDLoc(fleetSize),
-                  minTravelTimeFromPDLocToNextStop(fleetSize) {}
+                  minCostFromPDLocToNextStop(fleetSize) {}
 
         template<typename PDLocsAtExistingStopsT, typename InputGraphT>
         void init(const int newNumPDLocs, const PDLocsAtExistingStopsT &pdLocsAtExistingStops,
@@ -70,8 +68,6 @@ namespace karri {
                 startOfRangeInValueArray.resize(maxStopId + 1);
                 minCostToPDLoc.resize(maxStopId + 1);
                 minCostFromPDLocToNextStop.resize(maxStopId + 1);
-                minTravelTimeToPDLoc.resize(maxStopId + 1);
-                minTravelTimeFromPDLocToNextStop.resize(maxStopId + 1);
             }
 
             for (auto &idx: startOfRangeInValueArray)
@@ -90,7 +86,6 @@ namespace karri {
             // BCH searches. Also, this way, the distance for such a PD loc never has to be updated, and we already
             // allocate the entry array for this stop, which is good since it will likely also be reachable by other PD locs.
             for (const auto &pdLocAtExistingStop: pdLocsAtExistingStops) {
-
                 const auto &vehId = pdLocAtExistingStop.vehId;
                 KASSERT(pdLocAtExistingStop.stopIndex < routeState.numStopsOf(vehId));
                 const auto &stopId = routeState.stopIdsFor(vehId)[pdLocAtExistingStop.stopIndex];
@@ -101,16 +96,13 @@ namespace karri {
                 DistanceLabel zeroLabel = INFTY;
                 zeroLabel[pdLocAtExistingStop.pdId % K] = 0;
                 const auto firstIdInBatch = (pdLocAtExistingStop.pdId / K) * K;
-                updateDistanceFromStopToPDLoc(stopId, firstIdInBatch, zeroLabel, zeroLabel, stopVertex);
+                updateDistanceFromStopToPDLoc(stopId, firstIdInBatch, zeroLabel, stopVertex);
 
-                const auto costOfLegStartingHere = routeState.legCostsFor(vehId)[pdLocAtExistingStop.stopIndex];
-                const auto travelTimeOfLegStartingHere = time_utils::calcTravelTimeOfLegStartingAt(
-                        pdLocAtExistingStop.stopIndex, vehId, routeState);
-                DistanceLabel costOfLegLabel = INFTY;
-                DistanceLabel travelTimeOfLegLabel = INFTY;
-                costOfLegLabel[pdLocAtExistingStop.pdId % K] = costOfLegStartingHere;
-                travelTimeOfLegLabel[pdLocAtExistingStop.pdId % K] = travelTimeOfLegStartingHere;
-                updateDistanceFromPDLocToNextStop(stopId, firstIdInBatch, costOfLegLabel, travelTimeOfLegLabel, stopVertex);
+                const auto lengthOfLegStartingHere = time_utils::calcTravelTimeOfLegStartingAt(
+                        pdLocAtExistingStop.stopIndex, pdLocAtExistingStop.vehId, routeState);
+                DistanceLabel lengthOfLegLabel = INFTY;
+                lengthOfLegLabel[pdLocAtExistingStop.pdId % K] = lengthOfLegStartingHere;
+                updateDistanceFromPDLocToNextStop(stopId, firstIdInBatch, lengthOfLegLabel, stopVertex);
             }
         }
 
@@ -126,7 +118,7 @@ namespace karri {
         // allocation is not allowed).
         LabelMask updateDistanceFromStopToPDLoc(const int stopId, const unsigned int firstPDLocId,
                                                 const DistanceLabel newCostToPDLoc,
-                                                DistanceLabel newTravelTimeToPDLoc,
+                                                const DistanceLabel newTravelTimeToPDLoc,
                                                 const int meetingVertex) {
             KASSERT(stopId >= 0 && stopId <= maxStopId);
             KASSERT(firstPDLocId < numLabelsPerStop * K);
@@ -145,13 +137,8 @@ namespace karri {
             travelTimesToRelevantPDLocs[idx].setIf(newTravelTimeToPDLoc, improved);
             meetingVerticesToRelevantPDLocs[idx].setIf(meetingVertex, improved);
 
-            auto &globalMinCost = minCostToPDLoc[stopId];
-            globalMinCost.min(newCostToPDLoc);
-
-            // Only update global minimum travel time for PDLocs where cost has been improved
-            auto& globalMinTravelTime = minTravelTimeToPDLoc[stopId];
-            newTravelTimeToPDLoc.setIf(INFTY, ~improved);
-            globalMinTravelTime.min(newTravelTimeToPDLoc);
+            auto &globalMin = minCostToPDLoc[stopId];
+            globalMin.min(newCostToPDLoc);
 
             return improved;
         }
@@ -161,7 +148,7 @@ namespace karri {
         // Returns mask indicating where the distance has been improved (all false if we don't know the stop).
         LabelMask updateDistanceFromPDLocToNextStop(const int stopId, const int firstPDLocId,
                                                     const DistanceLabel newCostFromPDLocToNextStop,
-                                                    DistanceLabel newTravelTimeFromPDLocToNextStop,
+                                                    const DistanceLabel newTravelTimeFromPDLocToNextStop,
                                                     const int meetingVertex) {
 
             // We assume the from-searches are run after the to-searches. If the stop does not have entries yet, it was
@@ -176,13 +163,8 @@ namespace karri {
             travelTimesFromRelevantPDLocsToNextStop[idx].setIf(newTravelTimeFromPDLocToNextStop, improved);
             meetingVerticesFromRelevantPDLocsToNextStop[idx].setIf(meetingVertex, improved);
 
-            auto &globalMinCost = minCostFromPDLocToNextStop[stopId];
-            globalMinCost.min(newCostFromPDLocToNextStop);
-
-            // Only update global minimum travel time for PDLocs where cost has been improved
-            auto& globalMinTravelTime = minTravelTimeFromPDLocToNextStop[stopId];
-            newTravelTimeFromPDLocToNextStop.setIf(INFTY, ~improved);
-            globalMinTravelTime.min(newTravelTimeFromPDLocToNextStop);
+            auto &globalMin = minCostFromPDLocToNextStop[stopId];
+            globalMin.min(newCostFromPDLocToNextStop);
 
             return improved;
         }
@@ -239,12 +221,6 @@ namespace karri {
             return {travelTimesToRelevantPDLocs.begin() + start, numLabelsPerStop};
         }
 
-        int minTravelTimeToRelevantPDLocsFor(const int stopId) const {
-            KASSERT(stopId <= maxStopId);
-            KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
-            return minTravelTimeToPDLoc[stopId].horizontalMin();
-        }
-
         PerPDLocFacade meetingVerticesToRelevantPDLocsFor(const int stopId) const {
             KASSERT(stopId <= maxStopId);
             KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
@@ -276,12 +252,6 @@ namespace karri {
             KASSERT(travelTimesFromRelevantPDLocsToNextStop.begin() + start + numLabelsPerStop <=
                            travelTimesFromRelevantPDLocsToNextStop.end());
             return {travelTimesFromRelevantPDLocsToNextStop.begin() + start, numLabelsPerStop};
-        }
-
-        int minTravelTimeFromPDLocToNextStopOf(const int stopId) const {
-            KASSERT(stopId <= maxStopId);
-            KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
-            return minTravelTimeFromPDLocToNextStop[stopId].horizontalMin();
         }
 
         PerPDLocFacade meetingVerticesFromRelevantPDLocsToNextStopOf(const int stopId) const {
@@ -319,8 +289,6 @@ namespace karri {
 
             minCostToPDLoc[stopId] = INFTY;
             minCostFromPDLocToNextStop[stopId] = INFTY;
-            minTravelTimeToPDLoc[stopId] = INFTY;
-            minTravelTimeFromPDLocToNextStop[stopId] = INFTY;
         }
 
         const RouteState &routeState;
@@ -344,8 +312,6 @@ namespace karri {
 
         std::vector<DistanceLabel> minCostToPDLoc;
         std::vector<DistanceLabel> minCostFromPDLocToNextStop;
-        std::vector<DistanceLabel> minTravelTimeToPDLoc; // minimum travel time restricted to shortest paths according to traversal cost
-        std::vector<DistanceLabel> minTravelTimeFromPDLocToNextStop; // minimum travel time restricted to shortest paths according to traversal cost
 
     };
 

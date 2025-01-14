@@ -61,24 +61,24 @@ namespace karri {
             // Vehicle before the start of its service time is at its initial location and can leave at the start of its
             // service time at the earliest
             if (veh.startOfServiceTime >= now) {
-                return {prevOrCurLoc, 0, 0};
+                return {prevOrCurLoc, veh.startOfServiceTime};
             }
 
             // If vehicle is idling, it is at its stop 0 and can leave now
             if (routeState.numStopsOf(vehId) == 1) {
-                return {prevOrCurLoc, 0, 0};
+                return {prevOrCurLoc, now};
             }
 
             // If vehicle is currently stopping, it can leave at its scheduled departure time.
             if (schedDepTimes[0] >= now) {
-                return {prevOrCurLoc, 0, 0};
+                return {prevOrCurLoc, schedDepTimes[0]};
             }
 
             const auto nextLoc = routeState.stopLocationsFor(vehId)[1];
 
             // Is vehicle already at stop 1?
             if (schedArrTimes[1] - inputGraph.travelTime(nextLoc) < now) {
-                return {nextLoc, 0, schedArrTimes[1] - schedDepTimes[0]};
+                return {nextLoc, schedArrTimes[1]};
             }
 
             // Reconstruct path that vehicle is taking:
@@ -91,26 +91,17 @@ namespace karri {
             // to the pickup.
             // (This sounds like a pathologically rare case, but it actually happens on the Berlin-1pct input.)
             chQuery.run(ch.rank(inputGraph.edgeHead(prevOrCurLoc)), ch.rank(inputGraph.edgeTail(nextLoc)));
+            KASSERT(schedDepTimes[0] + chQuery.getDistance() + inputGraph.travelTime(nextLoc) == schedArrTimes[1]);
 
             path.clear();
             unpacker.unpackUpDownPath(chQuery.getUpEdgePath(), chQuery.getDownEdgePath(), path);
 
-            // Verify travel time of path against vehicle schedule
-            int totalCost = 0;
-            for (const auto& e : path) {
-                totalCost += inputGraph.traversalCost(e);
-            }
-            KASSERT(totalCost + inputGraph.traversalCost(nextLoc) == routeState.legCostsFor(vehId)[0]);
 
-            // Iterate through path until current edge of vehicle is found. Return edge with cost and travel time
-            // from prev stop.
-            int costTillVehicleLoc = 0;
             int depTimeAtCurEdge = schedDepTimes[0];
             for (const auto &curEdge: path) {
-                costTillVehicleLoc += inputGraph.traversalCost(curEdge);
                 depTimeAtCurEdge += inputGraph.travelTime(curEdge);
                 if (depTimeAtCurEdge >= now) {
-                    return {curEdge, costTillVehicleLoc, depTimeAtCurEdge - schedDepTimes[0]};
+                    return {curEdge, depTimeAtCurEdge};
                 }
             }
 

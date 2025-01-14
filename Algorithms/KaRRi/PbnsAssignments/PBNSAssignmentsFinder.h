@@ -47,8 +47,7 @@ namespace karri {
         // combinations can continue after the bundled computation of exact distances.
         struct Continuation {
             int pickupId = INVALID_ID;
-            int costFromPickup = INFTY;
-            int travelTimeFromPickup = INFTY;
+            int distFromPickup = INFTY;
             RelevantPDLocs::It continueIt;
         };
 
@@ -128,17 +127,17 @@ namespace karri {
             Assignment asgn(&veh);
 
             for (const auto &entry: relPickupsBNS.relevantSpotsFor(veh.vehicleId)) {
+                asgn.pickup = &requestState.pickups[entry.pdId];
 
                 // Distance from stop 0 to pickup is actually a lower bound on the distance from stop 0 via the
                 // vehicle's current location to the pickup => we get lower bound costs.
-                asgn = Assignment(&veh);
-                asgn.pickup = &requestState.pickups[entry.pdId];
-                asgn.costToPickup = entry.costToPDLoc;
-                asgn.travelTimeToPickup = entry.travelTimeToPDLoc;
+                asgn.costToPickup = entry.distToPDLoc;
+                const int distFromPickup = entry.distFromPDLocToNextStop;
 
                 // For paired assignments before next stop, first try a lower bound with the smallest direct PD distance
                 const auto lowerBoundCostPairedAssignment = calculator.calcCostLowerBoundForPairedAssignmentBeforeNextStop(
-                        asgn, entry.travelTimeFromPDLoc, requestState);
+                        veh, *asgn.pickup, asgn.costToPickup, requestState.minDirectPDDist,
+                        distFromPickup, requestState);
                 if (lowerBoundCostPairedAssignment < requestState.getBestCost()) {
                     const auto scannedUntil = tryLowerBoundsForPaired(asgn);
                     if (scannedUntil < relDropoffsBeforeNextStopForVeh.end()) {
@@ -146,18 +145,17 @@ namespace karri {
                         // the vehicle. Postpone computation of the yet unknown exact distance and the rest of the paired
                         // assignments as well as all assignments with later dropoffs. That way, the exact distances can be
                         // computed in a bundled fashion and the postponed assignments can use exact distances afterward.
-                        curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id, asgn.costToPickup, asgn.travelTimeToPickup);
-                        pairedContinuations.push_back({asgn.pickup->id, 0, 0, scannedUntil});
+                        curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id, asgn.costToPickup);
+                        pairedContinuations.push_back({asgn.pickup->id, 0, scannedUntil});
                         ++numAssignmentsTriedWithPickupBeforeNextStop; // Count first ordinary continuation
                         ordinaryContinuations.push_back(
-                                {asgn.pickup->id, entry.costFromPDLocToNextStop, entry.travelTimeFromPDLoc, relOrdinaryDropoffsForVeh.begin()});
+                                {asgn.pickup->id, distFromPickup, relOrdinaryDropoffsForVeh.begin()});
                         continue; // Continue with next pickup, rest of assignments for this pickup later with exact distance
                     }
                 }
 
 
-                asgn.costFromPickup = entry.costFromPDLocToNextStop;
-                asgn.travelTimeFromPickup = entry.travelTimeFromPDLoc;
+                asgn.costFromPickup = distFromPickup;
                 const auto scannedUntil = tryLowerBoundsForOrdinary(asgn);
 
                 if (scannedUntil < relOrdinaryDropoffsForVeh.end()) {
@@ -166,8 +164,8 @@ namespace karri {
                     // of the yet unknown exact distance and the rest of the assignments with later dropoffs. That way,
                     // the exact distances can be computed in a bundled fashion and the postponed assignments can use
                     // exact distances afterward.
-                    curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id, asgn.costToPickup, asgn.travelTimeToPickup);
-                    ordinaryContinuations.push_back({asgn.pickup->id, entry.costFromPDLocToNextStop, entry.travelTimeFromPDLoc, scannedUntil});
+                    curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id, asgn.costToPickup);
+                    ordinaryContinuations.push_back({asgn.pickup->id, distFromPickup, scannedUntil});
                 }
             }
         }
@@ -189,7 +187,6 @@ namespace karri {
             const auto stopLocations = routeState.stopLocationsFor(vehId);
 
             asgn.costFromPickup = 0;
-            asgn.travelTimeFromPickup = 0;
             asgn.dropoffStopIdx = 0;
 
             for (auto dropoffIt = relevantDropoffs.begin(); dropoffIt != relevantDropoffs.end(); ++dropoffIt) {
@@ -199,10 +196,8 @@ namespace karri {
                     continue;
                 ++numAssignmentsTriedWithPickupBeforeNextStop;
 
-                asgn.costToDropoff = pdDistances.getCost(*asgn.pickup, *asgn.dropoff);
-                asgn.travelTimeToDropoff = pdDistances.getTravelTime(*asgn.pickup, *asgn.dropoff);
-                asgn.costFromDropoff = dropoffEntry.costFromPDLocToNextStop;
-                asgn.travelTimeFromDropoff = dropoffEntry.travelTimeFromPDLoc;
+                asgn.costToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                asgn.costFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                 const auto cost = calculator.calc(asgn, requestState);
                 if (cost < requestState.getBestCost() || (cost == requestState.getBestCost() &&
                                                           breakCostTie(asgn, requestState.getBestAssignment()))) {
@@ -242,10 +237,8 @@ namespace karri {
                     continue;
 
                 asgn.dropoffStopIdx = dropoffEntry.stopIndex;
-                asgn.costToDropoff = dropoffEntry.costToPDLoc;
-                asgn.travelTimeToDropoff = dropoffEntry.travelTimeToPDLoc;
-                asgn.costFromDropoff = dropoffEntry.costFromPDLocToNextStop;
-                asgn.travelTimeFromDropoff = dropoffEntry.travelTimeFromPDLoc;
+                asgn.costToDropoff = dropoffEntry.distToPDLoc;
+                asgn.costFromDropoff = dropoffEntry.distFromPDLocToNextStop;
 
                 ++numAssignmentsTriedWithPickupBeforeNextStop;
 
@@ -271,13 +264,11 @@ namespace karri {
             for (const auto &continuation: ordinaryContinuations) {
                 asgn.pickup = &requestState.pickups[continuation.pickupId];
 
-                asgn.costToPickup = curVehLocToPickupSearches.getCost(veh.vehicleId, continuation.pickupId);
-                asgn.travelTimeToPickup = curVehLocToPickupSearches.getTravelTime(veh.vehicleId, continuation.pickupId);
+                asgn.costToPickup = curVehLocToPickupSearches.getDistance(veh.vehicleId, continuation.pickupId);
                 if (asgn.costToPickup >= INFTY)
                     continue;
 
                 asgn.costFromPickup = continuation.costFromPickup;
-                asgn.travelTimeFromPickup = continuation.travelTimeFromPickup;
 
                 for (auto dropoffIt = continuation.continueIt;
                      dropoffIt < relOrdinaryDropoffsForVeh.end(); ++dropoffIt) {
@@ -291,10 +282,8 @@ namespace karri {
                         continue;
 
                     asgn.dropoffStopIdx = dropoffEntry.stopIndex;
-                    asgn.costToDropoff = dropoffEntry.costToPDLoc;
-                    asgn.travelTimeToDropoff = dropoffEntry.travelTimeToPDLoc;
-                    asgn.costFromDropoff = dropoffEntry.costFromPDLocToNextStop;
-                    asgn.travelTimeFromDropoff = dropoffEntry.travelTimeFromPDLoc;
+                    asgn.costToDropoff = dropoffEntry.distToPDLoc;
+                    asgn.costFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                     requestState.tryAssignment(asgn);
 
                     if (dropoffIt > continuation.continueIt) { // Do not count assignment at continuation twice
@@ -310,13 +299,11 @@ namespace karri {
                 asgn.pickup = &requestState.pickups[pId];
 
                 asgn.dropoffStopIdx = 0;
-                asgn.costToPickup = curVehLocToPickupSearches.getCost(veh.vehicleId, pId);
-                asgn.travelTimeToPickup = curVehLocToPickupSearches.getTravelTime(veh.vehicleId, pId);
+                asgn.costToPickup = curVehLocToPickupSearches.getDistance(veh.vehicleId, pId);
                 if (asgn.costToPickup >= INFTY)
                     continue;
 
                 asgn.costFromPickup = 0;
-                asgn.travelTimeFromPickup = 0;
 
                 for (auto dropoffIt = continuation.continueIt;
                      dropoffIt < relDropoffsBeforeNextStopForVeh.end(); ++dropoffIt) {
@@ -330,13 +317,11 @@ namespace karri {
                         ++numAssignmentsTriedWithPickupBeforeNextStop;
                     }
 
-                    asgn.costFromDropoff = dropoffEntry.costFromPDLocToNextStop;
-                    asgn.travelTimeFromDropoff = dropoffEntry.travelTimeFromPDLoc;
+                    asgn.costFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                     if (asgn.costFromDropoff >= INFTY)
                         continue;
 
-                    asgn.costToDropoff = pdDistances.getCost(pId, asgn.dropoff->id);
-                    asgn.travelTimeToDropoff = pdDistances.getTravelTime(pId, asgn.dropoff->id);
+                    asgn.costToDropoff = pdDistances.getDirectDistance(pId, asgn.dropoff->id);
                     requestState.tryAssignment(asgn);
                 }
             }

@@ -107,14 +107,6 @@ public:
             return res;
         }
 
-        friend bool operator==(const LabelMask &mask1, const LabelMask& mask2) {
-            BooleanVector tmp;
-            for (int i = 0; i < NUM_VECTORS; ++i) {
-                tmp |= (mask1.isMarked[i] ^ mask2.isMarked[i]);
-            }
-            return horizontal_or(tmp);
-        }
-
         // Returns the logical NOT of a mask.
         friend LabelMask operator~(const LabelMask &mask) {
             LabelMask res;

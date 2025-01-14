@@ -51,7 +51,6 @@ namespace karri {
                   vehWaitTimesPrefixSum(fleet.size()),
                   vehWaitTimesUntilDropoffsPrefixSum(fleet.size()),
                   numDropoffsPrefixSum(fleet.size()),
-                  legCost(fleet.size()),
                   stopIdToIdOfPrevStop(fleet.size(), INVALID_ID),
                   stopIdToPosition(fleet.size(), 0),
                   stopIdToLeeway(fleet.size(), 0),
@@ -226,7 +225,6 @@ namespace karri {
         std::pair<int, int>
         insert(const Assignment &asgn, const RequestStateT &requestState) {
             const auto vehId = asgn.vehicle->vehicleId;
-
             const auto &pickup = *asgn.pickup;
             const auto &dropoff = *asgn.dropoff;
             const int now = requestState.originalRequest.requestTime;
@@ -270,7 +268,7 @@ namespace karri {
                 ++dropoffIndex;
                 stableInsertion(vehId, pickupIndex, getUnusedStopId(), pos, stopIds, stopLocations,
                                 schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
-                                numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum, legCost);
+                                numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
                 stopLocations[start + pickupIndex] = pickup.loc;
                 schedArrTimes[start + pickupIndex] = schedDepTimes[start + pickupIndex - 1] + asgn.travelTimeToPickup;
                 schedDepTimes[start + pickupIndex] = std::max(schedArrTimes[start + pickupIndex] + InputConfig::getInstance().stopTime,
@@ -285,7 +283,7 @@ namespace karri {
 
             if (pickupIndex != dropoffIndex) {
                 // Propagate changes to minArrTime/minDepTime forward from inserted pickup stop until dropoff stop
-                KASSERT(asgn.travelTimeFromPickup >= 0);
+                assert(asgn.travelTimeFromPickup > 0);
                 propagateSchedArrAndDepForward(start + pickupIndex + 1, start + dropoffIndex, asgn.travelTimeFromPickup);
             }
 
@@ -297,8 +295,7 @@ namespace karri {
                 ++dropoffIndex;
                 stableInsertion(vehId, dropoffIndex, getUnusedStopId(),
                                 pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
-                                maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum,
-                                legCost);
+                                maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
                 stopLocations[start + dropoffIndex] = dropoff.loc;
                 schedArrTimes[start + dropoffIndex] =
                         schedDepTimes[start + dropoffIndex - 1] + asgn.travelTimeToDropoff;
@@ -407,7 +404,7 @@ namespace karri {
             const auto numDropoffsAtStart = numDropoffsPrefixSum[start];
             stableRemoval(vehId, 0,
                           pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
-                          maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum, legCost);
+                          maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
 
             const auto &startAfterRemoval = pos[vehId].start;
             const auto &endAfterRemoval = pos[vehId].end;
@@ -422,14 +419,14 @@ namespace karri {
         }
 
         // Creates an intermediate stop between stop 0 and stop 1 for a vehicle reroute at the given location.
-        void createIntermediateStopForReroute(const int vehId, const int location, const int now, const int depTime, const int costToRerouteLoc) {
+        void createIntermediateStopForReroute(const int vehId, const int location, const int now, const int depTime) {
             KASSERT(vehId >= 0);
             KASSERT(vehId < pos.size());
             KASSERT(pos[vehId].end - pos[vehId].start > 0);
             KASSERT(depTime >= now);
             stableInsertion(vehId, 1, getUnusedStopId(), pos, stopIds, stopLocations,
                             schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
-                            numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum, legCost);
+                            numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
             stopLocations[start + 1] = location;
@@ -440,9 +437,6 @@ namespace karri {
             numDropoffsPrefixSum[start + 1] = numDropoffsPrefixSum[start];
             vehWaitTimesPrefixSum[start + 1] = vehWaitTimesPrefixSum[start];
             vehWaitTimesUntilDropoffsPrefixSum[start + 1] = vehWaitTimesUntilDropoffsPrefixSum[start];
-            const int costFromRerouteLocToNextStop = legCost[start] - costToRerouteLoc;
-            legCost[start] = costToRerouteLoc;
-            legCost[start + 1] = costFromRerouteLocToNextStop;
 
             // Update mappings from the stop ids to ids of previous stop, to position in the route, to the leeway and
             // to the vehicle id.
@@ -527,7 +521,7 @@ namespace karri {
         // caused by inserting a pickup stop. Needs distance from stop at fromIdx - 1 to stop at fromIdx because that
         // distance cannot be inferred. Indices are direct indices in the 2D arrays.
         void propagateSchedArrAndDepForward(const int fromIdx, const int toIdx, const int distFromPrevOfFromIdx) {
-            assert(distFromPrevOfFromIdx >= 0);
+            assert(distFromPrevOfFromIdx > 0);
             int distPrevToCurrent = distFromPrevOfFromIdx;
             for (int l = fromIdx; l <= toIdx; ++l) {
                 schedArrTimes[l] = schedDepTimes[l - 1] + distPrevToCurrent;

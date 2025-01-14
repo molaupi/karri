@@ -43,9 +43,8 @@ namespace karri {
 
         RequestState(const CostCalculator &calculator)
                 : originalRequest(),
-                  directTravelTimeInFullVeh(-1),
-                  minDirectPDCost(-1),
-                  minDirectPDTravelTime(-1),
+                  directDistInFullVeh(-1),
+                  minDirectPDDist(-1),
                   pickups(),
                   dropoffs(),
                   calculator(calculator) {}
@@ -62,7 +61,7 @@ namespace karri {
 
         // Information about current request itself
         Request originalRequest;
-        int directTravelTimeInFullVeh;
+        int directDistInFullVeh;
         int minDirectPDCost;
         int minDirectPDTravelTime;
 
@@ -83,23 +82,23 @@ namespace karri {
         }
 
         int getOriginalReqMaxTripTime() const {
-            KASSERT(directTravelTimeInFullVeh >= 0);
-            return static_cast<int>(InputConfig::getInstance().alpha * static_cast<double>(directTravelTimeInFullVeh)) + InputConfig::getInstance().beta;
+            assert(directDistInFullVeh >= 0);
+            return static_cast<int>(InputConfig::getInstance().alpha * static_cast<double>(directDistInFullVeh)) + InputConfig::getInstance().beta;
         }
 
         int getPassengerArrAtPickup(const int pickupId) const {
-            KASSERT(pickupId < numPickups());
+            assert(pickupId < numPickups());
             return originalRequest.requestTime + pickups[pickupId].walkingDist;
         }
 
         int getMaxPDTripTime(const int pickupId, const int dropoffId) const {
-            KASSERT(pickupId < numPickups() && dropoffId < numDropoffs());
-            KASSERT(directTravelTimeInFullVeh >= 0);
+            assert(pickupId < numPickups() && dropoffId < numDropoffs());
+            assert(directDistInFullVeh >= 0);
             return getOriginalReqMaxTripTime() - (pickups[pickupId].walkingDist + dropoffs[dropoffId].walkingDist);
         }
 
         int getMaxArrTimeAtDropoff(const int pickupId, const int dropoffId) const {
-            KASSERT(pickupId < numPickups() && dropoffId < numDropoffs());
+            assert(pickupId < numPickups() && dropoffId < numDropoffs());
             return getPassengerArrAtPickup(pickupId) + getMaxPDTripTime(pickupId, dropoffId);
         }
 
@@ -131,7 +130,7 @@ namespace karri {
         }
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
-            KASSERT(calculator.calc(asgn, *this) == cost);
+            assert(calculator.calc(asgn, *this) == cost);
 
             if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
                                     breakCostTie(asgn, bestAssignment)))) {
@@ -165,9 +164,8 @@ namespace karri {
             perfStats.clear();
 
             originalRequest = {};
-            directTravelTimeInFullVeh = INFTY;
-            minDirectPDCost = INFTY;
-            minDirectPDTravelTime = INFTY;
+            directDistInFullVeh = INFTY;
+            minDirectPDDist = INFTY;
             pickups.clear();
             dropoffs.clear();
 

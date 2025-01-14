@@ -83,7 +83,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
-                BucketEntryWithLeeway entry = {curStopId, distToV[0], travelTimes[v], curLeeway};
+                auto entry = BucketEntryWithLeeway(curStopId, distToV[0], travelTimes[v], curLeeway);
                 bucketContainer.insert(v, entry);
                 ++verticesVisited;
                 return false;
@@ -128,12 +128,12 @@ namespace karri {
                   sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
                   travelTimes(inputGraph.numVertices()),
                   forwardSearchFromNewStop(
-                          chEnv.getForwardSearch(dij::CompoundCriterion(PruneIfTravelTimeExceedsLeeway(travelTimes, currentLeeway),
-                                                  GenerateEntry(sourceBuckets, travelTimes, curStopId, currentLeeway, numVerticesVisited)),
+                          chEnv.getForwardSearch({PruneIfTravelTimeExceedsLeeway(travelTimes, currentLeeway),
+                                                  GenerateEntry(sourceBuckets, travelTimes, curStopId, currentLeeway, numVerticesVisited)},
                                                  {}, UpdateTravelTimeCallback(ch.upwardGraph(), travelTimes))),
                   reverseSearchFromNewStop(
-                          chEnv.getReverseSearch(dij::CompoundCriterion(PruneIfTravelTimeExceedsLeeway(travelTimes, currentLeeway),
-                                                  GenerateEntry(targetBuckets, travelTimes, curStopId, currentLeeway, numVerticesVisited)),
+                          chEnv.getReverseSearch({PruneIfTravelTimeExceedsLeeway(travelTimes, currentLeeway),
+                                                  GenerateEntry(targetBuckets, travelTimes, curStopId, currentLeeway, numVerticesVisited)},
                                                  {}, UpdateTravelTimeCallback(ch.downwardGraph(), travelTimes))),
                   curStopId(INVALID_ID),
                   currentLeeway(INFTY),

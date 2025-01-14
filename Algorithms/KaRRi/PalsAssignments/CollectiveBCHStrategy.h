@@ -41,6 +41,7 @@ namespace karri::PickupAfterLastStopStrategies {
     template<typename InputGraphT,
             typename CHEnvT,
             typename LastStopBucketsEnvT,
+            typename VehicleToPDLocQueryT,
             typename PDDistancesT,
             typename FallbackLabelSetT>
     class CollectiveBCHStrategy {
@@ -54,6 +55,7 @@ namespace karri::PickupAfterLastStopStrategies {
         CollectiveBCHStrategy(const InputGraphT &inputGraph,
                               const Fleet &fleet,
                               const CHEnvT &chEnv,
+                              VehicleToPDLocQueryT &vehicleToPDLocQuery,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               PDDistancesT &pdDistances,
                               const CostCalculator &calculator,
@@ -67,6 +69,7 @@ namespace karri::PickupAfterLastStopStrategies {
                   requestState(requestState),
                   minCostSearch(inputGraph, fleet, chEnv, routeState, pdDistances, calculator, lastStopBucketsEnv,
                                 requestState),
+                  vehicleToPDLocQuery(vehicleToPDLocQuery),
                   pdDistances(pdDistances),
                   fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, pdDistances, routeState,
                                    requestState, minCostSearch.getUpperBoundCostWithHardConstraints()) {}
@@ -75,6 +78,18 @@ namespace karri::PickupAfterLastStopStrategies {
 
             auto &stats = requestState.stats().palsAssignmentsStats;
             Timer timer;
+
+
+            // Find out if any pickup after any last stop can plausibly lead to a better assignment than the best known.
+            // First lower bound: Only the minimum PD distance
+            int costLowerBound = calculator.calcCostLowerBoundForPickupAfterLastStopIndependentOfVehicle(0,
+                                                                                                         requestState.minDirectPDDist,
+                                                                                                         requestState);
+            if (costLowerBound > requestState.getBestCost())
+                return;
+
+            const auto colInitTime = timer.elapsed<std::chrono::nanoseconds>();
+            stats.collective_initializationTime += colInitTime;
 
             minCostSearch.run(requestState.getBestCost());
 
@@ -98,12 +113,12 @@ namespace karri::PickupAfterLastStopStrategies {
             if (!asgn.vehicle)
                 return;
 
-            const auto totalDetour = asgn.travelTimeToPickup + InputConfig::getInstance().stopTime + asgn.travelTimeToDropoff + InputConfig::getInstance().stopTime;
+            const auto totalDetour = asgn.costToPickup + InputConfig::getInstance().stopTime + asgn.costToDropoff + InputConfig::getInstance().stopTime;
             using time_utils::isServiceTimeConstraintViolated;
             if (!isServiceTimeConstraintViolated(*asgn.vehicle, requestState, totalDetour, routeState)) {
                 // If assignment found by collective search adheres to service time constraint, we have found the
                 // best PALS assignment.
-                KASSERT(calculator.calc(asgn, requestState) == minCost);
+                assert(calculator.calc(asgn, requestState) == minCost);
                 requestState.tryAssignmentWithKnownCost(asgn, minCost);
 
                 const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -130,6 +145,7 @@ namespace karri::PickupAfterLastStopStrategies {
         RequestState &requestState;
 
         MinCostPairAfterLastStopQueryInst minCostSearch;
+        VehicleToPDLocQueryT &vehicleToPDLocQuery;
 
         PDDistancesT &pdDistances;
 

@@ -48,6 +48,9 @@ namespace karri {
         int fullVehLoc = INVALID_EDGE; // Location in full vehicle road network
         int psgLoc = INVALID_EDGE; // Location in passenger road network
         int walkingDist = INFTY; // Walking time from origin to this pickup or from this dropoff to destination.
+
+        int vehDistToCenter = INFTY; // Vehicle driving time from this pickup/dropoff to the origin/destination.
+        int vehDistFromCenter = INFTY; // Vehicle driving time from origin/destination to this pickup/dropoff.
     };
 
 
