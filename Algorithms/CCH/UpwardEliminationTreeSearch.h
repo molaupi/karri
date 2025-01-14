@@ -55,7 +55,7 @@ namespace elimintree {
 
 // Forward declarations for friend
 namespace karri {
-    template<typename, typename, typename>
+    template<typename, typename, bool>
     class EllipticBucketsEnvironment;
 }
 
@@ -73,7 +73,7 @@ class UpwardEliminationTreeSearch {
     friend
     class EliminationTreeQuery;
 
-    template<typename, typename, typename>
+    template<typename, typename, bool>
     friend
     class karri::EllipticBucketsEnvironment;
 

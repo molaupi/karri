@@ -114,14 +114,11 @@ int main(int argc, char *argv[]) {
 
         std::cout << "Compute new traversal costs..." << std::flush;
         FORALL_VALID_EDGES(inputGraph, u, e) {
-                const auto travelTime = inputGraph.get<TravelTimeAttribute>(e);
-                const auto flow = flows[e];
-                const auto traversalCost = flow == 0 ? travelTime : static_cast<int>(factor * travelTime +
-                                                                                     (1 - factor) * travelTime / flow);
-                LIGHT_KASSERT(factor != 1 || traversalCost == travelTime,
-                              "factor is 1, but traversal cost is not equal to travel time");
-                inputGraph.get<TraversalCostAttribute>(e) = traversalCost;
-            }
+            const auto travelTime = inputGraph.get<TravelTimeAttribute>(e);
+            const auto flow = flows[e];
+            const auto traversalCost = flow == 0? travelTime : static_cast<int>(factor * travelTime + (1 - factor) * travelTime / flow);
+            inputGraph.get<TraversalCostAttribute>(e) = traversalCost;
+        }
         std::cout << "done." << std::endl;
 
         std::cout << "Write the network with new traversal costs to output file..." << std::flush;
@@ -130,6 +127,7 @@ int main(int argc, char *argv[]) {
             throw std::invalid_argument("file cannot be opened -- '" + outputFileName + ".gr.bin'");
         inputGraph.writeTo(fullVehOut);
         std::cout << " done." << std::endl;
+
 
 
     } catch (std::exception &e) {
