@@ -29,9 +29,7 @@ $binaryDir/Launchers/RunP2PAlgo -a CH -g $inputDir/Graphs/${veh_name}.gr.bin -h 
 meanTripTimeInOriginalRequests=$(awk -F',' 'NR>1 {sum += $1; ++n} END {print sum/n}' $inputDir/Requests/${reqBaseName}_direct_travel_times.csv)
 meanTripTimeInOriginalRequests=$(printf "%.0f\n" "$meanTripTimeInOriginalRequests")
 echo "Mean trip time in original requests: $meanTripTimeInOriginalRequests"
-numODPairs=$(wc -l < ${requestsFile}.csv)
-let "numODPairs = $numODPairs - 1"
-$binaryDir/RawData/GenerateODPairs -n $numODPairs -d $meanTripTimeInOriginalRequests -geom -psg -g $inputDir/Graphs/${veh_name}.gr.bin -a $inputDir/Boundaries/${fullNetworkName}_Inner.poly -o $inputDir/ODPairs/${reqBaseName}_synthetic_OD.csv
+$binaryDir/RawData/GenerateODPairs -n $(wc -l < ${requestsFile}.csv) -d $meanTripTimeInOriginalRequests -geom -psg -g $inputDir/Graphs/${veh_name}.gr.bin -a $inputDir/Boundaries/${fullNetworkName}_Inner.poly -o $inputDir/ODPairs/${reqBaseName}_synthetic_OD.csv
 $binaryDir/RawData/TransformLocations -src-g $inputDir/Graphs/${veh_name}.gr.bin -tar-g $inputDir/Graphs/${veh_name}.gr.bin -psg -p $inputDir/ODPairs/${reqBaseName}_synthetic_OD.csv -in-repr vertex-id -out-repr edge-id -o $inputDir/ODPairs/${reqBaseName}_synthetic_OD.csv
 $binaryDir/RawData/DrawRandomDepartureTimes -p $inputDir/ODPairs/${reqBaseName}_synthetic_OD.csv -t ${requestsFile}.csv -o $inputDir/Requests/${reqBaseName}_synthetic
 
