@@ -49,7 +49,7 @@ public:
 
     // Overload for POD attribute types
     template<typename AttrType,
-            typename = std::enable_if<std::is_pod_v<AttrType>>>
+            typename = std::enable_if<std::is_standard_layout_v<AttrType> && std::is_trivial_v<AttrType>>>
     void
     writeAttribute(const AlignedVector<AttrType> &values, const std::string &attrName) {
         if (contains(attrsToIgnore.begin(), attrsToIgnore.end(), attrName))

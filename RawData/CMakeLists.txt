@@ -25,36 +25,36 @@
 
 add_executable(BuildTrafficFlowBasedSubgraph BuildTrafficFlowBasedSubgraph.cc)
 target_compile_definitions(BuildTrafficFlowBasedSubgraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert ${RoutingKit_LIBRARY} kassert)
+target_link_libraries(BuildTrafficFlowBasedSubgraph PRIVATE kassert fast_cpp_csv_parser routingkit)
 
 add_executable(ComputeFreeFlowFlows ComputeFreeFlowFlows.cc)
 target_compile_definitions(ComputeFreeFlowFlows PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(ComputeFreeFlowFlows ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_link_libraries(ComputeFreeFlowFlows proj routingkit kassert)
 
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(ConvertGraph PRIVATE ${FULL_WARNINGS})
-target_link_libraries(ConvertGraph proj routingkit kassert rapidxml fast_cpp_csv_parser)
+target_link_libraries(ConvertGraph routingkit proj kassert rapidxml fast_cpp_csv_parser)
 
 add_executable(FlowsRoutingKitToCsv FlowsRoutingKitToCsv.cc)
 target_compile_definitions(FlowsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(FlowsRoutingKitToCsv ${PROJ_LIBRARY} ${RoutingKit_LIBRARY} kassert ${BOOST_LIBRARIES})
+target_link_libraries(FlowsRoutingKitToCsv proj routingkit kassert fast_cpp_csv_parser)
 
 add_executable(GenerateGeoJsonForFlows GenerateGeoJsonForFlows.cc)
 target_compile_definitions(GenerateGeoJsonForFlows PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForFlows PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
+target_link_libraries(GenerateGeoJsonForFlows PRIVATE nlohmann_json::nlohmann_json kassert)
 
 add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
 target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForGraph PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
+target_link_libraries(GenerateGeoJsonForGraph PRIVATE nlohmann_json::nlohmann_json kassert fast_cpp_csv_parser)
 
 add_executable(GenerateGeoJsonForODPairs GenerateGeoJsonForODPairs.cc)
 target_compile_definitions(GenerateGeoJsonForODPairs PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForODPairs PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
+target_link_libraries(GenerateGeoJsonForODPairs PRIVATE nlohmann_json::nlohmann_json kassert)
 
 add_executable(GenerateGeoJsonForVehicles GenerateGeoJsonForVehicles.cc)
 target_compile_definitions(GenerateGeoJsonForVehicles PRIVATE CSV_IO_NO_THREAD)
-target_link_libraries(GenerateGeoJsonForVehicles PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
+target_link_libraries(GenerateGeoJsonForVehicles PRIVATE nlohmann_json::nlohmann_json kassert)
 
 add_executable(GenerateODPairs GenerateODPairs.cc)
 target_compile_definitions(GenerateODPairs PRIVATE CSV_IO_NO_THREAD)
@@ -88,3 +88,8 @@ add_executable(CheckExistingAttributesInNetworkFile CheckExistingAttributesInNet
 target_compile_definitions(CheckExistingAttributesInNetworkFile PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(CheckExistingAttributesInNetworkFile PRIVATE ${FULL_WARNINGS})
 target_link_libraries(CheckExistingAttributesInNetworkFile kassert fast_cpp_csv_parser)
+
+add_executable(ODPairsCsvToRoutingKit ODPairsCsvToRoutingKit.cc)
+target_compile_definitions(ODPairsCsvToRoutingKit PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(ODPairsCsvToRoutingKit PRIVATE ${FULL_WARNINGS})
+target_link_libraries(ODPairsCsvToRoutingKit routingkit kassert fast_cpp_csv_parser)

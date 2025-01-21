@@ -46,7 +46,9 @@ class LogManager {
     auto iter = loggers.find(name);
     if (iter == loggers.end()) {
       iter = loggers.emplace(name, LoggerT(baseFileName + name)).first;
-      assert(iter->second);
+      if (!iter->second)
+          throw std::runtime_error("Cannot create logger at " + baseFileName + name + "!");
+//      assert(iter->second);
       iter->second << header;
     }
     return iter->second;

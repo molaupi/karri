@@ -24,6 +24,9 @@
 
 
 #pragma once
+
+#include "FindClosestPDLocInVehicleNetworkQuery.h"
+
 namespace karri {
 
 // Initializes the request state for a new request.
@@ -133,7 +136,10 @@ namespace karri {
 
         RequestState &requestState;
 
-        FindPDLocsInRadiusQuery<PsgInputGraphT> findPdLocsInRadiusQuery;
+        using PdLocsQuery = FindPDLocsInRadiusQuery<PsgInputGraphT>;
+//        using PdLocsQuery = FindClosestPDLocInVehicleNetworkQuery<PsgInputGraphT>;
+
+        PdLocsQuery findPdLocsInRadiusQuery;
         VehicleToPDLocQueryT &vehicleToPdLocQuery;
 
     };

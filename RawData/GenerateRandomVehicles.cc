@@ -90,6 +90,9 @@ int main(int argc, char *argv[]) {
                     eligibleEdges.push_back(e);
             }
             std::cout << " done.\n";
+        } else {
+            eligibleEdges.resize(inputGraph.numEdges());
+            std::iota(eligibleEdges.begin(), eligibleEdges.end(), 0);
         }
         eligibleEdges.shrink_to_fit();
 

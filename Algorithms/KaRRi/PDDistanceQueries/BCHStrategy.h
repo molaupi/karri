@@ -151,14 +151,9 @@ namespace karri::PDDistanceQueryStrategies {
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
         PDDistancesT run() {
-            assert(requestState.pickups[0].loc == requestState.originalRequest.origin
-                   && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
 
             PDDistancesT pdDistances(requestState.numPickups(), requestState.numDropoffs());
-
-            // Initialize distance from origin to dropoff
-            pdDistances.updateDistanceIfSmaller(0, 0, requestState.directDistInFullVeh);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().pdDistancesStats.initializationTime += time;
@@ -166,11 +161,6 @@ namespace karri::PDDistanceQueryStrategies {
 
             // set curPdDistances to allow callback from BCH searches to write distances
             curPdDistances = &pdDistances;
-
-            if (requestState.numPickups() == 1 && requestState.numDropoffs() == 1) {
-                requestState.minDirectPDDist = requestState.directDistInFullVeh;
-                return pdDistances;
-            }
 
             const auto numDropoffSearches = requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
             dropoffBuckets.init(numDropoffSearches);
