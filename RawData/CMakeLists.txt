@@ -36,6 +36,12 @@ target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(ConvertGraph PRIVATE ${FULL_WARNINGS})
 target_link_libraries(ConvertGraph routingkit proj kassert rapidxml fast_cpp_csv_parser)
 
+
+add_executable(ExtractAttributesIntoSeparateFiles ExtractAttributesIntoSeparateFiles.cc)
+target_compile_definitions(ExtractAttributesIntoSeparateFiles PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(ExtractAttributesIntoSeparateFiles PRIVATE ${FULL_WARNINGS})
+target_link_libraries(ExtractAttributesIntoSeparateFiles kassert fast_cpp_csv_parser)
+
 add_executable(FlowsRoutingKitToCsv FlowsRoutingKitToCsv.cc)
 target_compile_definitions(FlowsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(FlowsRoutingKitToCsv proj routingkit kassert fast_cpp_csv_parser)
@@ -93,3 +99,8 @@ add_executable(ODPairsCsvToRoutingKit ODPairsCsvToRoutingKit.cc)
 target_compile_definitions(ODPairsCsvToRoutingKit PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(ODPairsCsvToRoutingKit PRIVATE ${FULL_WARNINGS})
 target_link_libraries(ODPairsCsvToRoutingKit routingkit kassert fast_cpp_csv_parser)
+
+
+add_executable(WriteIdentityMappingAsBinaryFile WriteIdentityMappingAsBinaryFile.cc)
+target_compile_options(WriteIdentityMappingAsBinaryFile PRIVATE ${FULL_WARNINGS})
+target_link_libraries(WriteIdentityMappingAsBinaryFile kassert fast_cpp_csv_parser)

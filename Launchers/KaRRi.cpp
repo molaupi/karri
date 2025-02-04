@@ -117,12 +117,24 @@
 
 inline void printUsage() {
     std::cout <<
-              "Usage: karri -full-veh-g <vehicle network> -red-veh-g <vehicle subnetwork> -psg-g <passenger network> -r <requests> -v <vehicles> -o <file>\n"
+              "Usage: karri -g <network base path> -r <requests> -v <vehicles> -o <file>\n"
               "Runs Karlsruhe Rapid Ridesharing (KaRRi) simulation with given vehicle and passenger road networks,\n"
               "requests, and vehicles. Writes output files to specified base path."
-              "  -full-veh-g <file>     full vehicle road network in binary format.\n"
-              "  -red-veh-g <file>      reduced vehicle road network (subgraph) in binary format\n"
-              "  -psg-g <file>          passenger road (and path) network in binary format.\n"
+              "  -g <path>              base path to relevant network files in binary format. Expects:\n"
+              "                             <path>.<g-full-name>.gr.bin  -- full vehicle network (s. -g-full-name)\n"
+              "                             <path>.<g-psg-name>.gr.bin   -- passenger network (s. -g-psg-name)\n"
+              "                             <path>.<g-core-name>.gr.bin  -- core subnetwork of vehicle network (only if -g-core-name is set, s. -g-core-name)\n"
+              "                           Also expects following mappings between edges of networks:\n"
+              "                             <path>.map.<g-full-name>.<g-psg-name>.bin\n"
+              "                             <path>.map.<g-full-name>.<g-core-name>.bin (only if -g-core-name is set)\n"
+              "                             <path>.map.<g-psg-name>.<g-full-name>.bin\n"
+              "                             <path>.map.<g-psg-name>.<g-core-name>.bin (only if -g-core-name is set)\n"
+              "                             <path>.map.<g-core-name>.<g-full-name>.bin (only if -g-core-name is set)\n"
+              "                             <path>.map.<g-core-name>.<g-psg-name>.bin (only if -g-core-name is set)\n"
+              "  -g-full-name <name>    specify file name of full vehicle network of study area. Appended to network path (s. -g)\n"
+              "  -g-psg-name <name>     specify file name of passenger network of study area (e.g. pedestrian paths). Appended to network path (s. -g)\n"
+              "  -g-core-name <name>    optional: specify file name of core subnetwork of vehicle network. Appended to network path (s. -g).\n"
+              "                                   If omitted, the core network is set to the full network.\n"
               "  -r <file>              requests in CSV format.\n"
               "  -v <file>              vehicles in CSV format.\n"
               "  -s <sec>               stop time (in s). (dflt: 60s)\n"
@@ -134,16 +146,28 @@ inline void printUsage() {
               "  -max-num-p <int>       max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
               "  -max-num-d <int>       max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
               "  -always-veh            if set, the rider is not allowed to walk to their destination without a vehicle trip.\n"
-              "  -full-veh-h <file>     contraction hierarchy for the full vehicle network in binary format.\n"
-              "  -red-veh-h <file>      contraction hierarchy for the reduced vehicle network in binary format.\n"
-              "  -psg-h <file>          contraction hierarchy for the passenger network in binary format.\n"
-              "  -full-veh-d <file>     separator decomposition for the full vehicle network in binary format (needed for CCHs).\n"
-              "  -red-veh-d <file>      separator decomposition for the reduced vehicle network in binary format (needed for CCHs).\n"
-              "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
+              "  -h <path>              base path to contraction hierarchies of relevant networks in binary format. Expects:\n"
+              "                             <path>.<g-full-name>.time.ch.bin\n"
+              "                             <path>.<g-psg-name>.time.ch.bin\n"
+              "                             <path>.<g-core-name>.time.ch.bin\n"
+              "  -d <path>              base path to separator decompositions of relevant networks in binary format. Expects:\n"
+              "                             <path>.<g-full-name>.sep.bin\n"
+              "                             <path>.<g-psg-name>.sep.bin\n"
+              "                             <path>.<g-core-name>.sep.bin\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
               "  -help                  show usage help text.\n";
 }
+
+std::vector<int> readEdgeMappingFromFile(const std::string& path) {
+    std::vector<int> edgeMapping;
+    std::ifstream mappingFile(path, std::ios::binary);
+    if (!mappingFile.good())
+        throw std::invalid_argument("file not found -- '" + path + "'");
+    bio::read(mappingFile, edgeMapping);
+    return edgeMapping;
+}
+
 
 int main(int argc, char *argv[]) {
     using namespace karri;
@@ -168,14 +192,14 @@ int main(int argc, char *argv[]) {
         if (inputConfig.maxNumDropoffs == 0) inputConfig.maxNumDropoffs = INFTY;
         inputConfig.alpha = clp.getValue<double>("a", 1.7);
         inputConfig.beta = clp.getValue<int>("b", 120) * 10;
-        const auto fullVehicleNetworkFileName = clp.getValue<std::string>("full-veh-g");
-        const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
+        const auto networkBaseName = clp.getValue<std::string>("g");
+        const auto fullVehNetworkName = clp.getValue<std::string>("g-full-name");
+        const auto psgNetworkName = clp.getValue<std::string>("g-psg-name");
+        const auto coreVehNetworkName = clp.getValue<std::string>("g-core-name");
         const auto vehicleFileName = clp.getValue<std::string>("v");
         const auto requestFileName = clp.getValue<std::string>("r");
-        const auto fullVehHierarchyFileName = clp.getValue<std::string>("full-veh-h");
-        const auto psgHierarchyFileName = clp.getValue<std::string>("psg-h");
-        const auto vehSepDecompFileName = clp.getValue<std::string>("veh-d");
-        const auto psgSepDecompFileName = clp.getValue<std::string>("psg-d");
+        const auto hierarchyBaseName = clp.getValue<std::string>("h");
+        const auto sepDecompBaseName = clp.getValue<std::string>("d");
         const bool csvFilesInLoudFormat = clp.isSet("csv-in-LOUD-format");
         auto outputFileName = clp.getValue<std::string>("o");
         if (endsWith(outputFileName, ".csv"))
@@ -190,6 +214,7 @@ int main(int argc, char *argv[]) {
 
         // Read the full vehicle network from file.
         std::cout << "Reading full vehicle network from file... " << std::flush;
+        const auto fullVehicleNetworkFileName = networkBaseName + "." + fullVehNetworkName + ".gr.bin";
         using FullVehicleEdgeAttributes = EdgeAttrs<
                 EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, MapToEdgeInPsgAttribute, MapToEdgeInReducedVehAttribute, OsmRoadCategoryAttribute>;
         using FullVehicleInputGraph = StaticGraph<VertexAttributes, FullVehicleEdgeAttributes>;
@@ -206,26 +231,51 @@ int main(int argc, char *argv[]) {
                 fullVehInputGraph.edgeTail(e) = v;
                 fullVehInputGraph.edgeId(e) = e;
             }
+
+        // Read edge mapping from full vehicle network to passenger network from file and set attribute
+        const auto vehFullToPsgMappingFileName = networkBaseName + ".map." + fullVehNetworkName + "." + psgNetworkName + ".bin";
+        std::vector<int> vehFullToPsgMapping = readEdgeMappingFromFile(vehFullToPsgMappingFileName);
+        if (vehFullToPsgMapping.size() != fullVehInputGraph.numEdges())
+            throw std::invalid_argument("Number of mappings in " + vehFullToPsgMappingFileName + " does not equal number of edges in network.");
+        FORALL_VALID_EDGES(fullVehInputGraph, v, e) {
+                fullVehInputGraph.mapToEdgeInPsg(e) = vehFullToPsgMapping[e];
+            }
+
+        if (clp.isSet("g-core-name")) {
+            // Read edge mapping from full vehicle network to core vehicle network from file and set attribute
+            const auto vehFullToVehCoreMappingFileName = networkBaseName + ".map." + fullVehNetworkName + "." + coreVehNetworkName + ".bin";
+            std::vector<int> vehFullToVehCoreMapping = readEdgeMappingFromFile(vehFullToVehCoreMappingFileName);
+            if (vehFullToVehCoreMapping.size() != fullVehInputGraph.numEdges())
+                throw std::invalid_argument("Number of mappings in " + vehFullToVehCoreMappingFileName + " does not equal number of edges in network.");
+            FORALL_VALID_EDGES(fullVehInputGraph, v, e) {
+                    fullVehInputGraph.mapToEdgeInReducedVeh(e) = vehFullToVehCoreMapping[e];
+                }
+        } else {
+            // If no core network was set, treat full network as core network
+            FORALL_VALID_EDGES(fullVehInputGraph, v, e) {
+                    fullVehInputGraph.mapToEdgeInReducedVeh(e) = e;
+                }
+        }
+
         std::cout << "done.\n";
 
         using RedVehicleEdgeAttributes = EdgeAttrs<
                 EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, MapToEdgeInPsgAttribute, MapToEdgeInFullVehAttribute, OsmRoadCategoryAttribute>;
         using RedVehicleInputGraph = StaticGraph<VertexAttributes, RedVehicleEdgeAttributes>;
         std::unique_ptr<RedVehicleInputGraph> redVehInputGraphPtr;
-        if (!clp.isSet("red-veh-g")) {
+        if (!clp.isSet("g-core-name")) {
             std::cout << "Using full vehicle network as reduced vehicle network.\n";
             // If no reduced vehicle network is given, we use the full vehicle network as reduced vehicle network.
             redVehInputGraphPtr = std::make_unique<RedVehicleInputGraph>(fullVehInputGraph);
             FORALL_VALID_EDGES((*redVehInputGraphPtr), v, e) {
                     redVehInputGraphPtr->mapToEdgeInFullVeh(e) = e;
                 }
-            FORALL_VALID_EDGES(fullVehInputGraph, v, e) {
-                    fullVehInputGraph.mapToEdgeInReducedVeh(e) = e;
-                }
+                // mapping of edges to passenger network is copied when copying full network, so no need to set explicitly
         } else {
+            KASSERT(!coreVehNetworkName.empty());
             // Read the reduced vehicle network from file.
             std::cout << "Reading reduced vehicle network from file... " << std::flush;
-            const auto redVehicleNetworkFileName = clp.getValue<std::string>("red-veh-g");
+            const auto redVehicleNetworkFileName = networkBaseName + "." + coreVehNetworkName + ".gr.bin";
             std::ifstream redVehicleNetworkFile(redVehicleNetworkFileName, std::ios::binary);
             if (!redVehicleNetworkFile.good())
                 throw std::invalid_argument("file not found -- '" + redVehicleNetworkFileName + "'");
@@ -238,9 +288,28 @@ int main(int argc, char *argv[]) {
                     LIGHT_KASSERT(redVehInputGraphPtr->edgeId(e) == EdgeIdAttribute::defaultValue());
                     redVehInputGraphPtr->edgeTail(e) = v;
                     redVehInputGraphPtr->edgeId(e) = e;
+                }
+
+            // Read edge mapping from core vehicle network to full vehicle network from file and set attribute
+            const auto vehCoreToVehFullMappingFileName = networkBaseName + ".map." + coreVehNetworkName + "." + fullVehNetworkName + ".bin";
+            std::vector<int> vehCoreToVehFullMapping = readEdgeMappingFromFile(vehCoreToVehFullMappingFileName);
+            if (vehCoreToVehFullMapping.size() != redVehInputGraphPtr->numEdges())
+                throw std::invalid_argument("Number of mappings in " + vehCoreToVehFullMappingFileName + " does not equal number of edges in network.");
+            FORALL_VALID_EDGES((*redVehInputGraphPtr), v, e) {
+                    redVehInputGraphPtr->mapToEdgeInFullVeh(e) = vehCoreToVehFullMapping[e];
                     LIGHT_KASSERT(redVehInputGraphPtr->mapToEdgeInFullVeh(e) != MapToEdgeInFullVehAttribute::defaultValue());
                     LIGHT_KASSERT(fullVehInputGraph.mapToEdgeInReducedVeh(redVehInputGraphPtr->mapToEdgeInFullVeh(e)) == e, "mapToEdgeInFullVeh(e) = " << redVehInputGraphPtr->mapToEdgeInFullVeh(e));
                 }
+
+            // Read edge mapping from core vehicle network to passenger network from file and set attribute
+            const auto vehCoreToPsgMappingFileName = networkBaseName + ".map." + coreVehNetworkName + "." + psgNetworkName + ".bin";
+            std::vector<int> vehCoreToPsgMapping = readEdgeMappingFromFile(vehCoreToPsgMappingFileName);
+            if (vehCoreToPsgMapping.size() != redVehInputGraphPtr->numEdges())
+                throw std::invalid_argument("Number of mappings in " + vehCoreToPsgMappingFileName + " does not equal number of edges in network.");
+            FORALL_VALID_EDGES((*redVehInputGraphPtr), v, e) {
+                    redVehInputGraphPtr->mapToEdgeInPsg(e) = vehCoreToPsgMapping[e];
+                }
+
             std::cout << "done.\n";
         }
 
@@ -251,6 +320,7 @@ int main(int argc, char *argv[]) {
 
         // Read the passenger network from file.
         std::cout << "Reading passenger network from file... " << std::flush;
+        const auto passengerNetworkFileName = networkBaseName + "." + psgNetworkName + ".gr.bin";
         using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, MapToEdgeInFullVehAttribute, MapToEdgeInReducedVehAttribute, TravelTimeAttribute>;
         using PsgInputGraph = StaticGraph<VertexAttributes, PsgEdgeAttributes>;
         std::ifstream psgNetworkFile(passengerNetworkFileName, std::ios::binary);
@@ -265,13 +335,36 @@ int main(int argc, char *argv[]) {
                 LIGHT_KASSERT(psgInputGraph.edgeId(e) == INVALID_ID);
                 psgInputGraph.edgeTail(e) = v;
                 psgInputGraph.edgeId(e) = e;
+        }
 
+        // Read edge mapping from passenger network to full vehicle network from file and set attribute
+        const auto psgToVehFullMappingFileName = networkBaseName + ".map." + psgNetworkName + "." + fullVehNetworkName + ".bin";
+        std::vector<int> psgToVehFullMapping = readEdgeMappingFromFile(psgToVehFullMappingFileName);
+        if (psgToVehFullMapping.size() != psgInputGraph.numEdges())
+            throw std::invalid_argument("Number of mappings in " + psgToVehFullMappingFileName + " does not equal number of edges in network.");
+        FORALL_VALID_EDGES(psgInputGraph, v, e) {
+                psgInputGraph.mapToEdgeInFullVeh(e) = psgToVehFullMapping[e];
+            }
+
+        if (clp.isSet("g-core-name")) {
+            // Read edge mapping from passenger network to core vehicle network from file and set attribute
+            const auto psgToVehCoreMappingFileName = networkBaseName + ".map." + psgNetworkName + "." + coreVehNetworkName + ".bin";
+            std::vector<int> psgToVehCoreMapping = readEdgeMappingFromFile(psgToVehCoreMappingFileName);
+            if (psgToVehCoreMapping.size() != psgInputGraph.numEdges())
+                throw std::invalid_argument("Number of mappings in " + psgToVehCoreMappingFileName + " does not equal number of edges in network.");
+            FORALL_VALID_EDGES(psgInputGraph, v, e) {
+                    psgInputGraph.mapToEdgeInReducedVeh(e) = psgToVehCoreMapping[e];
+                }
+        } else {
+            // If there is no explicitly set reduced vehicle network, we use the full vehicle network as reduced vehicle network. Set the mapping accordingly.
+            FORALL_VALID_EDGES(psgInputGraph, v, e) {
+                    psgInputGraph.mapToEdgeInReducedVeh(e) = psgToVehFullMapping[e];
+                }
+        }
+
+        // Validate edge mappings
+        FORALL_VALID_EDGES(psgInputGraph, v, e) {
                 const int eInFullVehGraph = psgInputGraph.mapToEdgeInFullVeh(e);
-                // If there is no explicit reduced vehicle network, we use the full vehicle network as reduced vehicle network. Set the mapping accordingly.
-                if (!clp.isSet("red-veh-g"))
-                    psgInputGraph.mapToEdgeInReducedVeh(e) = eInFullVehGraph;
-
-
 
                 if (eInFullVehGraph != MapToEdgeInFullVehAttribute::defaultValue()) {
                     ++numEdgesWithMappingToCar;
@@ -378,13 +471,14 @@ int main(int argc, char *argv[]) {
         // Prepare vehicle CH environment
         using VehCHEnv = CCHEnvironment<VehicleInputGraph, TravelTimeAttribute>;
         std::unique_ptr<VehCHEnv> vehChEnv;
-        if (vehSepDecompFileName.empty()) {
+        if (sepDecompBaseName.empty()) {
             std::cout << "Building Separator Decomposition and CCH... " << std::flush;
             vehChEnv = std::make_unique<VehCHEnv>(vehicleInputGraph);
             std::cout << "done.\n";
         } else {
             // Read the separator decomposition from file, construct and customize CCH.
             std::cout << "Reading Seperator Decomposition from file and building CCH... " << std::flush;
+            const auto vehSepDecompFileName = sepDecompBaseName + ".veh_full.sep.bin";
             std::ifstream vehSepDecompFile(vehSepDecompFileName, std::ios::binary);
             if (!vehSepDecompFile.good())
                 throw std::invalid_argument("file not found -- '" + vehSepDecompFileName + "'");
@@ -398,13 +492,14 @@ int main(int argc, char *argv[]) {
         // Prepare passenger CH environment
         using PsgCHEnv = CCHEnvironment<PsgInputGraph , TravelTimeAttribute>;
         std::unique_ptr<PsgCHEnv> psgChEnv;
-        if (psgSepDecompFileName.empty()) {
+        if (sepDecompBaseName.empty()) {
             std::cout << "Building Separator Decomposition and CCH... " << std::flush;
             psgChEnv = std::make_unique<PsgCHEnv >(psgInputGraph);
             std::cout << "done.\n";
         } else {
             // Read the separator decomposition from file, construct and customize CCH.
             std::cout << "Reading Seperator Decomposition from file and building CCH... " << std::flush;
+            const auto psgSepDecompFileName = sepDecompBaseName + ".psg.sep.bin";
             std::ifstream psgSepDecompFile(psgSepDecompFileName, std::ios::binary);
             if (!psgSepDecompFile.good())
                 throw std::invalid_argument("file not found -- '" + psgSepDecompFileName + "'");
@@ -419,12 +514,13 @@ int main(int argc, char *argv[]) {
         // Prepare full vehicle CH environment
         using FullVehCHEnv = CHEnvironment<FullVehicleInputGraph, TravelTimeAttribute>;
         std::unique_ptr<FullVehCHEnv> fullVehChEnv;
-        if (fullVehHierarchyFileName.empty()) {
+        if (hierarchyBaseName.empty()) {
             std::cout << "Building full vehicle CH... " << std::flush;
             fullVehChEnv = std::make_unique<FullVehCHEnv>(fullVehInputGraph);
             std::cout << "done.\n";
         } else {
             // Read the CH from file.
+            const auto fullVehHierarchyFileName = hierarchyBaseName + ".veh_full.time.ch.bin";
             std::cout << "Reading full vehicle CH from file... " << std::flush;
             std::ifstream fullVehHierarchyFile(fullVehHierarchyFileName, std::ios::binary);
             if (!fullVehHierarchyFile.good())
@@ -438,14 +534,14 @@ int main(int argc, char *argv[]) {
         // Prepare full vehicle CH environment
         using RedVehCHEnv = CHEnvironment<RedVehicleInputGraph, TravelTimeAttribute>;
         std::unique_ptr<RedVehCHEnv> redVehChEnv;
-        if (!clp.isSet("red-veh-g") || !clp.isSet("red-veh-h")) {
+        if (!clp.isSet("g-core-name") || hierarchyBaseName.empty()) {
             std::cout << "Building reduced vehicle CH... " << std::flush;
             redVehChEnv = std::make_unique<RedVehCHEnv>(redVehInputGraph);
             std::cout << "done.\n";
         } else {
             // Read the CH from file.
             std::cout << "Reading reduced vehicle CH from file... " << std::flush;
-            const auto redVehHierarchyFileName = clp.getValue<std::string>("red-veh-h");
+            const auto redVehHierarchyFileName = hierarchyBaseName + ".veh_subnetwork.time.ch.bin";
             std::ifstream redVehHierarchyFile(redVehHierarchyFileName, std::ios::binary);
             if (!redVehHierarchyFile.good())
                 throw std::invalid_argument("file not found -- '" + redVehHierarchyFileName + "'");
@@ -458,13 +554,14 @@ int main(int argc, char *argv[]) {
         // Prepare passenger CH environment
         using PsgCHEnv = CHEnvironment<PsgInputGraph, TravelTimeAttribute>;
         std::unique_ptr<PsgCHEnv> psgChEnv;
-        if (psgHierarchyFileName.empty()) {
+        if (hierarchyBaseName.empty()) {
             std::cout << "Building passenger CH... " << std::flush;
             psgChEnv = std::make_unique<PsgCHEnv>(psgInputGraph);
             std::cout << "done.\n";
         } else {
             // Read the passenger CH from file.
             std::cout << "Reading passenger CH from file... " << std::flush;
+            const auto psgHierarchyFileName = hierarchyBaseName + ".psg.time.ch.bin";
             std::ifstream psgHierarchyFile(psgHierarchyFileName, std::ios::binary);
             if (!psgHierarchyFile.good())
                 throw std::invalid_argument("file not found -- '" + psgHierarchyFileName + "'");
