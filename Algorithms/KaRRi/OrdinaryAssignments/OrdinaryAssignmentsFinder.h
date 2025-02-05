@@ -131,8 +131,8 @@ namespace karri {
 
             auto numAssignmentsTriedWithOrdinaryDropoff = 0;
 
-            const auto &numStops = routeState.numStopsOf(vehId);
-            const auto &stopLocations = routeState.stopLocationsFor(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
+            const auto stopLocations = routeState.stopLocationsFor(vehId);
 
             for (auto dropoffIt = startItInRegularDropoffs; dropoffIt < relevantDropoffs.end(); ++dropoffIt) {
                 const auto &dropoffEntry = *dropoffIt;
@@ -180,7 +180,7 @@ namespace karri {
                     continue;
 
                 const auto &veh = fleet[vehId];
-                const auto &stopLocations = routeState.stopLocationsFor(vehId);
+                const auto stopLocations = routeState.stopLocationsFor(vehId);
 
                 asgn.vehicle = &veh;
 

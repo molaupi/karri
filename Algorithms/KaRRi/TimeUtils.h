@@ -42,7 +42,7 @@ namespace karri::time_utils {
     static INLINE int getVehDepTimeAtStopForRequest(const int vehId, const int stopIdx, const RequestContext &context,
                                                     const RouteState &routeState) {
         const auto numStops = routeState.numStopsOf(vehId);
-        const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
+        const auto minDepTimes = routeState.schedDepTimesFor(vehId);
         return (numStops == 1 ? std::max(minDepTimes[0], context.originalRequest.requestTime) : minDepTimes[stopIdx]);
     }
 
@@ -125,8 +125,8 @@ namespace karri::time_utils {
     calcLengthOfLegStartingAt(const int stopIndex, const int vehicleId, const RouteState &routeState) {
         if (stopIndex + 1 == routeState.numStopsOf(vehicleId))
             return 0;
-        const auto &minDepTimes = routeState.schedDepTimesFor(vehicleId);
-        const auto &minArrTimes = routeState.schedArrTimesFor(vehicleId);
+        const auto minDepTimes = routeState.schedDepTimesFor(vehicleId);
+        const auto minArrTimes = routeState.schedArrTimesFor(vehicleId);
         return minArrTimes[stopIndex + 1] - minDepTimes[stopIndex];
     }
 
@@ -140,9 +140,9 @@ namespace karri::time_utils {
                         const bool dropoffAtExistingStop, const RouteState &routeState) {
         const auto pickupIndex = asgn.pickupStopIdx;
         const auto dropoffIndex = asgn.dropoffStopIdx;
-        const auto &minDepTimes = routeState.schedDepTimesFor(asgn.vehicle->vehicleId);
-        const auto &minArrTimes = routeState.schedArrTimesFor(asgn.vehicle->vehicleId);
-        const auto &vehWaitTimesPrefixSum = routeState.vehWaitTimesPrefixSumFor(asgn.vehicle->vehicleId);
+        const auto minDepTimes = routeState.schedDepTimesFor(asgn.vehicle->vehicleId);
+        const auto minArrTimes = routeState.schedArrTimesFor(asgn.vehicle->vehicleId);
+        const auto vehWaitTimesPrefixSum = routeState.vehWaitTimesPrefixSumFor(asgn.vehicle->vehicleId);
 
         if (pickupIndex == dropoffIndex) {
             return actualDepTimeAtPickup + asgn.distToDropoff;
@@ -166,7 +166,7 @@ namespace karri::time_utils {
     getTotalVehWaitTimeInInterval(const int vehId, const int fromIndex, const int toIndex,
                                   const RouteState &routeState) {
         if (fromIndex >= toIndex) return 0;
-        const auto &vehWaitTimesPrefixSum = routeState.vehWaitTimesPrefixSumFor(vehId);
+        const auto vehWaitTimesPrefixSum = routeState.vehWaitTimesPrefixSumFor(vehId);
         return vehWaitTimesPrefixSum[toIndex] - vehWaitTimesPrefixSum[fromIndex];
     }
 
@@ -308,9 +308,9 @@ namespace karri::time_utils {
         if (detourAtFromIndex == 0 || fromIndex == toIndex) {
             return 0;
         }
-        const auto &vehWaitTimePrefixSums = routeState.vehWaitTimesPrefixSumFor(vehId);
-        const auto &vehWaitTimesAtDropoffsPrefixSums = routeState.vehWaitTimesUntilDropoffsPrefixSumsFor(vehId);
-        const auto &numDropoffsPrefixSums = routeState.numDropoffsPrefixSumFor(vehId);
+        const auto vehWaitTimePrefixSums = routeState.vehWaitTimesPrefixSumFor(vehId);
+        const auto vehWaitTimesAtDropoffsPrefixSums = routeState.vehWaitTimesUntilDropoffsPrefixSumsFor(vehId);
+        const auto numDropoffsPrefixSums = routeState.numDropoffsPrefixSumFor(vehId);
 
         // We consider the interval sum of vehicle wait times between fromIndex and an existing dropoff of a
         // request r as a buffer to the added trip time for r since those vehicle wait times will now be used for
@@ -371,10 +371,10 @@ namespace karri::time_utils {
         const auto vehId = veh.vehicleId;
         const auto endServiceTime = veh.endOfServiceTime;
         const auto numStops = routeState.numStopsOf(vehId);
-        const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
-        const auto &minArrTimes = routeState.schedArrTimesFor(vehId);
-        const auto &maxArrTimes = routeState.maxArrTimesFor(vehId);
-        const auto &occupancies = routeState.occupanciesFor(vehId);
+        const auto minDepTimes = routeState.schedDepTimesFor(vehId);
+        const auto minArrTimes = routeState.schedArrTimesFor(vehId);
+        const auto maxArrTimes = routeState.maxArrTimesFor(vehId);
+        const auto occupancies = routeState.occupanciesFor(vehId);
 
         // If departure time at the last stop (which may be the time of issuing this request if the vehicle is currently
         // idling) is moved past the end of the service time by the total detour, the assignment violates the service
@@ -432,7 +432,7 @@ namespace karri::time_utils {
         const auto vehId = veh.vehicleId;
         const auto endServiceTime = veh.endOfServiceTime;
         const auto numStops = routeState.numStopsOf(vehId);
-        const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
+        const auto minDepTimes = routeState.schedDepTimesFor(vehId);
 
         return std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime) + residualDetourAtEnd >
                endServiceTime;
@@ -445,9 +445,9 @@ namespace karri::time_utils {
         const auto vehId = veh.vehicleId;
         const auto endServiceTime = veh.endOfServiceTime;
         const auto numStops = routeState.numStopsOf(vehId);
-        const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
-        const auto &minArrTimes = routeState.schedArrTimesFor(vehId);
-        const auto &maxArrTimes = routeState.maxArrTimesFor(vehId);
+        const auto minDepTimes = routeState.schedDepTimesFor(vehId);
+        const auto minArrTimes = routeState.schedArrTimesFor(vehId);
+        const auto maxArrTimes = routeState.maxArrTimesFor(vehId);
 
         // If departure time at the last stop (which may be the time of issuing this request) is moved past
         // the end of the service time by the pickup detour, the assignment violates the service time constraint.
@@ -478,9 +478,9 @@ namespace karri::time_utils {
         const auto vehId = veh.vehicleId;
         const auto endServiceTime = veh.endOfServiceTime;
         const auto numStops = routeState.numStopsOf(vehId);
-        const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
-        const auto &minArrTimes = routeState.schedArrTimesFor(vehId);
-        const auto &maxArrTimes = routeState.maxArrTimesFor(vehId);
+        const auto minDepTimes = routeState.schedDepTimesFor(vehId);
+        const auto minArrTimes = routeState.schedArrTimesFor(vehId);
+        const auto maxArrTimes = routeState.maxArrTimesFor(vehId);
 
         // If departure time at the last stop (which may be the time of issuing this request) is moved past
         // the end of the service time by the dropoff detour, the assignment violates the service time constraint.

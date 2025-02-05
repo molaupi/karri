@@ -55,8 +55,8 @@ namespace karri {
 
 
             const auto prevOrCurLoc = routeState.stopLocationsFor(vehId)[0];
-            const auto &schedDepTimes = routeState.schedDepTimesFor(vehId);
-            const auto &schedArrTimes = routeState.schedArrTimesFor(vehId);
+            const auto schedDepTimes = routeState.schedDepTimesFor(vehId);
+            const auto schedArrTimes = routeState.schedArrTimesFor(vehId);
 
             // Vehicle before the start of its service time is at its initial location and can leave at the start of its
             // service time at the earliest

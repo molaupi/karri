@@ -159,7 +159,7 @@ namespace karri {
 
         void reconstructPathOfRouteLeg(const int vehId) {
             // Called when departing stop 0, so we reconstruct the path of the leg to stop 0.
-            const auto &stopLoc = routeState.stopLocationsFor(vehId)[0];
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[0];
             legPath.clear();
             computePathBetweenEdgesAndAppend(lastEdgeOfPrevLeg[vehId], stopLoc, legPath);
         }

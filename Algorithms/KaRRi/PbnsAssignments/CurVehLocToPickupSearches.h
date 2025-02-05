@@ -315,7 +315,7 @@ namespace karri {
         }
 
         void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle) {
-            const auto &stopLocations = routeState.stopLocationsFor(vehicle.vehicleId);
+            const auto stopLocations = routeState.stopLocationsFor(vehicle.vehicleId);
             for (const auto &[pickupId, distFromPrevStopToPickup]: waitingQueue) {
                 if (stopLocations[0] != requestState.pickups[pickupId].loc) {
                     const int idx = vehicle.vehicleId * requestState.numPickups() + pickupId;

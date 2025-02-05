@@ -402,7 +402,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                         continue;
 
 
-                    const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[routeState.numStopsOf(vehId) - 1];
+                    const int depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[routeState.numStopsOf(vehId) - 1];
                     const int fullDistToDropoff = arrTimeAtDropoff - depTimeAtLastStop;
                     const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
                     insertLabelAtVehicleAndClean(vehId, labelAtVeh);

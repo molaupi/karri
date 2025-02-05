@@ -96,7 +96,7 @@ namespace karri {
             for (const auto &pdLocAtExistingStop: pdLocsAtExistingStops) {
                 const auto &vehId = pdLocAtExistingStop.vehId;
                 assert(pdLocAtExistingStop.stopIndex < routeState.numStopsOf(vehId));
-                const auto &stopId = routeState.stopIdsFor(vehId)[pdLocAtExistingStop.stopIndex];
+                const auto stopId = routeState.stopIdsFor(vehId)[pdLocAtExistingStop.stopIndex];
                 const auto &stopVertex = inputGraph.edgeHead(
                         routeState.stopLocationsFor(vehId)[pdLocAtExistingStop.stopIndex]);
                 allocateEntriesFor(stopId);

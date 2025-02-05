@@ -606,8 +606,8 @@ namespace karri::PickupAfterLastStopStrategies {
                         break;
 
                     const int &vehId = entry.targetId;
-                    const int &numStops = routeState.numStopsOf(vehId);
-                    const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1];
+                    const int numStops = routeState.numStopsOf(vehId);
+                    const int depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1];
                     const int fullDistToPickup = vehArrTimeAtPickup -  depTimeAtLastStop;
 
                     tryTentativeAssignment(vehId, fullDistToPickup, asgn);

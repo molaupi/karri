@@ -183,23 +183,23 @@ namespace karri {
         }
 
         // Returns the id of the vehicle whose route the stop with the given ID is currently part of.
-        int vehicleIdOf(const int stopId) const {
+        const int& vehicleIdOf(const int stopId) const {
             assert(stopId >= 0 && stopId < stopIdToPosition.size());
             return stopIdToVehicleId[stopId];
         }
 
         // Returns the id of the stop that comes before the stop with the given ID in the route of its vehicle.
-        int idOfPreviousStopOf(const int stopId) const {
+        const int& idOfPreviousStopOf(const int stopId) const {
             assert(stopId >= 0 && stopId < stopIdToIdOfPrevStop.size());
             return stopIdToIdOfPrevStop[stopId];
         }
 
-        int stopPositionOf(const int stopId) const {
+        const int& stopPositionOf(const int stopId) const {
             assert(stopId >= 0 && stopId < stopIdToPosition.size());
             return stopIdToPosition[stopId];
         }
 
-        int leewayOfLegStartingAt(const int stopId) const {
+        const int& leewayOfLegStartingAt(const int stopId) const {
             assert(stopId >= 0 && stopId < stopIdToLeeway.size());
             return stopIdToLeeway[stopId];
         }

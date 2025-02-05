@@ -123,9 +123,9 @@ namespace karri {
                 if (!vehiclesWithFeasibleDistances.contains(vehId))
                     continue;
 
-                const auto &numStops = routeState.numStopsOf(vehId);
-                const auto &stopIds = routeState.stopIdsFor(vehId);
-                const auto &occupancies = routeState.occupanciesFor(vehId);
+                const auto numStops = routeState.numStopsOf(vehId);
+                const auto stopIds = routeState.stopIdsFor(vehId);
+                const auto occupancies = routeState.occupanciesFor(vehId);
 
                 if (numStops <= 1)
                     continue;
@@ -248,9 +248,9 @@ namespace karri {
             // If this is the last stop in the route, we only consider this dropoff for ordinary assignments if it is at the
             // last stop. Similarly, if the vehicle is full after this stop, we can't perform the dropoff here unless the
             // dropoff coincides with the stop. A dropoff at an existing stop causes no detour, so it is always relevant.
-            const auto &numStops = routeState.numStopsOf(vehId);
-            const auto &occupancy = routeState.occupanciesFor(vehId)[stopIndex];
-            const auto &stopLocations = routeState.stopLocationsFor(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
+            const auto occupancy = routeState.occupanciesFor(vehId)[stopIndex];
+            const auto stopLocations = routeState.stopLocationsFor(vehId);
             assert(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
             if (stopIndex == numStops - 1 || occupancy + requestState.originalRequest.numRiders > veh.capacity)
                 return d.loc == stopLocations[stopIndex];

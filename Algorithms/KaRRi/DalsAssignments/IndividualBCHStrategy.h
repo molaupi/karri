@@ -217,8 +217,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                     continue;
                 }
 
-                const auto &numStops = routeState.numStopsOf(vehId);
-                const auto &occupancies = routeState.occupanciesFor(vehId);
+                const auto numStops = routeState.numStopsOf(vehId);
+                const auto occupancies = routeState.occupanciesFor(vehId);
                 const auto relevantPickupsInRevOrder = relevantOrdinaryPickups.relevantSpotsForInReverseOrder(vehId);
                 asgn.vehicle = &fleet[vehId];
                 asgn.dropoffStopIdx = numStops - 1;
