@@ -248,6 +248,25 @@ namespace karri {
             deleteBucketEntries(stopId, root, ch.downwardGraph(), targetBuckets);
         }
 
+        struct RankWithEntry {
+            int rank = INVALID_VERTEX;
+            int distance = INFTY;
+        };
+
+        std::vector<RankWithEntry> enumerateRanksWithSourceBucketEntries(const int vehId, const int stopIndex) {
+            const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
+            const int stopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
+            const int root = ch.rank(inputGraph.edgeHead(stopLoc));
+            return enumerateRanksWithEntries(stopId, root, ch.upwardGraph(), sourceBuckets);
+        }
+
+        std::vector<RankWithEntry> enumerateRanksWithTargetBucketEntries(const int vehId, const int stopIndex) {
+            const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
+            const int stopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
+            const int root = ch.rank(inputGraph.edgeTail(stopLoc));
+            return enumerateRanksWithEntries(stopId, root, ch.downwardGraph(), targetBuckets);
+        }
+
     private:
 
 
@@ -337,6 +356,28 @@ namespace karri {
             stats.elliptic_delete_time += time;
             stats.elliptic_delete_numVerticesVisited += numVerticesVisited;
             stats.elliptic_delete_numEntriesScanned += numEntriesScanned;
+        }
+
+        std::vector<RankWithEntry>
+        enumerateRanksWithEntries(const int stopId, const int root, const CH::SearchGraph &graph, BucketContainer &buckets) {
+            deleteSearchSpace.clear();
+            deleteSearchSpace.insert(root);
+            std::vector<RankWithEntry> ranksWithEntries;
+            for (auto it = deleteSearchSpace.begin(); it < deleteSearchSpace.end(); ++it) {
+                const auto &v = *it;
+                const auto bucket = buckets.getBucketOf(v);
+                for (const auto& entry : bucket) {
+                    if (entry.targetId == stopId) {
+                        FORALL_INCIDENT_EDGES(graph, v, e) {
+                            const auto w = graph.edgeHead(e);
+                            deleteSearchSpace.insert(w);
+                        }
+                        ranksWithEntries.push_back({v, entry.distToTarget});
+                        break;
+                    }
+                }
+            }
+            return ranksWithEntries;
         }
 
 

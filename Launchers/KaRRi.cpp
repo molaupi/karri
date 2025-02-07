@@ -68,6 +68,7 @@
 #include "Algorithms/KaRRi/AssignmentFinder.h"
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
+#include "Algorithms/KaRRi/EllipseReconstruction/DijkstraEllipseReconstructor.h"
 
 #ifdef KARRI_USE_CCHS
 #include "Algorithms/KaRRi/CCHEnvironment.h"
@@ -103,6 +104,7 @@
 #if KARRI_DALS_STRATEGY == KARRI_COL
 
 #include "Algorithms/KaRRi/DalsAssignments/CollectiveBCHStrategy.h"
+#include "Algorithms/KaRRi/EllipseReconstruction/CHEllipseReconstructor.h"
 
 #elif KARRI_DALS_STRATEGY == KARRI_IND
 
@@ -553,6 +555,12 @@ int main(int argc, char *argv[]) {
         RequestStateInitializerImpl requestStateInitializer(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
                                                             reqState, vehicleToPdLocQuery);
 
+        using DijkstraEllipseReconstructorImpl = DijkstraEllipseReconstructor<VehicleInputGraph>;
+        DijkstraEllipseReconstructorImpl dijkstraEllipseReconstructor(vehicleInputGraph, revVehicleGraph, routeState);
+
+        using CHEllipseReconstructorImpl = CHEllipseReconstructor<VehCHEnv, EllipticBucketsEnv>;
+        CHEllipseReconstructorImpl chEllipseReconstructor(*vehChEnv, ellipticBucketsEnv, routeState);
+
 
         using InsertionFinderImpl = AssignmentFinder<
                 VehicleInputGraph,
@@ -565,11 +573,14 @@ int main(int argc, char *argv[]) {
                 PBNSInsertionsFinderImpl,
                 PALSInsertionsFinderImpl,
                 DALSInsertionsFinderImpl,
-                RelevantPDLocsFilterImpl>;
+                RelevantPDLocsFilterImpl,
+                DijkstraEllipseReconstructorImpl,
+                CHEllipseReconstructorImpl>;
         InsertionFinderImpl insertionFinder(reqState, vehicleInputGraph, fleet, routeState,
                                             requestStateInitializer, pdLocsAtExistingStops, ellipticSearches, ffPDDistanceQuery,
                                             ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
-                                            dalsInsertionsFinder, relevantPdLocsFilter);
+                                            dalsInsertionsFinder, relevantPdLocsFilter,
+                                            dijkstraEllipseReconstructor, chEllipseReconstructor);
 
 
 #if KARRI_OUTPUT_VEHICLE_PATHS
