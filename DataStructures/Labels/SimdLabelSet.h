@@ -145,7 +145,10 @@ public:
         }
 
         friend bool allSet(const LabelMask &mask) {
-            return !anySet(~mask);
+            BooleanVector tmp = mask.isMarked[0];
+            for (int i = 1; i < NUM_VECTORS; ++i)
+                tmp &= mask.isMarked[i];
+            return horizontal_and(tmp);
         }
 
         BooleanLabel isMarked; // Flags indicating for each component if it is marked.

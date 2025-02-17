@@ -558,7 +558,7 @@ int main(int argc, char *argv[]) {
         using DijkstraEllipseReconstructorImpl = DijkstraEllipseReconstructor<VehicleInputGraph>;
         DijkstraEllipseReconstructorImpl dijkstraEllipseReconstructor(vehicleInputGraph, revVehicleGraph, routeState);
 
-        using CHEllipseReconstructorImpl = CHEllipseReconstructor<VehCHEnv, EllipticBucketsEnv>;
+        using CHEllipseReconstructorImpl = CHEllipseReconstructor<VehCHEnv, EllipticBucketsEnv, TraversalCostAttribute, std::ofstream>;
         CHEllipseReconstructorImpl chEllipseReconstructor(*vehChEnv, ellipticBucketsEnv, routeState);
 
 
