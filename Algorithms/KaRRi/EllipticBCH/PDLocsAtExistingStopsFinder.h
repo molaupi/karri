@@ -48,18 +48,17 @@ namespace karri {
                                     const CHEnvT& chEnv,
                                     const EllipticSourceBucketsT& sourceBuckets,
                                     const LastStopsAtVerticesT& lastStopsAtVertices,
-                                    const RouteState& routeState,
-                                    stats::EllipticBCHPerformanceStats& stats) :
+                                    const RouteState& routeState) :
                                     inputGraph(inputGraph),
                                     ch(chEnv.getCH()),
                                     sourceBuckets(sourceBuckets),
                                     lastStopsAtVertices(lastStopsAtVertices),
-                                    routeState(routeState),
-                                    stats(stats) {}
+                                    routeState(routeState) {}
 
         template<PDLocType type, typename PDLocsT>
         std::vector<PDLocAtExistingStop>
-        findPDLocsAtExistingStops(const PDLocsT &pdLocs) {
+        findPDLocsAtExistingStops(const PDLocsT &pdLocs,
+                                  stats::EllipticBCHPerformanceStats& stats) {
             Timer timer;
             std::vector<PDLocAtExistingStop> res;
 
@@ -103,7 +102,6 @@ namespace karri {
         const EllipticSourceBucketsT& sourceBuckets;
         const LastStopsAtVerticesT& lastStopsAtVertices;
         const RouteState& routeState;
-        stats::EllipticBCHPerformanceStats& stats;
 
     };
 

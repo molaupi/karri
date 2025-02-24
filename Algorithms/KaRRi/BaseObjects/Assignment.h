@@ -29,6 +29,7 @@
 
 #include "Vehicle.h"
 #include "Request.h"
+#include "PDLocs.h"
 
 namespace karri {
 
@@ -40,8 +41,8 @@ namespace karri {
 
         explicit Assignment(
                 const Vehicle *vehicle = nullptr,
-                const PDLoc *pickup = nullptr,
-                const PDLoc *dropoff = nullptr,
+                const PDLoc& pickup = {},
+                const PDLoc& dropoff = {},
                 const int pickupStopIdx = 0,
                 const int dropoffStopIdx = 0) noexcept
                 : vehicle(vehicle),
@@ -54,8 +55,8 @@ namespace karri {
         }
 
         Assignment(const Vehicle *vehicle,
-                   const PDLoc *pickup,
-                   const PDLoc *dropoff,
+                   const PDLoc& pickup,
+                   const PDLoc& dropoff,
                    const int pickupStopIdx, const int dropoffStopIdx, const int distToPickup,
                    const int distFromPickup, const int distToDropoff, const int distFromDropoff)
                 : vehicle(vehicle),
@@ -76,8 +77,8 @@ namespace karri {
         }
 
         const Vehicle *vehicle = nullptr;
-        const PDLoc *pickup = nullptr;
-        const PDLoc *dropoff = nullptr;
+        PDLoc pickup;
+        PDLoc dropoff;
 
         int pickupStopIdx = INVALID_INDEX; // Pickup is inserted at or after stop with index pickupStopIdx in route of vehicle
         int dropoffStopIdx = INVALID_INDEX; // Dropoff is inserted at or after stop with index dropoffStopIdx in route of vehicle
@@ -93,8 +94,8 @@ namespace karri {
     static inline bool
     breakCostTie(const Assignment &asgn1, const Assignment &asgn2) {
         // If vehicle, pickup, or dropoff are not set, the assignment is invalid.
-        if (!asgn1.vehicle || !asgn1.pickup || !asgn1.dropoff) return false;
-        if (!asgn2.vehicle || !asgn2.pickup || !asgn2.dropoff) return true;
+        if (!asgn1.vehicle || asgn1.pickup.id == INVALID_ID || asgn1.dropoff.id == INVALID_ID) return false;
+        if (!asgn2.vehicle || asgn2.pickup.id == INVALID_ID || asgn2.dropoff.id == INVALID_ID) return true;
 
         if (asgn1.vehicle->vehicleId < asgn2.vehicle->vehicleId) return true;
         if (asgn1.vehicle->vehicleId > asgn2.vehicle->vehicleId) return false;
@@ -102,14 +103,14 @@ namespace karri {
         if (asgn1.pickupStopIdx > asgn2.pickupStopIdx) return false;
         if (asgn1.dropoffStopIdx < asgn2.dropoffStopIdx) return true;
         if (asgn1.dropoffStopIdx > asgn2.dropoffStopIdx) return false;
-        if (asgn1.pickup->walkingDist < asgn2.pickup->walkingDist) return true;
-        if (asgn1.pickup->walkingDist > asgn2.pickup->walkingDist) return false;
-        if (asgn1.dropoff->walkingDist < asgn2.dropoff->walkingDist) return true;
-        if (asgn1.dropoff->walkingDist > asgn2.dropoff->walkingDist) return false;
-        if (asgn1.pickup->id < asgn2.pickup->id) return true;
-        if (asgn1.pickup->id > asgn2.pickup->id) return false;
-        if (asgn1.dropoff->id < asgn2.dropoff->id) return true;
-        if (asgn1.dropoff->id > asgn2.dropoff->id) return false;
+        if (asgn1.pickup.walkingDist < asgn2.pickup.walkingDist) return true;
+        if (asgn1.pickup.walkingDist > asgn2.pickup.walkingDist) return false;
+        if (asgn1.dropoff.walkingDist < asgn2.dropoff.walkingDist) return true;
+        if (asgn1.dropoff.walkingDist > asgn2.dropoff.walkingDist) return false;
+        if (asgn1.pickup.id < asgn2.pickup.id) return true;
+        if (asgn1.pickup.id > asgn2.pickup.id) return false;
+        if (asgn1.dropoff.id < asgn2.dropoff.id) return true;
+        if (asgn1.dropoff.id > asgn2.dropoff.id) return false;
         if (asgn1.distToPickup < asgn2.distToPickup) return true;
         if (asgn1.distToPickup > asgn2.distToPickup) return false;
         if (asgn1.distToDropoff < asgn2.distToDropoff) return true;

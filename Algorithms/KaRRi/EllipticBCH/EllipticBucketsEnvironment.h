@@ -84,8 +84,7 @@ namespace karri {
                 DynamicBucketContainer<Entry>
         >;
 
-        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState,
-                                   karri::stats::UpdatePerformanceStats &stats)
+        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState)
                 : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState),
                   sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
                   forwardSearchFromNewStop(
@@ -99,8 +98,7 @@ namespace karri {
                   currentLeeway(INFTY),
                   searchSpace(),
                   descendentHasEntry(inputGraph.numVertices()),
-                  deleteSearchSpace(inputGraph.numVertices()),
-                  stats(stats) {}
+                  deleteSearchSpace(inputGraph.numVertices()) {}
 
 
         const BucketContainer &getSourceBuckets() const {
@@ -111,7 +109,7 @@ namespace karri {
             return targetBuckets;
         }
 
-        void generateSourceBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void generateSourceBucketEntries(const Vehicle &veh, const int stopIndex, karri::stats::UpdatePerformanceStats &stats) {
             assert(routeState.numStopsOf(veh.vehicleId) > stopIndex + 1);
 
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
@@ -134,10 +132,10 @@ namespace karri {
             generateBucketEntries(stopId, leeway,
                                   newStopRoot, 0, forwardSearchFromNewStop, ch.upwardGraph(),
                                   nextStopRoot, nextStopOffset, reverseSearchFromNextStop, ch.downwardGraph(),
-                                  sourceBuckets);
+                                  sourceBuckets, stats);
         }
 
-        void generateTargetBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void generateTargetBucketEntries(const Vehicle &veh, const int stopIndex, karri::stats::UpdatePerformanceStats &stats) {
             assert(stopIndex > 0);
 
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
@@ -159,10 +157,10 @@ namespace karri {
             generateBucketEntries(stopId, leeway,
                                   newStopRoot, newStopOffset, reverseSearchFromNewStop, ch.downwardGraph(),
                                   prevStopRoot, 0, forwardSearchFromPrevStop, ch.upwardGraph(),
-                                  targetBuckets);
+                                  targetBuckets, stats);
         }
 
-        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle& veh) {
+        void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle& veh, karri::stats::UpdatePerformanceStats &stats) {
             const auto numStops = routeState.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
@@ -198,7 +196,7 @@ namespace karri {
             stats.elliptic_update_numEntriesScanned += numEntriesScanned;
         }
 
-        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle& veh) {
+        void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle& veh, karri::stats::UpdatePerformanceStats &stats) {
             const auto numStops = routeState.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
@@ -263,7 +261,8 @@ namespace karri {
                                    const int neighborRoot, const int neighborOffset,
                                    SearchFromNeighbor &searchFromNeighbor,
                                    const CH::SearchGraph &neighborGraph,
-                                   BucketContainer &buckets) {
+                                   BucketContainer &buckets,
+                                   karri::stats::UpdatePerformanceStats &stats) {
             int64_t numEntriesGenerated = 0;
             Timer timer;
 
@@ -318,8 +317,8 @@ namespace karri {
 
         void
         deleteBucketEntries(const int stopId, const int root, const CH::SearchGraph &graph, BucketContainer &buckets) {
-            int64_t numVerticesVisited = 0, numEntriesScanned = 0;
-            Timer timer;
+//            int64_t numVerticesVisited = 0, numEntriesScanned = 0;
+//            Timer timer;
             deleteSearchSpace.clear();
             deleteSearchSpace.insert(root);
             for (auto it = deleteSearchSpace.begin(); it < deleteSearchSpace.end(); ++it) {
@@ -330,13 +329,13 @@ namespace karri {
                         deleteSearchSpace.insert(w);
                     }
                 }
-                ++numVerticesVisited;
-                numEntriesScanned += buckets.getNumEntriesVisitedInLastUpdateOrRemove();
+//                ++numVerticesVisited;
+//                numEntriesScanned += buckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.elliptic_delete_time += time;
-            stats.elliptic_delete_numVerticesVisited += numVerticesVisited;
-            stats.elliptic_delete_numEntriesScanned += numEntriesScanned;
+//            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+//            stats.elliptic_delete_time += time;
+//            stats.elliptic_delete_numVerticesVisited += numVerticesVisited;
+//            stats.elliptic_delete_numEntriesScanned += numEntriesScanned;
         }
 
 
@@ -357,7 +356,5 @@ namespace karri {
         BitVector descendentHasEntry;
 
         Subset deleteSearchSpace;
-
-        karri::stats::UpdatePerformanceStats &stats;
     };
 }

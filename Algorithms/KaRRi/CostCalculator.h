@@ -67,8 +67,8 @@ namespace karri {
         template<bool checkHardConstraints, typename RequestContext>
         int calcBase(const Assignment &asgn, const RequestContext &context) const {
             using namespace time_utils;
-            assert(asgn.vehicle && asgn.pickup && asgn.dropoff);
-            if (!asgn.vehicle || !asgn.pickup || !asgn.dropoff)
+            assert(asgn.vehicle && asgn.pickup.id != INVALID_ID && asgn.dropoff.id != INVALID_ID);
+            if (!asgn.vehicle || asgn.pickup.id == INVALID_ID || asgn.dropoff.id == INVALID_ID)
                 return INFTY;
 
             if (asgn.distToPickup == INFTY || asgn.distFromPickup == INFTY ||
@@ -139,7 +139,7 @@ namespace karri {
         template<typename RequestContext>
         int calcCostLowerBoundForOrdinaryPairedAssignment(const Assignment &asgn, const RequestContext &context) const {
             using namespace time_utils;
-            if (!asgn.vehicle || !asgn.pickup || !asgn.dropoff)
+            if (!asgn.vehicle || asgn.pickup.id == INVALID_ID || asgn.dropoff.id == INVALID_ID)
                 return INFTY;
             if (asgn.distToPickup == INFTY || asgn.distFromPickup == INFTY ||
                 asgn.distToDropoff == INFTY || asgn.distFromDropoff == INFTY)
@@ -172,7 +172,7 @@ namespace karri {
             const int vehId = veh.vehicleId;
             const auto &numStops = routeState.numStopsOf(vehId);
 
-            Assignment asgn(&veh, &pickup);
+            Assignment asgn(&veh, pickup);
             asgn.distToPickup = distToPickup;
             asgn.distToDropoff = minDistToDropoff;
 
@@ -599,17 +599,17 @@ namespace karri {
                      const RequestContext &context, const int initialPickupDetour,
                      const int residualDetourAtEnd, const int depTimeAtPickup,
                      const bool dropoffAtExistingStop, const int addedTripTimeForExistingPassengers) const {
-            if (!asgn.vehicle || !asgn.pickup || !asgn.dropoff)
+            if (!asgn.vehicle || asgn.pickup.id == INVALID_ID || asgn.dropoff.id == INVALID_ID)
                 return INFTY;
 
             using namespace time_utils;
             const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, asgn, initialPickupDetour,
                                                               dropoffAtExistingStop, routeState);
-            const int tripTime = arrTimeAtDropoff - context.originalRequest.requestTime + asgn.dropoff->walkingDist;
+            const int tripTime = arrTimeAtDropoff - context.originalRequest.requestTime + asgn.dropoff.walkingDist;
 
             const auto walkingCost =
-                    F::calcWalkingCost(asgn.pickup->walkingDist, InputConfig::getInstance().pickupRadius) +
-                    F::calcWalkingCost(asgn.dropoff->walkingDist, InputConfig::getInstance().dropoffRadius);
+                    F::calcWalkingCost(asgn.pickup.walkingDist, InputConfig::getInstance().pickupRadius) +
+                    F::calcWalkingCost(asgn.dropoff.walkingDist, InputConfig::getInstance().dropoffRadius);
             const auto tripCost = F::calcTripCost(tripTime, context);
             const auto waitTimeViolationCost = F::calcWaitViolationCost(depTimeAtPickup, context);
             const auto changeInTripCostsOfOthers = F::calcChangeInTripCostsOfExistingPassengers(

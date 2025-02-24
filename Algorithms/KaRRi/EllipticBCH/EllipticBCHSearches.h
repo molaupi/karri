@@ -192,14 +192,11 @@ namespace karri {
                             const EllipticBucketsEnvT &ellipticBucketsEnv,
                             const LastStopsAtVerticesT &lastStopsAtVertices,
                             const CHEnvT &chEnv,
-                            const RouteState &routeState,
-
-                            RequestState &requestState)
+                            const RouteState &routeState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   ch(chEnv.getCH()),
                   routeState(routeState),
-                  requestState(requestState),
                   sourceBuckets(ellipticBucketsEnv.getSourceBuckets()),
                   lastStopsAtVertices(lastStopsAtVertices),
                   distUpperBound(INFTY),
@@ -217,33 +214,36 @@ namespace karri {
 
         // Run Elliptic BCH searches for pickups and dropoffs
         void run(FeasibleEllipticDistancesT &feasibleEllipticPickups,
-                 FeasibleEllipticDistancesT &feasibleEllipticDropoffs) {
+                 FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
+                 const RequestState& requestState,
+                 const PDLocs& pdLocs,
+                 stats::EllipticBCHPerformanceStats& stats) {
 
             // Run for pickups:
             Timer timer;
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticPickups);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticPickups);
-            runBCHSearchesFromAndTo(requestState.pickups);
+            runBCHSearchesFromAndTo(requestState, pdLocs.pickups);
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ellipticBchStats.pickupTime += pickupTime;
-            requestState.stats().ellipticBchStats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
-            requestState.stats().ellipticBchStats.pickupNumVerticesSettled += totalNumVerticesSettled;
-            requestState.stats().ellipticBchStats.pickupNumEntriesScanned += totalNumEntriesScanned;
+            stats.pickupTime += pickupTime;
+            stats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
+            stats.pickupNumVerticesSettled += totalNumVerticesSettled;
+            stats.pickupNumEntriesScanned += totalNumEntriesScanned;
 
             // Run for dropoffs:
             timer.restart();
             updateDistancesToPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
             updateDistancesFromPdLocs.setCurFeasible(&feasibleEllipticDropoffs);
 
-            runBCHSearchesFromAndTo(requestState.dropoffs);
+            runBCHSearchesFromAndTo(requestState, pdLocs.dropoffs);
             const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().ellipticBchStats.dropoffTime += dropoffTime;
-            requestState.stats().ellipticBchStats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
-            requestState.stats().ellipticBchStats.dropoffNumVerticesSettled += totalNumVerticesSettled;
-            requestState.stats().ellipticBchStats.dropoffNumEntriesScanned += totalNumEntriesScanned;
+            stats.dropoffTime += dropoffTime;
+            stats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
+            stats.dropoffNumVerticesSettled += totalNumVerticesSettled;
+            stats.dropoffNumEntriesScanned += totalNumEntriesScanned;
         }
 
-        void init() {
+        void init(const RequestState&, const PDLocs&, stats::EllipticBCHPerformanceStats&) {
             // no op
         }
 
@@ -253,7 +253,7 @@ namespace karri {
         friend UpdateDistancesToPDLocs;
 
         template<typename SpotContainerT>
-        void runBCHSearchesFromAndTo(const SpotContainerT &pdLocs) {
+        void runBCHSearchesFromAndTo(const RequestState& requestState, SpotContainerT &pdLocs) {
 
             numSearchesRun = 0;
             numTimesStoppingCriterionMet = 0;
@@ -335,7 +335,6 @@ namespace karri {
         const Fleet &fleet;
         const CH &ch;
         const RouteState &routeState;
-        RequestState &requestState;
 
         const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
         const LastStopsAtVerticesT &lastStopsAtVertices;

@@ -34,29 +34,21 @@
 #include "Tools/Simd/AlignedVector.h"
 #include "DataStructures/Containers/Subset.h"
 #include "Algorithms/KaRRi/CostCalculator.h"
-#include "Algorithms/KaRRi/RequestState/FindPDLocsInRadiusQuery.h"
+#include "Algorithms/KaRRi/BaseObjects/PDLocs.h"
 
 namespace karri {
 
 // Holds information relating to a specific request like its pickups and dropoffs and the best known assignment.
     struct RequestState {
 
-        RequestState(const CostCalculator &calculator)
+        RequestState()
                 : originalRequest(),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
-                  pickups(),
-                  dropoffs(),
-                  calculator(calculator) {}
-
-
-        ~RequestState() {
-            auto &roadCatLogger = LogManager<std::ofstream>::getLogger(karri::stats::OsmRoadCategoryStats::LOGGER_NAME,
-                                                                       "type," +
-                                                                       karri::stats::OsmRoadCategoryStats::getLoggerCols());
-            roadCatLogger << "all_pd_locs, " << allPDLocsRoadCatStats.getLoggerRow() << "\n";
-            roadCatLogger << "chosen_pd_locs, " << chosenPDLocsRoadCatStats.getLoggerRow() << "\n";
-        }
+                  bestAssignment(),
+                  bestCost(INFTY),
+                  notUsingVehicleIsBest(false),
+                  notUsingVehicleDist(INFTY) {}
 
 
         // Information about current request itself
@@ -64,16 +56,6 @@ namespace karri {
         int originalReqDirectDist;
         int minDirectPDDist;
 
-        std::vector<PDLoc> pickups;
-        std::vector<PDLoc> dropoffs;
-
-        int numPickups() const {
-            return pickups.size();
-        }
-
-        int numDropoffs() const {
-            return dropoffs.size();
-        }
 
         // Shorthand for requestTime
         int now() const {
@@ -85,20 +67,12 @@ namespace karri {
             return static_cast<int>(InputConfig::getInstance().alpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().beta;
         }
 
-        int getPassengerArrAtPickup(const int pickupId) const {
-            assert(pickupId < numPickups());
-            return originalRequest.requestTime + pickups[pickupId].walkingDist;
+        int getPassengerArrAtPickup(const PDLoc& pickup) const {
+            return originalRequest.requestTime + pickup.walkingDist;
         }
 
-        int getMaxPDTripTime(const int pickupId, const int dropoffId) const {
-            assert(pickupId < numPickups() && dropoffId < numDropoffs());
-            assert(originalReqDirectDist >= 0);
-            return getOriginalReqMaxTripTime() - (pickups[pickupId].walkingDist + dropoffs[dropoffId].walkingDist);
-        }
-
-        int getMaxArrTimeAtDropoff(const int pickupId, const int dropoffId) const {
-            assert(pickupId < numPickups() && dropoffId < numDropoffs());
-            return getPassengerArrAtPickup(pickupId) + getMaxPDTripTime(pickupId, dropoffId);
+        int getMaxArrTimeAtDropoff(const PDLoc& dropoff) const {
+            return originalRequest.requestTime + getOriginalReqMaxTripTime() - dropoff.walkingDist;
         }
 
         int getMaxDepTimeAtPickup() const {
@@ -123,14 +97,7 @@ namespace karri {
             return notUsingVehicleDist;
         }
 
-        bool tryAssignment(const Assignment &asgn) {
-            const auto cost = calculator.calc(asgn, *this);
-            return tryAssignmentWithKnownCost(asgn, cost);
-        }
-
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
-            assert(calculator.calc(asgn, *this) == cost);
-
             if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
                                     breakCostTie(asgn, bestAssignment)))) {
 
@@ -153,44 +120,7 @@ namespace karri {
             }
         }
 
-        stats::DispatchingPerformanceStats &stats() {
-            return perfStats;
-        }
-
-        const stats::DispatchingPerformanceStats &stats() const {
-            return perfStats;
-        }
-
-        stats::OsmRoadCategoryStats &allPDLocsRoadCategoryStats() {
-            return allPDLocsRoadCatStats;
-        }
-
-        stats::OsmRoadCategoryStats &chosenPDLocsRoadCategoryStats() {
-            return chosenPDLocsRoadCatStats;
-        }
-
-        void reset() {
-            perfStats.clear();
-
-            originalRequest = {};
-            originalReqDirectDist = INFTY;
-            minDirectPDDist = INFTY;
-            pickups.clear();
-            dropoffs.clear();
-
-            bestAssignment = Assignment();
-            bestCost = INFTY;
-            notUsingVehicleIsBest = false;
-            notUsingVehicleDist = INFTY;
-        }
-
     private:
-
-        stats::DispatchingPerformanceStats perfStats;
-        stats::OsmRoadCategoryStats allPDLocsRoadCatStats;
-        stats::OsmRoadCategoryStats chosenPDLocsRoadCatStats;
-
-        const CostCalculator &calculator;
 
         // Information about best known assignment for current request
         Assignment bestAssignment;

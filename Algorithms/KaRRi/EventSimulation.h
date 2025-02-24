@@ -280,17 +280,18 @@ namespace karri {
             Timer timer;
 
             const auto &request = requests[reqId];
-            const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request);
-            systemStateUpdater.writeBestAssignmentToLogger();
+            stats::DispatchingPerformanceStats stats;
+            const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request, stats);
+            systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse);
 
-            applyAssignment(asgnFinderResponse, reqId, occTime);
+            applyAssignment(asgnFinderResponse, stats, reqId, occTime);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",RequestReceipt," << time << '\n';
         }
 
         template<typename AssignmentFinderResponseT>
-        void applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, const int reqId, const int occTime) {
+        void applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, stats::DispatchingPerformanceStats stats, const int reqId, const int occTime) {
             if (asgnFinderResponse.isNotUsingVehicleBest()) {
                 requestState[reqId] = WALKING_TO_DEST;
                 requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
@@ -298,7 +299,7 @@ namespace karri {
                 requestData[reqId].walkingTimeToPickup = 0;
                 requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.getNotUsingVehicleDist();
                 requestEvents.increaseKey(reqId, occTime + asgnFinderResponse.getNotUsingVehicleDist());
-                systemStateUpdater.writePerformanceLogs();
+                systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
                 return;
             }
 
@@ -307,20 +308,20 @@ namespace karri {
             assert(id == reqId && key == occTime);
 
             const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
-            if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
+            if (!bestAsgn.vehicle || bestAsgn.pickup.id == INVALID_ID || bestAsgn.dropoff.id == INVALID_ID) {
                 requestState[reqId] = FINISHED;
-                systemStateUpdater.writePerformanceLogs();
+                systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
                 return;
             }
 
             requestState[reqId] = ASSIGNED_TO_VEH;
-            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
-            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
+            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup.walkingDist;
+            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff.walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
 
             int pickupStopId, dropoffStopId;
-            systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId);
-            systemStateUpdater.writePerformanceLogs();
+            systemStateUpdater.insertBestAssignment(asgnFinderResponse, pickupStopId, dropoffStopId, stats.updateStats);
+            systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
             assert(pickupStopId >= 0 && dropoffStopId >= 0);
 
             const auto vehId = bestAsgn.vehicle->vehicleId;

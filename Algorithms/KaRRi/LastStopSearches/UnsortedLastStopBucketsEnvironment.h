@@ -101,8 +101,7 @@ namespace karri {
     public:
 
         UnsortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                                         const RouteState &routeState,
-                                         karri::stats::UpdatePerformanceStats &stats)
+                                         const RouteState &routeState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   searchGraph(ch.upwardGraph()),
@@ -113,8 +112,7 @@ namespace karri {
                                                  StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
                   entryDelSearch(chEnv.getForwardSearch(
                           DeleteEntry(bucketContainer, vehicleId, verticesVisitedInSearch,
-                                          entriesVisitedInSearch))),
-                  stats(stats) {}
+                                          entriesVisitedInSearch))) {}
 
 
         const BucketContainer &getBuckets() const {
@@ -122,17 +120,20 @@ namespace karri {
         }
 
 
-        void generateIdleBucketEntries(const Vehicle &veh) {
+        void generateIdleBucketEntries(const Vehicle &veh,
+                                       karri::stats::UpdatePerformanceStats &stats) {
             // No differentiation between idle and non-idle vehicles.
-            generateBucketEntries(veh);
+            generateBucketEntries(veh, stats);
         }
 
-        void generateNonIdleBucketEntries(const Vehicle& veh) {
+        void generateNonIdleBucketEntries(const Vehicle& veh,
+                                          karri::stats::UpdatePerformanceStats &stats) {
             // No differentiation between idle and non-idle vehicles.
-            generateBucketEntries(veh);
+            generateBucketEntries(veh, stats);
         }
 
-        void generateBucketEntries(const Vehicle &veh) {
+        void generateBucketEntries(const Vehicle &veh,
+                                   karri::stats::UpdatePerformanceStats &stats) {
 
             Timer timer;
             vehicleId = veh.vehicleId;
@@ -149,22 +150,25 @@ namespace karri {
             stats.lastStopBucketsGenerateEntriesTime += time;
         }
 
-        void updateBucketEntries(const Vehicle &, const int) {
+        void updateBucketEntries(const Vehicle &, const int, karri::stats::UpdatePerformanceStats &) {
             // No op since bucket updates are only needed for buckets that are sorted by arrival time at last stop
             // for non-idle vehicles.
         }
 
-        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
+        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx,
+                                     karri::stats::UpdatePerformanceStats &stats) {
             // No differentiation between idle and non-idle vehicles.
-            removeBucketEntries(veh, prevLastStopIdx);
+            removeBucketEntries(veh, prevLastStopIdx, stats);
         }
 
-        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
+        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx,
+                                        karri::stats::UpdatePerformanceStats &stats) {
             // No differentiation between idle and non-idle vehicles.
-            removeBucketEntries(veh, prevLastStopIdx);
+            removeBucketEntries(veh, prevLastStopIdx, stats);
         }
 
-        void removeBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void removeBucketEntries(const Vehicle &veh, const int stopIndex,
+                                 karri::stats::UpdatePerformanceStats &stats) {
             assert(stopIndex >= 0);
             assert(stopIndex < routeState.numStopsOf(veh.vehicleId));
 
@@ -202,8 +206,6 @@ namespace karri {
 
         GenerateEntriesSearch entryGenSearch;
         DeleteEntriesSearch entryDelSearch;
-
-        karri::stats::UpdatePerformanceStats &stats;
 
     };
 }

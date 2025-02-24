@@ -1,7 +1,7 @@
 /// ******************************************************************************
 /// MIT License
 ///
-/// Copyright (c) 2023 Moritz Laupichler <moritz.laupichler@kit.edu>
+/// Copyright (c) 2025 Moritz Laupichler <moritz.laupichler@kit.edu>
 ///
 /// Permission is hereby granted, free of charge, to any person obtaining a copy
 /// of this software and associated documentation files (the "Software"), to deal
@@ -24,30 +24,46 @@
 
 
 #pragma once
+
+#include <cstdint>
+#include <vector>
+#include "Tools/Constants.h"
+
 namespace karri {
 
-// Wrapper around DALS strategy.
-    template<typename StrategyT>
-    class DALSAssignmentsFinder {
+    // Models a location used for a pickup or dropoff with an ID (should be counted separately for pickups and dropoffs), a
+    // location, a walking distance, and optional driving distances to and from the associated origin or destination
+    // location.
+    struct PDLoc {
 
-    public:
+        int id = INVALID_ID; // Should be counted separately for pickups and dropoffs
+        int loc = INVALID_EDGE; // Location in road network
+        int psgLoc = INVALID_EDGE; // Location in passenger road network
+        int walkingDist = INFTY; // Walking time from origin to this pickup or from this dropoff to destination.
 
-        DALSAssignmentsFinder(StrategyT &strategy) : strategy(strategy) {}
-
-        void findAssignments(const RelevantPDLocs &relevantOrdinaryPickups,
-                             const RelevantPDLocs &relevantPickupsBeforeNextStop,
-                             RequestState& requestState,
-                             const PDLocs& pdLocs, stats::DalsAssignmentsPerformanceStats& stats) {
-            strategy.tryDropoffAfterLastStop(relevantOrdinaryPickups, relevantPickupsBeforeNextStop, requestState, pdLocs, stats);
-        }
-
-        void init(const RequestState&, const PDLocs&, stats::DalsAssignmentsPerformanceStats&) {
-            // no op
-        }
-
-    private:
-
-        StrategyT &strategy;
-
+        int vehDistToCenter = INFTY; // Vehicle driving time from this pickup/dropoff to the origin/destination.
+        int vehDistFromCenter = INFTY; // Vehicle driving time from origin/destination to this pickup/dropoff.
     };
+
+
+    enum PDLocType : std::int8_t {
+        PICKUP,
+        DROPOFF,
+        INVALID_PD_LOC_TYPE
+    };
+
+    struct PDLocs {
+
+        int numPickups() const {
+            return pickups.size();
+        }
+
+        int numDropoffs() const {
+            return dropoffs.size();
+        }
+
+        std::vector<PDLoc> pickups;
+        std::vector<PDLoc> dropoffs;
+    };
+
 }

@@ -206,8 +206,7 @@ namespace karri {
     public:
 
         SortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                                         const RouteState &routeState,
-                                         karri::stats::UpdatePerformanceStats &stats)
+                                         const RouteState &routeState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   searchGraph(ch.upwardGraph()),
@@ -231,20 +230,21 @@ namespace karri {
                                           entriesVisitedInSearch))),
                   nonIdleEntryDelSearch(chEnv.getForwardSearch(
                           DeleteNonIdleEntry(bucketContainer, vehicleId,
-                                             verticesVisitedInSearch, entriesVisitedInSearch))),
-                  stats(stats) {}
+                                             verticesVisitedInSearch, entriesVisitedInSearch))) {}
 
 
         const BucketContainer &getBuckets() const {
             return bucketContainer;
         }
 
-        void generateIdleBucketEntries(const Vehicle &veh) {
-            generateBucketEntries<true>(veh);
+        void generateIdleBucketEntries(const Vehicle &veh,
+                                       karri::stats::UpdatePerformanceStats &stats) {
+            generateBucketEntries<true>(veh, stats);
         }
 
-        void generateNonIdleBucketEntries(const Vehicle &veh) {
-            generateBucketEntries<false>(veh);
+        void generateNonIdleBucketEntries(const Vehicle &veh,
+                                          karri::stats::UpdatePerformanceStats &stats) {
+            generateBucketEntries<false>(veh, stats);
         }
 
         // An update to the bucket entries may become necessary in two situations:
@@ -257,7 +257,8 @@ namespace karri {
         //      more precise bucket sorting and pruning.
         // When a vehicle becomes non-idle after being idle, it's last stop always changes, so the update is expressed
         // as a delete operation for the old location and a generate operation for the new location instead.
-        void updateBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void updateBucketEntries(const Vehicle &veh, const int stopIndex,
+                                 int64_t& updateTime) {
 
             Timer timer;
             const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
@@ -278,15 +279,17 @@ namespace karri {
                 updateNewScheduleOfNonIdleVehicleSearch.run(ch.rank(stopVertex));
             }
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.lastStopBucketsUpdateEntriesTime += time;
+            updateTime += time;
         }
 
-        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
-            removeBucketEntries<true>(veh, prevLastStopIdx);
+        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx,
+                                     karri::stats::UpdatePerformanceStats &stats) {
+            removeBucketEntries<true>(veh, prevLastStopIdx, stats);
         }
 
-        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
-            removeBucketEntries<false>(veh, prevLastStopIdx);
+        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx,
+                                        karri::stats::UpdatePerformanceStats &stats) {
+            removeBucketEntries<false>(veh, prevLastStopIdx, stats);
         }
 
         // Implement the last stops at vertices interface.
@@ -310,7 +313,8 @@ namespace karri {
     private:
 
         template<bool isIdle>
-        void generateBucketEntries(const Vehicle &veh) {
+        void generateBucketEntries(const Vehicle &veh,
+                                   karri::stats::UpdatePerformanceStats &stats) {
             const auto &numStops = routeState.numStopsOf(veh.vehicleId);
 
             Timer timer;
@@ -332,7 +336,8 @@ namespace karri {
         }
 
         template<bool wasIdle>
-        void removeBucketEntries(const Vehicle &veh, const int stopIndex) {
+        void removeBucketEntries(const Vehicle &veh, const int stopIndex,
+                                 karri::stats::UpdatePerformanceStats &stats) {
             assert(stopIndex >= 0);
             assert(stopIndex < routeState.numStopsOf(veh.vehicleId));
 
@@ -383,8 +388,6 @@ namespace karri {
         UpdateForVehicleHasBecomeIdleSearch updateForVehicleHasBecomeIdleSearch;
         DeleteIdleEntriesSearch idleEntryDelSearch;
         DeleteNonIdleEntriesSearch nonIdleEntryDelSearch;
-
-        karri::stats::UpdatePerformanceStats &stats;
 
     };
 }

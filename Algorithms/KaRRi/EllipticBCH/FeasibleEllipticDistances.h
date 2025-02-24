@@ -52,17 +52,15 @@ namespace karri {
 
     public:
 
-        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState,
-                                           stats::EllipticBCHPerformanceStats& stats)
+        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState)
                 : routeState(routeState),
                   maxStopId(routeState.getMaxStopId()),
                   startOfRangeInValueArray(fleetSize),
                   vehiclesWithRelevantPDLocs(fleetSize),
                   minDistToPDLoc(fleetSize),
-                  minDistFromPDLocToNextStop(fleetSize),
-                  stats(stats) {}
+                  minDistFromPDLocToNextStop(fleetSize) {}
 
-        void init(const int newNumPDLocs) {
+        void init(const int newNumPDLocs, stats::EllipticBCHPerformanceStats& stats) {
             Timer timer;
             numLabelsPerStop = newNumPDLocs / K + (newNumPDLocs % K != 0);
 
@@ -87,7 +85,8 @@ namespace karri {
 
         template<typename PDLocsAtExistingStopsT, typename InputGraphT>
         void initializeDistancesForPdLocsAtExistingStops(PDLocsAtExistingStopsT &&pdLocsAtExistingStops,
-                                                          const InputGraphT &inputGraph) {
+                                                          const InputGraphT &inputGraph,
+                                                          stats::EllipticBCHPerformanceStats& stats) {
             Timer timer;
 
             // Pre-allocate entries for PD locs at existing stops. The distance 0 may otherwise not be found by the
@@ -296,8 +295,6 @@ namespace karri {
 
         std::vector<DistanceLabel> minDistToPDLoc;
         std::vector<DistanceLabel> minDistFromPDLocToNextStop;
-
-        stats::EllipticBCHPerformanceStats& stats;
 
     };
 
