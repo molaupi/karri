@@ -40,6 +40,10 @@ namespace karri {
     class RouteState {
 
     public:
+
+        RouteState(const RouteState&) = delete;
+        RouteState(RouteState&&) = delete;
+
         RouteState(const Fleet &fleet)
                 : pos(fleet.size()),
                   stopIds(fleet.size()),

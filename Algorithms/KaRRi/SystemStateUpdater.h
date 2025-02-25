@@ -36,7 +36,7 @@ namespace karri {
     template<typename InputGraphT,
             typename EllipticBucketsEnvT,
             typename LastStopBucketsEnvT,
-            typename CurVehLocsT,
+            typename VehicleLocatorT,
             typename PathTrackerT,
             typename LoggerT = NullLogger>
     class SystemStateUpdater {
@@ -44,12 +44,12 @@ namespace karri {
     public:
 
         SystemStateUpdater(const InputGraphT &inputGraph,
-                           const CurVehLocsT &curVehLocs,
+                           VehicleLocatorT &vehicleLocator,
                            PathTrackerT &pathTracker,
                            RouteState &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
                            LastStopBucketsEnvT &lastStopBucketsEnv)
                 : inputGraph(inputGraph),
-                  curVehLocs(curVehLocs),
+                  vehicleLocator(vehicleLocator),
                   pathTracker(pathTracker),
                   routeState(routeState),
                   ellipticBucketsEnv(ellipticBucketsEnv),
@@ -133,6 +133,15 @@ namespace karri {
             const auto numStopsBefore = routeState.numStopsOf(vehId);
             const auto depTimeAtLastStopBefore = routeState.schedDepTimesFor(vehId)[numStopsBefore - 1];
 
+            // If the vehicle has to be rerouted at its current location for a PBNS assignment, we introduce an
+            // intermediate stop at its current location representing the rerouting. We have to compute the vehicle's
+            // current location before changing the route, and later add the intermediate stop after changing the route.
+            const bool rerouteVehicle = asgn.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime;
+            VehicleLocation loc;
+            if (rerouteVehicle) {
+                loc = vehicleLocator.computeCurrentLocation(*asgn.vehicle, requestState.originalRequest.requestTime);
+            }
+
             timer.restart();
             auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, requestState);
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -140,12 +149,9 @@ namespace karri {
 
             updateBucketState(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore, stats);
 
-            // If the vehicle has to be rerouted at its current location for a PBNS assignment, we introduce an
-            // intermediate stop at its current location representing the rerouting.
-            if (asgn.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] <
-                                                                 requestState.originalRequest.requestTime) {
-                createIntermediateStopAtCurrentLocationForReroute(*asgn.vehicle,
-                                                                  requestState.originalRequest.requestTime, stats);
+            if (rerouteVehicle) {
+                createIntermediateStopAtCurrentLocationForReroute(*asgn.vehicle, requestState.originalRequest.requestTime,
+                                                                  loc, stats);
                 ++pickupIndex;
                 ++dropoffIndex;
             }
@@ -260,9 +266,7 @@ namespace karri {
         // first stop, i.e. dist(s[i], s[i+1]) = schedArrTime(s[i+1]) - schedDepTime(s[i]).
         // Intermediate stop gets an arrival time equal to the request time so the stop is reached immediately,
         // making it the new stop 0. Thus, we do not need to compute target bucket entries for the stop.
-        void createIntermediateStopAtCurrentLocationForReroute(const Vehicle &veh, const int now, stats::UpdatePerformanceStats& stats) {
-            assert(curVehLocs.knowsCurrentLocationOf(veh.vehicleId));
-            auto loc = curVehLocs.getCurrentLocationOf(veh.vehicleId);
+        void createIntermediateStopAtCurrentLocationForReroute(const Vehicle &veh, const int now, const VehicleLocation& loc, stats::UpdatePerformanceStats& stats) {
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
             routeState.createIntermediateStopForReroute(veh.vehicleId, loc.location, now, loc.depTimeAtHead);
             ellipticBucketsEnv.generateSourceBucketEntries(veh, 1, stats);
@@ -340,7 +344,7 @@ namespace karri {
         }
 
         const InputGraphT &inputGraph;
-        const CurVehLocsT &curVehLocs;
+        VehicleLocatorT &vehicleLocator;
         PathTrackerT &pathTracker;
 
         // Route state

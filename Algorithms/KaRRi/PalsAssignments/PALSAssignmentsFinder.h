@@ -39,12 +39,12 @@ namespace karri {
     public:
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
-                              const CostCalculator &calculator, const LastStopsAtVerticesT &lastStopsAtVertices,
+                              const LastStopsAtVerticesT &lastStopsAtVertices,
                               const RouteState &routeState)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
-                  calculator(calculator),
+                  calculator(routeState),
                   lastStopsAtVertices(lastStopsAtVertices),
                   routeState(routeState) {}
 
@@ -109,7 +109,7 @@ namespace karri {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const CostCalculator &calculator;
+        CostCalculator calculator;
         const LastStopsAtVerticesT &lastStopsAtVertices;
         const RouteState &routeState;
 

@@ -42,7 +42,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         struct TryToInsertDropoffAfterLastStop {
             TryToInsertDropoffAfterLastStop(DijkstraStrategy &strategy,
-                                            const CostCalculator &calculator)
+                                            CostCalculator calculator)
                     : strategy(strategy),
                       calculator(calculator) {}
 
@@ -62,7 +62,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         private:
             DijkstraStrategy &strategy;
-            const CostCalculator &calculator;
+            CostCalculator calculator;
         };
 
     public:
@@ -70,7 +70,6 @@ namespace karri::DropoffAfterLastStopStrategies {
         DijkstraStrategy(const InputGraphT &inputGraph,
                          const InputGraphT &reverseGraph,
                          const Fleet &fleet,
-                         const CostCalculator &calculator,
                          CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
                          const RouteState &routeState,
                          const LastStopsAtVerticesT &lastStopsAtVertices)
@@ -78,10 +77,10 @@ namespace karri::DropoffAfterLastStopStrategies {
                   fleet(fleet),
                   routeState(routeState),
                   lastStopsAtVertices(lastStopsAtVertices),
-                  calculator(calculator),
+                  calculator(routeState),
                   curVehLocToPickupSearches(curVehLocToPickupSearches),
                   pickupsToTryBeforeNextStop(),
-                  dijSearchToDropoff(reverseGraph, {*this, calculator}),
+                  dijSearchToDropoff(reverseGraph, {*this, CostCalculator(routeState)}),
                   vehiclesSeen(fleet.size()) {}
 
         void tryDropoffAfterLastStop(const RelevantPDLocs &relevantOrdinaryPickups,
@@ -304,7 +303,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         const Fleet &fleet;
         const RouteState &routeState;
         const LastStopsAtVerticesT &lastStopsAtVertices;
-        const CostCalculator &calculator;
+        CostCalculator calculator;
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
 
         std::vector <std::pair<unsigned int, int>> pickupsToTryBeforeNextStop;

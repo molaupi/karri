@@ -54,11 +54,11 @@ namespace karri {
     public:
 
         AssignmentFinder(const InputGraphT &inputGraph,
-                         const Fleet &fleet,
-                         const RouteState &routeState,
                          RequestStateInitializerT &requestStateInitializer,
                          PDLocsFinderT &pdLocsFinder,
-                         PdLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder,
+                         const PdLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder,
+                         FeasibleEllipticDistancesT& feasibleEllipticPickups,
+                         FeasibleEllipticDistancesT& feasibleEllipticDropoffs,
                          EllipticBchSearchesT &ellipticBchSearches,
                          FfPdDistanceSearchesT &ffPdDistanceSearches,
                          OrdAssignmentsT &ordinaryAssigments,
@@ -67,8 +67,8 @@ namespace karri {
                          DalsAssignmentsT &dalsAssignments,
                          RelevantPdLocsFilterT &relevantPdLocsFilter)
                 : inputGraph(inputGraph),
-                  feasibleEllipticPickups(fleet.size(), routeState),
-                  feasibleEllipticDropoffs(fleet.size(), routeState),
+                  feasibleEllipticPickups(feasibleEllipticPickups),
+                  feasibleEllipticDropoffs(feasibleEllipticDropoffs),
                   requestStateInitializer(requestStateInitializer),
                   pdLocsFinder(pdLocsFinder),
                   pdLocsAtExistingStopsFinder(pdLocsAtExistingStopsFinder),
@@ -129,13 +129,12 @@ namespace karri {
 
         void initializeComponentsForRequest(const RequestState& requestState, const PDLocs &pdLocs, stats::DispatchingPerformanceStats& stats) {
             feasibleEllipticPickups.init(pdLocs.numPickups(), stats.ellipticBchStats);
-            feasibleEllipticPickups.initializeDistancesForPdLocsAtExistingStops(
-                    pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<PICKUP>(pdLocs.pickups, stats.ellipticBchStats),
-                    inputGraph, stats.ellipticBchStats);
+            auto pickupsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<PICKUP>(pdLocs.pickups, stats.ellipticBchStats);
+            feasibleEllipticPickups.initializeDistancesForPdLocsAtExistingStops(std::move(pickupsAtExistingStops), inputGraph, stats.ellipticBchStats);
+
             feasibleEllipticDropoffs.init(pdLocs.numDropoffs(), stats.ellipticBchStats);
-            feasibleEllipticDropoffs.initializeDistancesForPdLocsAtExistingStops(
-                    pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<DROPOFF>(pdLocs.dropoffs, stats.ellipticBchStats),
-                    inputGraph, stats.ellipticBchStats);
+            auto dropoffsAtExistingStops = pdLocsAtExistingStopsFinder.template findPDLocsAtExistingStops<DROPOFF>(pdLocs.dropoffs, stats.ellipticBchStats);
+            feasibleEllipticDropoffs.initializeDistancesForPdLocsAtExistingStops(std::move(dropoffsAtExistingStops), inputGraph, stats.ellipticBchStats);
 
             // Initialize components according to new request state:
             ellipticBchSearches.init(requestState, pdLocs, stats.ellipticBchStats);
@@ -147,12 +146,12 @@ namespace karri {
         }
 
         const InputGraphT &inputGraph;
-        FeasibleEllipticDistancesT feasibleEllipticPickups;
-        FeasibleEllipticDistancesT feasibleEllipticDropoffs;
+        FeasibleEllipticDistancesT& feasibleEllipticPickups;
+        FeasibleEllipticDistancesT& feasibleEllipticDropoffs;
 
         RequestStateInitializerT &requestStateInitializer;
         PDLocsFinderT &pdLocsFinder; // Finds possible pickup and dropoff locations for a given request
-        PdLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder; // Identifies pd locs that coincide with existing stops
+        const PdLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder; // Identifies pd locs that coincide with existing stops
         EllipticBchSearchesT &ellipticBchSearches; // Elliptic BCH searches that find distances between existing stops and PD-locations (except after last stop).
         FfPdDistanceSearchesT &ffPDDistanceSearches; // PD-distance searches that compute distances from pickups to dropoffs.
         OrdAssignmentsT &ordAssignments; // Tries ordinary assignments where pickup and dropoff are inserted between existing stops.

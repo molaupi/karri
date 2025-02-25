@@ -548,6 +548,10 @@ namespace karri::stats {
 
     struct DispatchingPerformanceStats {
 
+        DispatchingPerformanceStats() {
+            clear();
+        }
+
         int32_t numPickups;
         int32_t numDropoffs;
 

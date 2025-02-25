@@ -66,18 +66,17 @@ namespace karri::DropoffAfterLastStopStrategies {
                               const RouteState &routeState,
                               const CHEnvT &chEnv,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              const CostCalculator &calculator,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   routeState(routeState),
-                  calculator(calculator),
+                  calculator(routeState),
                   curVehLocToPickupSearches(curVehLocToPickupSearches),
                   closestDropoffSearch(inputGraph, fleet.size(), chEnv, lastStopBucketsEnv.getBuckets(),
                                        {chEnv.getCH().upwardGraph()}),
                   ch(chEnv.getCH()),
                   isVehEligibleForDropoffAfterLastStop(*this),
-                  minCostSearch(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv,
+                  minCostSearch(inputGraph, fleet, chEnv, lastStopBucketsEnv,
                                 isVehEligibleForDropoffAfterLastStop, routeState),
                   distsFromLastStopToDropoffs(0, INFTY),
                   checkPBNSForVehicle(fleet.size()),
@@ -586,7 +585,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const RouteState &routeState;
-        const CostCalculator &calculator;
+        CostCalculator calculator;
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         ClosestDropoffToLastStopQuery closestDropoffSearch;
         const CH &ch;

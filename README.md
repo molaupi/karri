@@ -33,6 +33,8 @@ $ sudo apt-get install cmake
 $ sudo apt-get install python3 python3-pip; pip3 install -r python_requirements.txt
 $ sudo apt-get install sqlite3 libsqlite3-dev
 $ sudo apt-get install zlib1g-dev
+$ sudo apt-get install intel-tbb intel-tbb-devel
+$ sudo apt-get install libhwloc-dev
 ```
 
 Next, you need to clone the libraries in the `External` subdirectory and build the `RoutingKit` library. To do so,

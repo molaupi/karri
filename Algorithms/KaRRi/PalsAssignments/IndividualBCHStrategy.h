@@ -155,23 +155,28 @@ namespace karri::PickupAfterLastStopStrategies {
         IndividualBCHStrategy(const InputGraphT &inputGraph,
                               const Fleet &fleet,
                               const CHEnvT &chEnv,
-                              const CostCalculator &calculator,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              const RouteState &routeState,
-                              const int &bestCostBeforeQuery)
+                              const RouteState &routeState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
-                  calculator(calculator),
+                  calculator(routeState),
                   routeState(routeState),
-                  bestCostBeforeQuery(bestCostBeforeQuery),
+                  externalUpperBoundCost(INFTY),
                   distances(fleet.size()),
                   search(lastStopBucketsEnv, distances, chEnv, routeState, vehiclesSeenForPickups,
                          PickupAfterLastStopPruner(*this, calculator)),
                   vehiclesSeenForPickups(fleet.size()) {}
 
+
         void tryPickupAfterLastStop(RequestState& requestState, const PDDistancesT& pdDistances, const PDLocs& pdLocs, stats::PalsAssignmentsPerformanceStats& stats) {
             runBchSearches(requestState, pdDistances, pdLocs, stats);
             enumerateAssignments(requestState, pdDistances, pdLocs, stats);
+        }
+
+        // Sets a known upper bound on the cost of a PALS insertion. Useful if IndividualBCHStrategy is used as
+        // fallback for other strategy that provides an upper bound.
+        void setExternalCostUpperBound(const int c) {
+            externalUpperBoundCost = c;
         }
 
     private:
@@ -180,7 +185,7 @@ namespace karri::PickupAfterLastStopStrategies {
         void runBchSearches(RequestState& requestState, const PDDistancesT& pdDistances, const PDLocs& pdLocs, stats::PalsAssignmentsPerformanceStats& stats) {
             Timer timer;
 
-            initPickupSearches(pdLocs);
+            initPickupSearches(requestState, pdLocs);
             for (int i = 0; i < pdLocs.numPickups(); i += K)
                 runSearchesForPickupBatch(i, requestState, pdDistances, pdLocs);
 
@@ -255,12 +260,13 @@ namespace karri::PickupAfterLastStopStrategies {
             return distances.getDistance(vehId, pickupId);
         }
 
-        void initPickupSearches(const PDLocs& pdLocs) {
+        void initPickupSearches(const RequestState& requestState, const PDLocs& pdLocs) {
             totalNumEdgeRelaxations = 0;
             totalNumVerticesSettled = 0;
             totalNumEntriesScanned = 0;
 
-            upperBoundCost = bestCostBeforeQuery;
+            upperBoundCost = std::min(requestState.getBestCost(), externalUpperBoundCost);
+            externalUpperBoundCost = INFTY;
             vehiclesSeenForPickups.clear();
             const int numPickupBatches = pdLocs.numPickups() / K + (pdLocs.numPickups() % K != 0);
             distances.init(numPickupBatches);
@@ -293,10 +299,10 @@ namespace karri::PickupAfterLastStopStrategies {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const CostCalculator &calculator;
+        CostCalculator calculator;
         const RouteState &routeState;
-        const int &bestCostBeforeQuery;
 
+        int externalUpperBoundCost;
         int upperBoundCost;
         RequestState const * curReqState;
 

@@ -36,13 +36,12 @@ namespace karri {
 
     public:
 
-        RelevantPDLocsFilter(const Fleet &fleet, const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                             const CostCalculator &calculator, const RouteState &routeState)
+        RelevantPDLocsFilter(const Fleet &fleet, const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState)
                 : fleet(fleet),
                   inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   chQuery(chEnv.template getFullCHQuery<>()),
-                  calculator(calculator),
+                  calculator(routeState),
                   routeState(routeState) {}
 
 
@@ -335,7 +334,7 @@ namespace karri {
         const InputGraphT &inputGraph;
         const CH &ch;
         typename CHEnvT::template FullCHQuery<> chQuery;
-        const CostCalculator &calculator;
+        CostCalculator calculator;
         const RouteState &routeState;
     };
 }

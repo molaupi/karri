@@ -221,9 +221,9 @@ namespace karri {
 
     public:
         PDLocsFinder(const VehInputGraphT &vehInputGraph, const PsgInputGraphT &psgInputGraph,
+                                const PsgInputGraphT& revPsgGraph,
                                 VehicleToPDLocQueryT &vehicleToPdLocQuery)
                 : vehInputGraph(vehInputGraph), psgInputGraph(psgInputGraph),
-                  revPsgGraph(psgInputGraph.getReverseGraph()),
                   findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph),
                   vehicleToPdLocQuery(vehicleToPdLocQuery) {}
 
@@ -260,7 +260,6 @@ namespace karri {
 
         const VehInputGraphT &vehInputGraph;
         const PsgInputGraphT &psgInputGraph;
-        PsgInputGraphT revPsgGraph;
 
         FindPDLocsInRadiusQuery<PsgInputGraphT> findPdLocsInRadiusQuery;
         VehicleToPDLocQueryT &vehicleToPdLocQuery;

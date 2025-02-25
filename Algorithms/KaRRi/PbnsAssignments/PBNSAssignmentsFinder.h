@@ -54,11 +54,10 @@ namespace karri {
     public:
 
         PBNSAssignmentsFinder(CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
-                              const Fleet &fleet, const CostCalculator &calculator,
-                              const RouteState &routeState)
+                              const Fleet &fleet, const RouteState &routeState)
                 : curVehLocToPickupSearches(curVehLocToPickupSearches),
                   fleet(fleet),
-                  calculator(calculator),
+                  calculator(routeState),
                   routeState(routeState) {}
 
         void findAssignments(const RelevantPDLocs &relPickupsBns, const RelevantPDLocs &relOrdinaryDropoffs,
@@ -331,7 +330,7 @@ namespace karri {
 
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         const Fleet &fleet;
-        const CostCalculator &calculator;
+        CostCalculator calculator;
         const RouteState &routeState;
 
         int numAssignmentsTriedWithPickupBeforeNextStop;

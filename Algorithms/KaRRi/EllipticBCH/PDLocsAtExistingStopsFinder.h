@@ -58,7 +58,7 @@ namespace karri {
         template<PDLocType type, typename PDLocsT>
         std::vector<PDLocAtExistingStop>
         findPDLocsAtExistingStops(const PDLocsT &pdLocs,
-                                  stats::EllipticBCHPerformanceStats& stats) {
+                                  stats::EllipticBCHPerformanceStats& stats) const {
             Timer timer;
             std::vector<PDLocAtExistingStop> res;
 
