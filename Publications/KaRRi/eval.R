@@ -88,7 +88,6 @@ compareBestAssignments <- function(file1, file2) {
   }
 }
 
-
 perfStats <- function(file_base, type_name) {
   stats <- read.csv(paste0(file_base, ".perf_", type_name, ".csv"))
   stats <- stats[, ! colnames(stats) %in% c("request_id")]
@@ -161,12 +160,13 @@ eventSimulationPerfStats <- function(file_base) {
   
   stats <- read.csv(paste0(file_base, ".eventsimulationstats.csv"))
   df <- data.frame(
-    vehicle_startup_event_time = c(mean(stats[stats$type=="VehicleStartupEvent", ]$running_time)),
-    vehicle_arrival_event_time = c(mean(stats[stats$type=="VehicleArrivalEvent", ]$running_time)),
-    vehicle_departure_event_time = c(mean(stats[stats$type=="VehicleDepartureEvent", ]$running_time)),
-    vehicle_shutdown_event_time = c(mean(stats[stats$type=="VehicleShutdownEvent", ]$running_time)),
-    request_receipt_event_time = c(mean(stats[stats$type=="RequestReceiptEvent",]$running_time)),
-    request_pure_walking_arrival_event_time = c(mean(stats[stats$type=="PureWalkingArrivalEvent",]$running_time))
+    vehicle_startup_event_time = c(mean(stats[stats$type=="VehicleStartup", ]$running_time)),
+    vehicle_arrival_event_time = c(mean(stats[stats$type=="VehicleArrival", ]$running_time)),
+    vehicle_departure_event_time = c(mean(stats[stats$type=="VehicleDeparture", ]$running_time)),
+    vehicle_shutdown_event_time = c(mean(stats[stats$type=="VehicleShutdown", ]$running_time)),
+    request_receipt_event_time = c(mean(stats[stats$type=="RequestReceipt",]$running_time)),
+    request_batch_dispatch_event_time = c(mean(stats[stats$type=="RequestBatchDispatch",]$running_time)),
+    request_pure_walking_arrival_event_time = c(mean(stats[stats$type=="RequestWalkingArrival",]$running_time))
   )
   
   print(df)

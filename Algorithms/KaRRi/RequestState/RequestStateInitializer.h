@@ -46,11 +46,12 @@ namespace karri {
                   vehChQuery(vehChEnv.template getFullCHQuery<>()), psgChQuery(psgChEnv.template getFullCHQuery<>()) {}
 
 
-        RequestState initializeRequestState(const Request &req, stats::InitializationPerformanceStats& stats) {
+        RequestState initializeRequestState(const Request &req, const int now, stats::InitializationPerformanceStats& stats) {
             Timer timer;
 
             RequestState requestState;
             requestState.originalRequest = req;
+            requestState.dispatchingTime = now;
 
             // Calculate the direct distance between the requests origin and destination
             timer.restart();

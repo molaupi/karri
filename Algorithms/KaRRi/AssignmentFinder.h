@@ -80,10 +80,10 @@ namespace karri {
                   dalsAssignments(dalsAssignments),
                   relevantPdLocsFilter(relevantPdLocsFilter) {}
 
-        RequestState findBestAssignment(const Request &req, stats::DispatchingPerformanceStats& stats) {
+        RequestState findBestAssignment(const Request &req, const int now, stats::DispatchingPerformanceStats& stats) {
 
             // Initialize finder for this request, find PD locations:
-            RequestState rs = requestStateInitializer.initializeRequestState(req, stats.initializationStats);
+            RequestState rs = requestStateInitializer.initializeRequestState(req, now, stats.initializationStats);
             PDLocs pdLocs = pdLocsFinder.findPDLocs(req.origin, req.destination, stats.initializationStats);
             stats.numPickups = pdLocs.numPickups();
             stats.numDropoffs = pdLocs.numDropoffs();

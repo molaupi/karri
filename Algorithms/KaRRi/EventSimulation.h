@@ -49,6 +49,7 @@ namespace karri {
 
         enum RequestState {
             NOT_RECEIVED,
+            WAITING_FOR_DISPATCH,
             ASSIGNED_TO_VEH,
             WALKING_TO_DEST,
             FINISHED
@@ -78,6 +79,8 @@ namespace karri {
                   scheduledStops(scheduledStops),
                   vehicleEvents(fleet.size()),
                   requestEvents(requests.size()),
+                  nextRequestBatchDeadline(InputConfig::getInstance().requestBatchInterval),
+                  requestBatch(),
                   vehicleState(fleet.size(), OUT_OF_SERVICE),
                   requestState(requests.size(), NOT_RECEIVED),
                   requestData(requests.size(), RequestData()),
@@ -114,26 +117,26 @@ namespace karri {
                 // Pop next event from either queue. Request event has precedence if at the same time as vehicle event.
                 int id, occTime;
 
-                if (requestEvents.empty()) {
-                    vehicleEvents.min(id, occTime);
-                    handleVehicleEvent(id, occTime);
-                    continue;
-                }
+                const bool nextEventIsRequest =
+                        !requestEvents.empty() &&
+                        (vehicleEvents.empty() || requestEvents.minKey() <= vehicleEvents.minKey());
 
-                if (vehicleEvents.empty()) {
+                if (nextEventIsRequest)
                     requestEvents.min(id, occTime);
-                    handleRequestEvent(id, occTime);
-                    continue;
-                }
-
-                if (vehicleEvents.minKey() < requestEvents.minKey()) {
+                else
                     vehicleEvents.min(id, occTime);
-                    handleVehicleEvent(id, occTime);
+
+                // If the deadline for the next request batch has been reached, dispatch the batch of requests
+                // collected before continuing with the next request or vehicle events.
+                if (occTime > nextRequestBatchDeadline) {
+                    dispatchRequestBatch();
                     continue;
                 }
 
-                requestEvents.min(id, occTime);
-                handleRequestEvent(id, occTime);
+                if (nextEventIsRequest)
+                    handleRequestEvent(id, occTime);
+                else
+                    handleVehicleEvent(id, occTime);
             }
         }
 
@@ -274,45 +277,154 @@ namespace karri {
         }
 
         void handleRequestReceipt(const int reqId, const int occTime) {
-            ++progressBar;
-            assert(requestState[reqId] == NOT_RECEIVED);
-            assert(requests[reqId].requestTime == occTime);
+            KASSERT(requestState[reqId] == NOT_RECEIVED);
+            KASSERT(requests[reqId].requestTime == occTime);
+
             Timer timer;
+            requestBatch.push_back(requests[reqId]);
+            requestState[reqId] = WAITING_FOR_DISPATCH;
 
-            const auto &request = requests[reqId];
-            stats::DispatchingPerformanceStats stats;
-            const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request, stats);
-            systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse);
-
-            applyAssignment(asgnFinderResponse, stats, reqId, occTime);
+            int id, key;
+            requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dispatching time for walking-only or when vehicle reaches dropoff
+            assert(id == reqId && key == occTime);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",RequestReceipt," << time << '\n';
         }
 
-        template<typename AssignmentFinderResponseT>
-        void applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, stats::DispatchingPerformanceStats stats, const int reqId, const int occTime) {
-            if (asgnFinderResponse.isNotUsingVehicleBest()) {
-                requestState[reqId] = WALKING_TO_DEST;
-                requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
-                requestData[reqId].depTime = occTime;
-                requestData[reqId].walkingTimeToPickup = 0;
-                requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.getNotUsingVehicleDist();
-                requestEvents.increaseKey(reqId, occTime + asgnFinderResponse.getNotUsingVehicleDist());
-                systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
-                return;
+        void dispatchRequestBatch() {
+
+            Timer timer;
+
+            const int now = nextRequestBatchDeadline;
+
+            std::vector<stats::DispatchingPerformanceStats> stats(requestBatch.size());
+
+            // Find an assignment for each request in requestBatch. May require multiple rounds for some requests
+            // if there are conflicting assignments.
+            while (!requestBatch.empty()) {
+
+                auto responses = assignmentFinder.findBestAssignmentsForBatchParallel(requestBatch, now, stats);
+
+                // Requests for which no assignment could be found can be discarded. Requests for which the best
+                // assignment does not use a vehicle are conflict-free and can be applied right away.
+                KASSERT(responses.size() == requestBatch.size() && stats.size() == requestBatch.size());
+                for (int i = requestBatch.size() - 1; i >= 0; --i) {
+                    KASSERT(responses[i].originalRequest.requestId == requestBatch[i].requestId);
+                    // If response uses a vehicle, process later
+                    if (responses[i].getBestAssignment().vehicle) {
+                        continue;
+                    }
+
+                    if (responses[i].isNotUsingVehicleBest()) {
+                        KASSERT(responses[i].getBestCost() < INFTY);
+                        processNotUsingVehicleAssignment(responses[i], stats[i], requestBatch[i].requestId, now);
+                    } else {
+                        KASSERT(responses[i].getBestCost() == INFTY);
+                        processRejectedRequest(responses[i], stats[i], requestBatch[i].requestId, now);
+                    }
+
+                    // Remove request from batch, responses and stats
+                    requestBatch[i] = requestBatch.back();
+                    requestBatch.pop_back();
+                    responses[i] = responses.back();
+                    responses.pop_back();
+                    stats[i] = stats.back();
+                    stats.pop_back();
+
+                    ++progressBar;
+                }
+
+                // To avoid conflicts, we only accept one assignment per vehicle. If there are multiple assignments to
+                // the same vehicle, only one of them is accepted, while the others are postponed for a second run of
+                // assignments.
+                std::vector<int> orderOfVehicle(requestBatch.size());
+                std::iota(orderOfVehicle.begin(), orderOfVehicle.end(), 0);
+                std::sort(orderOfVehicle.begin(), orderOfVehicle.end(), [&](const auto& i1, const auto& i2) {
+                    LIGHT_KASSERT(responses[i1].getBestAssignment().vehicle && responses[i2].getBestAssignment().vehicle);
+                    const auto& vehId1 = responses[i1].getBestAssignment().vehicle->vehicleId;
+                    const auto& vehId2 = responses[i2].getBestAssignment().vehicle->vehicleId;
+                    return vehId1 < vehId2;
+                });
+                Permutation orderOfVehiclePerm(orderOfVehicle.begin(), orderOfVehicle.end());
+                orderOfVehiclePerm.invert();
+                orderOfVehiclePerm.applyTo(requestBatch);
+                orderOfVehiclePerm.applyTo(responses);
+                orderOfVehiclePerm.applyTo(stats);
+                std::vector<int> accepted;
+                int lastAcceptedVehId = INVALID_ID;
+                for (int i = 0; i < requestBatch.size(); ++i) {
+                    LIGHT_KASSERT(responses[i].getBestAssignment().vehicle);
+                    const auto& vehId = responses[i].getBestAssignment().vehicle->vehicleId;
+                    if (vehId == lastAcceptedVehId)
+                        continue;
+                    accepted.push_back(i);
+                    lastAcceptedVehId = vehId;
+                }
+
+                for (const auto& i : accepted) {
+                    KASSERT(requestState[requestBatch[i].requestId] == WAITING_FOR_DISPATCH);
+                    systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
+                    applyAssignment(responses[i], stats[i], requestBatch[i].requestId, now);
+                    ++progressBar;
+                }
+
+                // Remove all accepted requests from batch and retry rejected ones.
+                for (int j = accepted.size() - 1; j >= 0; --j) {
+                    const auto& idxToRemove = accepted[j];
+                    requestBatch[idxToRemove] = requestBatch.back();
+                    requestBatch.pop_back();
+                    stats[idxToRemove] = stats.back();
+                    stats.pop_back();
+                }
             }
 
-            int id, key;
-            requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dropoff
-            assert(id == reqId && key == occTime);
+            nextRequestBatchDeadline += InputConfig::getInstance().requestBatchInterval;
+
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            eventSimulationStatsLogger << now << ",RequestBatchDispatch," << time << '\n';
+
+        }
+
+        template<typename AssignmentFinderResponseT>
+        void processRejectedRequest(const AssignmentFinderResponseT& asgnFinderResponse,
+                                    stats::DispatchingPerformanceStats stats, const int reqId, const int) {
+            KASSERT(!requestEvents.contains(reqId));
+            KASSERT(asgnFinderResponse.getBestAssignment().vehicle == nullptr);
+            KASSERT(asgnFinderResponse.getBestAssignment().pickup.id == INVALID_ID);
+            KASSERT(asgnFinderResponse.getBestAssignment().dropoff.id == INVALID_ID);
+            KASSERT(asgnFinderResponse.getBestCost() == INFTY);
+
+            requestState[reqId] = FINISHED;
+            systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
+        }
+
+        template<typename AssignmentFinderResponseT>
+        void processNotUsingVehicleAssignment(const AssignmentFinderResponseT& asgnFinderResponse,
+                                              stats::DispatchingPerformanceStats stats, const int reqId, const int occTime) {
+            KASSERT(!requestEvents.contains(reqId));
+            KASSERT(asgnFinderResponse.getBestAssignment().vehicle == nullptr);
+            KASSERT(asgnFinderResponse.getBestCost() < INFTY);
+
+            // Assign rider to walk to their destination and insert event for their arrival.
+            requestState[reqId] = WALKING_TO_DEST;
+            requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
+            requestData[reqId].depTime = occTime;
+            requestData[reqId].walkingTimeToPickup = 0;
+            requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.getNotUsingVehicleDist();
+            requestEvents.insert(reqId, occTime + asgnFinderResponse.getNotUsingVehicleDist());
+            systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
+        }
+
+        template<typename AssignmentFinderResponseT>
+        void
+        applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, stats::DispatchingPerformanceStats stats,
+                        const int reqId, const int) {
+            KASSERT(!requestEvents.contains(reqId));
+            KASSERT(!asgnFinderResponse.isNotUsingVehicleBest());
 
             const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
-            if (!bestAsgn.vehicle || bestAsgn.pickup.id == INVALID_ID || bestAsgn.dropoff.id == INVALID_ID) {
-                requestState[reqId] = FINISHED;
-                systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
-                return;
-            }
+            KASSERT(bestAsgn.vehicle && bestAsgn.pickup.id != INVALID_ID && bestAsgn.dropoff.id != INVALID_ID);
 
             requestState[reqId] = ASSIGNED_TO_VEH;
             requestData[reqId].walkingTimeToPickup = bestAsgn.pickup.walkingDist;
@@ -379,6 +491,9 @@ namespace karri {
 
         AddressableQuadHeap vehicleEvents;
         AddressableQuadHeap requestEvents;
+
+        int nextRequestBatchDeadline;
+        std::vector<Request> requestBatch;
 
         std::vector<VehicleState> vehicleState;
         std::vector<RequestState> requestState;

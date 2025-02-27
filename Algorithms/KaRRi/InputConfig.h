@@ -52,6 +52,7 @@ namespace karri {
         int maxNumDropoffs = -1;
         double alpha = -1;
         int beta = -1;
+        int requestBatchInterval = -1;
         bool alwaysUseVehicle = false;
     };
 

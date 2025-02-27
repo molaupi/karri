@@ -215,7 +215,7 @@ namespace karri {
 
             const int minDetour = distToPickup + minDistToDropoff + stopTime;
 
-            const int minActualDepTimeAtPickup = context.originalRequest.requestTime + distToPickup;
+            const int minActualDepTimeAtPickup = context.dispatchingTime + distToPickup;
             const int minTripTime = minActualDepTimeAtPickup - context.originalRequest.requestTime + minDistToDropoff;
             const int minWaitViolationCost = F::calcWaitViolationCost(minActualDepTimeAtPickup, context);
             const int minTripCost = F::calcTripCost(minTripTime, context);
@@ -233,7 +233,7 @@ namespace karri {
             const DistanceLabel minDetour = distsToPickup + minDistsToDropoff + stopTime;
 
 
-            const DistanceLabel minActualDepTimeAtPickup = context.originalRequest.requestTime + distsToPickup;
+            const DistanceLabel minActualDepTimeAtPickup = context.dispatchingTime + distsToPickup;
             const DistanceLabel minTripTime = distsToPickup + minDistsToDropoff;
             const DistanceLabel minWaitViolationCost = F::calcKWaitViolationCosts(minActualDepTimeAtPickup, context);
             const DistanceLabel minTripCost = F::calcKTripCosts(minTripTime, context);
@@ -351,8 +351,7 @@ namespace karri {
             const int numStops = routeState.numStopsOf(vehId);
             const int actualDepTimeAtPickup = getActualDepTimeAtPickup(vehId, numStops - 1, distToPickup, pickup,
                                                                        context, routeState);
-            const int vehDepTimeAtPrevStop = std::max(routeState.schedDepTimesFor(vehId)[numStops - 1],
-                                                      context.originalRequest.requestTime);
+            const int vehDepTimeAtPrevStop = std::max(routeState.schedDepTimesFor(vehId)[numStops - 1], context.dispatchingTime);
             const int detourUntilDepAtPickup = actualDepTimeAtPickup - vehDepTimeAtPrevStop;
             assert(!((bool) (detourUntilDepAtPickup < 0)));
             const int minDetour = detourUntilDepAtPickup + minDistToDropoff;
@@ -435,7 +434,7 @@ namespace karri {
                                                                            const int minDistToDropoff,
                                                                            const int minArrTimeAtDropoff,
                                                                            const RequestContext &context) const {
-            assert(minArrTimeAtDropoff >= context.originalRequest.requestTime);
+            assert(minArrTimeAtDropoff >= context.dispatchingTime);
             assert(minDistToDropoff < INFTY);
             if (minDistToDropoff >= INFTY)
                 return INFTY;

@@ -58,6 +58,7 @@ namespace karri {
                                                                        "request_id, "
                                                                        "request_time, "
                                                                        "direct_od_dist, "
+                                                                       "dispatching_time, "
                                                                        "vehicle_id, "
                                                                        "pickup_insertion_point, "
                                                                        "dropoff_insertion_point, "
@@ -136,10 +137,10 @@ namespace karri {
             // If the vehicle has to be rerouted at its current location for a PBNS assignment, we introduce an
             // intermediate stop at its current location representing the rerouting. We have to compute the vehicle's
             // current location before changing the route, and later add the intermediate stop after changing the route.
-            const bool rerouteVehicle = asgn.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] < requestState.originalRequest.requestTime;
+            const bool rerouteVehicle = asgn.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] < requestState.dispatchingTime;
             VehicleLocation loc;
             if (rerouteVehicle) {
-                loc = vehicleLocator.computeCurrentLocation(*asgn.vehicle, requestState.originalRequest.requestTime);
+                loc = vehicleLocator.computeCurrentLocation(*asgn.vehicle, requestState.dispatchingTime);
             }
 
             timer.restart();
@@ -150,8 +151,7 @@ namespace karri {
             updateBucketState(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore, stats);
 
             if (rerouteVehicle) {
-                createIntermediateStopAtCurrentLocationForReroute(*asgn.vehicle, requestState.originalRequest.requestTime,
-                                                                  loc, stats);
+                createIntermediateStopAtCurrentLocationForReroute(*asgn.vehicle, requestState.dispatchingTime, loc, stats);
                 ++pickupIndex;
                 ++dropoffIndex;
             }
@@ -197,7 +197,8 @@ namespace karri {
             bestAssignmentsLogger
                     << requestState.originalRequest.requestId << ", "
                     << requestState.originalRequest.requestTime << ", "
-                    << requestState.originalReqDirectDist << ", ";
+                    << requestState.originalReqDirectDist << ", "
+                    << requestState.dispatchingTime << ", ";
 
             if (requestState.getBestCost() == INFTY) {
                 bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,inf\n";

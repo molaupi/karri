@@ -293,7 +293,7 @@ namespace karri {
             const int minVehDepTimeAtPickup =
                     getVehDepTimeAtStopForRequest(veh.vehicleId, stopIndex, requestState, routeState)
                     + minDistToPickup;
-            const int minDepTimeAtPickup = std::max(requestState.originalRequest.requestTime, minVehDepTimeAtPickup);
+            const int minDepTimeAtPickup = std::max(requestState.dispatchingTime, minVehDepTimeAtPickup);
             int minInitialPickupDetour = calcInitialPickupDetour(veh.vehicleId, stopIndex, INVALID_INDEX,
                                                                  minDepTimeAtPickup, minDistFromPickup, requestState,
                                                                  routeState);

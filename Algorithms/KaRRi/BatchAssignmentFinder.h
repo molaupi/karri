@@ -36,11 +36,6 @@ namespace karri {
 
 
 
-    struct BatchAssignmentFinderResponse {
-        std::vector<RequestState> responses;
-        std::vector<stats::DispatchingPerformanceStats> stats;
-    };
-
 
     template<typename AssignmentFinderFactoryT>
     class BatchAssignmentFinder {
@@ -49,38 +44,34 @@ namespace karri {
 
         BatchAssignmentFinder(AssignmentFinderFactoryT& assignmentFinderFactory) : asgnFinderFactory(assignmentFinderFactory) {}
 
-        BatchAssignmentFinderResponse findBestAssignmentsForBatchParallel(const std::vector<Request>& requestBatch) {
+        std::vector<RequestState> findBestAssignmentsForBatchParallel(const std::vector<Request>& requestBatch, const int now, std::vector<stats::DispatchingPerformanceStats>& stats) {
 
-            BatchAssignmentFinderResponse response;
-            response.responses.resize(requestBatch.size());
-            response.stats.resize(requestBatch.size());
+            std::vector<RequestState> responses(requestBatch.size());
 
-            tbb::parallel_for(0, requestBatch.size(), [&](const int i) {
+            tbb::parallel_for(0, static_cast<int>(requestBatch.size()), [&](const int i) {
                 auto asgnFinder = asgnFinderFactory.getThreadLocalAssignmentFinder();
-                response.responses[i] = asgnFinder.findBestAssignment(requestBatch[i], response.stats[i]);
+                responses[i] = asgnFinder.findBestAssignment(requestBatch[i], now, stats[i]);
             });
 
-            return response;
+            return responses;
         }
 
-        BatchAssignmentFinderResponse findBestAssignmentsForBatchSequential(const std::vector<Request>& requestBatch) {
+        std::vector<RequestState> findBestAssignmentsForBatchSequential(const std::vector<Request>& requestBatch, const int now, std::vector<stats::DispatchingPerformanceStats>& stats) {
 
-            BatchAssignmentFinderResponse response;
-            response.responses.resize(requestBatch.size());
-            response.stats.resize(requestBatch.size());
+            std::vector<RequestState> responses(requestBatch.size());
 
             for (int i = 0; i < requestBatch.size(); ++i) {
                 auto asgnFinder = asgnFinderFactory.getThreadLocalAssignmentFinder();
-                response.responses[i] = asgnFinder.findBestAssignment(requestBatch[i], response.stats[i]);
+                responses[i] = asgnFinder.findBestAssignment(requestBatch[i], now, stats[i]);
             }
 
-            return response;
+            return responses;
         }
 
         // Implements same interface as non-batch AssignmentFinder
-        RequestState findBestAssignment(const Request &req, stats::DispatchingPerformanceStats& stats) {
+        RequestState findBestAssignment(const Request &req, const int now, stats::DispatchingPerformanceStats& stats) {
             auto asgnFinder = asgnFinderFactory.getThreadLocalAssignmentFinder();
-            return asgnFinder.findBestAssignment(req, stats);
+            return asgnFinder.findBestAssignment(req, now, stats);
         }
 
 

@@ -43,7 +43,7 @@ namespace karri::time_utils {
                                                     const RouteState &routeState) {
         const auto numStops = routeState.numStopsOf(vehId);
         const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
-        return (numStops == 1 ? std::max(minDepTimes[0], context.originalRequest.requestTime) : minDepTimes[stopIdx]);
+        return (numStops == 1 ? std::max(minDepTimes[0], context.dispatchingTime) : minDepTimes[stopIdx]);
     }
 
     static INLINE bool isMakingStop(const int vehId, const int now, const RouteState &routeState) {
@@ -80,7 +80,7 @@ namespace karri::time_utils {
     static INLINE int getActualDepTimeAtPickup(const int vehId, const int stopIndexBeforePickup, const int distToPickup,
                                                const PDLoc &pickup, const RequestContext &context,
                                                const RouteState &routeState) {
-        const bool atStop = isPickupAtExistingStop(pickup, vehId, context.now(), stopIndexBeforePickup, routeState);
+        const bool atStop = isPickupAtExistingStop(pickup, vehId, context.dispatchingTime, stopIndexBeforePickup, routeState);
         const auto minVehicleDepTimeAtPickup =
                 getVehDepTimeAtStopForRequest(vehId, stopIndexBeforePickup, context, routeState) +
                 !atStop * (distToPickup + InputConfig::getInstance().stopTime);
@@ -109,7 +109,7 @@ namespace karri::time_utils {
                              const RouteState &routeState) {
         using LabelMask = typename LabelSet::LabelMask;
 
-        const LabelMask atStop = isPickupAtExistingStop<LabelSet>(pickupLocs, vehId, context.now(),
+        const LabelMask atStop = isPickupAtExistingStop<LabelSet>(pickupLocs, vehId, context.dispatchingTime,
                                                                   stopIndexBeforePickup, routeState);
 
         // We assume a pickup at an existing stop takes no additional counting of stopTime, irrespective of when the
@@ -376,11 +376,10 @@ namespace karri::time_utils {
         const auto &maxArrTimes = routeState.maxArrTimesFor(vehId);
         const auto &occupancies = routeState.occupanciesFor(vehId);
 
-        // If departure time at the last stop (which may be the time of issuing this request if the vehicle is currently
+        // If departure time at the last stop (which may be the time of dispatching this request if the vehicle is currently
         // idling) is moved past the end of the service time by the total detour, the assignment violates the service
         // time constraint.
-        if (std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime) + residualDetourAtEnd >
-            endServiceTime)
+        if (std::max(minDepTimes[numStops - 1], context.dispatchingTime) + residualDetourAtEnd > endServiceTime)
             return true;
 
         // If the pickup is inserted at/after the last stop and the service time constraint is not violated, the
@@ -434,8 +433,7 @@ namespace karri::time_utils {
         const auto numStops = routeState.numStopsOf(vehId);
         const auto &minDepTimes = routeState.schedDepTimesFor(vehId);
 
-        return std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime) + residualDetourAtEnd >
-               endServiceTime;
+        return std::max(minDepTimes[numStops - 1], context.dispatchingTime) + residualDetourAtEnd > endServiceTime;
     }
 
     template<typename RequestContext>
@@ -449,12 +447,11 @@ namespace karri::time_utils {
         const auto &minArrTimes = routeState.schedArrTimesFor(vehId);
         const auto &maxArrTimes = routeState.maxArrTimesFor(vehId);
 
-        // If departure time at the last stop (which may be the time of issuing this request) is moved past
+        // If departure time at the last stop (which may be the time of dispatching this request) is moved past
         // the end of the service time by the pickup detour, the assignment violates the service time constraint.
         const auto residualDetourAtEnd = calcResidualPickupDetour(vehId, pickupIndex, numStops - 1, initialPickupDetour,
                                                                   routeState);
-        if (std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime) + residualDetourAtEnd >
-            endServiceTime)
+        if (std::max(minDepTimes[numStops - 1], context.dispatchingTime) + residualDetourAtEnd > endServiceTime)
             return true;
 
         // If the pickup is inserted at/after the last stop and the service time constraint is not violated, the
@@ -482,11 +479,11 @@ namespace karri::time_utils {
         const auto &minArrTimes = routeState.schedArrTimesFor(vehId);
         const auto &maxArrTimes = routeState.maxArrTimesFor(vehId);
 
-        // If departure time at the last stop (which may be the time of issuing this request) is moved past
+        // If departure time at the last stop (which may be the time of dispatching this request) is moved past
         // the end of the service time by the dropoff detour, the assignment violates the service time constraint.
         const auto residualDetourAtEnd = calcResidualTotalDetourForStopAfterDropoff(vehId, dropoffIndex, numStops - 1,
                                                                                     initialDropoffDetour, routeState);
-        if (std::max(minDepTimes[numStops - 1], context.originalRequest.requestTime) + residualDetourAtEnd >
+        if (std::max(minDepTimes[numStops - 1], context.dispatchingTime) + residualDetourAtEnd >
             endServiceTime)
             return true;
 

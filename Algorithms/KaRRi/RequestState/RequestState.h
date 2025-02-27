@@ -43,6 +43,7 @@ namespace karri {
 
         RequestState()
                 : originalRequest(),
+                    dispatchingTime(INFTY),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
                   bestAssignment(),
@@ -53,14 +54,9 @@ namespace karri {
 
         // Information about current request itself
         Request originalRequest;
-        int originalReqDirectDist;
-        int minDirectPDDist;
-
-
-        // Shorthand for requestTime
-        int now() const {
-            return originalRequest.requestTime;
-        }
+        int dispatchingTime; // time at which request is dispatched, i.e., assignment is decided upon. Must be >= originalRequest.requestTime.
+        int originalReqDirectDist; // direct distance from origin to destination
+        int minDirectPDDist; // smallest distance between any pickup and any dropoff
 
         int getOriginalReqMaxTripTime() const {
             assert(originalReqDirectDist >= 0);
@@ -68,7 +64,7 @@ namespace karri {
         }
 
         int getPassengerArrAtPickup(const PDLoc& pickup) const {
-            return originalRequest.requestTime + pickup.walkingDist;
+            return dispatchingTime + pickup.walkingDist;
         }
 
         int getMaxArrTimeAtDropoff(const PDLoc& dropoff) const {

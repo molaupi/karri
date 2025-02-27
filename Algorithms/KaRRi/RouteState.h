@@ -33,6 +33,7 @@
 
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
+#include "InputConfig.h"
 
 namespace karri {
 
@@ -222,7 +223,7 @@ namespace karri {
             const auto vehId = asgn.vehicle->vehicleId;
             const auto &pickup = asgn.pickup;
             const auto &dropoff = asgn.dropoff;
-            const int now = requestState.originalRequest.requestTime;
+            const int now = requestState.dispatchingTime;
             const int numRiders = requestState.originalRequest.numRiders;
             const auto &start = pos[vehId].start;
             const auto &end = pos[vehId].end;
@@ -256,8 +257,8 @@ namespace karri {
                 maxArrTimes[start + pickupIndex] = std::min(maxArrTimes[start + pickupIndex], psgMaxDepTime - InputConfig::getInstance().stopTime);
             } else {
                 // If vehicle is currently idle, the vehicle can leave its current stop at the earliest when the
-                // request is made. In that case, we update the arrival time to count the idling as one stopTime.
-                schedDepTimes[end - 1] = std::max(schedDepTimes[end - 1], requestState.originalRequest.requestTime);
+                // request is dispatched. In that case, we update the arrival time to count the idling as one stopTime.
+                schedDepTimes[end - 1] = std::max(schedDepTimes[end - 1], requestState.dispatchingTime);
                 schedArrTimes[end - 1] = schedDepTimes[end - 1] - InputConfig::getInstance().stopTime;
                 ++pickupIndex;
                 ++dropoffIndex;
@@ -544,12 +545,13 @@ namespace karri {
             const auto end = pos[vehId].end;
 
             for (int idx = start; idx < end - 1; ++idx) {
+                LIGHT_KASSERT(idx <= start + 1 || schedDepTimes[idx] - schedArrTimes[idx] >= InputConfig::getInstance().stopTime);
                 const auto &stopId = stopIds[idx];
 
                 // Set leeway of stop, possibly update max leeway
                 const auto leeway =
                         std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1]) - schedDepTimes[idx] - InputConfig::getInstance().stopTime;
-                assert(leeway >= 0);
+                KASSERT(leeway >= 0);
                 stopIdToLeeway[stopId] = leeway;
 
                 if (leeway > maxLeeway) {

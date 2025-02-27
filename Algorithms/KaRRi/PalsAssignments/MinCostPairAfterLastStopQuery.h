@@ -596,7 +596,7 @@ namespace karri::PickupAfterLastStopStrategies {
                     const int minVehTimeTillDepAtPickup = label.distToPickup + InputConfig::getInstance().stopTime;
                     const int minPsgTimeTillDepAtPickup = std::max(
                             vehArrTimeAtPickup + InputConfig::getInstance().stopTime - requestState.originalRequest.requestTime,
-                            pickup.walkingDist);
+                            requestState.dispatchingTime + pickup.walkingDist - requestState.originalRequest.requestTime);
                     const auto lowerBoundCostForEarlyBreak = calculator.calcCostForPairedAssignmentAfterLastStop(
                             minVehTimeTillDepAtPickup, minPsgTimeTillDepAtPickup,
                             directDist, pickup.walkingDist, dropoff.walkingDist, requestState);

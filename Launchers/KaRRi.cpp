@@ -69,6 +69,9 @@
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
 
+#include "Parallel/hardware_topology.h"
+#include "Parallel/tbb_initializer.h"
+
 #ifdef KARRI_USE_CCHS
 #include "Algorithms/KaRRi/CCHEnvironment.h"
 #else
@@ -131,6 +134,7 @@ inline void printUsage() {
               "  -w <sec>               maximum wait time (in s). (dflt: 300s)\n"
               "  -a <factor>            model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
               "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
+              "  -i <seconds>           interval duration for batch of requests in seconds (dflt: 60)\n"
               "  -p-radius <sec>        walking radius (in s) for pickup locations around origin. (dflt: 300s)\n"
               "  -d-radius <sec>        walking radius (in s) for dropoff locations around destination. (dflt: 300s)\n"
               "  -max-num-p <int>       max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
@@ -141,6 +145,7 @@ inline void printUsage() {
               "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
               "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
+              "  -max-num-threads <int> set the maximum number of threads to use (dflt: 1).\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
               "  -help                  show usage help text.\n";
 }
@@ -153,6 +158,16 @@ int main(int argc, char *argv[]) {
             printUsage();
             return EXIT_SUCCESS;
         }
+
+        // Initialize TBB
+        auto maxNumThreads = clp.getValue<size_t>("max-num-threads", 1);
+        size_t numAvailableCpus = parallel::HardwareTopology<>::instance().num_cpus();
+        if (numAvailableCpus < maxNumThreads) {
+            std::cout << "There are currently only " << numAvailableCpus << " cpus available. "
+                      << "Setting number of threads from " << maxNumThreads << " to " << numAvailableCpus << std::endl;
+            maxNumThreads = numAvailableCpus;
+        }
+        parallel::TBBInitializer<parallel::HardwareTopology<>>::instance(maxNumThreads);
 
 
         // Parse the command-line options.
@@ -168,6 +183,7 @@ int main(int argc, char *argv[]) {
         if (inputConfig.maxNumDropoffs == 0) inputConfig.maxNumDropoffs = INFTY;
         inputConfig.alpha = clp.getValue<double>("a", 1.7);
         inputConfig.beta = clp.getValue<int>("b", 120) * 10;
+        inputConfig.requestBatchInterval = clp.getValue<int>("i", 60) * 10;
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");
