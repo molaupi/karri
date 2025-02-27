@@ -171,4 +171,8 @@ eventSimulationPerfStats <- function(file_base) {
   
   print(df)
   
+  asgnstats <- read.csv(paste0(file_base, ".assignmentquality.csv"))
+  num.requests <- nrow(asgnstats)
+  print(paste0("Mean dispatch time per request: ", sum(stats[stats$type=="RequestBatchDispatch", ]$running_time) / num.requests))
+  
 }

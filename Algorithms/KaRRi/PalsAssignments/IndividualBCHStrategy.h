@@ -266,6 +266,9 @@ namespace karri::PickupAfterLastStopStrategies {
             totalNumVerticesSettled = 0;
             totalNumEntriesScanned = 0;
 
+            // Set request state to allow callbacks from within Dijkstra searches.
+            curReqState = &requestState;
+
             upperBoundCost = std::min(requestState.getBestCost(), externalUpperBoundCost);
             externalUpperBoundCost = INFTY;
             vehiclesSeenForPickups.clear();

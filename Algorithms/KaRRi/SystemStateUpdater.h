@@ -137,10 +137,13 @@ namespace karri {
             // If the vehicle has to be rerouted at its current location for a PBNS assignment, we introduce an
             // intermediate stop at its current location representing the rerouting. We have to compute the vehicle's
             // current location before changing the route, and later add the intermediate stop after changing the route.
-            const bool rerouteVehicle = asgn.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] < requestState.dispatchingTime;
+            bool rerouteVehicle = asgn.pickupStopIdx == 0 && numStopsBefore > 1 && routeState.schedDepTimesFor(vehId)[0] < requestState.dispatchingTime;
             VehicleLocation loc;
             if (rerouteVehicle) {
                 loc = vehicleLocator.computeCurrentLocation(*asgn.vehicle, requestState.dispatchingTime);
+                // If vehicle is currently already at edge that constitutes the next stop, we do not have to reroute
+                // and create an intermediate stop (as the intermediate stop would be at the same location).
+                rerouteVehicle = routeState.stopLocationsFor(vehId)[1] != loc.location;
             }
 
             timer.restart();
