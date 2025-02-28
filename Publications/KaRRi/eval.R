@@ -176,3 +176,24 @@ eventSimulationPerfStats <- function(file_base) {
   print(paste0("Mean dispatch time per request: ", sum(stats[stats$type=="RequestBatchDispatch", ]$running_time) / num.requests))
   
 }
+
+
+library(dplyr)
+batchDispatchPerfStats <- function(file_base) {
+  
+  stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
+  
+  stats <- stats %>% group_by(occurence_time) %>% summarise(
+    num_iterations = max(iteration),
+    num_requests = max(num_requests),
+    find_assignments_running_time = sum(find_assignments_running_time),
+    choose_accepted_running_time = sum(choose_accepted_running_time),
+    update_system_state_running_time = sum(update_system_state_running_time)
+  )
+  
+  means <- apply(stats,2,mean)
+  means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
+  print(means)
+
+  
+}

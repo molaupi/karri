@@ -88,6 +88,14 @@ namespace karri {
                                                                                   "occurrence_time,"
                                                                                   "type,"
                                                                                   "running_time\n")),
+                  batchDispatchStatsLogger(LogManager<std::ofstream>::getLogger("batchdispatchstats.csv",
+                                                                                "occurence_time,"
+                                                                                "iteration,"
+                                                                                "num_requests,"
+                                                                                "num_accepted,"
+                                                                                "find_assignments_running_time,"
+                                                                                "choose_accepted_running_time,"
+                                                                                "update_system_state_running_time\n")),
                   assignmentQualityStats(LogManager<std::ofstream>::getLogger("assignmentquality.csv",
                                                                               "request_id,"
                                                                               "arr_time,"
@@ -285,7 +293,8 @@ namespace karri {
             requestState[reqId] = WAITING_FOR_DISPATCH;
 
             int id, key;
-            requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dispatching time for walking-only or when vehicle reaches dropoff
+            requestEvents.deleteMin(id,
+                                    key); // event for walking arrival at dest inserted at dispatching time for walking-only or when vehicle reaches dropoff
             assert(id == reqId && key == occTime);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
@@ -302,12 +311,19 @@ namespace karri {
 
             // Find an assignment for each request in requestBatch. May require multiple rounds for some requests
             // if there are conflicting assignments.
+            int iteration = 0;
             while (!requestBatch.empty()) {
+                ++iteration;
+                const auto iterationNumRequests = requestBatch.size();
 
+                Timer iterationTimer;
                 auto responses = assignmentFinder.findBestAssignmentsForBatchParallel(requestBatch, now, stats);
+                const auto iterationFindAssignmentsTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
+
 
                 // Requests for which no assignment could be found can be discarded. Requests for which the best
                 // assignment does not use a vehicle are conflict-free and can be applied right away.
+                iterationTimer.restart();
                 KASSERT(responses.size() == requestBatch.size() && stats.size() == requestBatch.size());
                 for (int i = requestBatch.size() - 1; i >= 0; --i) {
                     KASSERT(responses[i].originalRequest.requestId == requestBatch[i].requestId);
@@ -340,10 +356,11 @@ namespace karri {
                 // assignments.
                 std::vector<int> orderOfVehicle(requestBatch.size());
                 std::iota(orderOfVehicle.begin(), orderOfVehicle.end(), 0);
-                std::sort(orderOfVehicle.begin(), orderOfVehicle.end(), [&](const auto& i1, const auto& i2) {
-                    LIGHT_KASSERT(responses[i1].getBestAssignment().vehicle && responses[i2].getBestAssignment().vehicle);
-                    const auto& vehId1 = responses[i1].getBestAssignment().vehicle->vehicleId;
-                    const auto& vehId2 = responses[i2].getBestAssignment().vehicle->vehicleId;
+                std::sort(orderOfVehicle.begin(), orderOfVehicle.end(), [&](const auto &i1, const auto &i2) {
+                    LIGHT_KASSERT(
+                            responses[i1].getBestAssignment().vehicle && responses[i2].getBestAssignment().vehicle);
+                    const auto &vehId1 = responses[i1].getBestAssignment().vehicle->vehicleId;
+                    const auto &vehId2 = responses[i2].getBestAssignment().vehicle->vehicleId;
                     return vehId1 < vehId2;
                 });
                 Permutation orderOfVehiclePerm(orderOfVehicle.begin(), orderOfVehicle.end());
@@ -355,28 +372,36 @@ namespace karri {
                 int lastAcceptedVehId = INVALID_ID;
                 for (int i = 0; i < requestBatch.size(); ++i) {
                     LIGHT_KASSERT(responses[i].getBestAssignment().vehicle);
-                    const auto& vehId = responses[i].getBestAssignment().vehicle->vehicleId;
+                    const auto &vehId = responses[i].getBestAssignment().vehicle->vehicleId;
                     if (vehId == lastAcceptedVehId)
                         continue;
                     accepted.push_back(i);
                     lastAcceptedVehId = vehId;
                 }
+                const auto iterationChooseAcceptedTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 
-                for (const auto& i : accepted) {
+                iterationTimer.restart();
+                for (const auto &i: accepted) {
                     KASSERT(requestState[requestBatch[i].requestId] == WAITING_FOR_DISPATCH);
                     systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
                     applyAssignment(responses[i], stats[i], requestBatch[i].requestId, now);
                     ++progressBar;
                 }
+                const auto iterationUpdateSystemStateTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 
                 // Remove all accepted requests from batch and retry rejected ones.
                 for (int j = accepted.size() - 1; j >= 0; --j) {
-                    const auto& idxToRemove = accepted[j];
+                    const auto &idxToRemove = accepted[j];
                     requestBatch[idxToRemove] = requestBatch.back();
                     requestBatch.pop_back();
                     stats[idxToRemove] = stats.back();
                     stats.pop_back();
                 }
+
+                batchDispatchStatsLogger << now << "," << iteration << "," << iterationNumRequests << ","
+                                         << accepted.size() << "," << iterationFindAssignmentsTime << ","
+                                         << iterationChooseAcceptedTime << "," << iterationUpdateSystemStateTime
+                                         << "\n";
             }
 
             nextRequestBatchDeadline += InputConfig::getInstance().requestBatchInterval;
@@ -387,7 +412,7 @@ namespace karri {
         }
 
         template<typename AssignmentFinderResponseT>
-        void processRejectedRequest(const AssignmentFinderResponseT& asgnFinderResponse,
+        void processRejectedRequest(const AssignmentFinderResponseT &asgnFinderResponse,
                                     stats::DispatchingPerformanceStats stats, const int reqId, const int) {
             KASSERT(!requestEvents.contains(reqId));
             KASSERT(asgnFinderResponse.getBestAssignment().vehicle == nullptr);
@@ -400,8 +425,9 @@ namespace karri {
         }
 
         template<typename AssignmentFinderResponseT>
-        void processNotUsingVehicleAssignment(const AssignmentFinderResponseT& asgnFinderResponse,
-                                              stats::DispatchingPerformanceStats stats, const int reqId, const int occTime) {
+        void processNotUsingVehicleAssignment(const AssignmentFinderResponseT &asgnFinderResponse,
+                                              stats::DispatchingPerformanceStats stats, const int reqId,
+                                              const int occTime) {
             KASSERT(!requestEvents.contains(reqId));
             KASSERT(asgnFinderResponse.getBestAssignment().vehicle == nullptr);
             KASSERT(asgnFinderResponse.getBestCost() < INFTY);
@@ -501,6 +527,7 @@ namespace karri {
         std::vector<RequestData> requestData;
 
         std::ofstream &eventSimulationStatsLogger;
+        std::ofstream &batchDispatchStatsLogger;
         std::ofstream &assignmentQualityStats;
         std::ofstream &legStatsLogger;
         ProgressBar progressBar;
