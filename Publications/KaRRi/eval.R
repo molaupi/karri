@@ -202,3 +202,60 @@ batchDispatchPerfStats <- function(file_base) {
 
   
 }
+
+countBestAssignmentTypes <- function(file_base) {
+  asgns <- read.csv(paste0(file_base, ".bestassignments.csv"))
+  
+  # Let k = number of stops of vehicle before insertion, 
+  #     i = index where pickup is to be inserted 
+  #     j = index where dropoff is to be inserted
+  
+  # Ord if                0 < i <= j < k - 1
+    # Ord-Ord if            0 < i < j < k - 1,
+    # Ord-paired if         0 < i = j < k - 1,
+  # PBNS if               0 = i <= j < k - 1,
+    # PBNS-Ord if           0 = i < j < k - 1,
+    # PBNS-paired if        0 = i = j < k - 1,
+  # PALS if               0 <= i = j = k - 1,
+  # DALS if               0 <= i < j = k - 1,
+    # Ord-DALS if           0 < i < j = k - 1,
+    # PBNS-DALS if          0 = i < j = k - 1
+  getType <- function(i, j, k) {
+    i <- as.integer(i)
+    j <- as.integer(j)
+    k <- as.integer(k)
+    if (0 < i && i <= j && i < k - 1)
+      return("ord")
+    if (0 == i && i <= j && j < k - 1)
+      return("pbns")
+    if (i == j && j == k - 1)
+      return("pals")
+    if (0 <= i && i < j && j == k - 1)
+      return("dals")
+    exit("wtf")
+    return("error")
+  }
+  
+  getTypeRow <- function(row) {
+    return(getType(row[["pickup_insertion_point"]], row[["dropoff_insertion_point"]], row["num_stops"]))
+  }
+  
+  types <- apply(asgns, 1, getTypeRow)
+  
+  num_asgns <- nrow(asgns)
+  num_ord <- sum(types == "ord")
+  pct_ord <- format(num_ord / num_asgns * 100, nsmall=2)
+  num_pbns <- sum(types == "pbns")
+  pct_pbns <- format(num_pbns / num_asgns * 100, nsmall=2)
+  num_pals <- sum(types == "pals")
+  pct_pals <- format(num_pals / num_asgns * 100, nsmall=2)
+  num_dals <- sum(types == "dals")
+  pct_dals <- format(num_dals / num_asgns * 100, nsmall=2)
+
+  print(paste0("Total: ", num_asgns, ", ",
+               "Ord: ", num_ord, " (", pct_ord, "%), ",
+               "PBNS: ", num_pbns, " (", pct_pbns, "%), ",
+               "PALS: ", num_pals, " (", pct_pals, "%), ",
+               "DALS: ", num_dals, " (", pct_dals, "%)"))
+  
+}
