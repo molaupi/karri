@@ -260,6 +260,17 @@ public:
         return numVerticesSettled;
     }
 
+
+    // Used to update the stopping criterion for different runs of this search, e.g. to configure callbacks
+    StoppingCriterionT &getStoppingCriterion() {
+        return stopSearch;
+    }
+
+    // Used to update the pruning criterion for different runs of this search, e.g. to configure callbacks
+    PruningCriterionT &getPruningCriterion() {
+        return pruneSearch;
+    }
+
 private:
     // Resets the distance labels and inserts all k simultaneous sources into the queue.
     void init(const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
@@ -314,15 +325,6 @@ private:
         return v;
     }
 
-    // Used by friend classes to update the stopping criterion for different runs of this search
-    StoppingCriterionT &getStoppingCriterion() {
-        return stopSearch;
-    }
-
-    // Used by friend classes to update the pruning criterion for different runs of this search
-    PruningCriterionT &getPruningCriterion() {
-        return pruneSearch;
-    }
 
     using DistanceLabelCont = DistanceLabelContainerT<typename LabelSetT::DistanceLabel>;
     using ParentLabelCont = ParentLabelContainer<Graph, LabelSetT>;

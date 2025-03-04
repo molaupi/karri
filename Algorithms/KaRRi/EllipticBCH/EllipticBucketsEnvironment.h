@@ -31,6 +31,7 @@
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/Buckets/DynamicBucketContainer.h"
 #include "Algorithms/Buckets/SortedBucketContainer.h"
+#include "Algorithms/Buckets/CompactSortedBucketContainer.h"
 #include "BucketEntryWithLeeway.h"
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/InputConfig.h"
@@ -80,7 +81,8 @@ namespace karri {
         static constexpr bool SORTED_BY_REM_LEEWAY = SORTED_BUCKETS;
 
         using BucketContainer = std::conditional_t<SORTED_BUCKETS,
-                SortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
+                CompactSortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
+//                SortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
                 DynamicBucketContainer<Entry>
         >;
 
@@ -181,14 +183,13 @@ namespace karri {
             }
             for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
                 const auto v = *iter;
-                if (sourceBuckets.updateAllEntries(v, updateSourceLeeway)) {
+                if (sourceBuckets.updateAllEntries(v, updateSourceLeeway, numEntriesScanned)) {
                     FORALL_INCIDENT_EDGES(ch.upwardGraph(), v, e) {
                         const auto w = ch.upwardGraph().edgeHead(e);
                         deleteSearchSpace.insert(w);
                     }
                 }
                 ++numVerticesVisited;
-                numEntriesScanned += sourceBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_update_time += time;
@@ -217,14 +218,13 @@ namespace karri {
             }
             for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
                 const auto v = *iter;
-                if (targetBuckets.updateAllEntries(v, updateTargetLeeway)) {
+                if (targetBuckets.updateAllEntries(v, updateTargetLeeway, numEntriesScanned)) {
                     FORALL_INCIDENT_EDGES(ch.downwardGraph(), v, e) {
                         const auto w = ch.downwardGraph().edgeHead(e);
                         deleteSearchSpace.insert(w);
                     }
                 }
                 ++numVerticesVisited;
-                numEntriesScanned += targetBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_update_time += time;
@@ -273,6 +273,9 @@ namespace karri {
             // Run reverse CH query from next stop:
             searchFromNeighbor.runWithOffset(neighborRoot, neighborOffset);
 
+            std::vector<typename BucketContainer::EntryInsertion> entryInsertions;
+            entryInsertions.emplace_back(); // Invalid last element to write to.
+
             for (auto it = searchSpace.crbegin(); it < searchSpace.crend(); ++it) {
                 const auto v = *it;
 
@@ -299,7 +302,9 @@ namespace karri {
                 // Check if vertex is in ellipse using distances to neighbor:
                 const bool inEllipse = searchFromNewStop.getDistance(v) + searchFromNeighbor.getDistance(v) <= leeway;
                 if ((!betterHigherPathExists && inEllipse) || descendentHasEntry[v]) {
-                    buckets.insert(v, {stopId, searchFromNewStop.getDistance(v), leeway});
+//                    buckets.insert(v, {stopId, searchFromNewStop.getDistance(v), leeway});
+                    buckets.getEntryInsertion(v, {stopId, searchFromNewStop.getDistance(v), leeway}, entryInsertions.back());
+                    entryInsertions.emplace_back(); // Invalid last element to write to.
                     ++numEntriesGenerated;
 
                     // Always insert entries at every vertex on the branch, so we obtain a tree of entries that can be
@@ -308,6 +313,12 @@ namespace karri {
                     descendentHasEntry[v] = false;
                 }
             }
+
+            entryInsertions.pop_back(); // Remove unused invalid last element
+            KASSERT(entryInsertions.size() == numEntriesGenerated);
+            // TODO: accumulate insertions for entire batch of requests and run this once.
+            buckets.batchedCommitInsertions(entryInsertions); // Commit entry insertions
+
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_generate_time += time;
@@ -318,21 +329,33 @@ namespace karri {
         void
         deleteBucketEntries(const int stopId, const int root, const CH::SearchGraph &graph, BucketContainer &buckets) {
 //            int64_t numVerticesVisited = 0, numEntriesScanned = 0;
+            int64_t numEntriesScanned = 0;
 //            Timer timer;
+            std::vector<typename BucketContainer::EntryDeletion> entryDeletions;
+            entryDeletions.emplace_back(); // Invalid last element to write to
+
             deleteSearchSpace.clear();
             deleteSearchSpace.insert(root);
+
             for (auto it = deleteSearchSpace.begin(); it < deleteSearchSpace.end(); ++it) {
                 const auto &v = *it;
-                if (buckets.remove(v, stopId)) {
+//                if (buckets.remove(v, stopId)) {
+                if (buckets.getEntryDeletion(v, stopId, entryDeletions.back(), numEntriesScanned)) {
+                    entryDeletions.emplace_back(); // New invalid last element, previous one has been populated
                     FORALL_INCIDENT_EDGES(graph, v, e) {
                         const auto w = graph.edgeHead(e);
                         deleteSearchSpace.insert(w);
                     }
                 }
 //                ++numVerticesVisited;
-//                numEntriesScanned += buckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
-//            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+
+            entryDeletions.pop_back(); // Remove unused invalid last element
+            std::vector<typename BucketContainer::EntryInsertion> placeholder;
+            buckets.batchedCommitInsertionsAndDeletions(placeholder, entryDeletions); // Commit entry deletions
+
+
+            //            const auto time = timer.elapsed<std::chrono::nanoseconds>();
 //            stats.elliptic_delete_time += time;
 //            stats.elliptic_delete_numVerticesVisited += numVerticesVisited;
 //            stats.elliptic_delete_numEntriesScanned += numEntriesScanned;

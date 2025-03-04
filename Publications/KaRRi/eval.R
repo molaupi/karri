@@ -186,9 +186,9 @@ batchDispatchPerfStats <- function(file_base) {
   stats <- stats %>% group_by(occurence_time) %>% summarise(
     num_iterations = max(iteration),
     num_requests = max(num_requests),
-    find_assignments_running_time = sum(find_assignments_running_time),
-    choose_accepted_running_time = sum(choose_accepted_running_time),
-    update_system_state_running_time = sum(update_system_state_running_time)
+    find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
+    choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
+    update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE)
   )
   
   print(paste0("Max num iterations: ", max(stats$num_iterations)))
