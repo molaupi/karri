@@ -119,25 +119,34 @@ namespace karri {
                    targetDeletions.empty();
         }
 
+        int numPendingEntryInsertions() const {
+            return sourceInsertions.size() + targetInsertions.size();
+        }
+
+        int numPendingEntryDeletions() const {
+            return sourceDeletions.size() + targetDeletions.size();
+        }
+
         // Adds entry insertions to source buckets for the given stop index of the given vehicle.
         // Memorizes insertions to be performed in next batch update of the buckets.
-        void addSourceBucketEntryInsertions(const Vehicle &veh, const int stopIndex, karri::stats::UpdatePerformanceStats &stats) {
-            assert(routeState.numStopsOf(veh.vehicleId) > stopIndex + 1);
+        void addSourceBucketEntryInsertions(const Vehicle& veh, const int stopIndex, karri::stats::UpdatePerformanceStats &stats) {
+            const auto vehId = veh.vehicleId;
+            assert(routeState.numStopsOf(vehId) > stopIndex + 1);
 
-            const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
-            const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex + 1],
-                                        routeState.schedDepTimesFor(veh.vehicleId)[stopIndex + 1]) -
-                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex] - InputConfig::getInstance().stopTime;
+            const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
+            const int leeway = std::max(routeState.maxArrTimesFor(vehId)[stopIndex + 1],
+                                        routeState.schedDepTimesFor(vehId)[stopIndex + 1]) -
+                               routeState.schedDepTimesFor(vehId)[stopIndex] - InputConfig::getInstance().stopTime;
 
             if (leeway <= 0)
                 return;
 
             currentLeeway = leeway;
 
-            const int newStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
+            const int newStopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
             const int newStopRoot = ch.rank(inputGraph.edgeHead(newStopLoc));
 
-            const int nextStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex + 1];
+            const int nextStopLoc = routeState.stopLocationsFor(vehId)[stopIndex + 1];
             const int nextStopRoot = ch.rank(inputGraph.edgeTail(nextStopLoc));
             const int nextStopOffset = inputGraph.travelTime(nextStopLoc);
 
@@ -149,23 +158,24 @@ namespace karri {
 
         // Adds entry insertions to target buckets for the given stop index of the given vehicle.
         // Memorizes insertions to be performed in next batch update of the buckets.
-        void addTargetBucketEntryInsertions(const Vehicle &veh, const int stopIndex, karri::stats::UpdatePerformanceStats &stats) {
+        void addTargetBucketEntryInsertions(const Vehicle& veh, const int stopIndex, karri::stats::UpdatePerformanceStats &stats) {
             assert(stopIndex > 0);
+            const auto vehId = veh.vehicleId;
 
-            const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
-            const int leeway = std::max(routeState.maxArrTimesFor(veh.vehicleId)[stopIndex],
-                                        routeState.schedDepTimesFor(veh.vehicleId)[stopIndex]) -
-                               routeState.schedDepTimesFor(veh.vehicleId)[stopIndex - 1] - InputConfig::getInstance().stopTime;
+            const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
+            const int leeway = std::max(routeState.maxArrTimesFor(vehId)[stopIndex],
+                                        routeState.schedDepTimesFor(vehId)[stopIndex]) -
+                               routeState.schedDepTimesFor(vehId)[stopIndex - 1] - InputConfig::getInstance().stopTime;
             if (leeway <= 0)
                 return;
 
             currentLeeway = leeway;
 
-            const int newStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
+            const int newStopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
             const int newStopRoot = ch.rank(inputGraph.edgeTail(newStopLoc));
             const int newStopOffset = inputGraph.travelTime(newStopLoc);
 
-            const int prevStopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex - 1];
+            const int prevStopLoc = routeState.stopLocationsFor(vehId)[stopIndex - 1];
             const int prevStopRoot = ch.rank(inputGraph.edgeHead(prevStopLoc));
 
             generateBucketEntries(stopId, leeway,

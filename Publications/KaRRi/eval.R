@@ -188,7 +188,11 @@ batchDispatchPerfStats <- function(file_base) {
     num_requests = max(num_requests),
     find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
     choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
-    update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE)
+    update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
+    perform_elliptic_bucket_entry_insertions_time = sum(perform_elliptic_bucket_entry_insertions_time, na.rm=TRUE),
+    update_leeways_in_buckets_time = sum(update_leeways_in_buckets_time, na.rm=TRUE),
+    num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE),
+    num_elliptic_bucket_entry_insertions = sum(num_elliptic_bucket_entry_insertions, na.rm=TRUE)
   )
   
   print(paste0("Max num iterations: ", max(stats$num_iterations)))

@@ -95,7 +95,11 @@ namespace karri {
                                                                                 "num_accepted,"
                                                                                 "find_assignments_running_time,"
                                                                                 "choose_accepted_running_time,"
-                                                                                "update_system_state_running_time\n")),
+                                                                                "num_elliptic_bucket_entry_deletions,"
+                                                                                "num_elliptic_bucket_entry_insertions,"
+                                                                                "update_system_state_running_time,"
+                                                                                "perform_elliptic_bucket_entry_insertions_time,"
+                                                                                "update_leeways_in_buckets_time\n")),
                   assignmentQualityStats(LogManager<std::ofstream>::getLogger("assignmentquality.csv",
                                                                               "request_id,"
                                                                               "arr_time,"
@@ -309,6 +313,8 @@ namespace karri {
 
             std::vector<stats::DispatchingPerformanceStats> stats(requestBatch.size());
 
+            int numEllipticBucketEntryDeletions = systemStateUpdater.numPendingEllipticBucketEntryDeletions();
+
             // Before searching for assignments, commit all pending deletions to the elliptic buckets.
             systemStateUpdater.commitEllipticBucketEntryDeletions();
 
@@ -339,9 +345,11 @@ namespace karri {
 
                     if (responses[i].isNotUsingVehicleBest()) {
                         KASSERT(responses[i].getBestCost() < INFTY);
+                        systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
                         processNotUsingVehicleAssignment(responses[i], stats[i], requestBatch[i].requestId, now);
                     } else {
                         KASSERT(responses[i].getBestCost() == INFTY);
+                        systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
                         processRejectedRequest(responses[i], stats[i], requestBatch[i].requestId, now);
                     }
 
@@ -383,37 +391,43 @@ namespace karri {
                     accepted.push_back(i);
                     lastAcceptedVehId = vehId;
                 }
+
+                // Move all accepted to the back.
+                int firstAcc = requestBatch.size();
+                for (int j = accepted.size() - 1; j >= 0; --j) {
+                    const auto &idxOfAcc = accepted[j];
+                    --firstAcc;
+                    std::swap(requestBatch[idxOfAcc], requestBatch[firstAcc]);
+                    std::swap(responses[idxOfAcc], responses[firstAcc]);
+                    std::swap(stats[idxOfAcc], stats[firstAcc]);
+                }
+
                 const auto iterationChooseAcceptedTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 
                 iterationTimer.restart();
-                for (const auto &i: accepted) {
-                    KASSERT(requestState[requestBatch[i].requestId] == WAITING_FOR_DISPATCH);
-                    systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
-                    applyAssignment(responses[i], stats[i], requestBatch[i].requestId, now);
-                    ++progressBar;
-                }
-                systemStateUpdater.commitEllipticBucketEntryInsertions(); // Batched update to elliptic buckets for new entries.
-
-                // Update leeway in elliptic bucket entries of stops in routes of affected vehicles.
-                for (const auto& i : accepted) {
-                    systemStateUpdater.updateLeewaysInSourceBucketsForAllStopsOf(responses[i].getBestAssignment().vehicle->vehicleId, stats[i].updateStats);
-                    systemStateUpdater.updateLeewaysInTargetBucketsForAllStopsOf(responses[i].getBestAssignment().vehicle->vehicleId, stats[i].updateStats);
-                }
+                const auto acceptedResponses = IteratorRange(responses.begin() + firstAcc, responses.end());
+                auto acceptedStats = IteratorRange(stats.begin() + firstAcc, stats.end());
+                int64_t iterationPerformEllipticBucketEntryInsertionsTime = 0, iterationUpdateLeewaysTime = 0;
+                int iterationNumEllipticBucketEntryInsertions = 0;
+                systemStateUpdater.insertBatchOfBestAssignments(acceptedResponses, acceptedStats, iterationPerformEllipticBucketEntryInsertionsTime, iterationUpdateLeewaysTime, iterationNumEllipticBucketEntryInsertions);
+                updateSimulationForAssignmentBatch(acceptedResponses);
+                progressBar += accepted.size();
                 const auto iterationUpdateSystemStateTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 
+
                 // Remove all accepted requests from batch and retry rejected ones.
-                for (int j = accepted.size() - 1; j >= 0; --j) {
-                    const auto &idxToRemove = accepted[j];
-                    requestBatch[idxToRemove] = requestBatch.back();
-                    requestBatch.pop_back();
-                    stats[idxToRemove] = stats.back();
-                    stats.pop_back();
-                }
+                requestBatch.erase(requestBatch.begin() + firstAcc, requestBatch.end());
+                stats.erase(stats.begin() + firstAcc, stats.end());
 
                 batchDispatchStatsLogger << now << "," << iteration << "," << iterationNumRequests << ","
                                          << accepted.size() << "," << iterationFindAssignmentsTime << ","
-                                         << iterationChooseAcceptedTime << "," << iterationUpdateSystemStateTime
-                                         << "\n";
+                                         << iterationChooseAcceptedTime << ","
+                                         << numEllipticBucketEntryDeletions << ","
+                                         << iterationNumEllipticBucketEntryInsertions << ","
+                                         << iterationUpdateSystemStateTime << ","
+                                         << iterationPerformEllipticBucketEntryInsertionsTime << ","
+                                         << iterationUpdateLeewaysTime << '\n';
+                numEllipticBucketEntryDeletions = 0; // Deletions are associated with first iteration.
             }
 
             nextRequestBatchDeadline += InputConfig::getInstance().requestBatchInterval;
@@ -456,8 +470,8 @@ namespace karri {
 
         template<typename AssignmentFinderResponseT>
         void
-        applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, stats::DispatchingPerformanceStats stats,
-                        const int reqId, const int) {
+        applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, stats::DispatchingPerformanceStats& stats) {
+            const int reqId = asgnFinderResponse.originalRequest.requestId;
             KASSERT(!requestEvents.contains(reqId));
             KASSERT(!asgnFinderResponse.isNotUsingVehicleBest());
 
@@ -469,10 +483,8 @@ namespace karri {
             requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff.walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
 
-            int pickupStopId, dropoffStopId;
-            systemStateUpdater.insertBestAssignment(asgnFinderResponse, pickupStopId, dropoffStopId, stats.updateStats);
+            systemStateUpdater.insertBestAssignment(asgnFinderResponse, stats.updateStats);
             systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
-            assert(pickupStopId >= 0 && dropoffStopId >= 0);
 
             const auto vehId = bestAsgn.vehicle->vehicleId;
             switch (vehicleState[vehId]) {
@@ -489,6 +501,46 @@ namespace karri {
                     [[fallthrough]];
                 default:
                     break;
+            }
+        }
+
+        template<typename AssignmentFinderResponsesT>
+        void
+        updateSimulationForAssignmentBatch(const AssignmentFinderResponsesT &asgnFinderResponses) {
+
+            // Write system state logs, update simulation for request and vehicles.
+            for (auto respIt = asgnFinderResponses.begin(); respIt != asgnFinderResponses.end(); ++respIt) {
+                const auto asgnFinderResponse = *respIt;
+
+                const int reqId = asgnFinderResponse.originalRequest.requestId;
+                KASSERT(requestState[reqId] == WAITING_FOR_DISPATCH);
+                KASSERT(!requestEvents.contains(reqId));
+                KASSERT(!asgnFinderResponse.isNotUsingVehicleBest());
+
+                const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
+                KASSERT(bestAsgn.vehicle && bestAsgn.pickup.id != INVALID_ID && bestAsgn.dropoff.id != INVALID_ID);
+
+                requestState[reqId] = ASSIGNED_TO_VEH;
+                requestData[reqId].walkingTimeToPickup = bestAsgn.pickup.walkingDist;
+                requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff.walkingDist;
+                requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
+
+                const auto vehId = asgnFinderResponse.getBestAssignment().vehicle->vehicleId;
+                switch (vehicleState[vehId]) {
+                    case STOPPING:
+                        // Update event time to departure time at current stop since it may have changed
+                        vehicleEvents.updateKey(vehId, scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime);
+                        break;
+                    case IDLING:
+                        vehicleState[vehId] = VehicleState::DRIVING;
+                        [[fallthrough]];
+                    case DRIVING:
+                        // Update event time to arrival time at next stop since it may have changed (also for case of idling).
+                        vehicleEvents.updateKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
+                        [[fallthrough]];
+                    default:
+                        break;
+                }
             }
         }
 
