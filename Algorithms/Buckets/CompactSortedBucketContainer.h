@@ -223,6 +223,55 @@ public:
         for (int j = 0; j < offset.size(); ++j)
             offset[j] += bucketSizeChange[j];
 
+        KASSERT(verifyAllBucketsSorted());
+    }
+
+
+    void batchedCommitDeletions(std::vector<EntryDeletion> &deletions) {
+        KASSERT(entries.size() >= deletions.size());
+
+        if (deletions.empty())
+            return;
+
+        // Order deletions by index in entries affected.
+        static const auto sortEntryDeletions = [&](const auto &d1, const auto &d2) {
+            return d1.indexInEntries < d2.indexInEntries;
+        };
+        std::sort(deletions.begin(), deletions.end(), sortEntryDeletions);
+        KASSERT(noDuplicateDeletions(deletions));
+
+        // Accumulate changes at indices and number of entries per bucket.
+        std::vector<int> entryIdxChange(entries.size() + 1, 0);
+        std::vector<int> bucketSizeChange(offset.size(), 0);
+        for (const auto &del: deletions) {
+            --bucketSizeChange[del.vertex];
+            --entryIdxChange[del.indexInEntries + 1];
+        }
+
+
+        // TODO: Using prefix sums here is better for future parallel approach but sequential approach could do this
+        //  without need for additional vectors entryIdxChange and bucketSizeChange.
+
+        // Prefix sum over changes at indices gives index offset of existing entries after updates.
+        std::inclusive_scan(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin());
+
+        // Prefix sum over changes to bucket sizes gives changes to bucket start offsets after updates.
+        std::exclusive_scan(bucketSizeChange.begin(), bucketSizeChange.end(), bucketSizeChange.begin(), 0);
+
+        const auto newNumEntries = entries.size() - deletions.size();
+
+        // Move existing entries to new indices from front to back so we do not overwrite values.
+        // Deleted entries will be moved but then overwritten.
+        for (int i = 0; i < entryIdxChange.size() - 1; ++i)
+            entries[i + entryIdxChange[i]] = entries[i];
+
+        entries.resize(newNumEntries);
+
+        // Update bucket start offsets.
+        for (int j = 0; j < offset.size(); ++j)
+            offset[j] += bucketSizeChange[j];
+
+        KASSERT(verifyAllBucketsSorted());
     }
 
 
@@ -467,6 +516,19 @@ private:
         return idx >= start && entry.targetId == entries[idx].targetId;
     }
 
+
+    bool verifyAllBucketsSorted() {
+        for (int v = 0; v < offset.size() - 1; ++v) {
+            const auto start = offset[v];
+            const auto end = offset[v + 1];
+            const bool sorted = std::is_sorted(entries.begin() + start, entries.begin() + end,
+                                               [&](const auto &e1, const auto &e2) { return comp(e1, e2); });
+            KASSERT(sorted);
+            if (!sorted)
+                return false;
+        }
+        return true;
+    }
 
     BucketEntryComparatorT comp;
 

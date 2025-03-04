@@ -309,6 +309,11 @@ namespace karri {
 
             std::vector<stats::DispatchingPerformanceStats> stats(requestBatch.size());
 
+            // Before searching for assignments, commit all pending deletions to the elliptic buckets.
+            systemStateUpdater.commitEllipticBucketEntryDeletions();
+
+            KASSERT(systemStateUpdater.noPendingEllipticBucketEntryInsertionsOrDeletions());
+
             // Find an assignment for each request in requestBatch. May require multiple rounds for some requests
             // if there are conflicting assignments.
             int iteration = 0;
@@ -386,6 +391,13 @@ namespace karri {
                     systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
                     applyAssignment(responses[i], stats[i], requestBatch[i].requestId, now);
                     ++progressBar;
+                }
+                systemStateUpdater.commitEllipticBucketEntryInsertions(); // Batched update to elliptic buckets for new entries.
+
+                // Update leeway in elliptic bucket entries of stops in routes of affected vehicles.
+                for (const auto& i : accepted) {
+                    systemStateUpdater.updateLeewaysInSourceBucketsForAllStopsOf(responses[i].getBestAssignment().vehicle->vehicleId, stats[i].updateStats);
+                    systemStateUpdater.updateLeewaysInTargetBucketsForAllStopsOf(responses[i].getBestAssignment().vehicle->vehicleId, stats[i].updateStats);
                 }
                 const auto iterationUpdateSystemStateTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 

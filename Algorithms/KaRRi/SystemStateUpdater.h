@@ -128,7 +128,7 @@ namespace karri {
             }
 
             const auto &asgn = requestState.getBestAssignment();
-            assert(asgn.vehicle != nullptr);
+            KASSERT(asgn.vehicle != nullptr);
 
             const auto vehId = asgn.vehicle->vehicleId;
             const auto numStopsBefore = routeState.numStopsOf(vehId);
@@ -166,11 +166,31 @@ namespace karri {
             pathTracker.registerPdEventsForBestAssignment(pickupStopId, dropoffStopId);
         }
 
+        void commitEllipticBucketEntryInsertions() {
+            ellipticBucketsEnv.commitEntryInsertions();
+        }
+
+        void commitEllipticBucketEntryDeletions() {
+            ellipticBucketsEnv.commitEntryDeletions();
+        }
+
+        void updateLeewaysInSourceBucketsForAllStopsOf(const int vehId, stats::UpdatePerformanceStats &stats) {
+            if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
+                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(vehId, stats);
+            }
+        }
+
+        void updateLeewaysInTargetBucketsForAllStopsOf(const int vehId, stats::UpdatePerformanceStats &stats) {
+            if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
+                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(vehId, stats);
+            }
+        }
+
         void notifyStopStarted(const Vehicle &veh) {
 
             // Update buckets and route state
-            ellipticBucketsEnv.deleteSourceBucketEntries(veh, 0);
-            ellipticBucketsEnv.deleteTargetBucketEntries(veh, 1);
+            ellipticBucketsEnv.addSourceBucketEntryDeletions(veh, 0);
+            ellipticBucketsEnv.addTargetBucketEntryDeletions(veh, 1);
             routeState.removeStartOfCurrentLeg(veh.vehicleId);
 
             // If vehicle has become idle, update last stop bucket entries
@@ -181,13 +201,17 @@ namespace karri {
         }
 
 
+        bool noPendingEllipticBucketEntryInsertionsOrDeletions() {
+            return ellipticBucketsEnv.noPendingEntryInsertionsOrDeletions();
+        }
+
         void notifyStopCompleted(const Vehicle &veh) {
             pathTracker.logCompletedStop(veh);
         }
 
         void notifyVehicleReachedEndOfServiceTime(const Vehicle &veh) {
             const auto vehId = veh.vehicleId;
-            assert(routeState.numStopsOf(vehId) == 1);
+            KASSERT(routeState.numStopsOf(vehId) == 1);
 
             stats::UpdatePerformanceStats finalRemovalStatsPlaceholder;
             lastStopBucketsEnv.removeIdleBucketEntries(veh, 0, finalRemovalStatsPlaceholder);
@@ -273,7 +297,7 @@ namespace karri {
         void createIntermediateStopAtCurrentLocationForReroute(const Vehicle &veh, const int now, const VehicleLocation& loc, stats::UpdatePerformanceStats& stats) {
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
             routeState.createIntermediateStopForReroute(veh.vehicleId, loc.location, now, loc.depTimeAtHead);
-            ellipticBucketsEnv.generateSourceBucketEntries(veh, 1, stats);
+            ellipticBucketsEnv.addSourceBucketEntryInsertions(veh, 1, stats);
         }
 
 
@@ -287,12 +311,12 @@ namespace karri {
 
             generateBucketStateForNewStops(asgn, pickupIndex, dropoffIndex, stats);
 
-            // If we use buckets sorted by remaining leeway, we have to update the leeway of all
-            // entries for stops of this vehicle.
-            if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
-                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(*asgn.vehicle, stats);
-                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(*asgn.vehicle, stats);
-            }
+//            // If we use buckets sorted by remaining leeway, we have to update the leeway of all
+//            // entries for stops of this vehicle.
+//            if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
+//                ellipticBucketsEnv.updateLeewayInSourceBucketsForAllStopsOf(*asgn.vehicle, stats);
+//                ellipticBucketsEnv.updateLeewayInTargetBucketsForAllStopsOf(*asgn.vehicle, stats);
+//            }
 
             // If last stop does not change but departure time at last stop does change, update last stop bucket entries
             // accordingly.
@@ -316,19 +340,19 @@ namespace karri {
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
 
             if (!pickupAtExistingStop) {
-                ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, pickupIndex, stats);
-                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, pickupIndex, stats);
+                ellipticBucketsEnv.addTargetBucketEntryInsertions(*asgn.vehicle, pickupIndex, stats);
+                ellipticBucketsEnv.addSourceBucketEntryInsertions(*asgn.vehicle, pickupIndex, stats);
             }
 
             // If no new stop was inserted for the pickup, we do not need to generate any new entries for it.
             if (dropoffAtExistingStop)
                 return;
 
-            ellipticBucketsEnv.generateTargetBucketEntries(*asgn.vehicle, dropoffIndex, stats);
+            ellipticBucketsEnv.addTargetBucketEntryInsertions(*asgn.vehicle, dropoffIndex, stats);
 
             // If dropoff is not the new last stop, we generate elliptic source buckets for it.
             if (dropoffIndex < numStops - 1) {
-                ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, dropoffIndex, stats);
+                ellipticBucketsEnv.addSourceBucketEntryInsertions(*asgn.vehicle, dropoffIndex, stats);
                 return;
             }
 
@@ -336,7 +360,7 @@ namespace karri {
             // Generate elliptic source bucket entries for former last stop
             const auto pickupAtEnd = pickupIndex + 1 == dropoffIndex && pickupIndex > asgn.pickupStopIdx;
             const int formerLastStopIdx = dropoffIndex - pickupAtEnd - 1;
-            ellipticBucketsEnv.generateSourceBucketEntries(*asgn.vehicle, formerLastStopIdx, stats);
+            ellipticBucketsEnv.addSourceBucketEntryInsertions(*asgn.vehicle, formerLastStopIdx, stats);
 
             // Remove last stop bucket entries for former last stop and generate them for dropoff
             if (formerLastStopIdx == 0) {
