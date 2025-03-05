@@ -29,6 +29,7 @@
 #include <kassert/kassert.hpp>
 #include "DataStructures/Utilities/Permutation.h"
 #include "DataStructures/Utilities/IteratorRange.h"
+#include "Parallel/scalable_vector.h"
 
 
 template<typename BucketEntryT, typename BucketEntryComparatorT>
@@ -36,7 +37,9 @@ class CompactSortedBucketContainer {
 
 public:
 
-    using SortedBucket = ConstantVectorRange<BucketEntryT>;
+    template<typename T>
+    using EntryVectorT = parallel::scalable_aligned_vector<T>;
+    using SortedBucket = ConstantVectorRange<BucketEntryT, EntryVectorT>;
 
     struct EntryInsertion {
         int vertex = INVALID_VERTEX;
@@ -512,6 +515,6 @@ private:
     // Each bucket is sorted internally according to comp.
     using Offset = uint32_t;
     std::vector<Offset> offset;
-    std::vector<BucketEntryT> entries;
+    EntryVectorT<BucketEntryT> entries;
 
 };

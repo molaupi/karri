@@ -38,14 +38,12 @@
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/Stats/PerformanceStats.h"
+#include "Parallel/scalable_vector.h"
 
 namespace karri {
 
     template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
     class EllipticBucketsEnvironment {
-
-        template<typename T>
-        using scalable_vector = std::vector<T, tbb::tbb_allocator<T>>;
 
         using Entry = BucketEntryWithLeeway;
 
@@ -82,12 +80,12 @@ namespace karri {
                 return false;
             }
 
-            void setCurSearchSpace(scalable_vector<int>* newSearchSpace) {
+            void setCurSearchSpace(parallel::scalable_vector<int>* newSearchSpace) {
                 KASSERT(newSearchSpace);
                 searchSpace = newSearchSpace;
             }
 
-            scalable_vector<int> *searchSpace;
+            parallel::scalable_vector<int> *searchSpace;
         };
 
     public:
@@ -356,7 +354,7 @@ namespace karri {
             KASSERT(localDescHasEntry.cardinality() == 0);
 
             // Run topological search from new stop and memorize search space:
-            scalable_vector<int> searchSpace;
+            parallel::scalable_vector<int> searchSpace;
             std::get<0>(searchFromNewStop.getPruningCriterion().criterions).setCurrentLeeway(leeway);
             std::get<1>(searchFromNewStop.getPruningCriterion().criterions).setCurSearchSpace(&searchSpace);
             searchFromNewStop.runWithOffset(newStopRoot, newStopOffSet);
@@ -463,8 +461,8 @@ namespace karri {
 
         Subset deleteSearchSpace;
 
-        tbb::enumerable_thread_specific<scalable_vector<EntryInsertion>> sourceInsertions;
-        tbb::enumerable_thread_specific<scalable_vector<EntryInsertion>> targetInsertions;
+        tbb::enumerable_thread_specific<parallel::scalable_vector<EntryInsertion>> sourceInsertions;
+        tbb::enumerable_thread_specific<parallel::scalable_vector<EntryInsertion>> targetInsertions;
 
 
         std::vector<EntryDeletion> sourceDeletions;

@@ -67,7 +67,7 @@ private:
 };
 
 
-template<typename T>
-class ConstantVectorRange : public IteratorRange<typename std::vector<T>::const_iterator> {
-    using IteratorRange<typename std::vector<T>::const_iterator>::IteratorRange;
+template<typename T, template<typename> typename VecT = std::vector>
+class ConstantVectorRange : public IteratorRange<typename VecT<T>::const_iterator> {
+    using IteratorRange<typename VecT<T>::const_iterator>::IteratorRange;
 };
