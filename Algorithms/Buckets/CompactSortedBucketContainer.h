@@ -194,6 +194,9 @@ public:
             ++entryIdxChange[ins.indexInEntries];
         }
 
+        // TODO: Using prefix sums here is better for future parallel approach but sequential approach could do this
+        //  without need for additional vector bucketSizeChange (and possibly without entryIdxChange, too).
+
         // Prefix sum over changes at indices gives index offset of existing entries after updates.
         std::inclusive_scan(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin());
 
@@ -379,34 +382,6 @@ private:
         for (auto it = deletions.begin(); it < deletions.end() - 1; ++it)
             if (it->indexInEntries == (it + 1)->indexInEntries)
                 return false;
-        return true;
-    }
-
-    static bool noConflictsInNewIndicesOfExistingAndNewEntries(const std::vector<EntryInsertion> &insertions,
-                                                               const std::vector<EntryDeletion> &deletions,
-                                                               const std::vector<int> &entryIdxChange,
-                                                               const int newNumEntries) {
-
-        int nextDelIdx = 0;
-
-        BitVector seen(newNumEntries);
-        for (int i = 0; i < entryIdxChange.size() - 1; ++i) {
-            const auto newIdx = i + entryIdxChange[i];
-            if (seen[newIdx])
-                return false;
-            seen[newIdx] = true;
-        }
-
-        for (const auto &ins: insertions) {
-            const auto newIdx = ins.indexInEntries;
-            if (seen[newIdx])
-                return false;
-            seen[newIdx] = true;
-        }
-
-        if (seen.cardinality() != seen.size())
-            return false;
-
         return true;
     }
 

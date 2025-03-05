@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include <tbb/parallel_for.h>
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 #include "PathTracker.h"
@@ -173,6 +174,9 @@ namespace karri {
 
             KASSERT(std::distance(asgnFinderResponses.begin(), asgnFinderResponses.end()) == std::distance(statss.begin(), statss.end()));
 
+            std::vector<int> stopIdsToGenerateSourceEntriesFor;
+            std::vector<int> stopIdsToGenerateTargetEntriesFor;
+
             for (auto respIt = asgnFinderResponses.begin(), statsIt = statss.begin();
                  respIt != asgnFinderResponses.end(); ++respIt, ++statsIt) {
                 const auto asgnFinderResponse = *respIt;
@@ -207,14 +211,12 @@ namespace karri {
                 stats.updateRoutesTime += routeUpdateTime;
 
 
-                // TODO: Memorize only which stops to generate elliptic bucket entries for, then do searches for finding
-                //  specific entry insertions in parallel.
-                updateEllipticBuckets(asgn, pickupIndex, dropoffIndex, stats);
+                updateEllipticBuckets(asgn, pickupIndex, dropoffIndex, stats, stopIdsToGenerateSourceEntriesFor, stopIdsToGenerateTargetEntriesFor);
                 updateLastStopBuckets(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore, stats);
 
                 if (rerouteVehicle) {
                     createIntermediateStopAtCurrentLocationForReroute(*asgn.vehicle, asgnFinderResponse.dispatchingTime,
-                                                                      loc, stats);
+                                                                      loc, stats, stopIdsToGenerateSourceEntriesFor);
                     ++pickupIndex;
                     ++dropoffIndex;
                 }
@@ -224,6 +226,29 @@ namespace karri {
                                                               routeState.stopIdsFor(vehId)[dropoffIndex]);
             }
 
+            // Find all elliptic bucket entry insertions necessary for assignments.
+            tbb::parallel_for(0ul, stopIdsToGenerateSourceEntriesFor.size(), [&](const size_t i) {
+                const auto& stopId = stopIdsToGenerateSourceEntriesFor[i];
+                const auto vehId = routeState.vehicleIdOf(stopId);
+                const auto stopIndex = routeState.stopPositionOf(stopId);
+                ellipticBucketsEnv.addSourceBucketEntryInsertions(vehId, stopIndex);
+            });
+//            for (const auto& stopId : stopIdsToGenerateSourceEntriesFor) {
+//                const auto vehId = routeState.vehicleIdOf(stopId);
+//                const auto stopIndex = routeState.stopPositionOf(stopId);
+//                ellipticBucketsEnv.addSourceBucketEntryInsertions(vehId, stopIndex);
+//            }
+            tbb::parallel_for(0ul, stopIdsToGenerateTargetEntriesFor.size(), [&](const size_t i) {
+                const auto& stopId = stopIdsToGenerateTargetEntriesFor[i];
+                const auto vehId = routeState.vehicleIdOf(stopId);
+                const auto stopIndex = routeState.stopPositionOf(stopId);
+                ellipticBucketsEnv.addTargetBucketEntryInsertions(vehId, stopIndex);
+            });
+//            for (const auto& stopId : stopIdsToGenerateTargetEntriesFor) {
+//                const auto vehId = routeState.vehicleIdOf(stopId);
+//                const auto stopIndex = routeState.stopPositionOf(stopId);
+//                ellipticBucketsEnv.addTargetBucketEntryInsertions(vehId, stopIndex);
+//            }
 
             numEllipticBucketEntryInsertions = numPendingEllipticBucketEntryInsertions();
 
@@ -387,39 +412,42 @@ namespace karri {
         // making it the new stop 0. Thus, we do not need to compute target bucket entries for the stop.
         void
         createIntermediateStopAtCurrentLocationForReroute(const Vehicle &veh, const int now, const VehicleLocation &loc,
-                                                          stats::UpdatePerformanceStats &stats) {
+                                                          stats::UpdatePerformanceStats &,
+                                                          std::vector<int>& stopIdsToGenerateSourceEntriesFor) {
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
             routeState.createIntermediateStopForReroute(veh.vehicleId, loc.location, now, loc.depTimeAtHead);
-            ellipticBucketsEnv.addSourceBucketEntryInsertions(veh, 1, stats);
-//            stopIdsToGenerateSourceEntriesFor.push_back(routeState.stopIdsFor(veh.vehicleId)[1]);
+//            ellipticBucketsEnv.addSourceBucketEntryInsertions(veh, 1, stats);
+            stopIdsToGenerateSourceEntriesFor.push_back(routeState.stopIdsFor(veh.vehicleId)[1]);
         }
 
         void updateEllipticBuckets(const Assignment &asgn, const int pickupIndex, const int dropoffIndex,
-                                   stats::UpdatePerformanceStats &stats) {
+                                   stats::UpdatePerformanceStats &,
+                                   std::vector<int>& stopIdsToGenerateSourceEntriesFor,
+                                   std::vector<int>& stopIdsToGenerateTargetEntriesFor) {
             const auto vehId = asgn.vehicle->vehicleId;
             const auto numStops = routeState.numStopsOf(vehId);
-//            const auto stopIds = routeState.stopIdsFor(vehId);
+            const auto stopIds = routeState.stopIdsFor(vehId);
             const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
 
             if (!pickupAtExistingStop) {
-//                stopIdsToGenerateSourceEntriesFor.push_back(stopIds[pickupIndex]);
-//                stopIdsToGenerateTargetEntriesFor.push_back(stopIds[pickupIndex]);
-                ellipticBucketsEnv.addTargetBucketEntryInsertions(*asgn.vehicle, pickupIndex, stats);
-                ellipticBucketsEnv.addSourceBucketEntryInsertions(*asgn.vehicle, pickupIndex, stats);
+                stopIdsToGenerateSourceEntriesFor.push_back(stopIds[pickupIndex]);
+                stopIdsToGenerateTargetEntriesFor.push_back(stopIds[pickupIndex]);
+//                ellipticBucketsEnv.addTargetBucketEntryInsertions(*asgn.vehicle, pickupIndex, stats);
+//                ellipticBucketsEnv.addSourceBucketEntryInsertions(*asgn.vehicle, pickupIndex, stats);
             }
 
             // If no new stop was inserted for the pickup, we do not need to generate any new entries for it.
             if (dropoffAtExistingStop)
                 return;
 
-            ellipticBucketsEnv.addTargetBucketEntryInsertions(*asgn.vehicle, dropoffIndex, stats);
-//            stopIdsToGenerateTargetEntriesFor.push_back(stopIds[dropoffIndex]);
+            stopIdsToGenerateTargetEntriesFor.push_back(stopIds[dropoffIndex]);
+//            ellipticBucketsEnv.addTargetBucketEntryInsertions(*asgn.vehicle, dropoffIndex, stats);
 
             // If dropoff is not the new last stop, we generate elliptic source buckets for it.
             if (dropoffIndex < numStops - 1) {
-                ellipticBucketsEnv.addSourceBucketEntryInsertions(*asgn.vehicle, dropoffIndex, stats);
-//                stopIdsToGenerateSourceEntriesFor.push_back(stopIds[dropoffIndex]);
+                stopIdsToGenerateSourceEntriesFor.push_back(stopIds[dropoffIndex]);
+//                ellipticBucketsEnv.addSourceBucketEntryInsertions(*asgn.vehicle, dropoffIndex, stats);
                 return;
             }
 
@@ -427,8 +455,8 @@ namespace karri {
             // Generate elliptic source bucket entries for former last stop
             const auto pickupAtEnd = pickupIndex + 1 == dropoffIndex && pickupIndex > asgn.pickupStopIdx;
             const int formerLastStopIdx = dropoffIndex - pickupAtEnd - 1;
-            ellipticBucketsEnv.addSourceBucketEntryInsertions(*asgn.vehicle, formerLastStopIdx, stats);
-//            stopIdsToGenerateSourceEntriesFor.push_back(stopIds[formerLastStopIdx]);
+            stopIdsToGenerateSourceEntriesFor.push_back(stopIds[formerLastStopIdx]);
+//            ellipticBucketsEnv.addSourceBucketEntryInsertions(*asgn.vehicle, formerLastStopIdx, stats);
         }
 
         void updateLastStopBuckets(const Assignment &asgn, const int pickupIndex, const int dropoffIndex,

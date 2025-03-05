@@ -120,6 +120,11 @@ class DagShortestPaths {
     return parent.getReverseEdgePath(t);
   }
 
+    // Used to update the pruning criterion for different runs of this search, e.g. to configure callbacks
+    PruningCriterionT &getPruningCriterion() {
+        return pruneSearch;
+    }
+
  private:
   // Resets the distance labels and inserts the source into the queue.
   void init(const int s, const int offset = 0) {
