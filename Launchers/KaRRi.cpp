@@ -457,7 +457,7 @@ int main(int argc, char *argv[]) {
 
         // Construct remaining request state
         using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
-        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, vehicleInputGraph, *vehChEnv, calc, reqState, routeState);
+        RelevantPDLocsFilterImpl relevantPdLocsFilter(fleet, vehicleInputGraph, *vehChEnv, routeState);
 
 
         const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();

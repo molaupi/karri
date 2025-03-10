@@ -96,22 +96,22 @@ namespace karri {
             ellipticBchSearches.run(feasibleEllipticPickups, feasibleEllipticDropoffs);
 
             // Filter feasible PD-locations between ordinary stops:
-            const auto relOrdinaryPickups = relevantPdLocsFilter.filterOrdinaryPickups(feasibleEllipticPickups);
-            const auto relOrdinaryDropoffs = relevantPdLocsFilter.filterOrdinaryDropoffs(feasibleEllipticDropoffs);
+            const auto relOrdinaryPickups = relevantPdLocsFilter.filterOrdinaryPickups(feasibleEllipticPickups, reqState);
+            const auto relOrdinaryDropoffs = relevantPdLocsFilter.filterOrdinaryDropoffs(feasibleEllipticDropoffs, reqState);
 
             // Try ordinary assignments:
             ordAssignments.findAssignments(relOrdinaryPickups, relOrdinaryDropoffs, ffPdDistances);
 
             // Filter feasible pickups before next stops:
             const auto relPickupsBeforeNextStop = relevantPdLocsFilter.filterPickupsBeforeNextStop(
-                    feasibleEllipticPickups);
+                    feasibleEllipticPickups, reqState);
 
             // Try DALS assignments:
             dalsAssignments.findAssignments(relOrdinaryPickups, relPickupsBeforeNextStop);
 
             // Filter feasible dropoffs before next stop:
             const auto relDropoffsBeforeNextStop = relevantPdLocsFilter.filterDropoffsBeforeNextStop(
-                    feasibleEllipticDropoffs);
+                    feasibleEllipticDropoffs, reqState);
 
             // Try PBNS assignments:
             pbnsAssignments.findAssignments(relPickupsBeforeNextStop, relOrdinaryDropoffs, relDropoffsBeforeNextStop,

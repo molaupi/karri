@@ -178,7 +178,7 @@ namespace karri {
 
             const auto relevantDropoffs = relDropoffsBns.relevantSpotsFor(vehId);
 
-            if (!relDropoffsBns.getVehiclesWithRelevantPDLocs().contains(vehId))
+            if (!relDropoffsBns.hasRelevantSpotsFor(vehId))
                 return relevantDropoffs.end();
 
             const auto stopLocations = routeState.stopLocationsFor(vehId);
@@ -217,7 +217,7 @@ namespace karri {
 
             const auto relevantDropoffs = relOrdinaryDropoffs.relevantSpotsFor(vehId);
 
-            if (!relOrdinaryDropoffs.getVehiclesWithRelevantPDLocs().contains(vehId))
+            if (!relOrdinaryDropoffs.hasRelevantSpotsFor(vehId))
                 return relevantDropoffs.end();
 
             const auto numStops = routeState.numStopsOf(vehId);

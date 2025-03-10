@@ -99,7 +99,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         // Returns the vehicles that have at least one pareto best label.
-        Subset &getVehiclesSeen() {
+        LightweightSubset &getVehiclesSeen() {
             return vehiclesSeen;
         }
 
@@ -472,7 +472,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         std::vector<int> markedIndices;
 
         VehicleBucketContainer vehicleLabelBuckets;
-        Subset vehiclesSeen;
+        LightweightSubset vehiclesSeen;
 
         int numEdgeRelaxations;
         int numLabelsRelaxed;
