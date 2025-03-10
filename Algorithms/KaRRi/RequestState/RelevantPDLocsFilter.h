@@ -136,7 +136,8 @@ namespace karri {
                 if (vehiclesWithFeasibleDistances.contains(vehId))
                     continue;
                 const auto stopPos = routeState.stopPositionOf(stopId);
-                if ((!beforeNextStop && stopPos == 0) || (beforeNextStop && stopPos > 0) || (!isDropoff && stopPos == routeState.numStopsOf(vehId) - 1))
+                if ((!beforeNextStop && stopPos == 0) || (beforeNextStop && stopPos > 0) ||
+                    (!isDropoff && stopPos == routeState.numStopsOf(vehId) - 1))
                     continue;
                 vehiclesWithFeasibleDistances.insert(vehId);
             }
@@ -154,7 +155,7 @@ namespace karri {
 
                 // Track relevant PD locs for each stop in the relevant PD locs data structure.
                 // Entries are ordered by vehicle and by stop.
-                const int beginStopIdx = beforeNextStop ? 0 : 1;
+                constexpr int beginStopIdx = beforeNextStop ? 0 : 1;
                 const int endStopIdx = beforeNextStop ? 1 : (isDropoff ? numStops : numStops - 1);
                 for (int i = beginStopIdx; i < endStopIdx; ++i) {
 
@@ -164,10 +165,20 @@ namespace karri {
 
                     const auto &stopId = stopIds[i];
 
-                    // Insert entries at this stop
-                    if (feasible.hasPotentiallyRelevantPDLocs(stopId)) {
+                    // If we consider only the stop before the next stop, the stop is guaranteed to have relevant pd
+                    // locs by construction of vehiclesWithFeasibleDistances (s.a.).
+                    // If we consider the stops at and after the next stop, there may be stops without relevant PD
+                    // locs. Skip them.
+                    KASSERT(!beforeNextStop || feasible.hasPotentiallyRelevantPDLocs(stopId));
+                    if constexpr (!beforeNextStop)
+                        if (!feasible.hasPotentiallyRelevantPDLocs(stopId))
+                            continue;
 
-                        // Check with lower bounds on dist to and from PD loc whether this stop needs to be regarded
+                    // Insert entries at this stop.
+
+                    // If there is more than one PD loc, check with lower bounds on dist to and from PD locs whether
+                    // this stop needs to be regarded before looking at every PD loc.
+                    if (numPDLocs > 1) {
                         const int minDistToPDLoc = feasible.minDistToRelevantPDLocsFor(stopId);
                         const int minDistFromPDLoc = feasible.minDistFromPDLocToNextStopOf(stopId);
 
@@ -183,31 +194,32 @@ namespace karri {
 
                         if (minCost > requestState.getBestCost())
                             continue;
+                    }
 
 
-                        ++numStopsRelevant;
-                        // Check each PD loc
-                        const auto &distsToPDLocs = feasible.distancesToRelevantPDLocsFor(stopId);
-                        const auto &distsFromPDLocs = feasible.distancesFromRelevantPDLocsToNextStopOf(stopId);
-                        for (unsigned int id = 0; id < numPDLocs; ++id) {
-                            const auto &distToPDLoc = distsToPDLocs[id];
-                            const auto &distFromPDLoc = distsFromPDLocs[id];
+                    ++numStopsRelevant;
+                    // Check each PD loc
+                    const auto &distsToPDLocs = feasible.distancesToRelevantPDLocsFor(stopId);
+                    const auto &distsFromPDLocs = feasible.distancesFromRelevantPDLocsToNextStopOf(stopId);
+                    for (unsigned int id = 0; id < numPDLocs; ++id) {
+                        const auto &distToPDLoc = distsToPDLocs[id];
+                        const auto &distFromPDLoc = distsFromPDLocs[id];
 
-                            bool isRelevant;
-                            if constexpr (isDropoff) {
-                                isRelevant = isDropoffRelevant(veh, i, id, distToPDLoc, distFromPDLoc,
-                                                               requestState, pdLocs);
-                            } else {
-                                isRelevant = isPickupRelevant(veh, i, id, distToPDLoc, distFromPDLoc,
-                                                              requestState, pdLocs);
-                            }
-
-                            if (isRelevant) {
-                                rel.relevantSpots.push_back({i, id, distToPDLoc, distFromPDLoc});
-                            }
+                        bool isRelevant;
+                        if constexpr (isDropoff) {
+                            isRelevant = isDropoffRelevant(veh, i, id, distToPDLoc, distFromPDLoc,
+                                                           requestState, pdLocs);
+                        } else {
+                            isRelevant = isPickupRelevant(veh, i, id, distToPDLoc, distFromPDLoc,
+                                                          requestState, pdLocs);
                         }
 
+                        if (isRelevant) {
+                            rel.relevantSpots.push_back({i, id, distToPDLoc, distFromPDLoc});
+                        }
                     }
+
+
                 }
 
                 // If vehicle has at least one stop with relevant PD loc, add the vehicle
