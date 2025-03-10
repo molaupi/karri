@@ -184,6 +184,8 @@ namespace karri {
             stats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
             stats.pickupNumVerticesSettled += totalNumVerticesSettled;
             stats.pickupNumEntriesScanned += totalNumEntriesScanned;
+            stats.pickupNumVehiclesSeen += feasibleEllipticPickups.numVehiclesWithRelevantPDLocs();
+            stats.pickupNumStopsSeen += feasibleEllipticPickups.numStopsWithRelevantPDLocs();
 
             // Run for dropoffs:
             timer.restart();
@@ -195,6 +197,8 @@ namespace karri {
             stats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
             stats.dropoffNumVerticesSettled += totalNumVerticesSettled;
             stats.dropoffNumEntriesScanned += totalNumEntriesScanned;
+            stats.dropoffNumVehiclesSeen += feasibleEllipticDropoffs.numVehiclesWithRelevantPDLocs();
+            stats.dropoffNumStopsSeen += feasibleEllipticDropoffs.numStopsWithRelevantPDLocs();
         }
 
         void init(const RequestState&, const PDLocs&, stats::EllipticBCHPerformanceStats&) {

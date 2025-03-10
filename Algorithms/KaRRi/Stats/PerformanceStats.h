@@ -75,9 +75,13 @@ namespace karri::stats {
         int64_t pickupNumEdgeRelaxations;
         int64_t pickupNumVerticesSettled;
         int64_t pickupNumEntriesScanned;
+        int64_t pickupNumStopsSeen;
+        int64_t pickupNumVehiclesSeen;
         int64_t dropoffNumEdgeRelaxations;
         int64_t dropoffNumVerticesSettled;
         int64_t dropoffNumEntriesScanned;
+        int64_t dropoffNumVehiclesSeen;
+        int64_t dropoffNumStopsSeen;
 
         int64_t getTotalTime() const {
             return initializationTime + pickupTime + dropoffTime;
@@ -90,9 +94,13 @@ namespace karri::stats {
             pickupNumEdgeRelaxations = 0;
             pickupNumVerticesSettled = 0;
             pickupNumEntriesScanned = 0;
+            pickupNumVehiclesSeen = 0;
+            pickupNumStopsSeen = 0;
             dropoffNumEdgeRelaxations = 0;
             dropoffNumVerticesSettled = 0;
             dropoffNumEntriesScanned = 0;
+            dropoffNumVehiclesSeen = 0;
+            dropoffNumStopsSeen = 0;
         }
 
         static constexpr auto LOGGER_NAME = "perf_ellipticbch.csv";
@@ -103,9 +111,13 @@ namespace karri::stats {
                 "pickup_num_edge_relaxations,"
                 "pickup_num_vertices_settled,"
                 "pickup_num_entries_scanned,"
+                "pickup_num_vehicles_seen,"
+                "pickup_num_stops_seen,"
                 "dropoff_num_edge_relaxations,"
                 "dropoff_num_vertices_settled,"
                 "dropoff_num_entries_scanned,"
+                "dropoff_num_vehicles_seen,"
+                "dropoff_num_stops_seen,"
                 "total_time\n";
 
 
@@ -117,9 +129,13 @@ namespace karri::stats {
                << pickupNumEdgeRelaxations << ", "
                << pickupNumVerticesSettled << ", "
                << pickupNumEntriesScanned << ", "
+               << pickupNumVehiclesSeen << ", "
+               << pickupNumStopsSeen << ", "
                << dropoffNumEdgeRelaxations << ", "
                << dropoffNumVerticesSettled << ", "
                << dropoffNumEntriesScanned << ", "
+               << dropoffNumVehiclesSeen << ", "
+               << dropoffNumStopsSeen << ", "
                << getTotalTime();
             return ss.str();
         }

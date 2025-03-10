@@ -256,6 +256,14 @@ namespace karri {
             return vehiclesWithRelevantPDLocs;
         }
 
+        int numVehiclesWithRelevantPDLocs() const {
+            return vehiclesWithRelevantPDLocs.size();
+        }
+
+        int numStopsWithRelevantPDLocs() const {
+            return distToRelevantPDLocs.size() / numLabelsPerStop;
+        }
+
     private:
 
         void allocateEntriesFor(const int stopId) {
