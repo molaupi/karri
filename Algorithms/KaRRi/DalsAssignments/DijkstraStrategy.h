@@ -324,7 +324,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         int endOfCurBatch;
 
         Dijkstra <InputGraphT, TravelTimeAttribute, DijLabelSet, TryToInsertDropoffAfterLastStop> dijSearchToDropoff;
-        Subset vehiclesSeen;
+        LightweightSubset vehiclesSeen;
 
 
     };

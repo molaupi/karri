@@ -314,7 +314,7 @@ namespace karri::PickupAfterLastStopStrategies {
         PickupBCHQuery search;
 
         // Vehicles seen by any last stop pickup search
-        Subset vehiclesSeenForPickups;
+        LightweightSubset vehiclesSeenForPickups;
         DistanceLabel currentPickupWalkingDists;
         DistanceLabel curPassengerArrTimesAtPickups;
         DistanceLabel curDistancesToDest;

@@ -73,12 +73,13 @@ namespace karri {
             int numAssignmentsTried = 0;
 
             for (const auto &vehId: relPickups.getVehiclesWithRelevantPDLocs()) {
-                if (!relDropoffs.getVehiclesWithRelevantPDLocs().contains(vehId))
+                if (!relDropoffs.hasRelevantSpotsFor(vehId))
                     continue;
 
-                if (!relPickups.hasRelevantSpotsFor(vehId) ||
-                    !relDropoffs.hasRelevantSpotsFor(vehId))
-                    continue;
+                KASSERT(relPickups.hasRelevantSpotsFor(vehId));
+//                if (!relPickups.hasRelevantSpotsFor(vehId) ||
+//                    !relDropoffs.hasRelevantSpotsFor(vehId))
+//                    continue;
 
                 ++numCandidateVehicles;
                 Assignment asgn(&fleet[vehId]);
@@ -129,7 +130,7 @@ namespace karri {
             assert(startItInRegularDropoffs >= relevantDropoffs.begin() &&
                    startItInRegularDropoffs <= relevantDropoffs.end());
 
-            if (!relDropoffs.getVehiclesWithRelevantPDLocs().contains(vehId))
+            if (!relDropoffs.hasRelevantSpotsFor(vehId))
                 return 0;
 
             auto numAssignmentsTriedWithOrdinaryDropoff = 0;
@@ -181,7 +182,7 @@ namespace karri {
             int minDistToPickup, minDistFromDropoff;
             RelevantPDLocs::It pickupIt, dropoffIt;
             for (const auto &vehId: relPickups.getVehiclesWithRelevantPDLocs()) {
-                if (!relDropoffs.getVehiclesWithRelevantPDLocs().contains(vehId))
+                if (!relDropoffs.hasRelevantSpotsFor(vehId))
                     continue;
 
                 const auto &veh = fleet[vehId];

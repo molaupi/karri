@@ -433,7 +433,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         int upperBoundCost;
 
         // Vehicles seen by any last stop search
-        Subset vehiclesSeenForDropoffs;
+        LightweightSubset vehiclesSeenForDropoffs;
         DropoffBCHQuery search;
         DistanceLabel currentDropoffWalkingDists;
         TentativeLastStopDistances<LabelSet> lastStopDistances;
