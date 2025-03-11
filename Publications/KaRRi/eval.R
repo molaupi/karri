@@ -207,6 +207,34 @@ batchDispatchPerfStats <- function(file_base) {
   
 }
 
+oldBatchDispatchPerfStats <- function(file_base) {
+  
+  stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
+  
+  stats <- stats %>% group_by(occurence_time) %>% summarise(
+    num_iterations = max(iteration),
+    num_requests = max(num_requests),
+    find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
+    choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
+    update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
+    # perform_elliptic_bucket_entry_insertions_time = sum(perform_elliptic_bucket_entry_insertions_time, na.rm=TRUE),
+    # update_leeways_in_buckets_time = sum(update_leeways_in_buckets_time, na.rm=TRUE),
+    # num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE),
+    # num_elliptic_bucket_entry_insertions = sum(num_elliptic_bucket_entry_insertions, na.rm=TRUE)
+  )
+  
+  print(paste0("Max num iterations: ", max(stats$num_iterations)))
+  print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
+  print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
+  print(paste0("Max num requests: ", max(stats$num_requests)))
+  
+  means <- apply(stats,2,mean)
+  means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
+  print(means)
+  
+  
+}
+
 countBestAssignmentTypes <- function(file_base) {
   asgns <- read.csv(paste0(file_base, ".bestassignments.csv"))
   
