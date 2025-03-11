@@ -170,5 +170,4 @@ eventSimulationPerfStats <- function(file_base) {
   )
   
   print(df)
-  
 }

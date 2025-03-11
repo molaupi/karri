@@ -102,6 +102,8 @@ namespace karri {
                                                                       "drive_time,"
                                                                       "occupancy\n")),
                   progressBar(requests.size(), verbose) {
+            progressBar.setDotOutputInterval(1);
+            progressBar.setPercentageOutputInterval(5);
             for (const auto &veh: fleet)
                 vehicleEvents.insert(veh.vehicleId, veh.startOfServiceTime);
             for (const auto &req: requests)
