@@ -124,11 +124,11 @@ namespace karri {
 
             UpdateDistancesToPDLocs() : curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
-            LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
+            void operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsToPDLocs) {
 
                 assert(curFeasible);
-                return curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, curFirstIdOfBatch,
+                curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, curFirstIdOfBatch,
                                                                   distsToPDLocs, meetingVertex);
             }
 
@@ -151,17 +151,17 @@ namespace karri {
             UpdateDistancesFromPDLocs(const RouteState &routeState)
                     : routeState(routeState), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
-            LabelMask operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
+            void operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
                                  const DistanceLabel &distsFromPDLocs) {
 
                 const auto &prevStopId = routeState.idOfPreviousStopOf(entry.targetId);
 
                 // If the given stop is the first stop in the vehicle's route, there is no previous stop.
                 if (prevStopId == INVALID_ID)
-                    return LabelMask(false);
+                    return;
 
                 assert(curFeasible);
-                return curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, curFirstIdOfBatch,
+                curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, curFirstIdOfBatch,
                                                                       distsFromPDLocs, meetingVertex);
             }
 
