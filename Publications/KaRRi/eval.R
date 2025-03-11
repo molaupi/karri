@@ -183,6 +183,8 @@ batchDispatchPerfStats <- function(file_base) {
   
   stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
   
+  print(paste0("Total time (batch dispatch): ", sum(stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
+  
   stats <- stats %>% group_by(occurence_time) %>% summarise(
     num_iterations = max(iteration),
     num_requests = max(num_requests),
