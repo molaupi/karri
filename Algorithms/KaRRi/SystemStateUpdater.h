@@ -116,7 +116,21 @@ namespace karri {
                   updatePerfLogger(LogManager<LoggerT>::getLogger(stats::UpdatePerformanceStats::LOGGER_NAME,
                                                                   "request_id, " +
                                                                   std::string(
-                                                                          stats::UpdatePerformanceStats::LOGGER_COLS))) {}
+                                                                          stats::UpdatePerformanceStats::LOGGER_COLS))),
+                  batchInsertLogger(LogManager<LoggerT>::getLogger("batch_insert_stats.csv", "occurence_time,"
+                                                                                            "iteration,"
+                                                                                            "num_requests,"
+                                                                                            "update_route_state_time,"
+                                                                                            "update_last_stop_buckets_time,"
+                                                                                            "ell_entry_insertions_num_insertions,"
+                                                                                            "ell_entry_insertions_find_insertions_time,"
+                                                                                            "ell_entry_insertions_perform_insertions_time,"
+                                                                                            "num_ell_source_entries_after_insertions,"
+                                                                                            "num_ell_target_entries_after_insertions,"
+                                                                                            "update_leeways_num_entries_scanned_source,"
+                                                                                            "update_leeways_num_entries_scanned_target,"
+                                                                                            "update_leeways_time,"
+                                                                                            "total_time\n")) {}
 
 
         void insertBestAssignment(const RequestState &requestState, stats::UpdatePerformanceStats &stats) {
@@ -169,21 +183,24 @@ namespace karri {
 
         template<typename AssignmentFinderResponsesT, typename StatssT>
         void insertBatchOfBestAssignments(const AssignmentFinderResponsesT &asgnFinderResponses, StatssT &statss,
-                                          int64_t &performEllipticBucketEntryInsertionsTime, int64_t &updateLeewaysTime,
-                                          int &numEllipticBucketEntryInsertions) {
+                                          const int now, const int iteration) {
 
-            KASSERT(std::distance(asgnFinderResponses.begin(), asgnFinderResponses.end()) == std::distance(statss.begin(), statss.end()));
+            KASSERT(std::distance(asgnFinderResponses.begin(), asgnFinderResponses.end()) ==
+                    std::distance(statss.begin(), statss.end()));
 
             std::vector<int> stopIdsToGenerateSourceEntriesFor;
             std::vector<int> stopIdsToGenerateTargetEntriesFor;
 
+            int64_t updateLastStopBucketsTime = 0;
+            Timer internalRouteStateUpdateTimer;
+            Timer lastStopBucketsTimer;
+            Timer timer;
             for (auto respIt = asgnFinderResponses.begin(), statsIt = statss.begin();
                  respIt != asgnFinderResponses.end(); ++respIt, ++statsIt) {
                 const auto asgnFinderResponse = *respIt;
                 auto &stats = statsIt->updateStats;
 
                 KASSERT(!asgnFinderResponse.isNotUsingVehicleBest());
-                Timer timer;
 
                 const auto &asgn = asgnFinderResponse.getBestAssignment();
                 KASSERT(asgn.vehicle != nullptr);
@@ -205,14 +222,17 @@ namespace karri {
                     rerouteVehicle = routeState.stopLocationsFor(vehId)[1] != loc.location;
                 }
 
-                timer.restart();
+                internalRouteStateUpdateTimer.restart();
                 auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, asgnFinderResponse);
-                const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
+                const auto routeUpdateTime = internalRouteStateUpdateTimer.elapsed<std::chrono::nanoseconds>();
                 stats.updateRoutesTime += routeUpdateTime;
 
+                updateEllipticBuckets(asgn, pickupIndex, dropoffIndex, stats, stopIdsToGenerateSourceEntriesFor,
+                                      stopIdsToGenerateTargetEntriesFor);
 
-                updateEllipticBuckets(asgn, pickupIndex, dropoffIndex, stats, stopIdsToGenerateSourceEntriesFor, stopIdsToGenerateTargetEntriesFor);
+                lastStopBucketsTimer.restart();
                 updateLastStopBuckets(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore, stats);
+                updateLastStopBucketsTime += lastStopBucketsTimer.elapsed<std::chrono::nanoseconds>();
 
                 if (rerouteVehicle) {
                     createIntermediateStopAtCurrentLocationForReroute(*asgn.vehicle, asgnFinderResponse.dispatchingTime,
@@ -225,53 +245,71 @@ namespace karri {
                 pathTracker.registerPdEventsForBestAssignment(routeState.stopIdsFor(vehId)[pickupIndex],
                                                               routeState.stopIdsFor(vehId)[dropoffIndex]);
             }
+            const auto updateRouteStateTime = timer.elapsed<std::chrono::nanoseconds>() - updateLastStopBucketsTime;
 
+            timer.restart();
             // Find all elliptic bucket entry insertions necessary for assignments.
             tbb::parallel_for(0ul, stopIdsToGenerateSourceEntriesFor.size(), [&](const size_t i) {
-                const auto& stopId = stopIdsToGenerateSourceEntriesFor[i];
+                const auto &stopId = stopIdsToGenerateSourceEntriesFor[i];
                 const auto vehId = routeState.vehicleIdOf(stopId);
                 const auto stopIndex = routeState.stopPositionOf(stopId);
                 ellipticBucketsEnv.addSourceBucketEntryInsertions(vehId, stopIndex);
             });
-//            for (const auto& stopId : stopIdsToGenerateSourceEntriesFor) {
-//                const auto vehId = routeState.vehicleIdOf(stopId);
-//                const auto stopIndex = routeState.stopPositionOf(stopId);
-//                ellipticBucketsEnv.addSourceBucketEntryInsertions(vehId, stopIndex);
-//            }
             tbb::parallel_for(0ul, stopIdsToGenerateTargetEntriesFor.size(), [&](const size_t i) {
-                const auto& stopId = stopIdsToGenerateTargetEntriesFor[i];
+                const auto &stopId = stopIdsToGenerateTargetEntriesFor[i];
                 const auto vehId = routeState.vehicleIdOf(stopId);
                 const auto stopIndex = routeState.stopPositionOf(stopId);
                 ellipticBucketsEnv.addTargetBucketEntryInsertions(vehId, stopIndex);
             });
-//            for (const auto& stopId : stopIdsToGenerateTargetEntriesFor) {
-//                const auto vehId = routeState.vehicleIdOf(stopId);
-//                const auto stopIndex = routeState.stopPositionOf(stopId);
-//                ellipticBucketsEnv.addTargetBucketEntryInsertions(vehId, stopIndex);
-//            }
+            const auto findEllipticBucketEntryInsertionsTime = timer.elapsed<std::chrono::nanoseconds>();
+            const auto numEllipticBucketEntryInsertions = numPendingEllipticBucketEntryInsertions();
 
-            numEllipticBucketEntryInsertions = numPendingEllipticBucketEntryInsertions();
-
-            Timer timer;
+            timer.restart();
             commitEllipticBucketEntryInsertions(); // Batched update to elliptic buckets for new entries.
-            performEllipticBucketEntryInsertionsTime = timer.elapsed<std::chrono::nanoseconds>();
+            const auto performEllipticBucketEntryInsertionsTime = timer.elapsed<std::chrono::nanoseconds>();
 
             timer.restart();
             // Update leeway in elliptic bucket entries of stops in routes of affected vehicles.
+            int64_t totalNumEntriesScannedForSourceUpdates = 0;
+            int64_t totalNumEntriesScannedForTargetUpdates = 0;
             for (auto respIt = asgnFinderResponses.begin(), statsIt = statss.begin();
                  respIt != asgnFinderResponses.end(); ++respIt, ++statsIt) {
                 updateLeewaysInSourceBucketsForAllStopsOf(
                         respIt->getBestAssignment().vehicle->vehicleId, statsIt->updateStats);
+                int64_t numEntriesScannedForSource = statsIt->updateStats.elliptic_update_numEntriesScanned;
                 updateLeewaysInTargetBucketsForAllStopsOf(
                         respIt->getBestAssignment().vehicle->vehicleId, statsIt->updateStats);
+                int64_t numEntriesScannedForTarget =
+                        statsIt->updateStats.elliptic_update_numEntriesScanned - numEntriesScannedForSource;
+                totalNumEntriesScannedForSourceUpdates += numEntriesScannedForSource;
+                totalNumEntriesScannedForTargetUpdates += numEntriesScannedForTarget;
             }
-            updateLeewaysTime = timer.elapsed<std::chrono::nanoseconds>();
+            const auto updateLeewaysTime = timer.elapsed<std::chrono::nanoseconds>();
 
             for (auto respIt = asgnFinderResponses.begin(), statsIt = statss.begin();
                  respIt != asgnFinderResponses.end(); ++respIt, ++statsIt) {
                 writeBestAssignmentToLogger(*respIt);
                 writePerformanceLogs(*respIt, *statsIt);
             }
+
+            const auto totalTime =
+                    updateRouteStateTime + updateLastStopBucketsTime + findEllipticBucketEntryInsertionsTime +
+                    performEllipticBucketEntryInsertionsTime + updateLeewaysTime;
+
+            batchInsertLogger << now << ","
+                              << iteration << ","
+                              << asgnFinderResponses.size() << ","
+                              << updateRouteStateTime << ","
+                              << updateLastStopBucketsTime << ","
+                              << numEllipticBucketEntryInsertions << ","
+                              << findEllipticBucketEntryInsertionsTime << ","
+                              << performEllipticBucketEntryInsertionsTime << ","
+                              << ellipticBucketsEnv.totalNumSourceEntries() << ","
+                              << ellipticBucketsEnv.totalNumTargetEntries() << ","
+                              << totalNumEntriesScannedForSourceUpdates << ","
+                              << totalNumEntriesScannedForTargetUpdates << ","
+                              << updateLeewaysTime << ","
+                              << totalTime << "\n";
         }
 
         void commitEllipticBucketEntryInsertions() {
@@ -413,7 +451,7 @@ namespace karri {
         void
         createIntermediateStopAtCurrentLocationForReroute(const Vehicle &veh, const int now, const VehicleLocation &loc,
                                                           stats::UpdatePerformanceStats &,
-                                                          std::vector<int>& stopIdsToGenerateSourceEntriesFor) {
+                                                          std::vector<int> &stopIdsToGenerateSourceEntriesFor) {
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
             routeState.createIntermediateStopForReroute(veh.vehicleId, loc.location, now, loc.depTimeAtHead);
 //            ellipticBucketsEnv.addSourceBucketEntryInsertions(veh, 1, stats);
@@ -422,8 +460,8 @@ namespace karri {
 
         void updateEllipticBuckets(const Assignment &asgn, const int pickupIndex, const int dropoffIndex,
                                    stats::UpdatePerformanceStats &,
-                                   std::vector<int>& stopIdsToGenerateSourceEntriesFor,
-                                   std::vector<int>& stopIdsToGenerateTargetEntriesFor) {
+                                   std::vector<int> &stopIdsToGenerateSourceEntriesFor,
+                                   std::vector<int> &stopIdsToGenerateTargetEntriesFor) {
             const auto vehId = asgn.vehicle->vehicleId;
             const auto numStops = routeState.numStopsOf(vehId);
             const auto stopIds = routeState.stopIdsFor(vehId);
@@ -509,6 +547,8 @@ namespace karri {
         LoggerT &palsPerfLogger;
         LoggerT &dalsPerfLogger;
         LoggerT &updatePerfLogger;
+
+        LoggerT &batchInsertLogger;
 
     };
 }

@@ -58,6 +58,9 @@ public:
               offset(numVertices + 1, 0),
               entries() {}
 
+    size_t totalNumEntries() const {
+        return entries.size();
+    }
 
     // Returns the bucket of the specified vertex, sorted in ascending order according to BucketEntryComparatorT.
     SortedBucket getBucketOf(const int v) const {
@@ -91,7 +94,7 @@ public:
     // bool stating whether an update was performed.
     // Returns true if any entry was updated and false otherwise.
     template<typename TransformationT>
-    bool updateAllEntries(const int v, const TransformationT &transform, int64_t& numEntriesVisited) {
+    bool updateAllEntries(const int v, const TransformationT &transform, int64_t &numEntriesVisited) {
         KASSERT(v >= 0);
         KASSERT(v < offset.size() - 1);
 
@@ -118,7 +121,7 @@ public:
 
     // Removes the entry for targetId from the bucket of the specified vertex.
     // Linear search for the targetId in the bucket.
-    bool remove(const int v, const int targetId, int64_t& numEntriesVisited) {
+    bool remove(const int v, const int targetId, int64_t &numEntriesVisited) {
         KASSERT(v >= 0);
         KASSERT(v < offset.size() - 1);
 
@@ -135,7 +138,7 @@ public:
         return true;
     }
 
-    bool getEntryDeletion(const int v, const int targetId, EntryDeletion &del, int64_t& numEntriesVisited) const {
+    bool getEntryDeletion(const int v, const int targetId, EntryDeletion &del, int64_t &numEntriesVisited) const {
         int pos = -1;
         const bool found = findPosOfExistingEntryLinear(v, targetId, pos, numEntriesVisited);
         if (!found)
@@ -147,7 +150,7 @@ public:
 
     // Removes the given entry from the bucket of the specified vertex.
     // Since buckets are sorted, binary search can be used.
-    bool remove(const int v, const BucketEntryT &entry, int64_t& numEntriesVisited) {
+    bool remove(const int v, const BucketEntryT &entry, int64_t &numEntriesVisited) {
         KASSERT(v >= 0);
         KASSERT(v < offset.size() - 1);
 
@@ -164,7 +167,8 @@ public:
         return true;
     }
 
-    bool getEntryDeletion(const int v, const BucketEntryT &entry, EntryDeletion &del, int64_t& numEntriesVisited) const {
+    bool
+    getEntryDeletion(const int v, const BucketEntryT &entry, EntryDeletion &del, int64_t &numEntriesVisited) const {
         int pos = -1;
         const bool found = findPosOfExistingEntryBinary(v, entry, pos, numEntriesVisited);
         if (!found)
@@ -336,7 +340,7 @@ public:
 
 
         // Mark deleted entries by overwriting with invalid entry (only required for assertions right now).
-        for (const auto& del : deletions) {
+        for (const auto &del: deletions) {
             entries[del.indexInEntries] = BucketEntryT();
         }
 
@@ -426,7 +430,7 @@ private:
 
     // Returns whether position was found. If so, position will be written to idx.
     // Uses linear search.
-    bool findPosOfExistingEntryLinear(const int v, const int targetId, int &idx, int64_t& numEntriesVisited) const {
+    bool findPosOfExistingEntryLinear(const int v, const int targetId, int &idx, int64_t &numEntriesVisited) const {
         KASSERT(v >= 0);
         KASSERT(v < offset.size() - 1);
 
@@ -446,7 +450,8 @@ private:
 
     // Returns whether position was found. If so, position will be written to idx.
     // Uses binary search.
-    bool findPosOfExistingEntryBinary(const int v, const BucketEntryT &entry, int &idx, int64_t& numEntriesVisited) const {
+    bool
+    findPosOfExistingEntryBinary(const int v, const BucketEntryT &entry, int &idx, int64_t &numEntriesVisited) const {
         KASSERT(v >= 0);
         KASSERT(v < offset.size() - 1);
 

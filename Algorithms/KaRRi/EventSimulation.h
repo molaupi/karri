@@ -96,10 +96,7 @@ namespace karri {
                                                                                 "find_assignments_running_time,"
                                                                                 "choose_accepted_running_time,"
                                                                                 "num_elliptic_bucket_entry_deletions,"
-                                                                                "num_elliptic_bucket_entry_insertions,"
-                                                                                "update_system_state_running_time,"
-                                                                                "perform_elliptic_bucket_entry_insertions_time,"
-                                                                                "update_leeways_in_buckets_time\n")),
+                                                                                "update_system_state_running_time\n")),
                   assignmentQualityStats(LogManager<std::ofstream>::getLogger("assignmentquality.csv",
                                                                               "request_id,"
                                                                               "arr_time,"
@@ -409,9 +406,7 @@ namespace karri {
                 iterationTimer.restart();
                 const auto acceptedResponses = IteratorRange(responses.begin() + firstAcc, responses.end());
                 auto acceptedStats = IteratorRange(stats.begin() + firstAcc, stats.end());
-                int64_t iterationPerformEllipticBucketEntryInsertionsTime = 0, iterationUpdateLeewaysTime = 0;
-                int iterationNumEllipticBucketEntryInsertions = 0;
-                systemStateUpdater.insertBatchOfBestAssignments(acceptedResponses, acceptedStats, iterationPerformEllipticBucketEntryInsertionsTime, iterationUpdateLeewaysTime, iterationNumEllipticBucketEntryInsertions);
+                systemStateUpdater.insertBatchOfBestAssignments(acceptedResponses, acceptedStats, now, iteration);
                 updateSimulationForAssignmentBatch(acceptedResponses);
                 progressBar += accepted.size();
                 const auto iterationUpdateSystemStateTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
@@ -425,10 +420,7 @@ namespace karri {
                                          << accepted.size() << "," << iterationFindAssignmentsTime << ","
                                          << iterationChooseAcceptedTime << ","
                                          << numEllipticBucketEntryDeletions << ","
-                                         << iterationNumEllipticBucketEntryInsertions << ","
-                                         << iterationUpdateSystemStateTime << ","
-                                         << iterationPerformEllipticBucketEntryInsertionsTime << ","
-                                         << iterationUpdateLeewaysTime << '\n';
+                                         << iterationUpdateSystemStateTime << '\n';
                 numEllipticBucketEntryDeletions = 0; // Deletions are associated with first iteration.
             }
 

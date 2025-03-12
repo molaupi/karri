@@ -121,6 +121,14 @@ namespace karri {
             return targetBuckets;
         }
 
+        size_t totalNumSourceEntries() const {
+            return sourceBuckets.totalNumEntries();
+        }
+
+        size_t totalNumTargetEntries() const {
+            return targetBuckets.totalNumEntries();
+        }
+
         bool noPendingEntryInsertionsOrDeletions() const {
             return numPendingEntryInsertions() == 0 && numPendingEntryDeletions() == 0;
         }
