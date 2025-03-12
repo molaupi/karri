@@ -89,7 +89,7 @@ public:
     bool insertIdle(const int v, const BucketEntryT &entry) {
         auto &pos = bucketPositions[v];
         const auto col = searchForInsertionIdx(entry, pos.start, pos.start + pos.numIdleEntries, idleComp) - pos.start;
-        stableInsertion(v, col, entry, bucketPositions, entries);
+        dynamic_ragged2d::stableInsertion(v, col, entry, bucketPositions, entries);
         ++pos.numIdleEntries;
         return true;
     }
@@ -98,7 +98,7 @@ public:
     bool insertNonIdle(const int v, const BucketEntryT &entry) {
         const auto &pos = bucketPositions[v];
         const auto col = searchForInsertionIdx(entry, pos.start + pos.numIdleEntries, pos.end, nonIdleComp) - pos.start;
-        stableInsertion(v, col, entry, bucketPositions, entries);
+        dynamic_ragged2d::stableInsertion(v, col, entry, bucketPositions, entries);
         return true;
     }
 
@@ -117,7 +117,7 @@ public:
             return false;
 
         col -= pos.start;
-        stableRemoval(v, col, bucketPositions, entries);
+        dynamic_ragged2d::stableRemoval(v, col, bucketPositions, entries);
         --pos.numIdleEntries;
         return true;
     }
@@ -137,7 +137,7 @@ public:
             return false;
 
         col -= pos.start;
-        stableRemoval(v, col, bucketPositions, entries);
+        dynamic_ragged2d::stableRemoval(v, col, bucketPositions, entries);
         return true;
     }
 
@@ -155,7 +155,7 @@ public:
             return false;
 
         col -= pos.start;
-        stableRemoval(v, col, bucketPositions, entries);
+        dynamic_ragged2d::stableRemoval(v, col, bucketPositions, entries);
         return true;
     }
 

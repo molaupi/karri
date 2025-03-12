@@ -52,7 +52,7 @@ public:
     // Inserts the given entry into the bucket of the specified vertex.
     bool insert(const int v, const BucketEntryT &entry) {
         const auto pos = findInsertionPosForEntryInBucket(v, entry);
-        stableInsertion(v, pos, entry, bucketPositions, entries);
+        dynamic_ragged2d::stableInsertion(v, pos, entry, bucketPositions, entries);
         return true;
     }
 
@@ -103,7 +103,7 @@ public:
         }
         if (i == pos.end) return false;
 
-        stableRemoval(v, i - pos.start, bucketPositions, entries);
+        dynamic_ragged2d::stableRemoval(v, i - pos.start, bucketPositions, entries);
         return true;
     }
 
@@ -119,7 +119,7 @@ public:
         if (!found)
             return false;
 
-        stableRemoval(v, posInBucket, bucketPositions, entries);
+        dynamic_ragged2d::stableRemoval(v, posInBucket, bucketPositions, entries);
         return true;
     }
 
@@ -223,7 +223,7 @@ private:
     int numEntriesVisited;
     BucketEntryComparatorT comp;
 
-    using BucketPosition = ValueBlockPosition;
+    using BucketPosition = dynamic_ragged2d::ValueBlockPosition;
     std::vector<BucketPosition> bucketPositions;
     std::vector<BucketEntryT> entries;
 };

@@ -31,7 +31,7 @@ namespace karri {
         int distToTarget = INFTY;
         int leeway = 0;
 
-        friend bool operator==(const BucketEntryWithLeeway &e1, const BucketEntryWithLeeway &e2) {
+        constexpr friend bool operator==(const BucketEntryWithLeeway &e1, const BucketEntryWithLeeway &e2) {
             return e1.targetId == e2.targetId && e1.distToTarget == e2.distToTarget;
         }
     };

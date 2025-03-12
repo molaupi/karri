@@ -262,9 +262,9 @@ namespace karri {
                 schedArrTimes[end - 1] = schedDepTimes[end - 1] - InputConfig::getInstance().stopTime;
                 ++pickupIndex;
                 ++dropoffIndex;
-                stableInsertion(vehId, pickupIndex, getUnusedStopId(), pos, stopIds, stopLocations,
-                                schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
-                                numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
+                dynamic_ragged2d::stableInsertion(vehId, pickupIndex, getUnusedStopId(), pos, stopIds, stopLocations,
+                                                  schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
+                                                  numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
                 stopLocations[start + pickupIndex] = pickup.loc;
                 schedArrTimes[start + pickupIndex] = schedDepTimes[start + pickupIndex - 1] + asgn.distToPickup;
                 schedDepTimes[start + pickupIndex] = std::max(schedArrTimes[start + pickupIndex] + InputConfig::getInstance().stopTime,
@@ -286,9 +286,9 @@ namespace karri {
                                                              requestState.getMaxArrTimeAtDropoff(dropoff));
             } else {
                 ++dropoffIndex;
-                stableInsertion(vehId, dropoffIndex, getUnusedStopId(),
-                                pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
-                                maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
+                dynamic_ragged2d::stableInsertion(vehId, dropoffIndex, getUnusedStopId(),
+                                                  pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
+                                                  maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
                 stopLocations[start + dropoffIndex] = dropoff.loc;
                 schedArrTimes[start + dropoffIndex] =
                         schedDepTimes[start + dropoffIndex - 1] + asgn.distToDropoff;
@@ -368,10 +368,10 @@ namespace karri {
 
 
             // Remember that request is picked up and dropped of at respective stops:
-            insertion(stopIds[start + pickupIndex], requestState.originalRequest.requestId,
-                      rangeOfRequestsPickedUpAtStop, requestsPickedUpAtStop);
-            insertion(stopIds[start + dropoffIndex], requestState.originalRequest.requestId,
-                      rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
+            dynamic_ragged2d::insertion(stopIds[start + pickupIndex], requestState.originalRequest.requestId,
+                                        rangeOfRequestsPickedUpAtStop, requestsPickedUpAtStop);
+            dynamic_ragged2d::insertion(stopIds[start + dropoffIndex], requestState.originalRequest.requestId,
+                                        rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
 
             return {pickupIndex, dropoffIndex};
         }
@@ -385,8 +385,8 @@ namespace karri {
             stopIdToVehicleId[stopIds[start]] = INVALID_ID;
             stopIdToLeeway[stopIds[start]] = 0;
             stopIdToPosition[stopIds[start]] = INVALID_INDEX;
-            removalOfAllCols(stopIds[start], rangeOfRequestsPickedUpAtStop, requestsPickedUpAtStop);
-            removalOfAllCols(stopIds[start], rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
+            dynamic_ragged2d::removalOfAllCols(stopIds[start], rangeOfRequestsPickedUpAtStop, requestsPickedUpAtStop);
+            dynamic_ragged2d::removalOfAllCols(stopIds[start], rangeOfRequestsDroppedOffAtStop, requestsDroppedOffAtStop);
             unusedStopIds.push(stopIds[start]);
             assert(stopIdToIdOfPrevStop[stopIds[start]] == INVALID_ID);
             if (numStopsOf(vehId) > 1) {
@@ -394,9 +394,9 @@ namespace karri {
             }
 
             const auto numDropoffsAtStart = numDropoffsPrefixSum[start];
-            stableRemoval(vehId, 0,
-                          pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
-                          maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
+            dynamic_ragged2d::stableRemoval(vehId, 0,
+                                            pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
+                                            maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
 
             const auto &startAfterRemoval = pos[vehId].start;
             const auto &endAfterRemoval = pos[vehId].end;
@@ -416,9 +416,9 @@ namespace karri {
             KASSERT(vehId < pos.size());
             KASSERT(pos[vehId].end - pos[vehId].start > 0);
             KASSERT(depTime >= now);
-            stableInsertion(vehId, 1, getUnusedStopId(), pos, stopIds, stopLocations,
-                            schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
-                            numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
+            dynamic_ragged2d::stableInsertion(vehId, 1, getUnusedStopId(), pos, stopIds, stopLocations,
+                                              schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
+                                              numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
             stopLocations[start + 1] = location;
@@ -661,7 +661,7 @@ namespace karri {
 
         // For a vehicle with ID vehId, the according entries in each value array lie in the index interval
         // [pos[vehId].start, pos[vehId].end).
-        std::vector<ValueBlockPosition> pos;
+        std::vector<dynamic_ragged2d::ValueBlockPosition> pos;
 
         // Value Arrays:
 
@@ -719,9 +719,9 @@ namespace karri {
         // Pickups and dropoffs per request as dynamic ragged 2D-arrays.
         // The range requestsPickedUpAtStop[rangeOfRequestsPickedUpAtStop[stopId].start ... rangeOfRequestsPickedUpAtStop[stopId].end]
         // stores the IDs of all requests that are picked up at stop with ID stopId. (Analogous for dropoffs.)
-        std::vector<ValueBlockPosition> rangeOfRequestsPickedUpAtStop;
+        std::vector<dynamic_ragged2d::ValueBlockPosition> rangeOfRequestsPickedUpAtStop;
         std::vector<int> requestsPickedUpAtStop;
-        std::vector<ValueBlockPosition> rangeOfRequestsDroppedOffAtStop;
+        std::vector<dynamic_ragged2d::ValueBlockPosition> rangeOfRequestsDroppedOffAtStop;
         std::vector<int> requestsDroppedOffAtStop;
 
 

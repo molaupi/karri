@@ -26,6 +26,7 @@
 #pragma once
 
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
+#include "DataStructures/Containers/TimestampedVector.h"
 
 namespace karri {
 
@@ -88,7 +89,7 @@ namespace karri {
         void stableInsertOpenLabel(const int vertex, const int index, const BucketEntryT &entry) {
             const int numClosed = bucketPositions[vertex].numClosed;
             assert(bucketPositions[vertex].end - bucketPositions[vertex].start >= numClosed);
-            stableInsertion(vertex, index + numClosed, entry, bucketPositions, entries);
+            dynamic_ragged2d::stableInsertion(vertex, index + numClosed, entry, bucketPositions, entries);
         }
 
         // Stable removal of the entries at the specified indices. Range of indices has to be sorted. Indices mean the
@@ -105,7 +106,7 @@ namespace karri {
             std::for_each(indicesWithOffset.begin(), indicesWithOffset.end(),
                           [numClosed](int &idx) { idx += numClosed; });
 
-            stableRemovalOfSortedCols(vertex, indicesWithOffset, bucketPositions, entries);
+            dynamic_ragged2d::stableRemovalOfSortedCols(vertex, indicesWithOffset, bucketPositions, entries);
             assert(bucketPositions[vertex].end >= bucketPositions[vertex].start &&
                    bucketPositions[vertex].end - bucketPositions[vertex].start >= bucketPositions[vertex].numClosed);
         }
@@ -133,7 +134,7 @@ namespace karri {
         void clearBucket(const int vertex) {
             assert(vertex >= 0);
             assert(vertex < bucketPositions.size());
-            removalOfAllCols(vertex, bucketPositions, entries);
+            dynamic_ragged2d::removalOfAllCols(vertex, bucketPositions, entries);
             bucketPositions[vertex].numClosed = 0;
         }
 

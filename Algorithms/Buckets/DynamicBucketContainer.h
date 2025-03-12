@@ -70,13 +70,13 @@ public:
 
     // Inserts the given entry into the bucket of the specified vertex.
     bool insert(const int vertex, const BucketEntryT &entry) {
-        insertion(vertex, entry, bucketPositions, entries);
+        dynamic_ragged2d::insertion(vertex, entry, bucketPositions, entries);
         return true;
     }
 
     // Inserts the given entry into the bucket of the specified vertex at the given index (within the bucket).
     bool stableInsert(const int vertex, const int idx, const BucketEntryT &entry) {
-        stableInsertion(vertex, idx, entry, bucketPositions, entries);
+        dynamic_ragged2d::stableInsertion(vertex, idx, entry, bucketPositions, entries);
         return true;
     }
 
@@ -108,7 +108,7 @@ public:
         for (auto i = pos.start; i < pos.end; ++i) {
             ++numEntriesVisited;
             if (entries[i].targetId == targetId) {
-                removal(vertex, i - pos.start, bucketPositions, entries);
+                dynamic_ragged2d::removal(vertex, i - pos.start, bucketPositions, entries);
                 return true;
             }
         }
@@ -126,7 +126,7 @@ public:
     void removeSortedIndices(const int vertex, const IndicesRangeT &indicesRange) {
         assert(vertex >= 0);
         assert(vertex < bucketPositions.size());
-        removalOfSortedCols(vertex, indicesRange, bucketPositions, entries);
+        dynamic_ragged2d::removalOfSortedCols(vertex, indicesRange, bucketPositions, entries);
 //        numEntriesVisited = indicesRange.size();
     }
 
@@ -136,7 +136,7 @@ public:
     void stableRemoveSortedIndices(const int vertex, const IndicesRangeT &indicesRange) {
         assert(vertex >= 0);
         assert(vertex < bucketPositions.size());
-        stableRemovalOfSortedCols(vertex, indicesRange, bucketPositions, entries);
+        dynamic_ragged2d::stableRemovalOfSortedCols(vertex, indicesRange, bucketPositions, entries);
 //        numEntriesVisited = indicesRange.size();
     }
 
@@ -172,7 +172,7 @@ public:
     }
 
 private:
-    using BucketPosition = ValueBlockPosition;
+    using BucketPosition = dynamic_ragged2d::ValueBlockPosition;
 
     std::vector<BucketPosition> bucketPositions;
     std::vector<BucketEntryT> entries;

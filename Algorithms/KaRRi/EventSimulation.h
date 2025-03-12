@@ -314,10 +314,14 @@ namespace karri {
 
             int numEllipticBucketEntryDeletions = systemStateUpdater.numPendingEllipticBucketEntryDeletions();
 
-            // Before searching for assignments, commit all pending deletions to the elliptic buckets.
-            systemStateUpdater.commitEllipticBucketEntryDeletions();
+            // Before searching for assignments, commit all pending deletions to the elliptic buckets as well as
+            // insertions and deletions to the last stop buckets that were caused by vehicles progressing in their
+            // routes since the last batch.
+            systemStateUpdater.commitPendingEllipticBucketEntryDeletions();
+            systemStateUpdater.commitPendingLastStopBucketEntryInsertionsAndDeletions();
 
             KASSERT(systemStateUpdater.noPendingEllipticBucketEntryInsertionsOrDeletions());
+            KASSERT(systemStateUpdater.noPendingLastStopBucketEntryInsertionsOrDeletions());
 
             // Find an assignment for each request in requestBatch. May require multiple rounds for some requests
             // if there are conflicting assignments.

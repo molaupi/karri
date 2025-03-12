@@ -482,15 +482,15 @@ int main(int argc, char *argv[]) {
         using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
         VehicleLocatorImpl ssUlocator(vehicleInputGraph, *vehChEnv, routeState);
         using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, std::ofstream>;
-        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, ssUlocator,
+        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, ssUlocator,
                                                   pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
 
 
         // Initialize last stop state for initial locations of vehicles
-        stats::UpdatePerformanceStats genInitialLastStopBucketsStats;
         for (const auto &veh: fleet) {
-            lastStopBucketsEnv.generateIdleBucketEntries(veh, genInitialLastStopBucketsStats);
+            lastStopBucketsEnv.addIdleBucketEntryInsertions(veh.vehicleId);
         }
+        lastStopBucketsEnv.commitEntryInsertionsAndDeletions();
 
         // Run simulation:
         using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;

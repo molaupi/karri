@@ -32,7 +32,7 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/CH/CH.h"
 #include "Tools/Timer.h"
-#include "Algorithms/Buckets/LastStopBucketContainer.h"
+#include "Algorithms/Buckets/CompactLastStopBucketContainer.h"
 
 namespace karri {
 
@@ -53,7 +53,11 @@ namespace karri {
     public:
         static constexpr bool SORTED = true;
 
-        using BucketContainer = LastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
+        using BucketContainer = CompactLastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
+        using EntryInsertion = typename BucketContainer::EntryInsertion;
+        using EntryDeletion = typename BucketContainer::EntryDeletion;
+        using EntryInsertionVecT = parallel::scalable_vector<EntryInsertion>;
+        using EntryDeletionVecT = parallel::scalable_vector<EntryDeletion>;
 
     private:
 
@@ -69,138 +73,160 @@ namespace karri {
             const int &maxDist;
         };
 
-        struct GenerateIdleEntry {
-            explicit GenerateIdleEntry(BucketContainer &bucketContainer, int &curVehId, int &verticesVisited)
-                    : bucketContainer(bucketContainer), curVehId(curVehId), verticesVisited(verticesVisited) {}
+        struct AddIdleEntryInsertion {
+            explicit AddIdleEntryInsertion(const BucketContainer &bucketContainer)
+                    : bucketContainer(bucketContainer), curVehId(INVALID_ID) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
+                KASSERT(curVehId != INVALID_ID && curInsertions);
+                KASSERT(curInsertions->size() > 0 && curInsertions->back() == EntryInsertion(),
+                        "Invalid element to be populated at end of insertions is missing.");
                 auto entry = LastStopEntry(curVehId, distToV[0]);
-                bucketContainer.insertIdle(v, entry);
-                ++verticesVisited;
+                bucketContainer.getIdleEntryInsertion(v, entry, curInsertions->back());
+                curInsertions->emplace_back(); // Invalid last element to write to.
+//                bucketContainer.insertIdle(v, entry);
                 return false;
             }
 
-            BucketContainer &bucketContainer;
-            int &curVehId;
-            int &verticesVisited;
+            const BucketContainer &bucketContainer;
+            int curVehId;
+            EntryInsertionVecT *curInsertions;
         };
 
-        struct GenerateNonIdleEntry {
-            explicit GenerateNonIdleEntry(BucketContainer &bucketContainer, int &curVehId,
-                                          int &depTimeAtLastStopOfCurVeh, int &verticesVisited)
-                    : bucketContainer(bucketContainer), curVehId(curVehId),
-                      depTimeAtLastStopOfCurVeh(depTimeAtLastStopOfCurVeh), verticesVisited(verticesVisited) {}
+        struct AddNonIdleEntryInsertion {
+            explicit AddNonIdleEntryInsertion(const BucketContainer &bucketContainer)
+                    : bucketContainer(bucketContainer), curVehId(INVALID_ID),
+                      depTimeAtLastStopOfCurVeh(INFTY) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
+                KASSERT(curVehId != INVALID_ID && curInsertions);
+                KASSERT(curInsertions->size() > 0 && curInsertions->back() == EntryInsertion(),
+                        "Invalid element to be populated at end of insertions is missing.");
                 auto entry = LastStopEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
-                bucketContainer.insertNonIdle(v, entry);
-                ++verticesVisited;
+                bucketContainer.getNonIdleEntryInsertion(v, entry, curInsertions->back());
+                curInsertions->emplace_back(); // Invalid last element to write to.
+//                bucketContainer.insertNonIdle(v, entry);
                 return false;
             }
 
-            BucketContainer &bucketContainer;
-            int &curVehId;
-            int &depTimeAtLastStopOfCurVeh;
-            int &verticesVisited;
+            const BucketContainer &bucketContainer;
+
+            int curVehId;
+            int depTimeAtLastStopOfCurVeh;
+            EntryInsertionVecT *curInsertions;
         };
 
-        struct UpdateNewScheduleOfNonIdleVehicle {
-            explicit UpdateNewScheduleOfNonIdleVehicle(BucketContainer &bucketContainer, int &curVehId,
-                                                       int &depTimeAtLastStopOfCurVeh,
-                                                       int &verticesVisited, int &entriesVisited)
-                    : bucketContainer(bucketContainer), curVehId(curVehId),
-                      depTimeAtLastStopOfCurVeh(depTimeAtLastStopOfCurVeh),
-                      verticesVisited(verticesVisited), entriesVisited(entriesVisited) {}
+        struct AddEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicle {
+            explicit AddEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicle(
+                    const BucketContainer &bucketContainer)
+                    : bucketContainer(bucketContainer), curVehId(INVALID_ID),
+                      depTimeAtLastStopOfCurVeh(INFTY) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
-                ++verticesVisited;
-                bool removed = bucketContainer.removeNonIdle(v, curVehId);
-                entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
+                KASSERT(curVehId != INVALID_ID && curNonIdleInsertions && curNonIdleDeletions);
+                KASSERT(curNonIdleInsertions->size() > 0 && curNonIdleInsertions->back() == EntryInsertion(),
+                        "Invalid element to be populated at end of insertions is missing.");
+                KASSERT(curNonIdleDeletions->size() > 0 && curNonIdleDeletions->back() == EntryDeletion(),
+                        "Invalid element to be populated at end of deletions is missing.");
+                bool removed = bucketContainer.getNonIdleEntryDeletion(v, curVehId, curNonIdleDeletions->back());
+//                bool removed = bucketContainer.removeNonIdle(v, curVehId);
                 if (!removed)
                     return true; // Prune if no entry for the vehicle was found at this vertex
+                curNonIdleDeletions->emplace_back(); // Invalid last element to write to next.
+
                 auto newEntry = BucketEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
-                bucketContainer.insertNonIdle(v, newEntry);
+                bucketContainer.getNonIdleEntryInsertion(v, newEntry, curNonIdleInsertions->back());
+                curNonIdleInsertions->emplace_back(); // Invalid last element to write to next.
+//                bucketContainer.insertNonIdle(v, newEntry);
                 return false;
             }
 
-            BucketContainer &bucketContainer;
-            int &curVehId;
-            int &depTimeAtLastStopOfCurVeh;
-            int &verticesVisited;
-            int &entriesVisited;
+            const BucketContainer &bucketContainer;
+            int curVehId;
+            int depTimeAtLastStopOfCurVeh;
+
+            EntryDeletionVecT *curNonIdleDeletions;
+            EntryInsertionVecT *curNonIdleInsertions;
         };
 
-        struct UpdateForVehicleHasBecomeIdle {
-            explicit UpdateForVehicleHasBecomeIdle(BucketContainer &bucketContainer, int &curVehId,
-                                                   int &depTimeAtLastStopOfCurVeh,
-                                                   int &verticesVisited, int &entriesVisited)
-                    : bucketContainer(bucketContainer), curVehId(curVehId),
-                      depTimeAtLastStopOfCurVeh(depTimeAtLastStopOfCurVeh),
-                      verticesVisited(verticesVisited), entriesVisited(entriesVisited) {}
+        struct AddEntryInsertionsAndDeletionsForVehicleHasBecomeIdle {
+            explicit AddEntryInsertionsAndDeletionsForVehicleHasBecomeIdle(const BucketContainer &bucketContainer)
+                    : bucketContainer(bucketContainer), curVehId(INVALID_ID),
+                      depTimeAtLastStopOfCurVeh(INFTY) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
-                ++verticesVisited;
+                KASSERT(curVehId != INVALID_ID && curIdleInsertions && curNonIdleDeletions);
+                KASSERT(curIdleInsertions->size() > 0 && curIdleInsertions->back() == EntryInsertion(),
+                        "Invalid element to be populated at end of insertions is missing.");
+                KASSERT(curNonIdleDeletions->size() > 0 && curNonIdleDeletions->back() == EntryDeletion(),
+                        "Invalid element to be populated at end of deletions is missing.");
                 auto oldEntry = BucketEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
-                bool removed = bucketContainer.removeNonIdle(v, oldEntry);
-                entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
+                bool removed = bucketContainer.getNonIdleEntryDeletion(v, oldEntry, curNonIdleDeletions->back());
+//                bool removed = bucketContainer.removeNonIdle(v, oldEntry);
                 if (!removed)
                     return true; // Prune if no entry for the vehicle was found at this vertex
+                curNonIdleDeletions->emplace_back(); // Invalid last element to write to next.
                 auto newEntry = BucketEntry(curVehId, distToV[0]);
-                bucketContainer.insertIdle(v, newEntry);
+                bucketContainer.getIdleEntryInsertion(v, newEntry, curIdleInsertions->back());
+                curIdleInsertions->emplace_back(); // Invalid last element to write to next.
+//                bucketContainer.insertIdle(v, newEntry);
                 return false;
             }
 
-            BucketContainer &bucketContainer;
-            int &curVehId;
-            int &depTimeAtLastStopOfCurVeh;
-            int &verticesVisited;
-            int &entriesVisited;
+            const BucketContainer &bucketContainer;
+            int curVehId;
+            int depTimeAtLastStopOfCurVeh;
+
+            EntryDeletionVecT *curNonIdleDeletions;
+            EntryInsertionVecT *curIdleInsertions;
         };
 
-        struct DeleteIdleEntry {
-            explicit DeleteIdleEntry(BucketContainer &bucketContainer, int &curVehId, int &verticesVisited,
-                                     int &entriesVisited)
-                    : bucketContainer(bucketContainer), curVehId(curVehId), verticesVisited(verticesVisited),
-                      entriesVisited(entriesVisited) {}
+        struct AddIdleEntryDeletion {
+            explicit AddIdleEntryDeletion(const BucketContainer &bucketContainer)
+                    : bucketContainer(bucketContainer), curVehId(INVALID_ID) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
+                KASSERT(curVehId != INVALID_ID && curDeletions);
+                KASSERT(curDeletions->size() > 0 && curDeletions->back() == EntryDeletion(),
+                        "Invalid element to be populated at end of deletions is missing.");
                 auto entry = BucketEntry(curVehId, distToV[0]);
-                bool removed = bucketContainer.removeIdle(v, entry);
-                ++verticesVisited;
-                entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
+                bool removed = bucketContainer.getIdleEntryDeletion(v, entry, curDeletions->back());
+//                bool removed = bucketContainer.removeIdle(v, entry);
+                if (removed)
+                    curDeletions->emplace_back(); // Invalid last element to write to.
                 return !removed; // Prune if no entry for the vehicle was found at this vertex
             }
 
-            BucketContainer &bucketContainer;
-            int &curVehId;
-            int &verticesVisited;
-            int &entriesVisited;
+            const BucketContainer &bucketContainer;
+            int curVehId;
+            EntryDeletionVecT *curDeletions;
         };
 
-        struct DeleteNonIdleEntry {
-            explicit DeleteNonIdleEntry(BucketContainer &bucketContainer, int &curVehId, int &verticesVisited,
-                                        int &entriesVisited)
-                    : bucketContainer(bucketContainer), curVehId(curVehId),
-                      verticesVisited(verticesVisited), entriesVisited(entriesVisited) {}
+        struct AddNonIdleEntryDeletion {
+            explicit AddNonIdleEntryDeletion(const BucketContainer &bucketContainer)
+                    : bucketContainer(bucketContainer), curVehId(INVALID_ID) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &, const DistLabelContT &) {
+                KASSERT(curVehId != INVALID_ID && curDeletions);
+                KASSERT(curDeletions->size() > 0 && curDeletions->back() == EntryDeletion(),
+                        "Invalid element to be populated at end of deletions is missing.");
                 // todo: it would be possible to use binary search here if we had the old dep time
-                bool removed = bucketContainer.removeNonIdle(v, curVehId);
-                ++verticesVisited;
-                entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
+                bool removed = bucketContainer.getNonIdleEntryDeletion(v, curVehId, curDeletions->back());
+//                bool removed = bucketContainer.removeNonIdle(v, curVehId);
+                if (removed)
+                    curDeletions->emplace_back(); // Invalid last element to write to.
                 return !removed; // Prune if no entry for the vehicle was found at this vertex
             }
 
-            BucketContainer &bucketContainer;
-            int &curVehId;
-            int &verticesVisited;
-            int &entriesVisited;
+            const BucketContainer &bucketContainer;
+            int curVehId;
+            EntryDeletionVecT *curDeletions;
         };
 
     public:
@@ -212,84 +238,220 @@ namespace karri {
                   searchGraph(ch.upwardGraph()),
                   routeState(routeState),
                   bucketContainer(searchGraph.numVertices()),
-                  idleEntryGenSearch(
-                          chEnv.getForwardSearch(GenerateIdleEntry(bucketContainer, vehicleId, verticesVisitedInSearch),
-                                                 StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
-                  nonIdleEntryGenSearch(chEnv.getForwardSearch(
-                          GenerateNonIdleEntry(bucketContainer, vehicleId, depTimeOfVehAtLastStop,
-                                               verticesVisitedInSearch),
-                          StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
-                  updateNewScheduleOfNonIdleVehicleSearch(chEnv.getForwardSearch(
-                          UpdateNewScheduleOfNonIdleVehicle(bucketContainer, vehicleId, depTimeOfVehAtLastStop,
-                                                            verticesVisitedInSearch, entriesVisitedInSearch))),
-                  updateForVehicleHasBecomeIdleSearch(chEnv.getForwardSearch(
-                          UpdateForVehicleHasBecomeIdle(bucketContainer, vehicleId, depTimeOfVehAtLastStop,
-                                                        verticesVisitedInSearch, entriesVisitedInSearch))),
-                  idleEntryDelSearch(chEnv.getForwardSearch(
-                          DeleteIdleEntry(bucketContainer, vehicleId, verticesVisitedInSearch,
-                                          entriesVisitedInSearch))),
-                  nonIdleEntryDelSearch(chEnv.getForwardSearch(
-                          DeleteNonIdleEntry(bucketContainer, vehicleId,
-                                             verticesVisitedInSearch, entriesVisitedInSearch))) {}
+                  addIdleEntryInsertionsSearch(chEnv.getForwardSearch(AddIdleEntryInsertion(bucketContainer))),
+                  addNonIdleEntryInsertionsSearch(
+                          [&]() { return chEnv.getForwardSearch(AddNonIdleEntryInsertion(bucketContainer)); }),
+                  addEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicleSearch(
+                          [&]() {
+                              return chEnv.getForwardSearch(
+                                      AddEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicle(bucketContainer));
+                          }),
+                  addEntryInsertionsAndDeletionsForVehicleHasBecomeIdleSearch(
+                          [&]() {
+                              return chEnv.getForwardSearch(
+                                      AddEntryInsertionsAndDeletionsForVehicleHasBecomeIdle(bucketContainer));
+                          }),
+                  addIdleEntryDeletionsSearch(
+                          [&]() { return chEnv.getForwardSearch(AddIdleEntryDeletion(bucketContainer)); }),
+                  addNonIdleEntryDeletionsSearch(
+                          [&]() { return chEnv.getForwardSearch(AddNonIdleEntryDeletion(bucketContainer)); }) {}
 
 
         const BucketContainer &getBuckets() const {
             return bucketContainer;
         }
 
-        void generateIdleBucketEntries(const Vehicle &veh,
-                                       karri::stats::UpdatePerformanceStats &stats) {
-            generateBucketEntries<true>(veh, stats);
-        }
 
-        void generateNonIdleBucketEntries(const Vehicle &veh,
-                                          karri::stats::UpdatePerformanceStats &stats) {
-            generateBucketEntries<false>(veh, stats);
-        }
+        void addIdleBucketEntryInsertions(const int vehId) {
+            const auto &numStops = routeState.numStopsOf(vehId);
 
-        // An update to the bucket entries may become necessary in two situations:
-        // Case 1: An insertion caused the departure time of a last stop to change (while not changing its location).
-        //      The vehicle was non-idle and remains non-idle, so we simply update the entries for the new arrival time
-        //      at the corresponding vertex.
-        // Case 2: A vehicle has reached its last stop and has become idle.
-        //      Its arrival time at each vertex is now dependent on the current time (request time of each request).
-        //      We visit every bucket and move the vehicle's entry from the non-idle bucket to the idle bucket for
-        //      more precise bucket sorting and pruning.
-        // When a vehicle becomes non-idle after being idle, it's last stop always changes, so the update is expressed
-        // as a delete operation for the old location and a generate operation for the new location instead.
-        void updateBucketEntries(const Vehicle &veh, const int stopIndex,
-                                 int64_t& updateTime) {
-
-            Timer timer;
-            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[numStops - 1];
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 
-            vehicleId = veh.vehicleId;
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
-            const bool isIdle = numStops == 1;
-            depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
+            auto &idleEntryInsertions = idleInsertions.local();
+            idleEntryInsertions.emplace_back(); // Invalid last element to write to.
 
-            entriesVisitedInSearch = 0;
-            maxDetourUntilEndOfServiceTime = INFTY;
-            verticesVisitedInSearch = 0;
+            // Set the current vehicle ID and the current insertions vector for the search in the callback operator.
+            auto &addInsertionCallback = std::get<1>(addIdleEntryInsertionsSearch.getPruningCriterion().criterions);
+            addInsertionCallback.curVehId = vehId;
+            addInsertionCallback.curInsertions = &idleEntryInsertions;
 
-            if (isIdle) {
-                updateForVehicleHasBecomeIdleSearch.run(ch.rank(stopVertex));
-            } else {
-                updateNewScheduleOfNonIdleVehicleSearch.run(ch.rank(stopVertex));
+            // Run the search to add idle bucket entry insertions.
+            addIdleEntryInsertionsSearch.run(ch.rank(stopVertex));
+
+            idleEntryInsertions.pop_back(); // Remove unused invalid last element
+        }
+
+        void addNonIdleBucketEntryInsertions(const int vehId) {
+            const auto &numStops = routeState.numStopsOf(vehId);
+
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[numStops - 1];
+            const auto stopVertex = inputGraph.edgeHead(stopLoc);
+
+            auto &search = addNonIdleEntryInsertionsSearch.local();
+            auto &nonIdleEntryInsertions = nonIdleInsertions.local();
+            nonIdleEntryInsertions.emplace_back(); // Invalid last element to write to.
+
+            // Set the current vehicle ID, the departure time at the vehicle's last stop and the current insertions
+            // vector for the search in the callback operator.
+            auto &addInsertionCallback = std::get<1>(search.getPruningCriterion().criterions);
+            addInsertionCallback.curVehId = vehId;
+            addInsertionCallback.depTimeAtLastStopOfCurVeh = routeState.schedDepTimesFor(vehId)[numStops - 1];
+            addInsertionCallback.curInsertions = &nonIdleEntryInsertions;
+
+            // Run the search to add non idle bucket entry insertions.
+            search.run(ch.rank(stopVertex));
+
+            nonIdleEntryInsertions.pop_back(); // Remove unused invalid last element
+        }
+
+        void addIdleBucketEntryDeletions(const int vehId, const int stopIndex) {
+            KASSERT(stopIndex >= 0);
+            KASSERT(stopIndex < routeState.numStopsOf(vehId));
+
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
+            const auto stopVertex = inputGraph.edgeHead(stopLoc);
+
+            auto &search = addIdleEntryDeletionsSearch.local();
+            auto &idleEntryDeletions = idleDeletions.local();
+            idleEntryDeletions.emplace_back(); // Invalid last element to write to.
+
+            // Set the current vehicle ID the current deletions vector for the search in the callback operator.
+            auto &addDeletionCallback = std::get<1>(search.getPruningCriterion().criterions);
+            addDeletionCallback.curVehId = vehId;
+            addDeletionCallback.curDeletions = &idleEntryDeletions;
+
+            search.run(ch.rank(stopVertex));
+
+            idleEntryDeletions.pop_back(); // Remove unused invalid last element
+        }
+
+        void addNonIdleBucketEntryDeletions(const int vehId, const int stopIndex) {
+            KASSERT(stopIndex >= 0);
+            KASSERT(stopIndex < routeState.numStopsOf(vehId));
+
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
+            const auto stopVertex = inputGraph.edgeHead(stopLoc);
+
+            auto &search = addNonIdleEntryDeletionsSearch.local();
+            auto &nonIdleEntryDeletions = nonIdleDeletions.local();
+
+            nonIdleEntryDeletions.emplace_back(); // Invalid last element to write to.
+
+            // Set the current vehicle ID the current deletions vector for the search in the callback operator.
+            auto &addDeletionCallback = std::get<1>(search.getPruningCriterion().criterions);
+            addDeletionCallback.curVehId = vehId;
+            addDeletionCallback.curDeletions = &nonIdleEntryDeletions;
+
+            search.run(ch.rank(stopVertex));
+
+            nonIdleEntryDeletions.pop_back(); // Remove unused invalid last element
+        }
+
+        // Update the bucket entries for a non-idle vehicle whose last stop has remained the same but the departure
+        // time at that stop has changed.
+        void addBucketEntryInsertionsAndDeletionsForUpdatedSchedule(const int vehId, const int stopIndex) {
+
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
+            const auto stopVertex = inputGraph.edgeHead(stopLoc);
+
+            const auto &numStops = routeState.numStopsOf(vehId);
+            KASSERT(numStops > 1);
+            auto &search = addEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicleSearch.local();
+            auto &nonIdleEntryInsertions = nonIdleInsertions.local();
+            auto &nonIdleEntryDeletions = nonIdleDeletions.local();
+            nonIdleEntryInsertions.emplace_back(); // Invalid last element to write to.
+            nonIdleEntryDeletions.emplace_back(); // Invalid last element to write to.
+
+            // Set the current vehicle ID the current deletions vector for the search in the callback operator.
+            auto &updateCallback = std::get<1>(search.getPruningCriterion().criterions);
+            updateCallback.curVehId = vehId;
+            updateCallback.depTimeAtLastStopOfCurVeh = routeState.schedDepTimesFor(vehId)[numStops - 1];
+            updateCallback.curNonIdleInsertions = &nonIdleEntryInsertions;
+            updateCallback.curNonIdleDeletions = &nonIdleEntryDeletions;
+
+            search.run(ch.rank(stopVertex));
+
+            nonIdleEntryInsertions.pop_back(); // Remove unused invalid last element
+            nonIdleEntryDeletions.pop_back(); // Remove unused invalid last element
+        }
+
+        // Update bucket entries for vehicle that has become idle.
+        void addBucketEntryInsertionsAndDeletionsForVehicleHasBecomeIdle(const int vehId) {
+
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[0];
+            const auto stopVertex = inputGraph.edgeHead(stopLoc);
+            KASSERT(routeState.numStopsOf(vehId) == 1);
+
+            auto &search = addEntryInsertionsAndDeletionsForVehicleHasBecomeIdleSearch.local();
+            auto &idleEntryInsertions = idleInsertions.local();
+            auto &nonIdleEntryDeletions = nonIdleDeletions.local();
+            idleEntryInsertions.emplace_back(); // Invalid last element to write to.
+            nonIdleEntryDeletions.emplace_back(); // Invalid last element to write to.
+
+            // Set the current vehicle ID the current deletions vector for the search in the callback operator.
+            auto &updateCallback = std::get<1>(search.getPruningCriterion().criterions);
+            updateCallback.curVehId = vehId;
+            updateCallback.depTimeAtLastStopOfCurVeh = routeState.schedDepTimesFor(vehId)[0];
+            updateCallback.curIdleInsertions = &idleEntryInsertions;
+            updateCallback.curNonIdleDeletions = &nonIdleEntryDeletions;
+
+            search.run(ch.rank(stopVertex));
+
+            idleEntryInsertions.pop_back(); // Remove unused invalid last element
+            nonIdleEntryDeletions.pop_back(); // Remove unused invalid last element
+        }
+
+        int numPendingEntryInsertions() const {
+
+            int sum = 0;
+            for (const auto &local: idleInsertions)
+                sum += local.size();
+            for (const auto &local: nonIdleInsertions)
+                sum += local.size();
+
+            return sum;
+        }
+
+        int numPendingEntryDeletions() const {
+            int sum = 0;
+            for (const auto &local: idleDeletions)
+                sum += local.size();
+            for (const auto &local: nonIdleDeletions)
+                sum += local.size();
+
+            return sum;
+        }
+
+        bool noPendingEntryInsertionsOrDeletions() const {
+            return numPendingEntryInsertions() == 0 && numPendingEntryDeletions() == 0;
+        }
+
+        void commitEntryInsertionsAndDeletions() {
+            // Accumulate insertions and deletions from thread local vectors. Clear local vectors.
+            std::vector<EntryInsertion> globalIdleInsertions;
+            for (auto &local: idleInsertions) {
+                globalIdleInsertions.insert(globalIdleInsertions.end(), local.begin(), local.end());
+                local.clear();
             }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            updateTime += time;
-        }
+            std::vector<EntryInsertion> globalNonIdleInsertions;
+            for (auto &local: nonIdleInsertions) {
+                globalNonIdleInsertions.insert(globalNonIdleInsertions.end(), local.begin(), local.end());
+                local.clear();
+            }
+            std::vector<EntryDeletion> globalIdleDeletions;
+            for (auto &local: idleDeletions) {
+                globalIdleDeletions.insert(globalIdleDeletions.end(), local.begin(), local.end());
+                local.clear();
+            }
+            std::vector<EntryDeletion> globalNonIdleDeletions;
+            for (auto &local: nonIdleDeletions) {
+                globalNonIdleDeletions.insert(globalNonIdleDeletions.end(), local.begin(), local.end());
+                local.clear();
+            }
 
-        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx,
-                                     karri::stats::UpdatePerformanceStats &stats) {
-            removeBucketEntries<true>(veh, prevLastStopIdx, stats);
-        }
-
-        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx,
-                                        karri::stats::UpdatePerformanceStats &stats) {
-            removeBucketEntries<false>(veh, prevLastStopIdx, stats);
+            bucketContainer.batchedCommitInsertionsAndDeletions(globalIdleInsertions, globalNonIdleInsertions,
+                                                                globalIdleDeletions, globalNonIdleDeletions);
         }
 
         // Implement the last stops at vertices interface.
@@ -302,8 +464,9 @@ namespace karri {
                 if (entry.distToTarget == 0)
                     vehIds.push_back(entry.targetId);
             }
-            for (const auto& entry: bucketContainer.getNonIdleBucketOf(rank)) {
-                if (entry.distToTarget == routeState.schedDepTimesFor(entry.targetId)[routeState.numStopsOf(entry.targetId) - 1])
+            for (const auto &entry: bucketContainer.getNonIdleBucketOf(rank)) {
+                if (entry.distToTarget ==
+                    routeState.schedDepTimesFor(entry.targetId)[routeState.numStopsOf(entry.targetId) - 1])
                     vehIds.push_back(entry.targetId);
             }
 
@@ -312,61 +475,12 @@ namespace karri {
 
     private:
 
-        template<bool isIdle>
-        void generateBucketEntries(const Vehicle &veh,
-                                   karri::stats::UpdatePerformanceStats &stats) {
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
-
-            Timer timer;
-            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[numStops - 1];
-            const auto stopVertex = inputGraph.edgeHead(stopLoc);
-
-            vehicleId = veh.vehicleId;
-            depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
-
-            maxDetourUntilEndOfServiceTime = veh.endOfServiceTime - depTimeOfVehAtLastStop;
-            verticesVisitedInSearch = 0;
-            if constexpr (isIdle) {
-                idleEntryGenSearch.run(ch.rank(stopVertex));
-            } else {
-                nonIdleEntryGenSearch.run(ch.rank(stopVertex));
-            }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.lastStopBucketsGenerateEntriesTime += time;
-        }
-
-        template<bool wasIdle>
-        void removeBucketEntries(const Vehicle &veh, const int stopIndex,
-                                 karri::stats::UpdatePerformanceStats &stats) {
-            assert(stopIndex >= 0);
-            assert(stopIndex < routeState.numStopsOf(veh.vehicleId));
-
-            Timer timer;
-            const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
-            const auto stopVertex = inputGraph.edgeHead(stopLoc);
-
-            vehicleId = veh.vehicleId;
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
-            depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
-
-            entriesVisitedInSearch = 0;
-            maxDetourUntilEndOfServiceTime = INFTY;
-            verticesVisitedInSearch = 0;
-            if (wasIdle) {
-                idleEntryDelSearch.run(ch.rank(stopVertex));
-            } else {
-                nonIdleEntryDelSearch.run(ch.rank(stopVertex));
-            }
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            stats.lastStopBucketsDeleteEntriesTime += time;
-        }
-
-        using GenerateIdleEntriesSearch = typename CHEnvT::template UpwardSearch<GenerateIdleEntry, StopWhenDistanceExceeded>;
-        using GenerateNonIdleEntriesSearch = typename CHEnvT::template UpwardSearch<GenerateNonIdleEntry, StopWhenDistanceExceeded>;
-        using UpdateForVehicleHasBecomeIdleSearch = typename CHEnvT::template UpwardSearch<UpdateForVehicleHasBecomeIdle>;
-        using UpdateNewScheduleOfNonIdleVehicleSearch = typename CHEnvT::template UpwardSearch<UpdateNewScheduleOfNonIdleVehicle>;
-        using DeleteIdleEntriesSearch = typename CHEnvT::template UpwardSearch<DeleteIdleEntry>;
-        using DeleteNonIdleEntriesSearch = typename CHEnvT::template UpwardSearch<DeleteNonIdleEntry>;
+        using AddIdleEntryInsertionsSearch = typename CHEnvT::template UpwardSearch<AddIdleEntryInsertion>;
+        using AddNonIdleEntryInsertionsSearch = typename CHEnvT::template UpwardSearch<AddNonIdleEntryInsertion>;
+        using AddEntryInsertionsAndDeletionsForVehicleHasBecomeIdleSearch = typename CHEnvT::template UpwardSearch<AddEntryInsertionsAndDeletionsForVehicleHasBecomeIdle>;
+        using AddEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicleSearch = typename CHEnvT::template UpwardSearch<AddEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicle>;
+        using AddIdleEntryDeletionsSearch = typename CHEnvT::template UpwardSearch<AddIdleEntryDeletion>;
+        using AddNonIdleEntryDeletionsSearch = typename CHEnvT::template UpwardSearch<AddNonIdleEntryDeletion>;
 
 
         const InputGraphT &inputGraph;
@@ -376,18 +490,26 @@ namespace karri {
 
         BucketContainer bucketContainer;
 
-        int vehicleId;
-        int depTimeOfVehAtLastStop;
-        int maxDetourUntilEndOfServiceTime;
-        int entriesVisitedInSearch;
-        int verticesVisitedInSearch;
+//        int vehicleId;
+//        int depTimeOfVehAtLastStop;
+//        int maxDetourUntilEndOfServiceTime; TODO could add this back in as stopping criterion for Add searches
+//        int entriesVisitedInSearch;
+//        int verticesVisitedInSearch;
 
-        GenerateIdleEntriesSearch idleEntryGenSearch;
-        GenerateNonIdleEntriesSearch nonIdleEntryGenSearch;
-        UpdateNewScheduleOfNonIdleVehicleSearch updateNewScheduleOfNonIdleVehicleSearch;
-        UpdateForVehicleHasBecomeIdleSearch updateForVehicleHasBecomeIdleSearch;
-        DeleteIdleEntriesSearch idleEntryDelSearch;
-        DeleteNonIdleEntriesSearch nonIdleEntryDelSearch;
+        // Search for only generating idle entries is only ever run sequentially upon vehicle startup.
+        AddIdleEntryInsertionsSearch addIdleEntryInsertionsSearch;
+
+        tbb::enumerable_thread_specific<AddNonIdleEntryInsertionsSearch> addNonIdleEntryInsertionsSearch;
+        tbb::enumerable_thread_specific<AddEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicleSearch> addEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicleSearch;
+        tbb::enumerable_thread_specific<AddEntryInsertionsAndDeletionsForVehicleHasBecomeIdleSearch> addEntryInsertionsAndDeletionsForVehicleHasBecomeIdleSearch;
+        tbb::enumerable_thread_specific<AddIdleEntryDeletionsSearch> addIdleEntryDeletionsSearch;
+        tbb::enumerable_thread_specific<AddNonIdleEntryDeletionsSearch> addNonIdleEntryDeletionsSearch;
+
+
+        tbb::enumerable_thread_specific<EntryInsertionVecT> idleInsertions;
+        tbb::enumerable_thread_specific<EntryInsertionVecT> nonIdleInsertions;
+        tbb::enumerable_thread_specific<EntryDeletionVecT> idleDeletions;
+        tbb::enumerable_thread_specific<EntryDeletionVecT> nonIdleDeletions;
 
     };
 }

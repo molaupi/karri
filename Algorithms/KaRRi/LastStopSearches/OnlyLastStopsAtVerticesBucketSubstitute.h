@@ -97,7 +97,7 @@ namespace karri {
         void insertLastStopAt(const int vertex, const int vehId) {
             KASSERT(vertex >= 0 && vertex < inputGraph.numVertices());
             KASSERT(vehId >= 0 && vehId < fleetSize);
-            insertion(vertex, vehId, firstLastStopAtVertex, vehiclesOrderedByLastStop);
+            dynamic_ragged2d::insertion(vertex, vehId, firstLastStopAtVertex, vehiclesOrderedByLastStop);
         }
 
         // Removes the last stop of vehicle with given ID at vertex from the data structure.
@@ -109,7 +109,7 @@ namespace karri {
             assert(end > start);
             for (auto i = start; i < end; ++i)
                 if (vehiclesOrderedByLastStop[i] == vehId) {
-                    removal(vertex, i - start, firstLastStopAtVertex, vehiclesOrderedByLastStop);
+                    dynamic_ragged2d::removal(vertex, i - start, firstLastStopAtVertex, vehiclesOrderedByLastStop);
                     break;
                 }
             assert(firstLastStopAtVertex[vertex].end - firstLastStopAtVertex[vertex].start == end - start - 1);
@@ -119,7 +119,7 @@ namespace karri {
         const InputGraphT &inputGraph;
         const RouteState &routeState;
         const int fleetSize;
-        std::vector<ValueBlockPosition> firstLastStopAtVertex;
+        std::vector<dynamic_ragged2d::ValueBlockPosition> firstLastStopAtVertex;
         std::vector<int> vehiclesOrderedByLastStop;
     };
 }

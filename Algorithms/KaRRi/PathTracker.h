@@ -195,14 +195,14 @@ namespace karri {
         void registerNewPDLocAtStop(const int stopId, const int requestId, const PDLocType type) {
             assert(stopId >= 0);
             assert(stopId < eventIndexRange.size());
-            const auto idx = insertion(stopId, requestId, eventIndexRange, requestIds, pdLocTypes);
+            const auto idx = dynamic_ragged2d::insertion(stopId, requestId, eventIndexRange, requestIds, pdLocTypes);
             pdLocTypes[idx] = type;
         }
 
         void invalidateEventDataFor(const int stopId) {
             assert(stopId >= 0);
             assert(stopId < eventIndexRange.size());
-            removalOfAllCols(stopId, eventIndexRange, requestIds);
+            dynamic_ragged2d::removalOfAllCols(stopId, eventIndexRange, requestIds);
         }
 
         const InputGraphT &inputGraph;
@@ -214,7 +214,7 @@ namespace karri {
         CHPathUnpacker pathUnpacker;
 
 
-        std::vector<ValueBlockPosition> eventIndexRange;
+        std::vector<dynamic_ragged2d::ValueBlockPosition> eventIndexRange;
         std::vector<int> requestIds;
         std::vector<PDLocType> pdLocTypes;
 
