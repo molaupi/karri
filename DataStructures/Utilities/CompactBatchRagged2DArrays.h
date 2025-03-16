@@ -33,6 +33,7 @@
 #include <numeric>
 #include <kassert/kassert.hpp>
 #include "Tools/Constants.h"
+#include "Parallel/parallel_prefix_sum.h"
 
 // This file contains various functions for manipulating dynamic ragged two-dimensional arrays. In a
 // ragged 2D array, different rows have different lengths. We store all values in a single dynamic
@@ -71,7 +72,68 @@ namespace compact_batch_ragged2d {
     // Returns the indices in the value arrays of the newly inserted values.
     // TODO: ExtraValueArrays?
     template<typename T, typename IndexArray, typename ValueArray>
-    std::vector<int> stableBatchedInsertions(std::vector<Insertion<T>> &insertions, IndexArray &indexArray, ValueArray &valueArray) {
+    std::vector<int> stableBatchedInsertionsSequential(std::vector<Insertion<T>> &insertions, IndexArray &indexArray, ValueArray &valueArray) {
+
+        if (insertions.empty())
+            return {};
+
+        // Order insertions by row and column. Sort stable to maintain input order of insertions with same row and column.
+        static const auto sortInsertions = [&](const Insertion<T> &i1, const Insertion<T> &i2) {
+            return i1.row < i2.row || (i1.row == i2.row && (i1.col < i2.col));
+        };
+        std::stable_sort(insertions.begin(), insertions.end(), sortInsertions);
+
+        std::vector<int> insertIndices(insertions.size());
+        for (int i = 0; i < insertions.size(); ++i)
+            insertIndices[i] = indexArray[insertions[i].row] + insertions[i].col;
+
+        const auto oldNumEntries = valueArray.size();
+        const auto newNumEntries = oldNumEntries + insertions.size();
+        valueArray.resize(newNumEntries);
+
+        // Move existing entries to new indices from back to front so we do not overwrite values. Memorize how many
+        // new values will be inserted before current index to find offset of move. Whenever we reach the index of a
+        // new insertion, decrement the offset and write the new value (with the new offset).
+        int offset = insertions.size();
+
+        // First deal with all insertions to the end of the value array.
+        while (offset > 0 && insertIndices[offset - 1] == oldNumEntries) {
+            --offset;
+            valueArray[oldNumEntries + offset] = insertions[offset].value;
+            insertIndices[offset] = oldNumEntries + offset; // Store actual index of insertion in value array.
+        }
+
+        // Then move existing entries and insert remaining new entries.
+        for (int i = oldNumEntries - 1; i >= 0; --i) {
+            KASSERT(i + offset < valueArray.size());
+            valueArray[i + offset] = valueArray[i];
+            while (offset > 0 && insertIndices[offset - 1] == i) {
+                --offset;
+                valueArray[i + offset] = insertions[offset].value;
+                insertIndices[offset] = i + offset; // Store actual index of insertion in value array.
+            }
+        }
+
+        // Update index array according to insertions.
+        int rowOffset = 0;
+        int curInsIdx = 0;
+        for (int r = 0; r < indexArray.size(); ++r) {
+            indexArray[r] = indexArray[r] + rowOffset;
+            while (curInsIdx < insertions.size() && insertions[curInsIdx].row == r) {
+                ++rowOffset;
+                ++curInsIdx;
+            }
+        }
+
+        KASSERT(std::all_of(valueArray.begin(), valueArray.end(), [&](const auto &e) { return e != T(); }));
+
+        return insertIndices;
+    }
+
+    // Returns the indices in the value arrays of the newly inserted values.
+    // TODO: ExtraValueArrays?
+    template<typename T, typename IndexArray, typename ValueArray>
+    std::vector<int> stableBatchedInsertionsParallel(std::vector<Insertion<T>> &insertions, IndexArray &indexArray, ValueArray &valueArray) {
 
         if (insertions.empty())
             return {};
@@ -94,10 +156,14 @@ namespace compact_batch_ragged2d {
         //  without need for additional vector bucketSizeChange (and possibly without entryIdxChange, too).
 
         // Prefix sum over changes at indices gives index offset of existing entries after updates.
-        std::inclusive_scan(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin());
+//        std::inclusive_scan(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin());
+        parallel::parallel_inclusive_prefix_sum(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin(),
+                                                std::plus<>(), 0);
 
         // Prefix sum over changes to row sizes gives changes to row start offsets after updates.
-        std::exclusive_scan(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), 0);
+//        std::exclusive_scan(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), 0);
+        LIGHT_KASSERT(!rowSizeChange.empty());
+        parallel::parallel_exclusive_prefix_sum(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), std::plus<>(), 0);
 
         // For each insertion, compute index in value array, resolving multiple insertions to same index.
         std::vector<int> insertIndices(insertions.size());
@@ -135,7 +201,46 @@ namespace compact_batch_ragged2d {
 
     // TODO: ExtraValueArrays?
     template<typename IndexArray, typename ValueArray>
-    void stableBatchedDeletions(std::vector<Deletion> &deletions, IndexArray &indexArray, ValueArray &valueArray) {
+    void stableBatchedDeletionsSequential(std::vector<Deletion> &deletions, IndexArray &indexArray, ValueArray &valueArray) {
+        KASSERT(valueArray.size() >= deletions.size());
+
+        if (deletions.empty())
+            return;
+
+        // Order deletions by row and col.
+        static const auto sortEntryDeletions = [&](const auto &d1, const auto &d2) {
+            return d1.row < d2.row || (d1.row == d2.row && d1.col < d2.col);
+        };
+        std::sort(deletions.begin(), deletions.end(), sortEntryDeletions);
+
+        // Then move existing entries and delete.
+        int offset = 0;
+        for (int i = 0; i + offset < valueArray.size(); ++i) {
+            while (offset < deletions.size() && indexArray[deletions[offset].row] + deletions[offset].col == i + offset) {
+                ++offset;
+            }
+            valueArray[i] = valueArray[i + offset];
+        }
+
+        valueArray.resize(valueArray.size() - deletions.size());
+
+        // Update index array according to insertions.
+        int rowOffset = 0;
+        int curDelIdx = 0;
+        for (int r = 0; r < indexArray.size(); ++r) {
+            indexArray[r] = indexArray[r] + rowOffset;
+            while (curDelIdx < deletions.size() && deletions[curDelIdx].row == r) {
+                --rowOffset;
+                ++curDelIdx;
+            }
+        }
+
+        KASSERT(std::all_of(valueArray.begin(), valueArray.end(), [&](const auto &e) { return e != typename ValueArray::value_type(); }));
+    }
+
+    // TODO: ExtraValueArrays?
+    template<typename IndexArray, typename ValueArray>
+    void stableBatchedDeletionsParallel(std::vector<Deletion> &deletions, IndexArray &indexArray, ValueArray &valueArray) {
         KASSERT(valueArray.size() >= deletions.size());
 
         if (deletions.empty())
@@ -155,14 +260,15 @@ namespace compact_batch_ragged2d {
             --entryIdxChange[indexArray[del.row] + del.col + 1];
         }
 
-        // TODO: Using prefix sums here is better for future parallel approach but sequential approach could do this
-        //  without need for additional vectors entryIdxChange and bucketSizeChange.
-
         // Prefix sum over changes at indices gives index offset of existing entries after updates.
-        std::inclusive_scan(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin());
+//        std::inclusive_scan(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin());
+        parallel::parallel_inclusive_prefix_sum(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin(),
+                                                std::plus<>(), 0);
 
         // Prefix sum over changes to row sizes gives changes to row start offsets after updates.
-        std::exclusive_scan(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), 0);
+//        std::exclusive_scan(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), 0);
+        LIGHT_KASSERT(!rowSizeChange.empty());
+        parallel::parallel_exclusive_prefix_sum(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), std::plus<>(), 0);
 
         const auto newNumEntries = valueArray.size() - deletions.size();
 
@@ -178,12 +284,118 @@ namespace compact_batch_ragged2d {
             indexArray[j] += rowSizeChange[j];
     }
 
-
+    // TODO: sequential version does not work properly yet
+//    // Returns the indices in the value array at which the new values were inserted.
+//    // TODO: ExtraValueArrays?
+//    template<typename T, typename IndexArray, typename ValueArray>
+//    std::vector<int> stableBatchedInsertionsAndDeletionsSequential(std::vector<Insertion<T>> &insertions,
+//                                                                   std::vector<Deletion> &deletions,
+//                                                                   IndexArray& indexArray, ValueArray& valueArray) {
+//        KASSERT(valueArray.size() >= deletions.size());
+//
+//        // If either insertions or deletions are empty, we can handle the other one directly.
+//        if (insertions.empty() && deletions.empty())
+//            return {};
+//        if (insertions.empty()) {
+//            stableBatchedDeletionsSequential(deletions, indexArray, valueArray);
+//            return {};
+//        }
+//        if (deletions.empty()) {
+//            return stableBatchedInsertionsSequential(insertions, indexArray, valueArray);
+//        }
+//
+//        // Order insertions by row and column. Sort stable to maintain input order of insertions with same row and column.
+//        static const auto sortInsertions = [&](const Insertion<T> &i1, const Insertion<T> &i2) {
+//            return i1.row < i2.row || (i1.row == i2.row && (i1.col < i2.col));
+//        };
+//        std::stable_sort(insertions.begin(), insertions.end(), sortInsertions);
+//
+//        // Order deletions by row and col.
+//        static const auto sortEntryDeletions = [&](const auto &d1, const auto &d2) {
+//            return d1.row < d2.row || (d1.row == d2.row && d1.col < d2.col);
+//        };
+//        std::sort(deletions.begin(), deletions.end(), sortEntryDeletions);
+//
+//        std::vector<int> insertIndices(insertions.size());
+//        for (int i = 0; i < insertions.size(); ++i)
+//            insertIndices[i] = indexArray[insertions[i].row] + insertions[i].col;
+//
+//        // Perform deletions: Move existing entries and delete entries by overwriting.
+//        // Memorize changes to insertion indices caused by deletions.
+//        int offset = 0;
+//        int idxInIns = 0;
+//        for (int i = 0; i + offset < valueArray.size(); ) {
+//            if (offset < deletions.size() && indexArray[deletions[offset].row] + deletions[offset].col == i + offset) {
+//                ++offset;
+//                continue;
+//            }
+//            while (idxInIns < insertIndices.size() && insertIndices[idxInIns] <= i + offset) {
+//                insertIndices[idxInIns] -= offset;
+//                ++idxInIns;
+//            }
+//            valueArray[i] = valueArray[i + offset];
+//            ++i;
+//        }
+//
+//        // Change index of insertions to end of value array:
+//        for (; idxInIns < insertIndices.size(); ++idxInIns) {
+//            KASSERT(insertIndices[idxInIns] == valueArray.size());
+//            insertIndices[idxInIns] -= offset;
+//        }
+//
+//        valueArray.resize(valueArray.size() - deletions.size());
+//        const auto oldNumEntries = valueArray.size();
+//        const auto newNumEntries = oldNumEntries + insertions.size();
+//        valueArray.resize(newNumEntries);
+//
+//        // Move existing entries to new indices from back to front so we do not overwrite values. Memorize how many
+//        // new values will be inserted before current index to find offset of move. Whenever we reach the index of a
+//        // new insertion, decrement the offset and write the new value (with the new offset).
+//        offset = insertions.size();
+//
+//        // First deal with all insertions to the end of the value array.
+//        while (offset > 0 && insertIndices[offset - 1] == oldNumEntries) {
+//            --offset;
+//            valueArray[oldNumEntries + offset] = insertions[offset].value;
+//            insertIndices[offset] = oldNumEntries + offset; // Store actual index of insertion in value array.
+//        }
+//
+//        // Then move existing entries and insert remaining new entries.
+//        for (int i = oldNumEntries - 1; i >= 0; --i) {
+//            KASSERT(i + offset < valueArray.size());
+//            valueArray[i + offset] = valueArray[i];
+//            while (offset > 0 && insertIndices[offset - 1] == i) {
+//                --offset;
+//                valueArray[i + offset] = insertions[offset].value;
+//                insertIndices[offset] = i + offset; // Store actual index of insertion in value array.
+//            }
+//        }
+//
+//        // Update index array according to insertions and deletions.
+//        int rowOffset = 0;
+//        int curInsIdx = 0;
+//        int curDelIdx = 0;
+//        for (int r = 0; r < indexArray.size(); ++r) {
+//            indexArray[r] = indexArray[r] + rowOffset;
+//            while (curInsIdx < insertions.size() && insertions[curInsIdx].row == r) {
+//                ++rowOffset;
+//                ++curInsIdx;
+//            }
+//            while (curDelIdx < deletions.size() && deletions[curDelIdx].row == r) {
+//                --rowOffset;
+//                ++curDelIdx;
+//            }
+//        }
+//
+//        KASSERT(std::all_of(valueArray.begin(), valueArray.end(), [&](const auto &e) { return e != typename ValueArray::value_type(); }));
+//
+//        return insertIndices;
+//    }
 
     // Returns the indices in the value array at which the new values were inserted.
     // TODO: ExtraValueArrays?
     template<typename T, typename IndexArray, typename ValueArray>
-    std::vector<int> stableBatchedInsertionsAndDeletions(std::vector<Insertion<T>> &insertions,
+    std::vector<int> stableBatchedInsertionsAndDeletionsParallel(std::vector<Insertion<T>> &insertions,
                                              std::vector<Deletion> &deletions,
                                              IndexArray& indexArray, ValueArray& valueArray) {
         KASSERT(valueArray.size() >= deletions.size());
@@ -192,11 +404,11 @@ namespace compact_batch_ragged2d {
         if (insertions.empty() && deletions.empty())
             return {};
         if (insertions.empty()) {
-            stableBatchedDeletions(deletions, indexArray, valueArray);
+            stableBatchedDeletionsParallel(deletions, indexArray, valueArray);
             return {};
         }
         if (deletions.empty()) {
-            return stableBatchedInsertions(insertions, indexArray, valueArray);
+            return stableBatchedInsertionsParallel(insertions, indexArray, valueArray);
         }
 
         // Order insertions by row and column. Sort stable to maintain input order of insertions with same row and column.
@@ -224,10 +436,14 @@ namespace compact_batch_ragged2d {
         }
 
         // Prefix sum over changes at indices gives index offset of existing entries after updates.
-        std::inclusive_scan(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin());
+//        std::inclusive_scan(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin());
+//        parallel::sequential_inclusive_prefix_sum(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin(), std::plus<>(), 0);
+        parallel::parallel_inclusive_prefix_sum(entryIdxChange.begin(), entryIdxChange.end(), entryIdxChange.begin(), std::plus<>(), 0);
 
         // Prefix sum over changes to row sizes gives changes to row start offsets after updates.
-        std::exclusive_scan(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), 0);
+//        std::exclusive_scan(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), 0);
+//        parallel::sequential_exclusive_prefix_sum(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), std::plus<>(), 0);
+        parallel::parallel_exclusive_prefix_sum(rowSizeChange.begin(), rowSizeChange.end(), rowSizeChange.begin(), std::plus<>(), 0);
 
         // Prefix sum over deletions and insertions gives indices of new entries.
         int insIdx = 0, delIdx = 0;

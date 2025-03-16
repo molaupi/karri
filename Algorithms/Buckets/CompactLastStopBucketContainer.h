@@ -196,7 +196,7 @@ public:
         idleInsertions.insert(idleInsertions.end(), nonIdleInsertions.begin(), nonIdleInsertions.end());
 
         // Perform insertions. Respects previous sorting by comp.
-        compact_batch_ragged2d::stableBatchedInsertions(idleInsertions, offset, entries);
+        compact_batch_ragged2d::stableBatchedInsertionsSequential(idleInsertions, offset, entries);
 
         KASSERT(std::all_of(entries.begin(), entries.end(), [&](const auto &e) { return e != BucketEntryT(); }));
         KASSERT(verifyAllBucketsSorted());
@@ -214,7 +214,7 @@ public:
 
         // Append nonIdleDeletions to idleDeletions and perform batched update for all deletions
         idleDeletions.insert(idleDeletions.end(), nonIdleDeletions.begin(), nonIdleDeletions.end());
-        compact_batch_ragged2d::stableBatchedDeletions(idleDeletions, offset, entries);
+        compact_batch_ragged2d::stableBatchedDeletionsSequential(idleDeletions, offset, entries);
         KASSERT(verifyAllBucketsSorted());
     }
 
@@ -254,7 +254,8 @@ public:
         // Append nonIdleDeletions to idleDeletions and perform batched update for all deletions
         idleDeletions.insert(idleDeletions.end(), nonIdleDeletions.begin(), nonIdleDeletions.end());
 
-        compact_batch_ragged2d::stableBatchedInsertionsAndDeletions(idleInsertions, idleDeletions, offset, entries);
+        compact_batch_ragged2d::stableBatchedInsertionsAndDeletionsParallel(idleInsertions, idleDeletions, offset,
+                                                                              entries);
         KASSERT(verifyAllBucketsSorted());
     }
 

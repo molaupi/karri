@@ -191,7 +191,7 @@ public:
         std::sort(insertions.begin(), insertions.end(), sortEntryInsertions);
 
         // Perform insertions. Respects previous sorting by comp.
-        compact_batch_ragged2d::stableBatchedInsertions(insertions, offset, entries);
+        compact_batch_ragged2d::stableBatchedInsertionsSequential(insertions, offset, entries);
 
          KASSERT(std::all_of(entries.begin(), entries.end(), [&](const auto &e) { return e != BucketEntryT(); }));
          KASSERT(verifyAllBucketsSorted());
@@ -201,7 +201,7 @@ public:
     void batchedCommitDeletions(std::vector<EntryDeletion> &deletions) {
         KASSERT(entries.size() >= deletions.size());
 
-        compact_batch_ragged2d::stableBatchedDeletions(deletions, offset, entries);
+        compact_batch_ragged2d::stableBatchedDeletionsSequential(deletions, offset, entries);
         KASSERT(verifyAllBucketsSorted());
     }
 
