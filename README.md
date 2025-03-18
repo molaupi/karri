@@ -1,6 +1,6 @@
 # KaRRi
 
-This repository contains the C++17 implementation of KaRRi, a state-of-the-art dispatcher for the dynamic 
+This repository contains the C++20 implementation of KaRRi, a state-of-the-art dispatcher for the dynamic 
 taxi sharing problem with meeting points. 
 KaRRi uses engineered on-the-fly shortest path queries based on bucket contraction hierarchies (BCHs) 
 to allow for fast query times with maximum flexibility. 
