@@ -33,6 +33,7 @@
 #include "Algorithms/CH/CH.h"
 #include "Tools/Timer.h"
 #include "Algorithms/Buckets/CompactLastStopBucketContainer.h"
+#include "Algorithms/KaRRi/Stats/LastStopBucketUpdateStats.h"
 
 namespace karri {
 
@@ -427,31 +428,70 @@ namespace karri {
             return numPendingEntryInsertions() == 0 && numPendingEntryDeletions() == 0;
         }
 
-        void commitEntryInsertionsAndDeletions() {
+        void commitEntryInsertionsAndDeletions(LastStopBucketUpdateStats& stats) {
+            Timer timer;
             // Accumulate insertions and deletions from thread local vectors. Clear local vectors.
-            std::vector<EntryInsertion> globalIdleInsertions;
+            EntryInsertionVecT globalInsertions;
+            size_t numIdleInsertions = 0;
+            size_t numNonIdleInsertions = 0;
+            for (const auto &local: idleInsertions) {
+                numIdleInsertions += local.size();
+            }
+            for (const auto &local: nonIdleInsertions) {
+                numNonIdleInsertions += local.size();
+            }
+            globalInsertions.reserve(numIdleInsertions + numNonIdleInsertions);
             for (auto &local: idleInsertions) {
-                globalIdleInsertions.insert(globalIdleInsertions.end(), local.begin(), local.end());
+                globalInsertions.insert(globalInsertions.end(), local.begin(), local.end());
                 local.clear();
             }
-            std::vector<EntryInsertion> globalNonIdleInsertions;
             for (auto &local: nonIdleInsertions) {
-                globalNonIdleInsertions.insert(globalNonIdleInsertions.end(), local.begin(), local.end());
+                globalInsertions.insert(globalInsertions.end(), local.begin(), local.end());
                 local.clear();
             }
-            std::vector<EntryDeletion> globalIdleDeletions;
-            for (auto &local: idleDeletions) {
-                globalIdleDeletions.insert(globalIdleDeletions.end(), local.begin(), local.end());
-                local.clear();
-            }
-            std::vector<EntryDeletion> globalNonIdleDeletions;
-            for (auto &local: nonIdleDeletions) {
-                globalNonIdleDeletions.insert(globalNonIdleDeletions.end(), local.begin(), local.end());
-                local.clear();
-            }
+            stats.accumulateThreadLocalInsertionsTime = timer.elapsed<std::chrono::nanoseconds>();
 
-            bucketContainer.batchedCommitInsertionsAndDeletions(globalIdleInsertions, globalNonIdleInsertions,
-                                                                globalIdleDeletions, globalNonIdleDeletions);
+            timer.restart();
+            EntryDeletionVecT globalDeletions;
+            size_t numIdleDeletions = 0;
+            size_t numNonIdleDeletions = 0;
+            for (const auto &local: idleDeletions) {
+                numIdleDeletions += local.size();
+            }
+            for (const auto &local: nonIdleDeletions) {
+                numNonIdleDeletions += local.size();
+            }
+            globalDeletions.reserve(numIdleDeletions + numNonIdleDeletions);
+            for (auto &local: idleDeletions) {
+                globalDeletions.insert(globalDeletions.end(), local.begin(), local.end());
+                local.clear();
+            }
+            for (auto &local: nonIdleDeletions) {
+                globalDeletions.insert(globalDeletions.end(), local.begin(), local.end());
+                local.clear();
+            }
+            stats.accumulateThreadLocalDeletionsTime = timer.elapsed<std::chrono::nanoseconds>();
+
+            bucketContainer.batchedCommitInsertionsAndDeletions(globalInsertions, numIdleInsertions,
+                                                                globalDeletions, numIdleDeletions, stats);
+            KASSERT(verifyIdleAndNonIdleBorders());
+        }
+
+        bool verifyIdleAndNonIdleBorders() const {
+            FORALL_VERTICES(inputGraph, v) {
+                const auto rank = ch.rank(v);
+                for (const auto& e : bucketContainer.getIdleBucketOf(rank)) {
+                    KASSERT(routeState.numStopsOf(e.targetId) == 1);
+                    if (routeState.numStopsOf(e.targetId) != 1)
+                        return false;
+                }
+                for (const auto& e : bucketContainer.getNonIdleBucketOf(rank)) {
+                    KASSERT(routeState.numStopsOf(e.targetId) > 1);
+                    if (routeState.numStopsOf(e.targetId) <= 1)
+                        return false;
+                }
+            }
+            return true;
         }
 
         // Implement the last stops at vertices interface.

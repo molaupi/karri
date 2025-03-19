@@ -106,7 +106,7 @@ namespace parallel {
 
         typename std::iterator_traits<InIt>::difference_type n = last - first;
 
-        if (n < (1 << 20)) {
+        if (n < (1 << 16)) {
             return sequential_inclusive_prefix_sum(first, last, d, f, neutral_element);
         }
 
@@ -131,7 +131,7 @@ namespace parallel {
 
         typename std::iterator_traits<InIt>::difference_type n = last - first;
 
-        if (n < (1 << 20)) {
+        if (n < (1 << 16)) {
             return sequential_exclusive_prefix_sum(first, last, d, f, neutral_element);
         }
 

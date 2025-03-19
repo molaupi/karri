@@ -28,6 +28,7 @@
 #include <vector>
 #include <kassert/kassert.hpp>
 #include "CompactSortedBucketContainer.h"
+#include "Algorithms/KaRRi/Stats/LastStopBucketUpdateStats.h"
 
 /// Stores upward distances from last stops of vehicles to vertices in buckets.
 /// Stores entries for idle vehicles and non-idle vehicles separately in order to
@@ -218,44 +219,53 @@ public:
         KASSERT(verifyAllBucketsSorted());
     }
 
-    void batchedCommitInsertionsAndDeletions(std::vector<EntryInsertion> &idleInsertions,
-                                             std::vector<EntryInsertion> &nonIdleInsertions,
-                                             std::vector<EntryDeletion> &idleDeletions,
-                                             std::vector<EntryDeletion> &nonIdleDeletions) {
-        KASSERT(entries.size() >= idleDeletions.size() + nonIdleDeletions.size());
+    template<typename EntryInsertionsVecT, typename EntryDeletionsVecT>
+    void batchedCommitInsertionsAndDeletions(EntryInsertionsVecT &insertions,
+                                             size_t numIdleInsertions,
+//                                             EntryInsertionsVecT &nonIdleInsertions,
+                                             EntryDeletionsVecT &deletions,
+                                             size_t numIdleDeletions,
+                                             karri::LastStopBucketUpdateStats& stats) {
+//                                             EntryDeletionsVecT &nonIdleDeletions) {
+        KASSERT(entries.size() >= deletions.size());
 
-        // Sort idle insertions using idleComp.
-        std::sort(idleInsertions.begin(), idleInsertions.end(),
+        // Sort idle insertions using idleComp. Expects that idle insertions are the first numIdleInsertions elements.
+        Timer timer;
+        std::sort(insertions.begin(), insertions.begin() + numIdleInsertions,
                   [&](const EntryInsertion &i1, const EntryInsertion &i2) {
                       return idleComp(i1.value, i2.value);
                   });
+        stats.sortIdleInsertionsByCompTime = timer.elapsed<std::chrono::nanoseconds>();
 
         // Sort non-idle insertions using nonIdleComp.
-        std::sort(nonIdleInsertions.begin(), nonIdleInsertions.end(),
+        timer.restart();
+        std::sort(insertions.begin() + numIdleInsertions, insertions.end(),
                   [&](const EntryInsertion &i1, const EntryInsertion &i2) {
                       return nonIdleComp(i1.value, i2.value);
                   });
+        stats.sortNonIdleInsertionsByCompTime = timer.elapsed<std::chrono::nanoseconds>();
 
+        timer.restart();
         // Update number of idle entries for each idle insertion.
-        for (const auto &ins: idleInsertions) {
-            ++numIdleEntries[ins.row];
+        for (int i = 0; i < numIdleInsertions; ++i) {
+            ++numIdleEntries[insertions[i].row];
         }
+//
+//        // Append non-idle insertions to idle insertions, then run batched update for all insertions. Stable
+//        // batched update respects order by idleComp and nonIdleComp as well as the fact that idle entries have to
+//        // come before non-idle ones.
+//        idleInsertions.insert(idleInsertions.end(), nonIdleInsertions.begin(), nonIdleInsertions.end());
 
-        // Append non-idle insertions to idle insertions, then run batched update for all insertions. Stable
-        // batched update respects order by idleComp and nonIdleComp as well as the fact that idle entries have to
-        // come before non-idle ones.
-        idleInsertions.insert(idleInsertions.end(), nonIdleInsertions.begin(), nonIdleInsertions.end());
-
-        // Update number of idle entries for each idle deletion.
-        for (const auto &del: idleDeletions) {
-            --numIdleEntries[del.row];
+        // Update number of idle entries for each idle deletion. Expects that idle deletions are the first numIdleDeletions elements.
+        for (int i = 0; i < numIdleDeletions; ++i) {
+            --numIdleEntries[deletions[i].row];
         }
+        stats.updateNumIdleEntriesTime = timer.elapsed<std::chrono::nanoseconds>();
 
-        // Append nonIdleDeletions to idleDeletions and perform batched update for all deletions
-        idleDeletions.insert(idleDeletions.end(), nonIdleDeletions.begin(), nonIdleDeletions.end());
+//        // Append nonIdleDeletions to idleDeletions and perform batched update for all deletions
+//        idleDeletions.insert(idleDeletions.end(), nonIdleDeletions.begin(), nonIdleDeletions.end());
 
-        compact_batch_ragged2d::stableBatchedInsertionsAndDeletionsParallel(idleInsertions, idleDeletions, offset,
-                                                                              entries);
+        compact_batch_ragged2d::stableBatchedInsertionsAndDeletionsSequential(insertions, deletions, offset, entries, stats.arrayUpdateStats);
         KASSERT(verifyAllBucketsSorted());
     }
 
@@ -356,6 +366,8 @@ private:
         }
         return false;
     }
+
+
 
     bool verifyAllBucketsSorted() const {
         for (int v = 0; v < offset.size() - 1; ++v) {

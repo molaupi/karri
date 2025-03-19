@@ -29,6 +29,7 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 #include "PathTracker.h"
+#include "Algorithms/KaRRi/Stats/LastStopBucketUpdateStats.h"
 
 namespace karri {
 
@@ -81,44 +82,44 @@ namespace karri {
                   overallPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::DispatchingPerformanceStats::LOGGER_NAME,
                                                          "request_id, " +
-                                                         std::string(stats::DispatchingPerformanceStats::LOGGER_COLS))),
+                                                         std::string(stats::DispatchingPerformanceStats::LOGGER_COLS) + "\n")),
                   initializationPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::InitializationPerformanceStats::LOGGER_NAME,
                                                          "request_id, " +
                                                          std::string(
-                                                                 stats::InitializationPerformanceStats::LOGGER_COLS))),
+                                                                 stats::InitializationPerformanceStats::LOGGER_COLS) + "\n")),
                   ellipticBchPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::EllipticBCHPerformanceStats::LOGGER_NAME,
                                                          "request_id, " +
-                                                         std::string(stats::EllipticBCHPerformanceStats::LOGGER_COLS))),
+                                                         std::string(stats::EllipticBCHPerformanceStats::LOGGER_COLS)+ "\n")),
                   pdDistancesPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::PDDistancesPerformanceStats::LOGGER_NAME,
                                                          "request_id, " +
-                                                         std::string(stats::PDDistancesPerformanceStats::LOGGER_COLS))),
+                                                         std::string(stats::PDDistancesPerformanceStats::LOGGER_COLS)+ "\n")),
                   ordPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::OrdAssignmentsPerformanceStats::LOGGER_NAME,
                                                          "request_id, " +
                                                          std::string(
-                                                                 stats::OrdAssignmentsPerformanceStats::LOGGER_COLS))),
+                                                                 stats::OrdAssignmentsPerformanceStats::LOGGER_COLS)+ "\n")),
                   pbnsPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::PbnsAssignmentsPerformanceStats::LOGGER_NAME,
                                                          "request_id, " +
                                                          std::string(
-                                                                 stats::PbnsAssignmentsPerformanceStats::LOGGER_COLS))),
+                                                                 stats::PbnsAssignmentsPerformanceStats::LOGGER_COLS)+ "\n")),
                   palsPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::PalsAssignmentsPerformanceStats::LOGGER_NAME,
                                                          "request_id, " +
                                                          std::string(
-                                                                 stats::PalsAssignmentsPerformanceStats::LOGGER_COLS))),
+                                                                 stats::PalsAssignmentsPerformanceStats::LOGGER_COLS)+ "\n")),
                   dalsPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::DalsAssignmentsPerformanceStats::LOGGER_NAME,
                                                          "request_id, " +
                                                          std::string(
-                                                                 stats::DalsAssignmentsPerformanceStats::LOGGER_COLS))),
+                                                                 stats::DalsAssignmentsPerformanceStats::LOGGER_COLS)+ "\n")),
                   updatePerfLogger(LogManager<LoggerT>::getLogger(stats::UpdatePerformanceStats::LOGGER_NAME,
                                                                   "request_id, " +
                                                                   std::string(
-                                                                          stats::UpdatePerformanceStats::LOGGER_COLS))),
+                                                                          stats::UpdatePerformanceStats::LOGGER_COLS)+ "\n")),
                   batchInsertLogger(LogManager<LoggerT>::getLogger("batch_insert_stats.csv", "occurence_time,"
                                                                                              "iteration,"
                                                                                              "num_requests,"
@@ -134,7 +135,8 @@ namespace karri {
                                                                                              "update_leeways_num_entries_scanned_source,"
                                                                                              "update_leeways_num_entries_scanned_target,"
                                                                                              "update_leeways_time,"
-                                                                                             "total_time\n")) {}
+                                                                                             "total_time\n")),
+                  lastStopBucketUpdateLogger(LogManager<LoggerT>::getLogger("last_stop_bucket_update_stats.csv", LastStopBucketUpdateStats::getLoggerCols() + "\n")){}
 
 
         void insertBestAssignment(const RequestState &requestState, stats::UpdatePerformanceStats &stats) {
@@ -282,6 +284,8 @@ namespace karri {
             ellipticBucketsEnv.commitEntryInsertions(); // Batched update to elliptic buckets for new entries.
             const auto performEllipticBucketEntryInsertionsTime = timer.elapsed<std::chrono::nanoseconds>();
 
+            LastStopBucketUpdateStats lastStopBucketUpdateStats;
+
             timer.restart();
             // Find all last stop bucket entry deletions and insertions necessary for assignments
             tbb::parallel_for(0ul, stopIdsToRemoveIdleEntriesFor.size(), [&](const size_t i) {
@@ -308,9 +312,12 @@ namespace karri {
             });
             const auto findLastStopBucketEntryInsertionsAndDeletionsTime = timer.elapsed<std::chrono::nanoseconds>();
             const auto numLastStopBucketEntryInsertionsAndDeletions = lastStopBucketsEnv.numPendingEntryInsertions() + lastStopBucketsEnv.numPendingEntryDeletions();
+            lastStopBucketUpdateStats.findInsertionsAndDeletionsTime = findLastStopBucketEntryInsertionsAndDeletionsTime;
+            lastStopBucketUpdateStats.numInsertions = lastStopBucketsEnv.numPendingEntryInsertions();
+            lastStopBucketUpdateStats.numDeletions = lastStopBucketsEnv.numPendingEntryDeletions();
 
             timer.restart();
-            lastStopBucketsEnv.commitEntryInsertionsAndDeletions(); // Batched update to last stop bucket entries.
+            lastStopBucketsEnv.commitEntryInsertionsAndDeletions(lastStopBucketUpdateStats); // Batched update to last stop bucket entries.
             const auto performLastStopBucketEntryInsertionsAndDeletionsTime = timer.elapsed<std::chrono::nanoseconds>();
 
 
@@ -343,6 +350,22 @@ namespace karri {
                     performLastStopBucketEntryInsertionsAndDeletionsTime + findEllipticBucketEntryInsertionsTime +
                     performEllipticBucketEntryInsertionsTime + updateLeewaysTime;
 
+            // occurence_time,"
+            // "iteration,"
+            // "num_requests,"
+            // "update_route_state_time,"
+            // "ell_entry_insertions_find_insertions_time,"
+            // "ell_entry_insertions_num_insertions,"
+            // "ell_entry_insertions_perform_insertions_time,"
+            // "last_stop_find_insertions_and_deletions_time,"
+            // "last_stop_num_insertions_and_deletions,"
+            // "last_stop_perform_insertions_and_deletions_time,"
+            // "num_ell_source_entries_after_insertions,"
+            // "num_ell_target_entries_after_insertions,"
+            // "update_leeways_num_entries_scanned_source,"
+            // "update_leeways_num_entries_scanned_target,"
+            // "update_leeways_time,"
+            // "total_time\n")),
             batchInsertLogger << now << ","
                               << iteration << ","
                               << asgnFinderResponses.size() << ","
@@ -359,6 +382,8 @@ namespace karri {
                               << totalNumEntriesScannedForTargetUpdates << ","
                               << updateLeewaysTime << ","
                               << totalTime << "\n";
+
+            lastStopBucketUpdateLogger << lastStopBucketUpdateStats.getLoggerRow() << "\n";
         }
 
         int numPendingEllipticBucketEntryInsertions() {
@@ -370,7 +395,8 @@ namespace karri {
         }
 
         void commitPendingLastStopBucketEntryInsertionsAndDeletions() {
-            lastStopBucketsEnv.commitEntryInsertionsAndDeletions();
+            LastStopBucketUpdateStats stats;
+            lastStopBucketsEnv.commitEntryInsertionsAndDeletions(stats);
         }
 
         int numPendingEllipticBucketEntryDeletions() {
@@ -612,5 +638,6 @@ namespace karri {
 
         LoggerT &batchInsertLogger;
 
+        LoggerT &lastStopBucketUpdateLogger;
     };
 }

@@ -231,6 +231,35 @@ oldBatchDispatchPerfStats <- function(file_base) {
   
 }
 
+
+multiDispatchPerfStats <- function(file_base, num_runs=1) {
+  
+  stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
+  
+  print(paste0("Total time (batch dispatch): ", sum(stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
+  
+  stats <- stats %>% group_by(occurence_time) %>% summarise(
+    num_iterations = max(iteration),
+    num_requests = max(num_requests),
+    find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
+    choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
+    update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
+    num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
+  )
+  
+  print(paste0("Max num iterations: ", max(stats$num_iterations)))
+  print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
+  print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
+  print(paste0("Max num requests: ", max(stats$num_requests)))
+  
+  means <- apply(stats,2,mean)
+  means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
+  print(means)
+  
+  
+}
+
+
 batchUpdatePerfStats <- function(file_base) {
   
   stats <- read.csv(paste0(file_base, ".batch_insert_stats.csv"))
@@ -247,6 +276,7 @@ batchUpdatePerfStats <- function(file_base) {
     last_stop_find_insertions_and_deletions_time = sum(last_stop_find_insertions_and_deletions_time, na.rm = TRUE),
     last_stop_num_insertions_and_deletions = sum(last_stop_num_insertions_and_deletions, na.rm = TRUE),
     last_stop_perform_insertions_and_deletions_time = sum(last_stop_perform_insertions_and_deletions_time, na.rm = TRUE),
+    # last_stop_update_prefix_sum_time = sum(last_stop_update_prefix_sum_time, na.rm = TRUE),
     num_ell_source_entries_after_insertions = sum(num_ell_source_entries_after_insertions, na.rm = TRUE),
     num_ell_target_entries_after_insertions = sum(num_ell_target_entries_after_insertions, na.rm = TRUE),
     update_leeways_num_entries_scanned_source = sum(update_leeways_num_entries_scanned_source, na.rm = TRUE),

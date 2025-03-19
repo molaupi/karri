@@ -53,7 +53,7 @@ namespace karri::stats {
                 "find_vehicle_to_pd_locs_distances_time,"
                 "not_using_veh_time,"
                 "compute_od_distance_time,"
-                "total_time\n";
+                "total_time";
 
 
         std::string getLoggerRow() const {
@@ -118,7 +118,7 @@ namespace karri::stats {
                 "dropoff_num_entries_scanned,"
                 "dropoff_num_vehicles_seen,"
                 "dropoff_num_stops_seen,"
-                "total_time\n";
+                "total_time";
 
 
         std::string getLoggerRow() const {
@@ -161,7 +161,7 @@ namespace karri::stats {
                 "initialization_time,"
                 "dropoff_bucket_entry_gen_time,"
                 "pickup_bch_search_time,"
-                "total_time\n";
+                "total_time";
 
 
         std::string getLoggerRow() const {
@@ -213,7 +213,7 @@ namespace karri::stats {
                 "num_assignments_tried,"
                 "try_non_paired_assignments_time,"
                 "try_paired_assignments_time,"
-                "total_time\n";
+                "total_time";
 
 
         std::string getLoggerRow() const {
@@ -277,7 +277,7 @@ namespace karri::stats {
                 "num_candidate_vehicles,"
                 "num_assignments_tried,"
                 "try_assignments_time,"
-                "total_time\n";
+                "total_time";
 
 
         std::string getLoggerRow() const {
@@ -369,7 +369,7 @@ namespace karri::stats {
                 "collective.initialization_time,"
                 "collective.num_domination_relation_tests,"
                 "collective.used_fallback,"
-                "total_time\n";
+                "total_time";
 
 
         std::string getLoggerRow() const {
@@ -455,7 +455,7 @@ namespace karri::stats {
                 "collective.ran_closest_dropoff_search,"
                 "collective.num_direct_ch_searches,"
                 "collective.initialization_time,"
-                "total_time\n";
+                "total_time";
 
 
         std::string getLoggerRow() const {
@@ -538,7 +538,7 @@ namespace karri::stats {
                 "last_stop_buckets_delete_entries_time,"
                 "last_stop_at_vertices_update_time,"
                 "update_routes_time,"
-                "total_time\n";
+                "total_time";
 
 
         std::string getLoggerRow() const {
@@ -616,7 +616,7 @@ namespace karri::stats {
                 "pals_assignments_time,"
                 "dals_assignments_time,"
                 "update_time,"
-                "total_time\n";
+                "total_time";
 
 
         std::string getLoggerRow() const {

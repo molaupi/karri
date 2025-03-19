@@ -490,7 +490,8 @@ int main(int argc, char *argv[]) {
         for (const auto &veh: fleet) {
             lastStopBucketsEnv.addIdleBucketEntryInsertions(veh.vehicleId);
         }
-        lastStopBucketsEnv.commitEntryInsertionsAndDeletions();
+        LastStopBucketUpdateStats stats;
+        lastStopBucketsEnv.commitEntryInsertionsAndDeletions(stats);
 
         // Run simulation:
         using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
