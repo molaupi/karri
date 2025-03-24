@@ -27,6 +27,7 @@ quality <- function(file_base) {
   
   asgnstats <- read.csv(paste0(file_base, ".assignmentquality.csv"))
   legstats <- read.csv(paste0(file_base, ".legstats.csv"))
+  bestasgns <- read.csv(paste0(file_base, ".bestassignments.csv"))
   
   eventsimstats <- read.csv(paste0(file_base, ".eventsimulationstats.csv"))
   num.Vehicles <- sum(eventsimstats$type == "VehicleStartup")
@@ -38,6 +39,7 @@ quality <- function(file_base) {
              ride_time_q95 = c(quantile(asgnstats$ride_time, 0.95) / 10), # q95 ride time for each request
              trip_time_avg = c(mean(asgnstats$trip_time) / 10), # avg trip time for each request
              trip_time_q95 = c(quantile(asgnstats$trip_time, 0.95) / 10), # q95 trip time for each request
+             direct_time_avg = c(mean(bestasgns$direct_od_dist) / 10), # avg direct vehicle time from origin to destination
              walk_to_pickup_avg=c(mean(asgnstats$walk_to_pickup_time) / 10), # avg walking time to pickup
              walk_to_pickup_q95=c(quantile(asgnstats$walk_to_pickup_time, 0.95) / 10), # q95 walking time to pickup
              walk_to_dropoff_avg=c(mean(asgnstats$walk_to_dropoff_time) / 10), # avg walking time to dropoff
@@ -55,6 +57,7 @@ quality <- function(file_base) {
   psg_time_cols <- c("wait_time_avg", "wait_time_q95", 
                      "ride_time_avg", "ride_time_q95", 
                      "trip_time_avg", "trip_time_q95",
+                     "direct_time_avg",
                      "walk_to_pickup_avg", "walk_to_pickup_q95",
                      "walk_to_dropoff_avg", "walk_to_dropoff_q95"
                      )
