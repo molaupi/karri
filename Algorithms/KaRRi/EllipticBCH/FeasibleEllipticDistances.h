@@ -265,7 +265,7 @@ namespace karri {
         }
 
 
-        std::vector<int>& getStopIdsWithRelevantPDLocs() {
+        const std::vector<int>& getStopIdsWithRelevantPDLocs() const {
             return stopIdsWithRelevantPDLocs;
         }
 

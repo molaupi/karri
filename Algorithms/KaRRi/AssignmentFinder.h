@@ -100,7 +100,8 @@ namespace karri {
             const auto relOrdinaryDropoffs = relevantPdLocsFilter.filterOrdinaryDropoffs(feasibleEllipticDropoffs, reqState);
 
             // Try ordinary assignments:
-            ordAssignments.findAssignments(relOrdinaryPickups, relOrdinaryDropoffs, ffPdDistances);
+            ordAssignments.findOrdinaryAssignments(relOrdinaryPickups, relOrdinaryDropoffs);
+            ordAssignments.findOrdinaryPairedAssignments(feasibleEllipticPickups, feasibleEllipticDropoffs, ffPdDistances);
 
             // Filter feasible pickups before next stops:
             const auto relPickupsBeforeNextStop = relevantPdLocsFilter.filterPickupsBeforeNextStop(

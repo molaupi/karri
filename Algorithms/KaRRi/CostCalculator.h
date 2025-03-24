@@ -139,7 +139,7 @@ namespace karri {
         template<typename RequestContext>
         int calcCostLowerBoundForOrdinaryPairedAssignment(const Assignment &asgn, const RequestContext &context) const {
             using namespace time_utils;
-            if (!asgn.vehicle || !asgn.pickup || !asgn.dropoff)
+            if (!asgn.vehicle)
                 return INFTY;
             if (asgn.distToPickup == INFTY || asgn.distFromPickup == INFTY ||
                 asgn.distToDropoff == INFTY || asgn.distFromDropoff == INFTY)

@@ -49,7 +49,8 @@ namespace karri {
                 numDropoffs(numDropoffs),
                 distances(numLabelsPerDropoff(numPickups) * numDropoffs, INFTY),
                 minDirectDist(INFTY),
-                minDirectDistancesPerPickup(numLabelsPerDropoff(numPickups), INFTY) {}
+                minDirectDistancesPerPickup(numLabelsPerDropoff(numPickups), INFTY),
+                minDirectDistancesPerDropoff(numDropoffs, INFTY){}
 
         // IDs refer to the indices in the vectors of pickups/dropoffs given at the last initialize() call.
         int getDirectDistance(const unsigned int pickupId, const unsigned int dropoffId) const {
@@ -79,6 +80,10 @@ namespace karri {
             return minDirectDistancesPerPickup[pickupId / K][pickupId % K];
         }
 
+        int getMinDirectDistanceForDropoff(const int dropoffId) const {
+            return minDirectDistancesPerDropoff[dropoffId];
+        }
+
         // Compares a current PD-distance to the given distance and updates the distances if the given distances are smaller.
         void updateDistanceIfSmaller(const unsigned int pickupId, const unsigned int dropoffId, const int dist) {
             const auto offsetInBatch = pickupId % K;
@@ -86,6 +91,7 @@ namespace karri {
             if (dist < label[offsetInBatch]) {
                 label[offsetInBatch] = dist;
                 minDirectDist = std::min(minDirectDist, dist);
+                minDirectDistancesPerDropoff[dropoffId] = std::min(minDirectDistancesPerDropoff[dropoffId], dist);
 
                 if (dist < minDirectDistancesPerPickup[pickupId / K][offsetInBatch]) {
                     minDirectDistancesPerPickup[pickupId / K][offsetInBatch] = dist;
@@ -103,7 +109,9 @@ namespace karri {
             const auto smaller = dist < label;
             if (anySet(smaller)) {
                 label.setIf(dist, smaller);
-                minDirectDist = std::min(minDirectDist, dist.horizontalMin());
+                const auto horMin = dist.horizontalMin();
+                minDirectDist = std::min(minDirectDist, horMin);
+                minDirectDistancesPerDropoff[dropoffId] = std::min(minDirectDistancesPerDropoff[dropoffId], horMin);
                 minDirectDistancesPerPickup[firstPickupId / K].min(dist);
                 KASSERT(minDirectDist <= minDirectDistancesPerPickup[firstPickupId / K].horizontalMin());
             }
@@ -128,5 +136,6 @@ namespace karri {
 
         int minDirectDist;
         AlignedVector<DistanceLabel> minDirectDistancesPerPickup;
+        std::vector<int> minDirectDistancesPerDropoff;
     };
 }

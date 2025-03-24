@@ -88,6 +88,10 @@ namespace karri {
             return {relevantSpots.rbegin() + rstart, relevantSpots.rbegin() + rend};
         }
 
+        size_t numRelevantSpots() const {
+            return relevantSpots.size();
+        }
+
     private:
 
         int fleetSize;

@@ -162,7 +162,9 @@ namespace karri::stats {
         int64_t initializationTime;
 
         int64_t numRelevantStopsForPickups;
+        int64_t numRelevantPickupEntries;
         int64_t numRelevantStopsForDropoffs;
+        int64_t numRelevantDropoffEntries;
         int64_t filterRelevantPDLocsTime;
 
         int64_t numCandidateVehicles;
@@ -178,7 +180,9 @@ namespace karri::stats {
         void clear() {
             initializationTime = 0;
             numRelevantStopsForPickups = 0;
+            numRelevantPickupEntries = 0;
             numRelevantStopsForDropoffs = 0;
+            numRelevantDropoffEntries = 0;
             filterRelevantPDLocsTime = 0;
 
             numCandidateVehicles = 0;
@@ -191,7 +195,9 @@ namespace karri::stats {
         static constexpr auto LOGGER_COLS =
                 "initialization_time,"
                 "num_relevant_stops_for_pickups,"
+                "num_relevant_pickup_entries,"
                 "num_relevant_stops_for_dropoffs,"
+                "num_relevant_dropoff_entries,"
                 "filter_relevant_pd_locs_time,"
                 "num_candidate_vehicles,"
                 "num_assignments_tried,"
@@ -204,7 +210,9 @@ namespace karri::stats {
             std::stringstream ss;
             ss << initializationTime << ", "
                << numRelevantStopsForPickups << ", "
+               << numRelevantPickupEntries << ", "
                << numRelevantStopsForDropoffs << ", "
+               << numRelevantDropoffEntries << ", "
                << filterRelevantPDLocsTime << ", "
                << numCandidateVehicles << ", "
                << numAssignmentsTried << ", "
@@ -219,7 +227,9 @@ namespace karri::stats {
         int64_t initializationTime;
 
         int64_t numRelevantStopsForPickups;
+        int64_t numRelevantPickupEntries;
         int64_t numRelevantStopsForDropoffs;
+        int64_t numRelevantDropoffEntries;
         int64_t filterRelevantPDLocsTime;
 
         int64_t locatingVehiclesTime;
@@ -237,7 +247,9 @@ namespace karri::stats {
         void clear() {
             initializationTime = 0;
             numRelevantStopsForPickups = 0;
+            numRelevantPickupEntries = 0;
             numRelevantStopsForDropoffs = 0;
+            numRelevantDropoffEntries = 0;
             filterRelevantPDLocsTime = 0;
 
             locatingVehiclesTime = 0;
@@ -253,7 +265,9 @@ namespace karri::stats {
         static constexpr auto LOGGER_COLS =
                 "initialization_time,"
                 "num_relevant_stops_for_pickups,"
+                "num_relevant_pickup_entries,"
                 "num_relevant_stops_for_dropoffs,"
+                "num_relevant_dropoff_entries,"
                 "filter_relevant_pd_locs_time,"
                 "locating_vehicles_time,"
                 "num_ch_searches,"
@@ -268,7 +282,9 @@ namespace karri::stats {
             std::stringstream ss;
             ss << initializationTime << ", "
                << numRelevantStopsForPickups << ", "
+               << numRelevantPickupEntries << ", "
                << numRelevantStopsForDropoffs << ", "
+               << numRelevantDropoffEntries << ", "
                << filterRelevantPDLocsTime << ", "
                << locatingVehiclesTime << ", "
                << numCHSearches << ", "
