@@ -161,6 +161,7 @@ namespace karri {
                         continue;
 
                     const auto &stopId = stopIds[i];
+                    const auto beginEntriesForStop = rel.relevantSpots.size();
 
                     // If we consider only the stop before the next stop, the stop is guaranteed to have relevant pd
                     // locs by construction of vehiclesWithFeasibleDistances (s.a.).
@@ -216,6 +217,17 @@ namespace karri {
                     }
 
 
+                    // For ordinary pickups, the unique best pickup for a pair of stops is the one with the smallest
+                    // cost induced by the pickup detour since the dropoff is entirely independent of the pickup.
+                    // Remove all entries except the unique best one.
+                    if constexpr (!beforeNextStop) {
+                        if constexpr (isDropoff)
+                            removeAllDominatedOrdinaryDropoffs(rel, vehId, i, beginEntriesForStop, requestState);
+                        else
+                            removeAllDominatedOrdinaryPickups(rel, vehId, i, beginEntriesForStop, requestState);
+                    }
+
+
                 }
 
                 // If vehicle has at least one stop with relevant PD loc, add the vehicle
@@ -232,6 +244,131 @@ namespace karri {
 
             return rel;
         }
+
+        void removeAllDominatedOrdinaryPickups(RelevantPDLocs &rel, const int vehId, const int stopPos,
+                                               const size_t firstEntryForStop, const RequestState &requestState) {
+            using namespace time_utils;
+            if (rel.relevantSpots.size() <= firstEntryForStop)
+                return;
+
+            int minCost = INFTY;
+            size_t bestIdx = INVALID_INDEX;
+
+            for (auto j = firstEntryForStop; j < rel.relevantSpots.size(); ++j) {
+                const auto &h = rel.relevantSpots[j];
+
+                const auto &p = requestState.pickups[h.pdId];
+                const auto depTimeAtPickup = getActualDepTimeAtPickup(vehId, stopPos, h.distToPDLoc,
+                                                                      p, requestState, routeState);
+                const int detour = calcInitialPickupDetour(vehId, stopPos, INVALID_INDEX, depTimeAtPickup,
+                                                           h.distFromPDLocToNextStop, requestState, routeState);
+                const int cost = calculator.calcMinKnownPickupSideCost(fleet[vehId], stopPos, detour,
+                                                                       p.walkingDist, depTimeAtPickup,
+                                                                       h.distFromPDLocToNextStop, requestState);
+
+                const auto breakCostTie = [&](const auto &e1, const auto &e2) -> bool {
+                    const auto &pd1 = requestState.pickups[e1.pdId];
+                    const auto &pd2 = requestState.pickups[e2.pdId];
+                    if (pd1.walkingDist < pd2.walkingDist) return true;
+                    if (pd1.walkingDist > pd2.walkingDist) return false;
+                    if (pd1.id < pd2.id) return true;
+                    if (pd1.id > pd2.id) return false;
+                    if (e1.distToPDLoc < e2.distToPDLoc) return true;
+                    if (e1.distToPDLoc > e2.distToPDLoc) return false;
+                    return (e1.distFromPDLocToNextStop < e2.distFromPDLocToNextStop);
+                };
+
+                if (cost < minCost || (cost == minCost && breakCostTie(h, rel.relevantSpots[bestIdx]))) {
+                    bestIdx = j;
+                    minCost = cost;
+                }
+            }
+            LIGHT_KASSERT(minCost >= 0 && minCost < INFTY);
+            std::swap(rel.relevantSpots[firstEntryForStop], rel.relevantSpots[bestIdx]);
+            rel.relevantSpots.erase(rel.relevantSpots.begin() + firstEntryForStop + 1, rel.relevantSpots.end());
+        }
+
+        void removeAllDominatedOrdinaryDropoffs(RelevantPDLocs &rel, const int vehId, const int stopPos,
+                                                const int firstEntryForStop, const RequestState &requestState) {
+            using namespace time_utils;
+            if (rel.relevantSpots.size() <= firstEntryForStop)
+                return;
+
+            const auto numStops = routeState.numStopsOf(vehId);
+
+            // Returns true iff relevant dropoff h1 dominates relevant dropoff h2 for the purposes of ordinary
+            // non-paired assignments at this stop.
+            const auto dominates = [&](const RelevantPDLocs::RelevantPDLoc &h1,
+                                       const RelevantPDLocs::RelevantPDLoc &h2) -> bool {
+                using F = CostCalculator::CostFunction;
+                const auto &config = InputConfig::getInstance();
+                const auto &d1 = requestState.dropoffs[h1.pdId];
+                const auto &d2 = requestState.dropoffs[h2.pdId];
+                const auto isAtExistingStop1 = d1.loc == routeState.stopLocationsFor(vehId)[stopPos];
+                const auto isAtExistingStop2 = d2.loc == routeState.stopLocationsFor(vehId)[stopPos];
+                const auto detour1 = calcInitialDropoffDetour(vehId, stopPos, h1.distToPDLoc,
+                                                              h1.distFromPDLocToNextStop, isAtExistingStop1,
+                                                              routeState);
+                const auto detour2 = calcInitialDropoffDetour(vehId, stopPos, h2.distToPDLoc,
+                                                              h2.distFromPDLocToNextStop, isAtExistingStop2,
+                                                              routeState);
+                const auto minTripTime1 = h1.distToPDLoc + d1.walkingDist;
+                const auto minTripTime2 = h2.distToPDLoc + d2.walkingDist;
+                int tripCostDiff;
+                if (minTripTime1 <= minTripTime2) {
+                    tripCostDiff = F::calcLowerBoundTripCostDifference(minTripTime1 - minTripTime2, requestState);
+                } else {
+                    tripCostDiff = F::calcUpperBoundTripCostDifference(minTripTime1 - minTripTime2, requestState);
+                }
+
+                const int walkingCostDiff = F::calcWalkingCost(d1.walkingDist, config.dropoffRadius) -
+                                            F::calcWalkingCost(d2.walkingDist, config.dropoffRadius);
+
+                const int addedTripTimeOfOthers1 = calcAddedTripTimeInInterval(vehId, stopPos, numStops - 1, detour1,
+                                                                               routeState);
+                const int addedTripTimeOfOthers2 = calcAddedTripTimeInInterval(vehId, stopPos, numStops - 1, detour2,
+                                                                               routeState);
+                const int addedTripTimeCostDiff = F::calcChangeInTripCostsOfExistingPassengers(addedTripTimeOfOthers1) -
+                                                  F::calcChangeInTripCostsOfExistingPassengers(addedTripTimeOfOthers2);
+
+                const int vehCostDiff = F::calcVehicleCost(detour1 - detour2);
+                return tripCostDiff + vehCostDiff + walkingCostDiff + addedTripTimeCostDiff < 0;
+            };
+
+            int numNonDominated = 0;
+            for (int j = firstEntryForStop; j < rel.relevantSpots.size(); ++j) {
+                const auto &h = rel.relevantSpots[j];
+
+                // Check if h is dominated by any previously non-dominated dropoff
+                bool isDominated = false;
+                for (int i = 0; i < numNonDominated; ++i) {
+                    if (dominates(rel.relevantSpots[firstEntryForStop + i], h)) {
+                        isDominated = true;
+                        break;
+                    }
+                }
+                if (isDominated)
+                    continue;
+
+                // Remove any previously non-dominated dropoff that is dominated by h
+                for (int i = numNonDominated - 1; i >= 0; --i) {
+                    if (dominates(h, rel.relevantSpots[firstEntryForStop + i])) {
+                        --numNonDominated;
+                        std::swap(rel.relevantSpots[firstEntryForStop + i],
+                                  rel.relevantSpots[firstEntryForStop + numNonDominated]);
+                    }
+                }
+
+                // Add h to non-dominated dropoffs
+                std::swap(rel.relevantSpots[firstEntryForStop + numNonDominated], rel.relevantSpots[j]);
+                ++numNonDominated;
+            }
+
+            // Keep only non-dominated dropoffs
+            rel.relevantSpots.erase(rel.relevantSpots.begin() + firstEntryForStop + numNonDominated,
+                                    rel.relevantSpots.end());
+        }
+
 
         inline bool isPickupRelevant(const Vehicle &veh, const int stopIndex, const unsigned int pickupId,
                                      const int distFromStopToPickup,
@@ -263,7 +400,7 @@ namespace karri {
 
             const int curKnownCost = calculator.calcMinKnownPickupSideCost(veh, stopIndex, initialPickupDetour,
                                                                            p.walkingDist, depTimeAtPickup,
-                                                                           requestState);
+                                                                           requestState.minDirectPDDist, requestState);
 
             // If cost for only pickup side is already worse than best known cost for a whole assignment, then
             // this pickup is not relevant at this stop.
@@ -309,7 +446,8 @@ namespace karri {
                 return false;
 
             const int curMinCost = calculator.calcMinKnownDropoffSideCost(veh, stopIndex, initialDropoffDetour,
-                                                                          d.walkingDist, requestState);
+                                                                          d.walkingDist, requestState.minDirectPDDist,
+                                                                          requestState);
 
             // If cost for only dropoff side is already worse than best known cost for a whole assignment, then
             // this dropoff is not relevant at this stop.
@@ -331,7 +469,7 @@ namespace karri {
                                                                  routeState);
             minInitialPickupDetour = std::max(minInitialPickupDetour, 0);
             return calculator.calcMinKnownPickupSideCost(veh, stopIndex, minInitialPickupDetour, 0, minDepTimeAtPickup,
-                                                         requestState);
+                                                         requestState.minDirectPDDist, requestState);
         }
 
         inline int getMinCostForDropoff(const Vehicle &veh, const int stopIndex, const int minDistToDropoff,
@@ -340,7 +478,8 @@ namespace karri {
             int minInitialDropoffDetour = calcInitialDropoffDetour(veh.vehicleId, stopIndex, minDistToDropoff,
                                                                    minDistFromDropoff, false, routeState);
             minInitialDropoffDetour = std::max(minInitialDropoffDetour, 0);
-            return calculator.calcMinKnownDropoffSideCost(veh, stopIndex, minInitialDropoffDetour, 0, requestState);
+            return calculator.calcMinKnownDropoffSideCost(veh, stopIndex, minInitialDropoffDetour, 0,
+                                                          requestState.minDirectPDDist, requestState);
         }
 
         int recomputeDistToPDLocDirectly(const int vehId, const int stopIdxBefore, const int pdLocLocation) {

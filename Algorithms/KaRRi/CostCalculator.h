@@ -530,7 +530,7 @@ namespace karri {
         // dropoff is used or where the dropoff will be inserted.
         template<typename RequestContext>
         int calcMinKnownPickupSideCost(const Vehicle &veh, const int pickupIndex, const int initialPickupDetour,
-                                       const int walkingDist, const int depTimeAtPickup,
+                                       const int walkingDist, const int depTimeAtPickup, const int minTripTimeFromPickup,
                                        const RequestContext &context) const {
             using namespace time_utils;
 
@@ -544,10 +544,9 @@ namespace karri {
             const int addedTripTimeOfOthers = calcAddedTripTimeInInterval(veh.vehicleId, pickupIndex, numStops - 1,
                                                                           initialPickupDetour, routeState);
 
-            const int changeInTripTimeCosts = F::calcChangeInTripCostsOfExistingPassengers(
-                    addedTripTimeOfOthers);
+            const int changeInTripTimeCosts = F::calcChangeInTripCostsOfExistingPassengers(addedTripTimeOfOthers);
             const int waitViolation = F::calcWaitViolationCost(depTimeAtPickup, context);
-            const int minTripTime = (depTimeAtPickup - context.originalRequest.requestTime) + context.minDirectPDDist;
+            const int minTripTime = (depTimeAtPickup - context.originalRequest.requestTime) + minTripTimeFromPickup;
             const int minTripCost = F::calcTripCost(minTripTime, context);
             return F::calcVehicleCost(initialPickupDetour) + changeInTripTimeCosts
                    + minTripCost
@@ -559,6 +558,7 @@ namespace karri {
         template<typename RequestContext>
         int calcMinKnownDropoffSideCost(const Vehicle &veh, const int dropoffIndex,
                                         const int initialDropoffDetour, const int walkingDist,
+                                        const int minTripTimeUntilDropoff,
                                         const RequestContext &context) const {
             using namespace time_utils;
 
@@ -574,7 +574,7 @@ namespace karri {
                                                                              initialDropoffDetour, routeState);
             const int minChangeInTripTimeCosts = F::calcChangeInTripCostsOfExistingPassengers(minAddedTripTimeOfOthers);
 
-            const int minTripTime = context.minDirectPDDist + walkingDist;
+            const int minTripTime = minTripTimeUntilDropoff + walkingDist;
             const int minTripCost = F::calcTripCost(minTripTime, context);
 
             return F::calcVehicleCost(initialDropoffDetour) + walkingCost + minChangeInTripTimeCosts + minTripCost;

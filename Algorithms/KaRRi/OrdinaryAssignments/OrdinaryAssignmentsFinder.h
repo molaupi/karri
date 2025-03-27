@@ -188,12 +188,13 @@ namespace karri {
                     const auto& p = requestState.pickups[pickupId];
                     const auto depTimeAtPickup = getActualDepTimeAtPickup(vehId, stopPos, dist, p,
                                                                           requestState, routeState);
-                    const auto minDetour = depTimeAtPickup - vehDepTimeAtPrevStop + pdDistances.getMinDirectDistanceForPickup(pickupId) + minDistFromAnyDropoff - legLength;
-                    if (minDetour >= 0 && doesPickupDetourViolateHardConstraints(veh, requestState, stopPos, minDetour, routeState))
+                    const auto minDetour = std::max(depTimeAtPickup - vehDepTimeAtPrevStop + pdDistances.getMinDirectDistanceForPickup(pickupId) + minDistFromAnyDropoff - legLength, 0);
+                    if (doesPickupDetourViolateHardConstraints(veh, requestState, stopPos, minDetour, routeState))
                         continue;
 
                     const int curKnownCost = calculator.calcMinKnownPickupSideCost(veh, stopPos, minDetour,
                                                                                    p.walkingDist, depTimeAtPickup,
+                                                                                   requestState.minDirectPDDist,
                                                                                    requestState);
 
                     // If cost for only pickup side is already worse than best known cost for a whole assignment, then
@@ -215,13 +216,13 @@ namespace karri {
                         continue; // if dropoff coincides with the following stop, an ordinary non-paired assignment with dropoffIndex = pickupIndex + 1 will cover this case
 
 
-                    const auto minDetour = minDistToAnyPickup + pdDistances.getMinDirectDistanceForDropoff(dropoffId) + minDistFromAnyDropoff - legLength;
-                    if (minDetour >= 0 && doesDropoffDetourViolateHardConstraints(veh, requestState, stopPos,
+                    const auto minDetour = std::max(minDistToAnyPickup + pdDistances.getMinDirectDistanceForDropoff(dropoffId) + minDistFromAnyDropoff - legLength, 0);
+                    if (doesDropoffDetourViolateHardConstraints(veh, requestState, stopPos,
                                                                                   minDetour, routeState))
                         continue;
 
                     const int curMinCost = calculator.calcMinKnownDropoffSideCost(veh, stopPos, minDetour,
-                                                                                  d.walkingDist, requestState);
+                                                                                  d.walkingDist, requestState.minDirectPDDist, requestState);
 
                     // If cost for only dropoff side is already worse than best known cost for a whole assignment, then
                     // this dropoff is not relevant at this stop.
