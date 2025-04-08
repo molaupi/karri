@@ -23,13 +23,23 @@ convertToHHMM <- function(seconds) {
 # Given the path to the result files of a KaRRi run (e.g. 
 # "<output-dir>/Berlin-1pct_pedestrian/karri-col-simd_300_300"), 
 # this function returns an overview over the solution quality of the assignments.
-quality <- function(file_base) {
+quality <- function(fileBase, numVehicles=NULL, reqIdSubset=NULL) {
   
-  asgnstats <- read.csv(paste0(file_base, ".assignmentquality.csv"))
-  legstats <- read.csv(paste0(file_base, ".legstats.csv"))
+  asgnstats <- read.csv(paste0(fileBase, ".assignmentquality.csv"))
+  asgnstats <- asgnstats[order(asgnstats$request_id),]
+  legstats <- read.csv(paste0(fileBase, ".legstats.csv"))
+  bestasgns <- read.csv(paste0(fileBase, ".bestassignments.csv"))
+  bestasgns <- bestasgns[order(bestasgns$request_id),]
   
-  eventsimstats <- read.csv(paste0(file_base, ".eventsimulationstats.csv"))
-  num.Vehicles <- sum(eventsimstats$type == "VehicleStartup")
+  if (is.null(numVehicles)) {
+    eventsimstats <- read.csv(paste0(fileBase, ".eventsimulationstats.csv"))
+    numVehicles <- sum(eventsimstats$type == "VehicleStartup")
+  }
+  
+  if (!is.null(reqIdSubset)) {
+    asgnstats <- asgnstats[asgnstats$request_id %in% reqIdSubset,]
+    bestasgns <- bestasgns[bestasgns$request_id %in% reqIdSubset,]
+  }
   
   df <- data.frame(
              wait_time_avg = c(mean(asgnstats$wait_time) / 10), # avg wait time for each request
@@ -38,13 +48,16 @@ quality <- function(file_base) {
              ride_time_q95 = c(quantile(asgnstats$ride_time, 0.95) / 10), # q95 ride time for each request
              trip_time_avg = c(mean(asgnstats$trip_time) / 10), # avg trip time for each request
              trip_time_q95 = c(quantile(asgnstats$trip_time, 0.95) / 10), # q95 trip time for each request
+             direct_time_avg = c(mean(bestasgns$direct_od_dist) / 10), # avg direct drive time from origin to destination
+             trip_delay_avg = c(mean(ifelse(bestasgns$direct_od_dist != 0, asgnstats$trip_time / bestasgns$direct_od_dist, 1))), # avg relative delay for whole trip
+             ride_delay_avg = c(mean(ifelse(bestasgns$direct_od_dist != 0, asgnstats$ride_time / bestasgns$direct_od_dist, 1))), # avg relative delay for only ride
              walk_to_pickup_avg=c(mean(asgnstats$walk_to_pickup_time) / 10), # avg walking time to pickup
              walk_to_pickup_q95=c(quantile(asgnstats$walk_to_pickup_time, 0.95) / 10), # q95 walking time to pickup
              walk_to_dropoff_avg=c(mean(asgnstats$walk_to_dropoff_time) / 10), # avg walking time to dropoff
              walk_to_dropoff_q95=c(quantile(asgnstats$walk_to_dropoff_time, 0.95) / 10), # q95 walking time to dropoff
-             stop_time_avg = c(sum(legstats$stop_time) / num.Vehicles / 10), # avg total stop time for each vehicle
-             empty_time_avg = c(sum(legstats[legstats$occupancy == 0, "drive_time"]) / num.Vehicles / 10), # avg time spent driving empty for each vehicle
-             occ_time_avg = c(sum(legstats[legstats$occupancy > 0, "drive_time"]) / num.Vehicles / 10) # avg time spent driving occupied for each vehicle
+             stop_time_avg = c(sum(legstats$stop_time) / numVehicles / 10), # avg total stop time for each vehicle
+             empty_time_avg = c(sum(legstats[legstats$occupancy == 0, "drive_time"]) / numVehicles / 10), # avg time spent driving empty for each vehicle
+             occ_time_avg = c(sum(legstats[legstats$occupancy > 0, "drive_time"]) / numVehicles / 10) # avg time spent driving occupied for each vehicle
              )
   
   df$op_time_avg <- df$stop_time_avg + df$empty_time_avg + df$occ_time_avg # avg total operation time for each vehicle
@@ -55,6 +68,7 @@ quality <- function(file_base) {
   psg_time_cols <- c("wait_time_avg", "wait_time_q95", 
                      "ride_time_avg", "ride_time_q95", 
                      "trip_time_avg", "trip_time_q95",
+                     "direct_time_avg",
                      "walk_to_pickup_avg", "walk_to_pickup_q95",
                      "walk_to_dropoff_avg", "walk_to_dropoff_q95"
                      )

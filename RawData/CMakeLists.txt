@@ -23,6 +23,10 @@
 # SOFTWARE.
 # ******************************************************************************
 
+add_executable(CategorizeRequestsByCoreAndPeriphery CategorizeRequestsByCoreAndPeriphery.cc)
+target_compile_definitions(CategorizeRequestsByCoreAndPeriphery PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(CategorizeRequestsByCoreAndPeriphery PRIVATE ${FULL_WARNINGS})
+target_link_libraries(CategorizeRequestsByCoreAndPeriphery kassert fast_cpp_csv_parser)
 
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
