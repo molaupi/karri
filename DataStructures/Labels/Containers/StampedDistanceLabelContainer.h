@@ -80,6 +80,18 @@ class StampedDistanceLabelContainer {
     return distanceLabels[v];
   }
 
+  // Returns the distance at vertex v or a value of at least INFTY if the value at v has not been set since
+  // the last initialization.
+  inline DistanceLabelT readDistance(const int v) const {
+      static DistanceLabelT InftyLabel = DistanceLabelT(INFTY);
+      assert(v >= 0); assert(v < distanceLabels.size());
+      if (timestamps[v] != clock) {
+          assert(timestamps[v] < clock);
+          return InftyLabel;
+      }
+      return distanceLabels[v];
+  }
+
  private:
   AlignedVector<DistanceLabelT> distanceLabels; // The distance labels of the vertices.
   std::vector<int> timestamps;                  // The timestamps indicating if a label is valid.

@@ -224,12 +224,12 @@ public:
 
     // Returns the shortest-path distance from the i-th source to t.
     int getDistance(const int t, const int i = 0) {
-        return distanceLabels[t][i];
+        return distanceLabels.readDistance(t)[i];
     }
 
     // Returns the shortest-path distances from all K sources to t.
     DistanceLabel getDistances(const int t) {
-        return distanceLabels[t];
+        return distanceLabels.readDistance(t);
     }
 
     // Returns the parent vertex of v on the shortest path from the i-th source to v.

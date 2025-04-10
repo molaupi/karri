@@ -67,8 +67,8 @@ namespace karri {
                   ch(chEnv.getCH()),
                   routeState(routeState),
                   rphastEnv(chEnv.getCH()),
-                  toQuery(rphastEnv.getReverseRPHASTQuery()),
-                  fromQuery(rphastEnv.getForwardRPHASTQuery()) {}
+                  toQuery(rphastEnv.getReverseRPHASTQuery<LabelSetT>()),
+                  fromQuery(rphastEnv.getForwardRPHASTQuery<LabelSetT>()) {}
 
 
         // Run Elliptic RPHAST searches for pickups and dropoffs
@@ -105,6 +105,7 @@ namespace karri {
             Timer timer;
 
             // Run RPHAST target selection for all existing stops.
+            // TODO: Move this to be done only once per batch
             std::vector<int> stopRanks;
 
             initSourceStopLocations();
@@ -208,26 +209,6 @@ namespace karri {
             totalNumVerticesSettled += fromQuery.getNumVerticesSettled();
 
             // Store results for each stop where a feasible distance has been found:
-//            // TODO: Memorize rank and offset of each stop when running target selection and use it here.
-//            //  Order this information by decreasing rank to optimize access to distance array of query.
-//            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
-//                const auto numStops = routeState.numStopsOf(vehId);
-//                const auto &stopIds = routeState.stopIdsFor(vehId);
-//                const auto &stopLocations = routeState.stopLocationsFor(vehId);
-//                for (int stopIndex = 1; stopIndex < numStops; ++stopIndex) {
-//                    const auto prevStopId = stopIds[stopIndex - 1];
-//                    const auto stopLoc = stopLocations[stopIndex];
-//                    const auto offset = inputGraph.travelTime(stopLoc);
-//                    const auto stopRank = ch.rank(inputGraph.edgeTail(stopLoc));
-//                    const auto leeway = routeState.leewayOfLegStartingAt(prevStopId);
-//                    const auto dist = fromQuery.getDistances(stopRank) + offset;
-//                    const auto holdsLeeway = dist <= leeway;
-//                    if (anySet(holdsLeeway)) {
-//                        feasibleEllipticDistances.updateDistanceFromPDLocToNextStop(prevStopId, startId, dist, fromQuery.getMeetingVertices(stopRank));
-//                    }
-//                }
-//            }
-
             for (const auto& [prevStopId, rank, offset] : targetStops) {
                 const auto leeway = routeState.leewayOfLegStartingAt(prevStopId);
                 const auto dist = fromQuery.getDistances(rank) + offset;
@@ -265,25 +246,6 @@ namespace karri {
             totalNumVerticesSettled += toQuery.getNumVerticesSettled();
 
             // Store results for each stop where a feasible distance has been found:
-//            // TODO: Memorize rank and offset of each stop when running target selection and use it here.
-//            //  Order this information by decreasing rank to optimize access to distance array of query.
-//            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
-//                const auto numStops = routeState.numStopsOf(vehId);
-//                const auto &stopIds = routeState.stopIdsFor(vehId);
-//                const auto &stopLocations = routeState.stopLocationsFor(vehId);
-//                for (int stopIndex = 0; stopIndex < numStops - 1; ++stopIndex) {
-//                    const auto stopId = stopIds[stopIndex];
-//                    const auto stopLoc = stopLocations[stopIndex];
-//                    const auto stopRank = ch.rank(inputGraph.edgeHead(stopLoc));
-//                    const auto leeway = routeState.leewayOfLegStartingAt(stopId);
-//                    const auto& dist = toQuery.getDistances(stopRank);
-//                    const auto holdsLeeway = dist <= leeway;
-//                    if (anySet(holdsLeeway)) {
-//                        feasibleEllipticDistances.updateDistanceFromStopToPDLoc(stopId, startId, dist, toQuery.getMeetingVertices(stopRank));
-//                    }
-//                }
-//            }
-
             for (const auto& [stopId, rank] : sourceStops) {
                 const auto leeway = routeState.leewayOfLegStartingAt(stopId);
                 const auto dist = toQuery.getDistances(rank);
