@@ -37,6 +37,7 @@
 #include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBucketsEnvironment.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
+#include "Algorithms/KaRRi/EllipticBCH/EllipticRPHASTSearches.h"
 #include "Algorithms/KaRRi/EllipticBCH/PDLocsAtExistingStopsFinder.h"
 #include "Algorithms/KaRRi/CostCalculator.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
@@ -130,8 +131,9 @@ namespace karri {
         tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticPickups;
         tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticDropoffs;
 
-        using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
-                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
+//        using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
+//                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
+        using EllipticBCHSearchesImpl = EllipticRPHASTSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
         tbb::enumerable_thread_specific<EllipticBCHSearchesImpl> ellipticSearches;
 
         using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
@@ -274,7 +276,8 @@ namespace karri {
                 locator([&](){return VehicleLocatorImpl(vehicleInputGraph, vehChEnv, routeState);}),
                 feasibleEllipticPickups([&](){return FeasibleEllipticDistancesImpl(fleet.size(), routeState);}),
                 feasibleEllipticDropoffs([&](){return FeasibleEllipticDistancesImpl(fleet.size(), routeState);}),
-                ellipticSearches([&](){return EllipticBCHSearchesImpl(vehicleInputGraph, fleet, ellipticBucketsEnv, vehChEnv, routeState);}),
+//                ellipticSearches([&](){return EllipticBCHSearchesImpl(vehicleInputGraph, fleet, ellipticBucketsEnv, vehChEnv, routeState);}),
+                ellipticSearches([&](){return EllipticBCHSearchesImpl(vehicleInputGraph, fleet, vehChEnv, routeState);}),
                 relevantPdLocsFilter([&](){return RelevantPDLocsFilterImpl(fleet, vehicleInputGraph, vehChEnv, routeState);}),
                 vehicleToPdLocQuery([&](){return VehicleToPDLocQueryImpl(vehicleInputGraph, revVehicleGraph);}),
                 ffPDDistanceQuery([&](){return FFPDDistanceQueryImpl(vehicleInputGraph, vehChEnv);}),

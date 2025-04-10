@@ -227,6 +227,11 @@ public:
         return distanceLabels[t][i];
     }
 
+    // Returns the shortest-path distances from all K sources to t.
+    DistanceLabel getDistances(const int t) {
+        return distanceLabels[t];
+    }
+
     // Returns the parent vertex of v on the shortest path from the i-th source to v.
     int getParentVertex(const int v, const int i = 0) {
         assert(distanceLabels[v][i] != INFTY);

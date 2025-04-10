@@ -80,10 +80,10 @@ namespace karri {
 
         template<bool BUCKETS_ARE_SOURCE>
         struct ScanOrdinaryBucket {
-            explicit ScanOrdinaryBucket(const Buckets &buckets, const RouteState& routeState,
+            explicit ScanOrdinaryBucket(const Buckets &buckets, const RouteState &routeState,
                                         int &numEntriesVisited, int &numEntriesVisitedWithDistSmallerLeeway)
                     : buckets(buckets),
-                        routeState(routeState),
+                      routeState(routeState),
                       numEntriesVisited(numEntriesVisited),
                       numEntriesVisitedWithDistSmallerLeeway(numEntriesVisitedWithDistSmallerLeeway),
                       curFeasible(nullptr),
@@ -131,7 +131,7 @@ namespace karri {
 
         private:
             const Buckets &buckets;
-            const RouteState& routeState;
+            const RouteState &routeState;
             int &numEntriesVisited;
             int &numEntriesVisitedWithDistSmallerLeeway;
 
@@ -142,7 +142,6 @@ namespace karri {
 
         using ScanSourceBuckets = ScanOrdinaryBucket<true>;
         using ScanTargetBuckets = ScanOrdinaryBucket<false>;
-
 
 
     public:
@@ -170,9 +169,9 @@ namespace karri {
         // Run Elliptic BCH searches for pickups and dropoffs
         void run(FeasibleEllipticDistancesT &feasibleEllipticPickups,
                  FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
-                 const RequestState& requestState,
-                 const PDLocs& pdLocs,
-                 stats::EllipticBCHPerformanceStats& stats) {
+                 const RequestState &requestState,
+                 const PDLocs &pdLocs,
+                 stats::EllipticBCHPerformanceStats &stats) {
 
             // Run for pickups:
             Timer timer;
@@ -201,14 +200,14 @@ namespace karri {
             stats.dropoffNumStopsSeen += feasibleEllipticDropoffs.numStopsWithRelevantPDLocs();
         }
 
-        void init(const RequestState&, const PDLocs&, stats::EllipticBCHPerformanceStats&) {
+        void init(const RequestState &, const PDLocs &, stats::EllipticBCHPerformanceStats &) {
             // no op
         }
 
     private:
 
         template<typename SpotContainerT>
-        void runBCHSearchesFromAndTo(const RequestState& requestState, SpotContainerT &pdLocs) {
+        void runBCHSearchesFromAndTo(const RequestState &requestState, SpotContainerT &pdLocs) {
 
             numSearchesRun = 0;
             numTimesStoppingCriterionMet = 0;

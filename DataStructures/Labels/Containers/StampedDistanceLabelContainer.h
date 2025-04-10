@@ -43,6 +43,10 @@ class StampedDistanceLabelContainer {
     resize(numVertices);
   }
 
+  size_t size() const {
+    return distanceLabels.size();
+  }
+
   // Ensures that this container can hold the specified number of distance labels.
   void resize(const int numVertices) {
     const auto currentSize = distanceLabels.size();

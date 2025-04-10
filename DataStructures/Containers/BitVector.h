@@ -172,6 +172,9 @@ public:
 
     // Inverts every bit in the BitVector
     void flip() {
+        if (blocks.empty())
+            return;
+
         for (auto &b: blocks)
             b = ~b;
 
