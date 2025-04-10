@@ -39,16 +39,16 @@ class PHASTQuery {
     using LabelMask = typename LabelSetT::LabelMask;
 
 public:
-    PHASTQuery(const SourceGraphT& sourceGraph, const TargetGraphT& targetGraph, const std::vector<int>& vertexMapping)
-            : sourceGraph(sourceGraph), targetGraph(targetGraph), vertexMapping(vertexMapping),
+    PHASTQuery(const SourceGraphT &sourceGraph, const TargetGraphT &targetGraph,
+               const std::vector<int> &sourceToTargetMapping, const std::vector<int> &targetToSourceMapping)
+            : sourceGraph(sourceGraph), targetGraph(targetGraph), sourceToTargetMapping(sourceToTargetMapping),
+              targetToSourceMapping(targetToSourceMapping),
               upwardSearch(sourceGraph),
               distances(0),
               meetingVertices(0) {}
 
-    void run(const std::array<int, K>& sources, const std::array<int, K>& offsets = {}) {
+    void run(const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
         sanityCheckTargetGraphValidity();
-        distances.resize(targetGraph.numVertices() + 1);
-        meetingVertices.resize(targetGraph.numVertices() + 1);
         upwardSearch.runWithOffset(sources, offsets);
         numVerticesSettled = upwardSearch.getNumVerticesSettled();
         numEdgesRelaxed = upwardSearch.getNumEdgeRelaxations();
@@ -58,22 +58,22 @@ public:
 
     int getDistance(const int v, const int i = 0) {
         KASSERT(distances[targetGraph.numVertices()][i] == INFTY);
-        return distances[vertexMapping[v]][i];
+        return distances[sourceToTargetMapping[v]][i];
     }
 
     DistanceLabel getDistances(const int v) {
         KASSERT(allSet(distances[targetGraph.numVertices()] == INFTY));
-        return distances[vertexMapping[v]];
+        return distances[sourceToTargetMapping[v]];
     }
 
     int getMeetingVertex(const int v, const int i = 0) {
         KASSERT(meetingVertices[targetGraph.numVertices()][i] == INVALID_VERTEX);
-        return meetingVertices[vertexMapping[v]][i];
+        return meetingVertices[sourceToTargetMapping[v]][i];
     }
 
     DistanceLabel getMeetingVertices(const int v) {
         KASSERT(allSet(meetingVertices[targetGraph.numVertices()] == INVALID_VERTEX));
-        return meetingVertices[vertexMapping[v]];
+        return meetingVertices[sourceToTargetMapping[v]];
     }
 
     int getNumVerticesSettled() const {
@@ -87,15 +87,16 @@ public:
 private:
 
     void initDownwardSweep() {
-        KASSERT(vertexMapping.size() == sourceGraph.numVertices());
-        KASSERT(distances.size() == targetGraph.numVertices() + 1);
-        distances.init();
-        FORALL_VERTICES(sourceGraph, v) {
-            const auto w = vertexMapping[v];
-            KASSERT(w >= 0 && w < targetGraph.numVertices() + 1);
-            distances[w] = upwardSearch.getDistances(v);
-            meetingVertices[w] = v;
-        }
+        KASSERT(sourceToTargetMapping.size() == sourceGraph.numVertices());
+        distances.resize(targetGraph.numVertices() + 1);
+        meetingVertices.resize(targetGraph.numVertices() + 1);
+//        distances.init();
+//        FORALL_VERTICES(sourceGraph, v) {
+//            const auto w = sourceToTargetMapping[v];
+//            KASSERT(w >= 0 && w < targetGraph.numVertices() + 1);
+//            distances[w] = upwardSearch.getDistances(v);
+//            meetingVertices[w] = v;
+//        }
 
         // All vertices which are not present in target graph have distance INFTY.
         distances[targetGraph.numVertices()] = INFTY;
@@ -106,8 +107,15 @@ private:
         // Vertices in target graph are ordered by decreasing rank. Downward sweep simply settles vertices in order.
         for (int v = 0; v < targetGraph.numVertices(); ++v) {
             ++numVerticesSettled;
-            auto& distAtV = distances[v];
-            auto& meetingVerticesAtV = meetingVertices[v];
+            auto &distAtV = distances[v];
+            auto &meetingVerticesAtV = meetingVertices[v];
+
+            // Initialize distance and meeting vertex to result of upward search.
+            const auto vInSourceGraph = targetToSourceMapping[v];
+            distAtV = upwardSearch.getDistances(vInSourceGraph);
+            meetingVerticesAtV = vInSourceGraph;
+
+            // Relax all incoming edges to finalize the distances and meeting vertices at v.
             FORALL_INCIDENT_EDGES(targetGraph, v, e) {
                 ++numEdgesRelaxed;
                 const auto w = targetGraph.edgeHead(e);
@@ -122,10 +130,11 @@ private:
     }
 
     void sanityCheckTargetGraphValidity() {
-        KASSERT(vertexMapping.size() == sourceGraph.numVertices());
+        KASSERT(targetToSourceMapping.size() == targetGraph.numVertices());
+        KASSERT(sourceToTargetMapping.size() == sourceGraph.numVertices());
         int numValidMapping = 0;
         FORALL_VERTICES(sourceGraph, v) {
-            const auto w = vertexMapping[v];
+            const auto w = sourceToTargetMapping[v];
             numValidMapping += (w < targetGraph.numVertices());
             KASSERT(w >= 0 && w < targetGraph.numVertices() + 1);
         }
@@ -133,17 +142,19 @@ private:
     }
 
 
-
     const SourceGraphT &sourceGraph;
     const TargetGraphT &targetGraph;
     // Maps vertex IDs of source graph to vertex IDs of target graph. Vertices v with no equivalent in the targetGraph
-    // should have vertexMapping[v] == targetGraph.numVertices().
-    const std::vector<int>& vertexMapping;
+    // should have sourceToTargetMapping[v] == targetGraph.numVertices().
+    const std::vector<int> &sourceToTargetMapping;
+
+    // Maps vertex IDs of target graph to vertex IDs of source graph.
+    const std::vector<int> &targetToSourceMapping;
 
     Dijkstra<SourceGraphT, WeightT, LabelSetT, dij::NoCriterion, dij::NoCriterion, DistanceLabelContainerT> upwardSearch;
 
-    DistanceLabelContainerT<DistanceLabel> distances;
-    DistanceLabelContainerT<DistanceLabel> meetingVertices;
+    AlignedVector<DistanceLabel> distances;
+    AlignedVector<DistanceLabel> meetingVertices;
 
     // Stats on last call to run()
     int numVerticesSettled;

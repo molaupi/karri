@@ -41,8 +41,8 @@ public:
 
     RPHASTEnvironment(const CH &ch) : upwardGraph(ch.upwardGraph()), downwardGraph(ch.downwardGraph()),
                                       selectionQueue(), verticesInSubgraph(ch.upwardGraph().numVertices()),
-                                      sourcesSubgraph(), sourcesVertexMapping(),
-                                      targetsSubgraph(), targetsVertexMapping() {
+                                      sourcesSubgraph(), sourcesFullToSubMapping(),
+                                      targetsSubgraph(), targetsFullToSubMapping() {
         KASSERT(upwardGraph.numVertices() == downwardGraph.numVertices());
         selectionQueue.reserve(ch.upwardGraph().numVertices());
 
@@ -74,7 +74,10 @@ public:
         int numEdgesInSubgraph = 0;
         findVerticesInSubgraph(upwardGraph, sources, numEdgesInSubgraph);
         sourcesSubgraph = constructOrderedSubgraph(upwardGraph, verticesInSubgraph, numEdgesInSubgraph,
-                                                   sourcesVertexMapping);
+                                                   sourcesFullToSubMapping);
+        sourcesSubToFullMapping.resize(verticesInSubgraph.size());
+        for (const auto& v : verticesInSubgraph)
+            sourcesSubToFullMapping[sourcesFullToSubMapping[v]] = v;
     }
 
     // Runs RPHAST target selection phase for given targets in downward graph.
@@ -83,7 +86,10 @@ public:
         int numEdgesInSubgraph = 0;
         findVerticesInSubgraph(downwardGraph, targets, numEdgesInSubgraph);
         targetsSubgraph = constructOrderedSubgraph(downwardGraph, verticesInSubgraph, numEdgesInSubgraph,
-                                                   targetsVertexMapping);
+                                                   targetsFullToSubMapping);
+        targetsSubToFullMapping.resize(verticesInSubgraph.size());
+        for (const auto& v : verticesInSubgraph)
+            targetsSubToFullMapping[targetsFullToSubMapping[v]] = v;
     }
 
     template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
@@ -93,14 +99,14 @@ public:
     // call to runTargetSelection().
     template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
     Query<LabelSetT> getForwardRPHASTQuery() {
-        return Query<LabelSetT>(upwardGraph, targetsSubgraph, targetsVertexMapping);
+        return Query<LabelSetT>(upwardGraph, targetsSubgraph, targetsFullToSubMapping, targetsSubToFullMapping);
     }
 
     // Returns a reverse RPHAST query that uses the result of the target selection phase completed by the last
     // call to runSourceSelection().
     template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
     Query<LabelSetT> getReverseRPHASTQuery() {
-        return Query<LabelSetT>(downwardGraph, sourcesSubgraph, sourcesVertexMapping);
+        return Query<LabelSetT>(downwardGraph, sourcesSubgraph, sourcesFullToSubMapping, sourcesSubToFullMapping);
     }
 
 private:
@@ -194,13 +200,16 @@ private:
 
     // Subgraphs of the upward and downward search graphs with vertices ordered by decreasing rank.
     // Used for the target side ("many" side of one-to-many) of RPHAST queries.
-    // Vertex mappings map each vertex ID in the full graph to the according ID in the subgraph if present.
+    // Full-to-sub mappings map each vertex ID in the full graph to the according ID in the subgraph if present.
     // If vertex v is not present in the subgraph, its mapping is subGraph.numVertices() to mark it as invalid.
+    // Sub-to-full mappings map each vertex ID in the subgraph to the according ID in the full graph.
     // Subgraphs and mappings are constructed for a specific set of sources/targets passed to
     // runSourceSelection/runTargetSelection.
     SearchGraph sourcesSubgraph;
-    std::vector<int> sourcesVertexMapping;
+    std::vector<int> sourcesFullToSubMapping;
+    std::vector<int> sourcesSubToFullMapping;
     SearchGraph targetsSubgraph;
-    std::vector<int> targetsVertexMapping;
+    std::vector<int> targetsFullToSubMapping;
+    std::vector<int> targetsSubToFullMapping;
 
 };

@@ -107,37 +107,59 @@ namespace karri {
             // Run RPHAST target selection for all existing stops.
             std::vector<int> stopRanks;
 
-            getAllCurrentSourceStopLocations(stopRanks);
+            initSourceStopLocations();
+            for (const auto &sourceStop : sourceStops) {
+                stopRanks.push_back(sourceStop.rank);
+            }
             rphastEnv.runSourceSelection(stopRanks);
 
-            getAllCurrentTargetStopLocations(stopRanks);
+            initTargetStopLocations();
+            stopRanks.clear();
+            for (const auto &targetStop : targetStops) {
+                stopRanks.push_back(targetStop.rank);
+            }
             rphastEnv.runTargetSelection(stopRanks);
+
+            std::sort(sourceStops.begin(), sourceStops.end(), [](const auto &a, const auto &b) {
+                return a.rank > b.rank;
+            });
+            std::sort(targetStops.begin(), targetStops.end(), [](const auto &a, const auto &b) {
+                return a.rank > b.rank;
+            });
 
             stats.initializationTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
     private:
 
-        void getAllCurrentSourceStopLocations(std::vector<int>& stopRanks) {
-            stopRanks.clear();
+        void initSourceStopLocations() {
+            sourceStops.clear();
+            sourceStops.reserve(routeState.getMaxStopId() + 1);
             for (int vehId = 0; vehId < fleet.size(); ++vehId) {
                 const auto numStops = routeState.numStopsOf(vehId);
+                const auto &stopIds = routeState.stopIdsFor(vehId);
                 const auto &stopLocations = routeState.stopLocationsFor(vehId);
                 for (int stopIndex = 0; stopIndex < numStops - 1; ++stopIndex) {
+                    const auto stopId = stopIds[stopIndex];
                     const auto loc = stopLocations[stopIndex];
-                    stopRanks.push_back(ch.rank(inputGraph.edgeHead(loc)));
+                    const auto rank = ch.rank(inputGraph.edgeHead(loc));
+                    sourceStops.push_back({.stopId = stopId, .rank = rank});
                 }
             }
         }
 
-        void getAllCurrentTargetStopLocations(std::vector<int>& stopRanks) {
-            stopRanks.clear();
+        void initTargetStopLocations() {
+            targetStops.clear();
             for (int vehId = 0; vehId < fleet.size(); ++vehId) {
                 const auto numStops = routeState.numStopsOf(vehId);
+                const auto &stopIds = routeState.stopIdsFor(vehId);
                 const auto &stopLocations = routeState.stopLocationsFor(vehId);
                 for (int stopIndex = 1; stopIndex < numStops; ++stopIndex) {
+                    const auto prevStopId = stopIds[stopIndex - 1];
                     const auto loc = stopLocations[stopIndex];
-                    stopRanks.push_back(ch.rank(inputGraph.edgeTail(loc)));
+                    const auto rank = ch.rank(inputGraph.edgeTail(loc));
+                    const auto offset = inputGraph.travelTime(loc);
+                    targetStops.push_back({.prevStopId = prevStopId, .rank = rank, .offset = offset});
                 }
             }
         }
@@ -186,23 +208,32 @@ namespace karri {
             totalNumVerticesSettled += fromQuery.getNumVerticesSettled();
 
             // Store results for each stop where a feasible distance has been found:
-            // TODO: Memorize rank and offset of each stop when running target selection and use it here.
-            //  Order this information by decreasing rank to optimize access to distance array of query.
-            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
-                const auto numStops = routeState.numStopsOf(vehId);
-                const auto &stopIds = routeState.stopIdsFor(vehId);
-                const auto &stopLocations = routeState.stopLocationsFor(vehId);
-                for (int stopIndex = 1; stopIndex < numStops; ++stopIndex) {
-                    const auto prevStopId = stopIds[stopIndex - 1];
-                    const auto stopLoc = stopLocations[stopIndex];
-                    const auto offset = inputGraph.travelTime(stopLoc);
-                    const auto stopRank = ch.rank(inputGraph.edgeTail(stopLoc));
-                    const auto leeway = routeState.leewayOfLegStartingAt(prevStopId);
-                    const auto dist = fromQuery.getDistances(stopRank) + offset;
-                    const auto holdsLeeway = dist <= leeway;
-                    if (anySet(holdsLeeway)) {
-                        feasibleEllipticDistances.updateDistanceFromPDLocToNextStop(prevStopId, startId, dist, fromQuery.getMeetingVertices(stopRank));
-                    }
+//            // TODO: Memorize rank and offset of each stop when running target selection and use it here.
+//            //  Order this information by decreasing rank to optimize access to distance array of query.
+//            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
+//                const auto numStops = routeState.numStopsOf(vehId);
+//                const auto &stopIds = routeState.stopIdsFor(vehId);
+//                const auto &stopLocations = routeState.stopLocationsFor(vehId);
+//                for (int stopIndex = 1; stopIndex < numStops; ++stopIndex) {
+//                    const auto prevStopId = stopIds[stopIndex - 1];
+//                    const auto stopLoc = stopLocations[stopIndex];
+//                    const auto offset = inputGraph.travelTime(stopLoc);
+//                    const auto stopRank = ch.rank(inputGraph.edgeTail(stopLoc));
+//                    const auto leeway = routeState.leewayOfLegStartingAt(prevStopId);
+//                    const auto dist = fromQuery.getDistances(stopRank) + offset;
+//                    const auto holdsLeeway = dist <= leeway;
+//                    if (anySet(holdsLeeway)) {
+//                        feasibleEllipticDistances.updateDistanceFromPDLocToNextStop(prevStopId, startId, dist, fromQuery.getMeetingVertices(stopRank));
+//                    }
+//                }
+//            }
+
+            for (const auto& [prevStopId, rank, offset] : targetStops) {
+                const auto leeway = routeState.leewayOfLegStartingAt(prevStopId);
+                const auto dist = fromQuery.getDistances(rank) + offset;
+                const auto holdsLeeway = dist <= leeway;
+                if (anySet(holdsLeeway)) {
+                    feasibleEllipticDistances.updateDistanceFromPDLocToNextStop(prevStopId, startId, dist, fromQuery.getMeetingVertices(rank));
                 }
             }
         }
@@ -234,22 +265,31 @@ namespace karri {
             totalNumVerticesSettled += toQuery.getNumVerticesSettled();
 
             // Store results for each stop where a feasible distance has been found:
-            // TODO: Memorize rank and offset of each stop when running target selection and use it here.
-            //  Order this information by decreasing rank to optimize access to distance array of query.
-            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
-                const auto numStops = routeState.numStopsOf(vehId);
-                const auto &stopIds = routeState.stopIdsFor(vehId);
-                const auto &stopLocations = routeState.stopLocationsFor(vehId);
-                for (int stopIndex = 0; stopIndex < numStops - 1; ++stopIndex) {
-                    const auto stopId = stopIds[stopIndex];
-                    const auto stopLoc = stopLocations[stopIndex];
-                    const auto stopRank = ch.rank(inputGraph.edgeHead(stopLoc));
-                    const auto leeway = routeState.leewayOfLegStartingAt(stopId);
-                    const auto& dist = toQuery.getDistances(stopRank);
-                    const auto holdsLeeway = dist <= leeway;
-                    if (anySet(holdsLeeway)) {
-                        feasibleEllipticDistances.updateDistanceFromStopToPDLoc(stopId, startId, dist, toQuery.getMeetingVertices(stopRank));
-                    }
+//            // TODO: Memorize rank and offset of each stop when running target selection and use it here.
+//            //  Order this information by decreasing rank to optimize access to distance array of query.
+//            for (int vehId = 0; vehId < fleet.size(); ++vehId) {
+//                const auto numStops = routeState.numStopsOf(vehId);
+//                const auto &stopIds = routeState.stopIdsFor(vehId);
+//                const auto &stopLocations = routeState.stopLocationsFor(vehId);
+//                for (int stopIndex = 0; stopIndex < numStops - 1; ++stopIndex) {
+//                    const auto stopId = stopIds[stopIndex];
+//                    const auto stopLoc = stopLocations[stopIndex];
+//                    const auto stopRank = ch.rank(inputGraph.edgeHead(stopLoc));
+//                    const auto leeway = routeState.leewayOfLegStartingAt(stopId);
+//                    const auto& dist = toQuery.getDistances(stopRank);
+//                    const auto holdsLeeway = dist <= leeway;
+//                    if (anySet(holdsLeeway)) {
+//                        feasibleEllipticDistances.updateDistanceFromStopToPDLoc(stopId, startId, dist, toQuery.getMeetingVertices(stopRank));
+//                    }
+//                }
+//            }
+
+            for (const auto& [stopId, rank] : sourceStops) {
+                const auto leeway = routeState.leewayOfLegStartingAt(stopId);
+                const auto dist = toQuery.getDistances(rank);
+                const auto holdsLeeway = dist <= leeway;
+                if (anySet(holdsLeeway)) {
+                    feasibleEllipticDistances.updateDistanceFromStopToPDLoc(stopId, startId, dist, toQuery.getMeetingVertices(rank));
                 }
             }
         }
@@ -259,6 +299,19 @@ namespace karri {
         const CH &ch;
         const RouteState &routeState;
         RPHASTEnvironment rphastEnv;
+
+        struct StopWithRank {
+            int stopId = INVALID_ID;
+            int rank = INVALID_VERTEX;
+        };
+        std::vector<StopWithRank> sourceStops;
+
+        struct StopWithRankAndOffset {
+            int prevStopId = INVALID_ID;
+            int rank = INVALID_VERTEX;
+            int offset = INFTY;
+        };
+        std::vector<StopWithRankAndOffset> targetStops;
 
         typename RPHASTEnvironment::template Query<LabelSetT> toQuery;
         typename RPHASTEnvironment::template Query<LabelSetT> fromQuery;

@@ -150,30 +150,6 @@ namespace karri {
             globalMin.min(newDistToPDLoc);
         }
 
-//        // Same as updateDistanceFromStopToPDLoc but does not check whether distance is being improved.
-//        void setDistanceFromStopToPDLoc(const int stopId, const unsigned int firstPDLocId,
-//                                           const DistanceLabel newDistToPDLoc, const DistanceLabel meetingVertices) {
-//            assert(stopId >= 0 && stopId <= maxStopId);
-//            assert(firstPDLocId < numLabelsPerStop * K);
-//            assert(firstPDLocId % K == 0);
-//            assert(newDistToPDLoc.horizontalMin() >= 0 && newDistToPDLoc.horizontalMin() < INFTY);
-//
-//            // If no entries exist yet for this stop, perform the allocation.
-//            if (startOfRangeInValueArray[stopId] == INVALID_INDEX) {
-//                allocateEntriesFor(stopId);
-//            }
-//
-//            // Write values for new entry and set pointer from PD loc to the entries
-//            const auto idx = startOfRangeInValueArray[stopId] + firstPDLocId / K;
-//            distToRelevantPDLocs[idx] = newDistToPDLoc;
-//            if constexpr (StoreMeetingVertices) {
-//                meetingVerticesToRelevantPDLocs[idx] = meetingVertices;
-//            }
-//
-//            auto &globalMin = minDistToPDLoc[stopId];
-//            globalMin.min(newDistToPDLoc);
-//        }
-
         // Updates the distance from the PD loc to the stop that follows stopId. Distance is written only if entries
         // for the stop exist already.
         // Returns mask indicating where the distance has been improved (all false if we don't know the stop).
@@ -199,27 +175,6 @@ namespace karri {
             auto &globalMin = minDistFromPDLocToNextStop[stopId];
             globalMin.min(newDistFromPDLocToNextStop);
         }
-
-//        // Same as updateDistanceFromPDLocToNextStop but does not check whether distance is being improved.
-//        void setDistanceFromPDLocToNextStop(const int stopId, const int firstPDLocId,
-//                                               const DistanceLabel newDistFromPDLocToNextStop,
-//                                               const DistanceLabel meetingVertices) {
-//
-//            // We assume the from-searches are run after the to-searches. If the stop does not have entries yet, it was
-//            // considered irrelevant for the to-searches (regardless of whether we allow dynamic allocation or not).
-//            // Therefore, this stop cannot be relevant on both sides which means we can skip it here.
-//            if (startOfRangeInValueArray[stopId] == INVALID_INDEX)
-//                return;
-//
-//            const auto idx = startOfRangeInValueArray[stopId] + firstPDLocId / K;
-//            distFromRelevantPDLocsToNextStop[idx] = newDistFromPDLocToNextStop;
-//            if constexpr (StoreMeetingVertices) {
-//                meetingVerticesFromRelevantPDLocsToNextStop[idx] = meetingVertices;
-//            }
-//
-//            auto &globalMin = minDistFromPDLocToNextStop[stopId];
-//            globalMin.min(newDistFromPDLocToNextStop);
-//        }
 
         bool hasPotentiallyRelevantPDLocs(const int stopId) const {
             assert(stopId <= maxStopId);
