@@ -49,8 +49,6 @@
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
 #include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBucketsEnvironment.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
 #include "Algorithms/KaRRi/EllipticBCH/PDLocsAtExistingStopsFinder.h"
 #include "Algorithms/KaRRi/CostCalculator.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
@@ -109,6 +107,7 @@
 #include "Algorithms/KaRRi/RequestState/PDLocsFinder.h"
 #include "Algorithms/KaRRi/ThreadLocalAssignmentFinderFactory.h"
 #include "Algorithms/KaRRi/BatchAssignmentFinder.h"
+#include "Algorithms/KaRRi/EllipticBCH/OrdinaryStopsRPHASTSelection.h"
 
 #elif KARRI_DALS_STRATEGY == KARRI_IND
 
@@ -431,11 +430,6 @@ int main(int argc, char *argv[]) {
         const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
         const auto revPsgGraph = psgInputGraph.getReverseGraph();
 
-        // Construct Elliptic BCH bucket environment:
-        static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
-        using EllipticBucketsEnv = EllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
-        EllipticBucketsEnv ellipticBucketsEnv(vehicleInputGraph, *vehChEnv, routeState);
-
         // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
         // Otherwise, we use a last stop buckets substitute that only stores which vehicles' last stops are at a vertex.
 #if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
@@ -455,18 +449,23 @@ int main(int argc, char *argv[]) {
         // Last stop bucket environment (or substitute) also serves as a source of information on the last stops at vertices.
         using LastStopAtVerticesInfo = LastStopBucketsEnv;
 
+        OrdinaryStopsAtLocations ordinaryStopsAtLocations(vehicleInputGraph.numEdges());
 
-        using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, typename EllipticBucketsEnv::BucketContainer, LastStopAtVerticesInfo>;
-        PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, *vehChEnv,
-                                                              ellipticBucketsEnv.getSourceBuckets(), lastStopBucketsEnv,
-                                                              routeState);
+        using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, LastStopAtVerticesInfo>;
+        PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, ordinaryStopsAtLocations,
+                                                              lastStopBucketsEnv, routeState);
 
+        RPHASTEnvironment rphastEnv(vehChEnv->getCH());
 
-        using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, EllipticBucketsEnv, PDLocsAtExistingStopsFinderImpl, LastStopBucketsEnv>;
+        using OrdinaryStopsRPHASTSelectionImpl = OrdinaryStopsRPHASTSelection<VehicleInputGraph>;
+        OrdinaryStopsRPHASTSelectionImpl ordinaryStopsRphastSelection(vehicleInputGraph, vehChEnv->getCH(), fleet,
+                                                                      routeState, rphastEnv);
+
+        using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, PDLocsAtExistingStopsFinderImpl, OrdinaryStopsRPHASTSelectionImpl, LastStopBucketsEnv>;
         ThreadLocalAssignmentFinderFactoryImpl asgnFinderFactory(vehicleInputGraph, revVehicleGraph, psgInputGraph,
-                                                                 revPsgGraph, *vehChEnv, *psgChEnv, ellipticBucketsEnv,
-                                                                 pdLocsAtExistingStops, lastStopBucketsEnv, fleet,
-                                                                 routeState);
+                                                                 revPsgGraph, *vehChEnv, *psgChEnv, rphastEnv,
+                                                                 pdLocsAtExistingStops, ordinaryStopsRphastSelection,
+                                                                 lastStopBucketsEnv, fleet, routeState);
         using InsertionFinderImpl = BatchAssignmentFinder<ThreadLocalAssignmentFinderFactoryImpl>;
         InsertionFinderImpl insertionFinder(asgnFinderFactory);
 
@@ -481,9 +480,10 @@ int main(int argc, char *argv[]) {
 
         using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
         VehicleLocatorImpl ssUlocator(vehicleInputGraph, *vehChEnv, routeState);
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, std::ofstream>;
+        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, OrdinaryStopsRPHASTSelectionImpl, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, std::ofstream>;
         SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, ssUlocator,
-                                                  pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
+                                                  pathTracker, routeState, ordinaryStopsAtLocations,
+                                                  ordinaryStopsRphastSelection, lastStopBucketsEnv);
 
 
         // Initialize last stop state for initial locations of vehicles

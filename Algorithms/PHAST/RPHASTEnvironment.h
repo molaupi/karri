@@ -98,14 +98,14 @@ public:
     // Returns a forward RPHAST query that uses the result of the target selection phase completed by the last
     // call to runTargetSelection().
     template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
-    Query<LabelSetT> getForwardRPHASTQuery() {
+    Query<LabelSetT> getForwardRPHASTQuery() const {
         return Query<LabelSetT>(upwardGraph, targetsSubgraph, targetsFullToSubMapping, targetsSubToFullMapping);
     }
 
     // Returns a reverse RPHAST query that uses the result of the target selection phase completed by the last
     // call to runSourceSelection().
     template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
-    Query<LabelSetT> getReverseRPHASTQuery() {
+    Query<LabelSetT> getReverseRPHASTQuery() const {
         return Query<LabelSetT>(downwardGraph, sourcesSubgraph, sourcesFullToSubMapping, sourcesSubToFullMapping);
     }
 

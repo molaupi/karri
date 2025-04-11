@@ -35,8 +35,6 @@
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
 #include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBucketsEnvironment.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticRPHASTSearches.h"
 #include "Algorithms/KaRRi/EllipticBCH/PDLocsAtExistingStopsFinder.h"
 #include "Algorithms/KaRRi/CostCalculator.h"
@@ -97,8 +95,8 @@ namespace karri {
             typename PsgInputGraph,
             typename VehCHEnv,
             typename PsgCHEnv,
-            typename EllipticBucketsEnv,
             typename PDLocsAtExistingStopsFinderT,
+            typename OrdinaryStopsRPHASTSelectionT,
             typename LastStopBucketsEnv>
     struct ThreadLocalAssignmentFinderFactory {
 
@@ -111,10 +109,11 @@ namespace karri {
         const PsgInputGraph &revPsgGraph;
         const VehCHEnv &vehChEnv;
         const PsgCHEnv &psgChEnv;
-        const EllipticBucketsEnv &ellipticBucketsEnv;
-        const PDLocsAtExistingStopsFinderT& pdLocsAtExistingStopsFinder;
+        const RPHASTEnvironment &rphastEnv;
+        const PDLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder;
+        const OrdinaryStopsRPHASTSelectionT &ordinaryStopsRphastSelection;
         const LastStopBucketsEnv &lastStopBucketsEnv;
-        const Fleet& fleet;
+        const Fleet &fleet;
         const RouteState &routeState;
 
         using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
@@ -131,9 +130,7 @@ namespace karri {
         tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticPickups;
         tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticDropoffs;
 
-//        using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
-//                EllipticBucketsEnv, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
-        using EllipticBCHSearchesImpl = EllipticRPHASTSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
+        using EllipticBCHSearchesImpl = EllipticRPHASTSearches<VehicleInputGraph, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
         tbb::enumerable_thread_specific<EllipticBCHSearchesImpl> ellipticSearches;
 
         using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
@@ -148,7 +145,7 @@ namespace karri {
         using PDDistancesImpl = PDDistances<PDDistancesLabelSet>;
 
         using FFPDDistanceQueryImpl = std::conditional_t<KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT,
-        PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>,
+                PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>,
                 PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>>;
         tbb::enumerable_thread_specific<FFPDDistanceQueryImpl> ffPDDistanceQuery;
 
@@ -173,10 +170,14 @@ namespace karri {
 
         // Use Collective-BCH PALS Strategy
         using PALSStrategy = PickupAfterLastStopStrategies::CollectiveBCHStrategy<VehicleInputGraph, VehCHEnv, LastStopBucketsEnv, VehicleToPDLocQueryImpl, PDDistancesImpl, PALSLabelSet>;
-        static PALSStrategy makePalsStrategy(const VehicleInputGraph& vehicleInputGraph, const VehicleInputGraph&,
-                                             const Fleet& fleet, const VehCHEnv& vehChEnv, const LastStopBucketsEnv& lastStopBucketsEnv,
-                                                const RouteState& routeState, VehicleToPDLocQueryImpl &vehicleToPdLocQuery) {
-            return PALSStrategy(vehicleInputGraph, fleet, vehChEnv, vehicleToPdLocQuery, lastStopBucketsEnv, routeState);
+
+        static PALSStrategy makePalsStrategy(const VehicleInputGraph &vehicleInputGraph, const VehicleInputGraph &,
+                                             const Fleet &fleet, const VehCHEnv &vehChEnv,
+                                             const LastStopBucketsEnv &lastStopBucketsEnv,
+                                             const RouteState &routeState,
+                                             VehicleToPDLocQueryImpl &vehicleToPdLocQuery) {
+            return PALSStrategy(vehicleInputGraph, fleet, vehChEnv, vehicleToPdLocQuery, lastStopBucketsEnv,
+                                routeState);
         }
 
 #elif KARRI_PALS_STRATEGY == KARRI_IND
@@ -213,11 +214,16 @@ namespace karri {
 #if KARRI_DALS_STRATEGY == KARRI_COL
         // Use Collective-BCH DALS Strategy
         using DALSStrategy = DropoffAfterLastStopStrategies::CollectiveBCHStrategy<VehicleInputGraph, VehCHEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl>;
-        static DALSStrategy makeDalsStrategy(const VehicleInputGraph& vehicleInputGraph, const VehicleInputGraph&,
-                                             const Fleet& fleet, const VehCHEnv& vehChEnv, const LastStopBucketsEnv& lastStopBucketsEnv,
-                                             const RouteState& routeState, CurVehLocToPickupSearchesImpl& curVehLocToPickupSearches) {
-            return DALSStrategy(vehicleInputGraph, fleet, routeState, vehChEnv, lastStopBucketsEnv, curVehLocToPickupSearches);
+
+        static DALSStrategy makeDalsStrategy(const VehicleInputGraph &vehicleInputGraph, const VehicleInputGraph &,
+                                             const Fleet &fleet, const VehCHEnv &vehChEnv,
+                                             const LastStopBucketsEnv &lastStopBucketsEnv,
+                                             const RouteState &routeState,
+                                             CurVehLocToPickupSearchesImpl &curVehLocToPickupSearches) {
+            return DALSStrategy(vehicleInputGraph, fleet, routeState, vehChEnv, lastStopBucketsEnv,
+                                curVehLocToPickupSearches);
         }
+
 #elif KARRI_DALS_STRATEGY == KARRI_IND
         // Use Individual-BCH DALS Strategy
         using DALSStrategy = DropoffAfterLastStopStrategies::IndividualBCHStrategy<VehicleInputGraph, VehCHEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl, DALSLabelSet>;
@@ -257,10 +263,11 @@ namespace karri {
                                            const PsgInputGraph &revPsgGraph,
                                            const VehCHEnv &vehChEnv,
                                            const PsgCHEnv &psgChEnv,
-                                           const EllipticBucketsEnv &ellipticBucketsEnv,
-                                           const PDLocsAtExistingStopsFinderT& pdLocsAtExistingStopsFinder,
+                                           const RPHASTEnvironment &rphastEnv,
+                                           const PDLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder,
+                                           const OrdinaryStopsRPHASTSelectionT &ordinaryStopsRphastSelection,
                                            const LastStopBucketsEnv &lastStopBucketsEnv,
-                                           const Fleet& fleet,
+                                           const Fleet &fleet,
                                            const RouteState &routeState) :
                 vehicleInputGraph(vehicleInputGraph),
                 revVehicleGraph(revVehicleGraph),
@@ -268,28 +275,51 @@ namespace karri {
                 revPsgGraph(revPsgGraph),
                 vehChEnv(vehChEnv),
                 psgChEnv(psgChEnv),
-                ellipticBucketsEnv(ellipticBucketsEnv),
+                rphastEnv(rphastEnv),
                 pdLocsAtExistingStopsFinder(pdLocsAtExistingStopsFinder),
+                ordinaryStopsRphastSelection(ordinaryStopsRphastSelection),
                 lastStopBucketsEnv(lastStopBucketsEnv),
                 fleet(fleet),
                 routeState(routeState),
-                locator([&](){return VehicleLocatorImpl(vehicleInputGraph, vehChEnv, routeState);}),
-                feasibleEllipticPickups([&](){return FeasibleEllipticDistancesImpl(fleet.size(), routeState);}),
-                feasibleEllipticDropoffs([&](){return FeasibleEllipticDistancesImpl(fleet.size(), routeState);}),
-//                ellipticSearches([&](){return EllipticBCHSearchesImpl(vehicleInputGraph, fleet, ellipticBucketsEnv, vehChEnv, routeState);}),
-                ellipticSearches([&](){return EllipticBCHSearchesImpl(vehicleInputGraph, fleet, vehChEnv, routeState);}),
-                relevantPdLocsFilter([&](){return RelevantPDLocsFilterImpl(fleet, vehicleInputGraph, vehChEnv, routeState);}),
-                vehicleToPdLocQuery([&](){return VehicleToPDLocQueryImpl(vehicleInputGraph, revVehicleGraph);}),
-                ffPDDistanceQuery([&](){return FFPDDistanceQueryImpl(vehicleInputGraph, vehChEnv);}),
-                ordinaryInsertionsFinder([&](){return OrdinaryAssignmentsFinderImpl (fleet, routeState);}),
-                curVehLocToPickupSearches([&](){return CurVehLocToPickupSearchesImpl(vehicleInputGraph, locator.local(), vehChEnv, routeState, fleet.size()); }),
-                pbnsInsertionsFinder([&]() {return PBNSInsertionsFinderImpl(curVehLocToPickupSearches.local(), fleet, routeState);}),
-                palsStrategy([&]() {return makePalsStrategy(vehicleInputGraph, revVehicleGraph, fleet, vehChEnv, lastStopBucketsEnv, routeState, vehicleToPdLocQuery.local());}),
-                palsInsertionsFinder([&](){return PALSInsertionsFinderImpl(palsStrategy.local(), vehicleInputGraph, fleet, lastStopBucketsEnv, routeState);}),
-                dalsStrategy([&]() {return makeDalsStrategy(vehicleInputGraph, revVehicleGraph, fleet, vehChEnv, lastStopBucketsEnv, routeState, curVehLocToPickupSearches.local());}),
-                dalsInsertionsFinder([&](){return DALSInsertionsFinderImpl (dalsStrategy.local());}),
-                requestStateInitializer([&](){return RequestStateInitializerImpl (vehicleInputGraph, psgInputGraph, vehChEnv, psgChEnv);}),
-                pdLocsFinder([&](){return PDLocsFinderImpl(vehicleInputGraph, psgInputGraph, revPsgGraph, vehicleToPdLocQuery.local());}) {}
+                locator([&]() { return VehicleLocatorImpl(vehicleInputGraph, vehChEnv, routeState); }),
+                feasibleEllipticPickups([&]() { return FeasibleEllipticDistancesImpl(fleet.size(), routeState); }),
+                feasibleEllipticDropoffs([&]() { return FeasibleEllipticDistancesImpl(fleet.size(), routeState); }),
+                ellipticSearches([&]() {
+                    return EllipticBCHSearchesImpl(vehicleInputGraph, fleet, vehChEnv.getCH(), rphastEnv,
+                                                   ordinaryStopsRphastSelection.getSourceStopsByRank(),
+                                                   ordinaryStopsRphastSelection.getTargetStopsByRank(), routeState);
+                }),
+                relevantPdLocsFilter(
+                        [&]() { return RelevantPDLocsFilterImpl(fleet, vehicleInputGraph, vehChEnv, routeState); }),
+                vehicleToPdLocQuery([&]() { return VehicleToPDLocQueryImpl(vehicleInputGraph, revVehicleGraph); }),
+                ffPDDistanceQuery([&]() { return FFPDDistanceQueryImpl(vehicleInputGraph, vehChEnv); }),
+                ordinaryInsertionsFinder([&]() { return OrdinaryAssignmentsFinderImpl(fleet, routeState); }),
+                curVehLocToPickupSearches([&]() {
+                    return CurVehLocToPickupSearchesImpl(vehicleInputGraph, locator.local(), vehChEnv, routeState,
+                                                         fleet.size());
+                }),
+                pbnsInsertionsFinder([&]() {
+                    return PBNSInsertionsFinderImpl(curVehLocToPickupSearches.local(), fleet, routeState);
+                }),
+                palsStrategy([&]() {
+                    return makePalsStrategy(vehicleInputGraph, revVehicleGraph, fleet, vehChEnv, lastStopBucketsEnv,
+                                            routeState, vehicleToPdLocQuery.local());
+                }),
+                palsInsertionsFinder([&]() {
+                    return PALSInsertionsFinderImpl(palsStrategy.local(), vehicleInputGraph, fleet, lastStopBucketsEnv,
+                                                    routeState);
+                }),
+                dalsStrategy([&]() {
+                    return makeDalsStrategy(vehicleInputGraph, revVehicleGraph, fleet, vehChEnv, lastStopBucketsEnv,
+                                            routeState, curVehLocToPickupSearches.local());
+                }),
+                dalsInsertionsFinder([&]() { return DALSInsertionsFinderImpl(dalsStrategy.local()); }),
+                requestStateInitializer([&]() {
+                    return RequestStateInitializerImpl(vehicleInputGraph, psgInputGraph, vehChEnv, psgChEnv);
+                }),
+                pdLocsFinder([&]() {
+                    return PDLocsFinderImpl(vehicleInputGraph, psgInputGraph, revPsgGraph, vehicleToPdLocQuery.local());
+                }) {}
 
         using InsertionFinderImpl = AssignmentFinder<
                 VehicleInputGraph,

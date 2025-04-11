@@ -34,6 +34,7 @@
 #include "Tools/Timer.h"
 #include "Algorithms/Buckets/CompactLastStopBucketContainer.h"
 #include "Algorithms/KaRRi/Stats/LastStopBucketUpdateStats.h"
+#include <tbb/enumerable_thread_specific.h>
 
 namespace karri {
 

@@ -1,7 +1,7 @@
 /// ******************************************************************************
 /// MIT License
 ///
-/// Copyright (c) 2023 Moritz Laupichler <moritz.laupichler@kit.edu>
+/// Copyright (c) 2025 Moritz Laupichler <moritz.laupichler@kit.edu>
 ///
 /// Permission is hereby granted, free of charge, to any person obtaining a copy
 /// of this software and associated documentation files (the "Software"), to deal
@@ -22,17 +22,23 @@
 /// SOFTWARE.
 /// ******************************************************************************
 
-
 #pragma once
+
+#include "Tools/Constants.h"
+
 namespace karri {
 
-    struct BucketEntryWithLeeway {
-        int targetId = INVALID_ID; // stop id
-        int distToTarget = INFTY;
-        int leeway = 0;
-
-        constexpr friend bool operator==(const BucketEntryWithLeeway &e1, const BucketEntryWithLeeway &e2) {
-            return e1.targetId == e2.targetId && e1.distToTarget == e2.distToTarget;
-        }
+    struct StopWithRank {
+        int stopId = INVALID_ID;
+        int rank = INVALID_VERTEX;
     };
+
+    struct StopWithRankAndOffset {
+        int prevStopId = INVALID_ID;
+        int rank = INVALID_VERTEX;
+        int offset = INFTY;
+    };
+
+
 }
+

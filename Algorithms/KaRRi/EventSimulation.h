@@ -93,6 +93,7 @@ namespace karri {
                                                                                 "iteration,"
                                                                                 "num_requests,"
                                                                                 "num_accepted,"
+                                                                                "init_iteration_time,"
                                                                                 "find_assignments_running_time,"
                                                                                 "choose_accepted_running_time,"
                                                                                 "num_elliptic_bucket_entry_deletions,"
@@ -312,15 +313,11 @@ namespace karri {
 
             std::vector<stats::DispatchingPerformanceStats> stats(requestBatch.size());
 
-            int numEllipticBucketEntryDeletions = systemStateUpdater.numPendingEllipticBucketEntryDeletions();
-
             // Before searching for assignments, commit all pending deletions to the elliptic buckets as well as
             // insertions and deletions to the last stop buckets that were caused by vehicles progressing in their
             // routes since the last batch.
-            systemStateUpdater.commitPendingEllipticBucketEntryDeletions();
             systemStateUpdater.commitPendingLastStopBucketEntryInsertionsAndDeletions();
 
-            KASSERT(systemStateUpdater.noPendingEllipticBucketEntryInsertionsOrDeletions());
             KASSERT(systemStateUpdater.noPendingLastStopBucketEntryInsertionsOrDeletions());
 
             // Find an assignment for each request in requestBatch. May require multiple rounds for some requests
@@ -331,6 +328,10 @@ namespace karri {
                 const auto iterationNumRequests = requestBatch.size();
 
                 Timer iterationTimer;
+                systemStateUpdater.initializeForNewBatch();
+                const auto iterationInitForBatchTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
+
+                iterationTimer.restart();
                 auto responses = assignmentFinder.findBestAssignmentsForBatchParallel(requestBatch, now, stats);
                 const auto iterationFindAssignmentsTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 
@@ -421,11 +422,11 @@ namespace karri {
                 stats.erase(stats.begin() + firstAcc, stats.end());
 
                 batchDispatchStatsLogger << now << "," << iteration << "," << iterationNumRequests << ","
-                                         << accepted.size() << "," << iterationFindAssignmentsTime << ","
+                                         << accepted.size() << ","
+                                         << iterationInitForBatchTime << "," << iterationFindAssignmentsTime << ","
                                          << iterationChooseAcceptedTime << ","
-                                         << numEllipticBucketEntryDeletions << ","
+                                         << 0 << "," // numEllipticBucketEntryDeletions << ","
                                          << iterationUpdateSystemStateTime << '\n';
-                numEllipticBucketEntryDeletions = 0; // Deletions are associated with first iteration.
             }
 
             nextRequestBatchDeadline += InputConfig::getInstance().requestBatchInterval;

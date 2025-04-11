@@ -25,12 +25,12 @@
 
 #pragma once
 
+#include "OrdinaryStopsAtLocations.h"
+
 namespace karri {
 
     template<
             typename InputGraphT,
-            typename CHEnvT,
-            typename EllipticSourceBucketsT,
             typename LastStopsAtVerticesT>
     class PDLocsAtExistingStopsFinder {
 
@@ -45,13 +45,11 @@ namespace karri {
     public:
 
         PDLocsAtExistingStopsFinder(const InputGraphT& inputGraph,
-                                    const CHEnvT& chEnv,
-                                    const EllipticSourceBucketsT& sourceBuckets,
+                                    const OrdinaryStopsAtLocations& ordinaryStopsAtLocations,
                                     const LastStopsAtVerticesT& lastStopsAtVertices,
                                     const RouteState& routeState) :
                                     inputGraph(inputGraph),
-                                    ch(chEnv.getCH()),
-                                    sourceBuckets(sourceBuckets),
+                                    ordinaryStopsAtLocations(ordinaryStopsAtLocations),
                                     lastStopsAtVertices(lastStopsAtVertices),
                                     routeState(routeState) {}
 
@@ -63,21 +61,16 @@ namespace karri {
             std::vector<PDLocAtExistingStop> res;
 
             for (const auto &pdLoc: pdLocs) {
-                const auto head = inputGraph.edgeHead(pdLoc.loc);
-                const auto headRank = ch.rank(head);
-                for (const auto &e: sourceBuckets.getBucketOf(headRank)) {
-                    if (e.distToTarget == 0) {
-                        const int vehId = routeState.vehicleIdOf(e.targetId);
-                        const int stopIdx = routeState.stopPositionOf(e.targetId);
-                        const auto &stopLoc = routeState.stopLocationsFor(vehId)[stopIdx];
-                        if (stopLoc == pdLoc.loc) {
-                            res.push_back({pdLoc.id, vehId, stopIdx});
-                        }
-                    }
+                for (const auto& stopId : ordinaryStopsAtLocations.getStopsAtLocation(pdLoc.loc)) {
+                    const auto vehId = routeState.vehicleIdOf(stopId);
+                    const auto stopIdx = routeState.stopPositionOf(stopId);
+                    LIGHT_KASSERT(routeState.stopLocationsFor(vehId)[stopIdx] == pdLoc.loc);
+                    res.push_back({pdLoc.id, vehId, stopIdx});
                 }
 
                 if constexpr (type == DROPOFF) {
                     // Additionally find dropoffs that coincide with the last stop:
+                    const auto head = inputGraph.edgeHead(pdLoc.loc);
                     for (const auto &vehId: lastStopsAtVertices.vehiclesWithLastStopAt(head)) {
                         const auto numStops = routeState.numStopsOf(vehId);
                         if (numStops == 1)
@@ -98,8 +91,7 @@ namespace karri {
     private:
 
         const InputGraphT& inputGraph;
-        const CH& ch;
-        const EllipticSourceBucketsT& sourceBuckets;
+        const OrdinaryStopsAtLocations& ordinaryStopsAtLocations;
         const LastStopsAtVerticesT& lastStopsAtVertices;
         const RouteState& routeState;
 

@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "Algorithms/Dijkstra/Dijkstra.h"
 #include "DataStructures/Containers/FastResetFlagArray.h"
 
 namespace karri {
