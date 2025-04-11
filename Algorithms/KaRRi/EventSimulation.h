@@ -93,7 +93,7 @@ namespace karri {
                                                                                 "iteration,"
                                                                                 "num_requests,"
                                                                                 "num_accepted,"
-                                                                                "init_iteration_time,"
+                                                                                "init_iteration_running_time,"
                                                                                 "find_assignments_running_time,"
                                                                                 "choose_accepted_running_time,"
                                                                                 "num_elliptic_bucket_entry_deletions,"

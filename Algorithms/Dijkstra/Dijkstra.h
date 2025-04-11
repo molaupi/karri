@@ -223,12 +223,12 @@ public:
 
 
     // Returns the shortest-path distance from the i-th source to t.
-    int getDistance(const int t, const int i = 0) {
+    int getDistance(const int t, const int i = 0) const {
         return distanceLabels.readDistance(t)[i];
     }
 
     // Returns the shortest-path distances from all K sources to t.
-    DistanceLabel getDistances(const int t) {
+    DistanceLabel getDistances(const int t) const {
         return distanceLabels.readDistance(t);
     }
 

@@ -31,6 +31,7 @@
 #include "DataStructures/Labels/Containers/StampedDistanceLabelContainer.h"
 
 template<typename SourceGraphT, typename TargetGraphT, typename WeightT, typename LabelSetT,
+        bool StoreMeetingVertices = false,
         template<typename> class DistanceLabelContainerT = StampedDistanceLabelContainer>
 class PHASTQuery {
 
@@ -38,40 +39,56 @@ class PHASTQuery {
     using DistanceLabel = typename LabelSetT::DistanceLabel;
     using LabelMask = typename LabelSetT::LabelMask;
 
+
+    struct SetDistanceInDownwardArray {
+
+        SetDistanceInDownwardArray(DistanceLabelContainerT<DistanceLabel> &downwardArray,
+                                   const std::vector<int> &sourceToTargetMapping)
+                : downwardArray(downwardArray), sourceToTargetMapping(sourceToTargetMapping) {}
+
+        template<typename DistLabelT, typename DistLabelContT>
+        bool operator()(const int v, DistLabelT &upDistToV, const DistLabelContT &) {
+            downwardArray[sourceToTargetMapping[v]] = upDistToV;
+            return false;
+        }
+
+    private:
+        DistanceLabelContainerT<DistanceLabel> &downwardArray;
+        const std::vector<int> &sourceToTargetMapping;
+
+    };
+
 public:
     PHASTQuery(const SourceGraphT &sourceGraph, const TargetGraphT &targetGraph,
                const std::vector<int> &sourceToTargetMapping, const std::vector<int> &targetToSourceMapping)
             : sourceGraph(sourceGraph), targetGraph(targetGraph), sourceToTargetMapping(sourceToTargetMapping),
               targetToSourceMapping(targetToSourceMapping),
-              upwardSearch(sourceGraph),
               distances(0),
-              meetingVertices(0) {}
+              meetingVertices(0),
+              upwardSearch(sourceGraph, SetDistanceInDownwardArray(distances, sourceToTargetMapping)) {}
 
     void run(const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
         sanityCheckTargetGraphValidity();
-        upwardSearch.runWithOffset(sources, offsets);
-        numVerticesSettled = upwardSearch.getNumVerticesSettled();
-        numEdgesRelaxed = upwardSearch.getNumEdgeRelaxations();
-        initDownwardSweep();
+        runUpwardSearchAndInitializeDownwardDistances(sources, offsets);
         runDownwardSweep();
     }
 
-    int getDistance(const int v, const int i = 0) {
+    int getDistance(const int v, const int i = 0) const {
         KASSERT(distances[targetGraph.numVertices()][i] == INFTY);
-        return distances[sourceToTargetMapping[v]][i];
+        return distances.readDistance(sourceToTargetMapping[v])[i];
     }
 
-    DistanceLabel getDistances(const int v) {
+    DistanceLabel getDistances(const int v) const {
         KASSERT(allSet(distances[targetGraph.numVertices()] == INFTY));
-        return distances[sourceToTargetMapping[v]];
+        return distances.readDistance(sourceToTargetMapping[v]);
     }
 
-    int getMeetingVertex(const int v, const int i = 0) {
+    int getMeetingVertex(const int v, const int i = 0) const requires StoreMeetingVertices {
         KASSERT(meetingVertices[targetGraph.numVertices()][i] == INVALID_VERTEX);
         return meetingVertices[sourceToTargetMapping[v]][i];
     }
 
-    DistanceLabel getMeetingVertices(const int v) {
+    DistanceLabel getMeetingVertices(const int v) const requires StoreMeetingVertices {
         KASSERT(allSet(meetingVertices[targetGraph.numVertices()] == INVALID_VERTEX));
         return meetingVertices[sourceToTargetMapping[v]];
     }
@@ -86,44 +103,50 @@ public:
 
 private:
 
-    void initDownwardSweep() {
+    void runUpwardSearchAndInitializeDownwardDistances(const std::array<int, K> &sources,
+                                                       const std::array<int, K> &offsets = {}) {
         KASSERT(sourceToTargetMapping.size() == sourceGraph.numVertices());
         distances.resize(targetGraph.numVertices() + 1);
-        meetingVertices.resize(targetGraph.numVertices() + 1);
-//        distances.init();
-//        FORALL_VERTICES(sourceGraph, v) {
-//            const auto w = sourceToTargetMapping[v];
-//            KASSERT(w >= 0 && w < targetGraph.numVertices() + 1);
-//            distances[w] = upwardSearch.getDistances(v);
-//            meetingVertices[w] = v;
-//        }
+        distances.init();
+        if constexpr (StoreMeetingVertices) {
+            meetingVertices.resize(targetGraph.numVertices() + 1);
+        }
+
+        upwardSearch.runWithOffset(sources, offsets);
 
         // All vertices which are not present in target graph have distance INFTY.
         distances[targetGraph.numVertices()] = INFTY;
-        meetingVertices[targetGraph.numVertices()] = INVALID_VERTEX;
+
+        numVerticesSettled = upwardSearch.getNumVerticesSettled();
+        numEdgesRelaxed = upwardSearch.getNumEdgeRelaxations();
     }
 
     void runDownwardSweep() {
         // Vertices in target graph are ordered by decreasing rank. Downward sweep simply settles vertices in order.
-        for (int v = 0; v < targetGraph.numVertices(); ++v) {
+        const int numVertices = targetGraph.numVertices();
+        for (int v = 0; v < numVertices; ++v) {
             ++numVerticesSettled;
             auto &distAtV = distances[v];
-            auto &meetingVerticesAtV = meetingVertices[v];
 
-            // Initialize distance and meeting vertex to result of upward search.
-            const auto vInSourceGraph = targetToSourceMapping[v];
-            distAtV = upwardSearch.getDistances(vInSourceGraph);
-            meetingVerticesAtV = vInSourceGraph;
+            if constexpr (StoreMeetingVertices) {
+                meetingVertices[v] = targetToSourceMapping[v];
+            }
 
             // Relax all incoming edges to finalize the distances and meeting vertices at v.
             FORALL_INCIDENT_EDGES(targetGraph, v, e) {
                 ++numEdgesRelaxed;
                 const auto w = targetGraph.edgeHead(e);
-                const auto distViaW = distances[w] + targetGraph.template get<WeightT>(e);
-                const auto improved = distViaW < distAtV;
-                if (anySet(improved)) {
-                    distAtV.setIf(distViaW, improved);
-                    meetingVerticesAtV.setIf(meetingVertices[w], improved);
+                KASSERT(!distances.isStale(w));
+                const auto distToW = distances.readDistanceWithoutStaleCheck(w);
+                const auto distViaW = distToW + targetGraph.template get<WeightT>(e);
+                if constexpr (StoreMeetingVertices) {
+                    const auto improved = distViaW < distAtV;
+                    if (anySet(improved)) {
+                        distAtV.setIf(distViaW, improved);
+                        meetingVertices[v].setIf(meetingVertices[w], improved);
+                    }
+                } else {
+                    distAtV.min(distViaW);
                 }
             }
         }
@@ -151,10 +174,13 @@ private:
     // Maps vertex IDs of target graph to vertex IDs of source graph.
     const std::vector<int> &targetToSourceMapping;
 
-    Dijkstra<SourceGraphT, WeightT, LabelSetT, dij::NoCriterion, dij::NoCriterion, DistanceLabelContainerT> upwardSearch;
 
-    AlignedVector<DistanceLabel> distances;
+    DistanceLabelContainerT<DistanceLabel> distances;
     AlignedVector<DistanceLabel> meetingVertices;
+
+    using UpwardSearch = DagShortestPaths<SourceGraphT, WeightT, LabelSetT, SetDistanceInDownwardArray, DistanceLabelContainerT>;
+    UpwardSearch upwardSearch;
+
 
     // Stats on last call to run()
     int numVerticesSettled;

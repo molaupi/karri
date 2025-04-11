@@ -32,6 +32,8 @@ quality <- function(file_base) {
   eventsimstats <- read.csv(paste0(file_base, ".eventsimulationstats.csv"))
   num.Vehicles <- sum(eventsimstats$type == "VehicleStartup")
   
+  print(num.Vehicles)
+  
   df <- data.frame(
              wait_time_avg = c(mean(asgnstats$wait_time) / 10), # avg wait time for each request
              wait_time_q95 = c(quantile(asgnstats$wait_time, 0.95) / 10), # q95 wait time for each request
@@ -185,12 +187,18 @@ library(dplyr)
 batchDispatchPerfStats <- function(file_base) {
   
   stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
+  if(!("init_iteration_running_time" %in% colnames(stats)))
+  {
+    stats$init_iteration_running_time <- c(0)
+  }
   
-  print(paste0("Total time (batch dispatch): ", sum(stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
+  
+  print(paste0("Total time (batch dispatch): ", sum(stats$init_iteration_running_time + stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
   
   stats <- stats %>% group_by(occurence_time) %>% summarise(
     num_iterations = max(iteration),
     num_requests = max(num_requests),
+    init_iteration_running_time = sum(init_iteration_running_time, na.rm = TRUE),
     find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
     choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
     update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),

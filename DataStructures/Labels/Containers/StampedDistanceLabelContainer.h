@@ -82,7 +82,7 @@ class StampedDistanceLabelContainer {
 
   // Returns the distance at vertex v or a value of at least INFTY if the value at v has not been set since
   // the last initialization.
-  inline DistanceLabelT readDistance(const int v) const {
+  DistanceLabelT readDistance(const int v) const {
       static DistanceLabelT InftyLabel = DistanceLabelT(INFTY);
       assert(v >= 0); assert(v < distanceLabels.size());
       if (timestamps[v] != clock) {
@@ -90,6 +90,17 @@ class StampedDistanceLabelContainer {
           return InftyLabel;
       }
       return distanceLabels[v];
+  }
+
+  // Returns the distance value that was last written for vertex v without guaranteeing that the value is not stale.
+  DistanceLabelT readDistanceWithoutStaleCheck(const int v) const {
+      assert(v >= 0); assert(v < distanceLabels.size());
+      return distanceLabels[v];
+  }
+
+  bool isStale(const int v) const {
+      assert(v >= 0); assert(v < distanceLabels.size());
+      return timestamps[v] != clock;
   }
 
  private:

@@ -43,7 +43,8 @@ namespace karri {
 
     template<typename InputGraphT,
             typename FeasibleEllipticDistancesT,
-            typename LabelSetT>
+            typename LabelSetT,
+            bool StoreMeetingVertices = false>
     class EllipticRPHASTSearches {
 
     private:
@@ -156,7 +157,11 @@ namespace karri {
                 const auto dist = fromQuery.getDistances(rank) + offset;
                 const auto holdsLeeway = dist <= leeway;
                 if (anySet(holdsLeeway)) {
-                    feasibleEllipticDistances.updateDistanceFromPDLocToNextStop(prevStopId, startId, dist, fromQuery.getMeetingVertices(rank));
+                    const DistanceLabel meetingVertices = 0;
+                    if constexpr (StoreMeetingVertices) {
+                        meetingVertices = fromQuery.getMeetingVertices(rank);
+                    }
+                    feasibleEllipticDistances.updateDistanceFromPDLocToNextStop(prevStopId, startId, dist, meetingVertices);
                 }
             }
         }
@@ -193,7 +198,11 @@ namespace karri {
                 const auto dist = toQuery.getDistances(rank);
                 const auto holdsLeeway = dist <= leeway;
                 if (anySet(holdsLeeway)) {
-                    feasibleEllipticDistances.updateDistanceFromStopToPDLoc(stopId, startId, dist, toQuery.getMeetingVertices(rank));
+                    const DistanceLabel meetingVertices = 0;
+                    if constexpr (StoreMeetingVertices) {
+                        meetingVertices = fromQuery.getMeetingVertices(rank);
+                    }
+                    feasibleEllipticDistances.updateDistanceFromStopToPDLoc(stopId, startId, dist, meetingVertices);
                 }
             }
         }

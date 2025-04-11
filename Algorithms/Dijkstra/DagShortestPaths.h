@@ -49,126 +49,175 @@ namespace karri {
 // decrease-key operations on the priority queue. Depending on the used label set, it keeps parent
 // vertices and/or edges. The search can be used with different distance label containers and
 // priority queues. Moreover, the caller can provide an own pruning criterion.
-template <
-    typename GraphT, typename WeightT, typename LabelSetT,
-    typename PruningCriterionT = dij::NoCriterion,
-    template <typename> class DistanceLabelContainerT = StampedDistanceLabelContainer,
-    typename QueueT = AddressableQuadHeap>
+template<
+        typename GraphT, typename WeightT, typename LabelSetT,
+        typename PruningCriterionT = dij::NoCriterion,
+        template<typename> class DistanceLabelContainerT = StampedDistanceLabelContainer,
+        typename QueueT = AddressableQuadHeap>
 class DagShortestPaths {
 
     template<typename, typename, bool>
-    friend class karri::EllipticBucketsEnvironment;
+    friend
+    class karri::EllipticBucketsEnvironment;
+
+    using DistanceLabel = typename LabelSetT::DistanceLabel; // The distance label of a vertex.
+    using ParentLabel = typename LabelSetT::ParentLabel;     // The parent label of a vertex.
+    static constexpr int K = LabelSetT::K; // The number of simultaneous shortest-path computations.
 
 
- public:
-  // Constructs a shortest-path search instance for the specified directed acyclic graph.
-  explicit DagShortestPaths(const GraphT& graph, PruningCriterionT pruneSearch = {})
-      : graph(graph),
-        distanceLabels(graph.numVertices()),
-        parent(graph),
-        queue(graph.numVertices()),
-        pruneSearch(pruneSearch) {}
+public:
+    // Constructs a shortest-path search instance for the specified directed acyclic graph.
+    explicit DagShortestPaths(const GraphT &graph, PruningCriterionT pruneSearch = {})
+            : graph(graph),
+              distanceLabels(graph.numVertices()),
+              parent(graph),
+              queue(graph.numVertices()),
+              pruneSearch(pruneSearch) {}
 
-  // Runs a shortest-path search from s.
-  void run(const int s) {
-    runWithOffset(s, 0);
-  }
-
-  // Runs a shortest-path search from s to t.
-  void run(const int s, const int t) {
-    init(s);
-    while (!queue.empty()) {
-      if (queue.minId() == t)
-        break;
-      settleNextVertex();
+    // Runs a shortest-path search from s.
+    void run(const int s) {
+        runWithOffset(s, 0);
     }
-  }
 
-  // Runs a shortest-path search from s, with the distance of s initialized to the given offset.
-  void runWithOffset(const int s, const int offset) {
-    init(s, offset);
-    while (!queue.empty())
-      settleNextVertex();
-  }
+    // Runs a shortest-path search from s to t.
+    void run(const int s, const int t) {
+        std::array<int, K> sources;
+        sources.fill(s);
+        init(sources);
+        while (!queue.empty()) {
+            if (queue.minId() == t)
+                break;
+            settleNextVertex();
+        }
+    }
 
-  // Returns the shortest-path distance to t.
-  int getDistance(const int t) {
-    return distanceLabels[t][0];
-  }
+    // Runs a shortest-path search from s, with the distance of s initialized to the given offset.
+    void runWithOffset(const int s, const int offset) {
+        std::array<int, K> sources;
+        std::array<int, K> offsets;
+        sources.fill(s);
+        offsets.fill(offset);
+        init(s, offset);
+        while (!queue.empty())
+            settleNextVertex();
+    }
 
-  // Returns the parent vertex of v on the shortest path to v.
-  int getParentVertex(const int v) {
-    assert(distanceLabels[v][0] != INFTY);
-    return parent.getVertex(v);
-  }
+    // Runs a shortest-path search from multiple sources s, with the distances of the sources initialized to the given
+    // offsets.
+    void runWithOffset(const std::array<int, K> &sources, const std::array<int, K> &offsets) {
+        init(sources, offsets);
+        while (!queue.empty())
+            settleNextVertex();
+    }
 
-  // Returns the parent edge of v on the shortest path to v.
-  int getParentEdge(const int v) {
-    assert(distanceLabels[v][0] != INFTY);
-    return parent.getEdge(v);
-  }
+    // Returns the shortest-path distance from the i-th source to t.
+    int getDistance(const int t, const int i = 0) const {
+        return distanceLabels.readDistance(t)[i];
+    }
 
-  // Returns the vertices on the shortest path to t in reverse order.
-  const std::vector<int32_t>& getReversePath(const int t) {
-    assert(distanceLabels[t][0] != INFTY);
-    return parent.getReversePath(t);
-  }
+    // Returns the shortest-path distances from all K sources to t.
+    DistanceLabel getDistances(const int t) const {
+        return distanceLabels.readDistance(t);
+    }
 
-  // Returns the edges on the shortest path to t in reverse order.
-  const std::vector<int32_t>& getReverseEdgePath(const int t) {
-    assert(distanceLabels[t][0] != INFTY);
-    return parent.getReverseEdgePath(t);
-  }
+    // Returns the parent vertex of v on the shortest path to v.
+    int getParentVertex(const int v) {
+        assert(distanceLabels[v][0] != INFTY);
+        return parent.getVertex(v);
+    }
+
+    // Returns the parent edge of v on the shortest path to v.
+    int getParentEdge(const int v) {
+        assert(distanceLabels[v][0] != INFTY);
+        return parent.getEdge(v);
+    }
+
+    // Returns the vertices on the shortest path to t in reverse order.
+    const std::vector<int32_t> &getReversePath(const int t) {
+        assert(distanceLabels[t][0] != INFTY);
+        return parent.getReversePath(t);
+    }
+
+    // Returns the edges on the shortest path to t in reverse order.
+    const std::vector<int32_t> &getReverseEdgePath(const int t) {
+        assert(distanceLabels[t][0] != INFTY);
+        return parent.getReverseEdgePath(t);
+    }
 
     // Used to update the pruning criterion for different runs of this search, e.g. to configure callbacks
     PruningCriterionT &getPruningCriterion() {
         return pruneSearch;
     }
 
- private:
-  // Resets the distance labels and inserts the source into the queue.
-  void init(const int s, const int offset = 0) {
-    distanceLabels.init();
-    queue.clear();
-    distanceLabels[s] = offset;
-    parent.setVertex(s, s, true);
-    parent.setEdge(s, INVALID_EDGE, true);
-    queue.insert(s, s);
-  }
-
-  // Removes the next vertex from the queue, relaxes its outgoing edges, and returns its ID.
-  int settleNextVertex() {
-    int v, key;
-    queue.deleteMin(v, key);
-    auto& distToV = distanceLabels[v];
-
-    // Check whether the search can be pruned at v.
-    if (pruneSearch(v, distToV, distanceLabels))
-      return v;
-
-    // Relax all edges out of v.
-    FORALL_INCIDENT_EDGES(graph, v, e) {
-      const auto w = graph.edgeHead(e);
-      auto& distToW = distanceLabels[w];
-      const auto distViaV = distToV + graph.template get<WeightT>(e);
-      const auto mask = distViaV < distToW;
-      if (anySet(mask)) {
-        distToW.min(distViaV);
-        parent.setVertex(w, v, mask);
-        parent.setEdge(w, e, mask);
-        if (!queue.contains(w))
-          queue.insert(w, w);
-      }
+    const int &getNumVerticesSettled() const {
+        return numVerticesSettled;
     }
-    return v;
-  }
 
-  using DistanceLabelCont = DistanceLabelContainerT<typename LabelSetT::DistanceLabel>;
-  using ParentLabelCont = ParentLabelContainer<GraphT, LabelSetT>;
+    const int &getNumEdgeRelaxations() const {
+        return numEdgeRelaxations;
+    }
 
-  const GraphT& graph;              // The graph (DAG) on which we compute shortest paths.
-  DistanceLabelCont distanceLabels; // The distance labels of the vertices.
-  ParentLabelCont parent;           // The parent information for each vertex.
-  QueueT queue;                     // The priority queue of unsettled vertices.
-  PruningCriterionT pruneSearch;    // The criterion used to prune the search.
+private:
+    // Resets the distance labels and inserts the source into the queue.
+    void init(const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
+        numVerticesSettled = 0;
+        numEdgeRelaxations = 0;
+        distanceLabels.init();
+        queue.clear();
+
+        for (auto i = 0; i < K; ++i) {
+            const auto s = sources[i];
+            distanceLabels[s][i] = offsets[i];
+            parent.setVertex(s, s, true);
+            parent.setEdge(s, INVALID_EDGE, true);
+        }
+
+        for (auto i = 0; i < K; ++i) {
+            const auto s = sources[i];
+            if (!queue.contains(s))
+                queue.insert(s, s);
+        }
+    }
+
+    // Removes the next vertex from the queue, relaxes its outgoing edges, and returns its ID.
+    int settleNextVertex() {
+        int v, key;
+        queue.deleteMin(v, key);
+        auto &distToV = distanceLabels[v];
+
+        // Check whether the search can be pruned at v.
+        if (pruneSearch(v, distToV, distanceLabels))
+            return v;
+
+        ++numVerticesSettled;
+
+        // Relax all edges out of v.
+        FORALL_INCIDENT_EDGES(graph, v, e) {
+            ++numEdgeRelaxations;
+            const auto w = graph.edgeHead(e);
+            auto &distToW = distanceLabels[w];
+            const auto distViaV = distToV + graph.template get<WeightT>(e);
+            const auto mask = distViaV < distToW;
+            if (anySet(mask)) {
+                distToW.min(distViaV);
+                parent.setVertex(w, v, mask);
+                parent.setEdge(w, e, mask);
+                if (!queue.contains(w))
+                    queue.insert(w, w);
+            }
+        }
+        return v;
+    }
+
+    using DistanceLabelCont = DistanceLabelContainerT<typename LabelSetT::DistanceLabel>;
+    using ParentLabelCont = ParentLabelContainer<GraphT, LabelSetT>;
+
+    const GraphT &graph;              // The graph (DAG) on which we compute shortest paths.
+    DistanceLabelCont distanceLabels; // The distance labels of the vertices.
+    ParentLabelCont parent;           // The parent information for each vertex.
+    QueueT queue;                     // The priority queue of unsettled vertices.
+    PruningCriterionT pruneSearch;    // The criterion used to prune the search.
+
+    int numVerticesSettled;
+    int numEdgeRelaxations;
 };
