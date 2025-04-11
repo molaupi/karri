@@ -136,6 +136,18 @@ private:
             FORALL_INCIDENT_EDGES(targetGraph, v, e) {
                 ++numEdgesRelaxed;
                 const auto w = targetGraph.edgeHead(e);
+                // TODO: There could be a way to mark vertices as irrelevant based on leeways and known best costs.
+                //  After settling w, w is irrelevant if:
+                //  1. Distance to w is guaranteed to lead to higher costs then best known.
+                //  2. Distance to w is larger than largest remaining leeway at w.
+                //  Condition 1 may not help prune very much and condition 2 requires overhead in tracking maximum
+                //  remaining leeway at every vertex. This would require replacing BFS for target selection with a
+                //  topological upward search rooted at every stop. However, we run target selection pretty rarely
+                //  so the overhead may be worth it. This could also help to prune the target graph: Every vertex
+                //  with maximum remaining leeway of less than 0 does not have to be part of target graph.
+                //  Irrelevant vertices can be treated as if having distance INFTY. We can store a isIrrelevant flag
+                //  for every vertex and when relaxing edge (w, v) we can check if w is irrelevant. If it is, we
+                //  don't have to perform most of the work (reading distance, adding weight, updating distance).
                 KASSERT(!distances.isStale(w));
                 const auto distToW = distances.readDistanceWithoutStaleCheck(w);
                 const auto distViaW = distToW + targetGraph.template get<WeightT>(e);

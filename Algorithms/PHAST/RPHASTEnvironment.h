@@ -153,18 +153,11 @@ private:
         AlignedVector<int32_t> edgeHeads(numEdgesInSubgraph);
         AlignedVector<typename CH::Weight::Type> weights(numEdgesInSubgraph);
         AlignedVector<typename UnpackingInfoAttribute::Type> unpackingInfo(numEdgesInSubgraph);
-//        subgraph.outEdges.resize(nextId + 1);
-//        subgraph.edgeHeads.resize(numEdgesInSubgraph);
-//        RUN_FORALL(subgraph.VertexAttributes::values.resize(nextId));
-//        RUN_FORALL(subgraph.EdgeAttributes::values.resize(numEdgesInSubgraph));
 
-//        int &edgeCount = subgraph.edgeCount;
         int edgeCount = 0;
         for (int i = 0; i < vertices.size(); ++i) {
             const auto u = *(vertices.begin() + i);
             // Copy the current vertex belonging to the subgraph.
-//            subgraph.outEdges[i].first() = edgeCount;
-//            RUN_FORALL(subgraph.VertexAttributes::values[i] = VertexAttributes::values[u]);
             outEdges[i].first() = edgeCount;
 
             // Copy the edges out of u going to vertices belonging to the subgraph.
@@ -173,8 +166,6 @@ private:
             for (int e = graph.lastEdge(u) - 1; e >= graph.firstEdge(u); --e) {
                 const int v = origToNewIds[graph.edgeHead(e)];
                 if (v != vertices.size()) {
-//                    subgraph.edgeHeads[edgeCount] = v;
-//                    RUN_FORALL(subgraph.EdgeAttributes::values[edgeCount] = EdgeAttributes::values[e]);
                     edgeHeads[edgeCount] = v;
                     weights[edgeCount] = graph.template get<typename CH::Weight>(e);
                     unpackingInfo[edgeCount] = graph.template get<UnpackingInfoAttribute>(e);
@@ -185,7 +176,6 @@ private:
         KASSERT(edgeCount == numEdgesInSubgraph);
 
         outEdges.back().last() = edgeCount;
-//        subgraph.outEdges.back().last() = edgeCount;
         return SearchGraph(std::move(outEdges), std::move(edgeHeads), edgeCount, std::move(weights),
                            std::move(unpackingInfo));
     }
