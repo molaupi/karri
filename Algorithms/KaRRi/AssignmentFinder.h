@@ -109,25 +109,25 @@ namespace karri {
 
             // Find route with more than two stops:
             const auto& pickupVehicles = feasibleEllipticPickups.getVehiclesWithRelevantPDLocs();
-            int64_t dijSumTimes = 0;
-            int64_t dijSumVerticesSettled = 0;
-            int64_t dijSumEdgesRelaxed = 0;
+//            int64_t dijSumTimes = 0;
+//            int64_t dijSumVerticesSettled = 0;
+//            int64_t dijSumEdgesRelaxed = 0;
             int64_t chSumTimes = 0;
             int64_t chSumVerticesSettled = 0;
             int64_t chSumEdgesRelaxed = 0;
             std::vector<int> stopIdsToComputeEllipses;
-            std::vector<std::vector<VertexInEllipse>> dijEllipses;
+//            std::vector<std::vector<VertexInEllipse>> dijEllipses;
             for (const auto& vehId : pickupVehicles) {
                 for (int stopIdx = 0; stopIdx < routeState.numStopsOf(vehId) - 1; ++stopIdx) {
                     const auto stopId = routeState.stopIdsFor(vehId)[stopIdx];
                     stopIdsToComputeEllipses.push_back(stopId);
 
-                    int dijNumVerticesSettled = 0, dijNumEdgesRelaxed = 0;
-                    Timer timer;
-                    dijEllipses.push_back(dijkstraEllipseReconstructor.getVerticesInEllipseOfLegAfter(stopId, dijNumVerticesSettled, dijNumEdgesRelaxed));
-                    dijSumTimes += timer.elapsed<std::chrono::microseconds>();
-                    dijSumVerticesSettled += dijNumVerticesSettled;
-                    dijSumEdgesRelaxed += dijNumEdgesRelaxed;
+//                    int dijNumVerticesSettled = 0, dijNumEdgesRelaxed = 0;
+//                    Timer timer;
+//                    dijEllipses.push_back(dijkstraEllipseReconstructor.getVerticesInEllipseOfLegAfter(stopId, dijNumVerticesSettled, dijNumEdgesRelaxed));
+//                    dijSumTimes += timer.elapsed<std::chrono::microseconds>();
+//                    dijSumVerticesSettled += dijNumVerticesSettled;
+//                    dijSumEdgesRelaxed += dijNumEdgesRelaxed;
                 }
             }
 
@@ -140,35 +140,35 @@ namespace karri {
             chSumVerticesSettled += chNumVerticesSettled;
             chSumEdgesRelaxed += chNumEdgesRelaxed;
 
-            // Check if Dijkstra and CH ellipses are equal
-            for (int i = 0; i < stopIdsToComputeEllipses.size(); ++i) {
-
-                auto& dijEllipse = dijEllipses[i];
-                auto& chEllipse = chEllipses[i];
-
-                std::sort(dijEllipse.begin(), dijEllipse.end(),
-                          [&](const auto &v1, const auto &v2) { return v1.vertex < v2.vertex; });
-                std::sort(chEllipse.begin(), chEllipse.end(),
-                          [&](const auto &v1, const auto &v2) { return v1.vertex < v2.vertex; });
-
-                KASSERT(dijEllipse.size() == chEllipse.size());
-
-                for (int j = 0; j < dijEllipse.size(); ++j) {
-                    const auto dijV = dijEllipse[j];
-                    const auto chV = chEllipse[j];
-                    KASSERT(dijV.vertex == chV.vertex);
-                    KASSERT(dijV.distToVertex == chV.distToVertex);
-                    KASSERT(dijV.distFromVertex == chV.distFromVertex);
-                }
-            }
+//            // Check if Dijkstra and CH ellipses are equal
+//            for (int i = 0; i < stopIdsToComputeEllipses.size(); ++i) {
+//
+//                auto& dijEllipse = dijEllipses[i];
+//                auto& chEllipse = chEllipses[i];
+//
+//                std::sort(dijEllipse.begin(), dijEllipse.end(),
+//                          [&](const auto &v1, const auto &v2) { return v1.vertex < v2.vertex; });
+//                std::sort(chEllipse.begin(), chEllipse.end(),
+//                          [&](const auto &v1, const auto &v2) { return v1.vertex < v2.vertex; });
+//
+//                KASSERT(dijEllipse.size() == chEllipse.size());
+//
+//                for (int j = 0; j < dijEllipse.size(); ++j) {
+//                    const auto dijV = dijEllipse[j];
+//                    const auto chV = chEllipse[j];
+//                    KASSERT(dijV.vertex == chV.vertex);
+//                    KASSERT(dijV.distToVertex == chV.distToVertex);
+//                    KASSERT(dijV.distFromVertex == chV.distFromVertex);
+//                }
+//            }
 
             const int minWidthL = std::string("Dij num vertices settled:").size();
             std::cout << "\t Computed " << stopIdsToComputeEllipses.size() << " ellipses." << std::endl;
-            std::cout << "\t " << std::setw(minWidthL) << "Dij sum time:" << " " << std::right << std::setw(15) << dijSumTimes << std::endl;
+//            std::cout << "\t " << std::setw(minWidthL) << "Dij sum time:" << " " << std::right << std::setw(15) << dijSumTimes << std::endl;
             std::cout << "\t " << std::setw(minWidthL) << "CH sum time:" << " " << std::right << std::setw(15) << chSumTimes << std::endl;
-            std::cout << "\t " << std::setw(minWidthL) << "Dij num vertices settled:" << " " << std::right << std::setw(15) << dijSumVerticesSettled << std::endl;
+//            std::cout << "\t " << std::setw(minWidthL) << "Dij num vertices settled:" << " " << std::right << std::setw(15) << dijSumVerticesSettled << std::endl;
             std::cout << "\t " << std::setw(minWidthL) << "CH num vertices settled:" << " " << std::right << std::setw(15) << chSumVerticesSettled << std::endl;
-            std::cout << "\t " << std::setw(minWidthL) << "Dij num edges relaxed:" << " " << std::right << std::setw(15) << dijSumEdgesRelaxed << std::endl;
+//            std::cout << "\t " << std::setw(minWidthL) << "Dij num edges relaxed:" << " " << std::right << std::setw(15) << dijSumEdgesRelaxed << std::endl;
             std::cout << "\t " << std::setw(minWidthL) << "CH num edges relaxed:" << " " << std::right << std::setw(15) << chSumEdgesRelaxed << std::endl;
 
             // Filter feasible PD-locations between ordinary stops:

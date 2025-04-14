@@ -60,10 +60,16 @@ public:
         }
     }
 
-    // Set flag i.
+    // Set flag i to true.
     void set(const int i) {
         assert(i < timestamps.size());
         timestamps[i] = clock;
+    }
+
+    // Set flag i to false.
+    void unset(const int i) {
+        assert(i < timestamps.size());
+        timestamps[i] = 0;
     }
 
     bool isSet(const int i) const {
