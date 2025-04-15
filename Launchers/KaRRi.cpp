@@ -70,6 +70,9 @@
 #include "Algorithms/KaRRi/EventSimulation.h"
 #include "Algorithms/KaRRi/EllipseReconstruction/DijkstraEllipseReconstructor.h"
 
+#include "Parallel/hardware_topology.h"
+#include "Parallel/tbb_initializer.h"
+
 #ifdef KARRI_USE_CCHS
 #include "Algorithms/KaRRi/CCHEnvironment.h"
 #else
@@ -152,6 +155,17 @@ int main(int argc, char *argv[]) {
             printUsage();
             return EXIT_SUCCESS;
         }
+
+        // Initialize TBB
+        auto maxNumThreads = clp.getValue<size_t>("max-num-threads", 1);
+        size_t numAvailableCpus = parallel::HardwareTopology<>::instance().num_cpus();
+        if (numAvailableCpus < maxNumThreads) {
+            std::cout << "There are currently only " << numAvailableCpus << " cpus available. "
+                      << "Setting number of threads from " << maxNumThreads << " to " << numAvailableCpus << std::endl;
+            maxNumThreads = numAvailableCpus;
+        }
+        parallel::TBBInitializer<parallel::HardwareTopology<>>::instance(maxNumThreads);
+
 
 
         // Parse the command-line options.

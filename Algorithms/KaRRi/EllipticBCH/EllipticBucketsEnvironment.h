@@ -253,18 +253,22 @@ namespace karri {
             int distance = INFTY;
         };
 
-        std::vector<RankWithEntry> enumerateRanksWithSourceBucketEntries(const int vehId, const int stopIndex) {
+
+
+        std::vector<RankWithEntry> enumerateRanksWithSourceBucketEntries(const int vehId, const int stopIndex,
+                                                                         Subset& searchSpaceHelper) const {
             const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
             const int stopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeHead(stopLoc));
-            return enumerateRanksWithEntries(stopId, root, ch.upwardGraph(), sourceBuckets);
+            return enumerateRanksWithEntries(stopId, root, ch.upwardGraph(), sourceBuckets, searchSpaceHelper);
         }
 
-        std::vector<RankWithEntry> enumerateRanksWithTargetBucketEntries(const int vehId, const int stopIndex) {
+        std::vector<RankWithEntry> enumerateRanksWithTargetBucketEntries(const int vehId, const int stopIndex,
+                                                                         Subset& searchSpaceHelper) const {
             const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
             const int stopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeTail(stopLoc));
-            return enumerateRanksWithEntries(stopId, root, ch.downwardGraph(), targetBuckets);
+            return enumerateRanksWithEntries(stopId, root, ch.downwardGraph(), targetBuckets, searchSpaceHelper);
         }
 
     private:
@@ -359,18 +363,19 @@ namespace karri {
         }
 
         std::vector<RankWithEntry>
-        enumerateRanksWithEntries(const int stopId, const int root, const CH::SearchGraph &graph, BucketContainer &buckets) {
-            deleteSearchSpace.clear();
-            deleteSearchSpace.insert(root);
+        enumerateRanksWithEntries(const int stopId, const int root, const CH::SearchGraph &graph,
+                                  const BucketContainer &buckets, Subset& searchSpaceHelper) const {
+            searchSpaceHelper.clear();
+            searchSpaceHelper.insert(root);
             std::vector<RankWithEntry> ranksWithEntries;
-            for (auto it = deleteSearchSpace.begin(); it < deleteSearchSpace.end(); ++it) {
+            for (auto it = searchSpaceHelper.begin(); it < searchSpaceHelper.end(); ++it) {
                 const auto &v = *it;
                 const auto bucket = buckets.getBucketOf(v);
                 for (const auto& entry : bucket) {
                     if (entry.targetId == stopId) {
                         FORALL_INCIDENT_EDGES(graph, v, e) {
                             const auto w = graph.edgeHead(e);
-                            deleteSearchSpace.insert(w);
+                            searchSpaceHelper.insert(w);
                         }
                         ranksWithEntries.push_back({v, entry.distToTarget});
                         break;
