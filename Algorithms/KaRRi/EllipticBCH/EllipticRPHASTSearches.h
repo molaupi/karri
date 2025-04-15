@@ -57,18 +57,22 @@ namespace karri {
     public:
 
         EllipticRPHASTSearches(const InputGraphT &inputGraph,
-                            const Fleet &fleet,
-                            const CH& ch,
-                            const RPHASTEnvironment& rphastEnv,
-                            const std::vector<StopWithRank>& sourceStopsByRank,
-                            const std::vector<StopWithRankAndOffset>& targetStopsByRank,
-                            const RouteState &routeState)
+                               const Fleet &fleet,
+                               const CH &ch,
+                               const RPHASTEnvironment &rphastEnv,
+                               const std::vector<StopWithRank> &sourceStopsByRank,
+                               const RPHASTSelection &sourcesSelection,
+                               const std::vector<StopWithRankAndOffset> &targetStopsByRank,
+                               const RPHASTSelection &targetsSelection,
+                               const RouteState &routeState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   ch(ch),
                   routeState(routeState),
                   sourceStopsByRank(sourceStopsByRank),
+                  sourcesSelection(sourcesSelection),
                   targetStopsByRank(targetStopsByRank),
+                  targetsSelection(targetsSelection),
                   toQuery(rphastEnv.getReverseRPHASTQuery<LabelSetT>()),
                   fromQuery(rphastEnv.getForwardRPHASTQuery<LabelSetT>()) {}
 
@@ -110,7 +114,8 @@ namespace karri {
     private:
 
         template<typename SpotContainerT>
-        void runRPHASTSearchesFromAndTo(const RequestState &, SpotContainerT &pdLocs, FeasibleEllipticDistancesT& feasibleEllipticDistances) {
+        void runRPHASTSearchesFromAndTo(const RequestState &, SpotContainerT &pdLocs,
+                                        FeasibleEllipticDistancesT &feasibleEllipticDistances) {
 
             numSearchesRun = 0;
             totalNumEdgeRelaxations = 0;
@@ -119,18 +124,20 @@ namespace karri {
 
             // Process in batches of size K
             for (int i = 0; i < pdLocs.size(); i += K) {
-                runRegularRPHASTSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs, feasibleEllipticDistances);
+                runRegularRPHASTSearchesTo(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs,
+                                           feasibleEllipticDistances);
             }
 
             for (int i = 0; i < pdLocs.size(); i += K) {
-                runRegularRPHASTSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs, feasibleEllipticDistances);
+                runRegularRPHASTSearchesFrom(i, std::min(i + K, static_cast<int>(pdLocs.size())), pdLocs,
+                                             feasibleEllipticDistances);
             }
         }
 
         template<typename SpotContainerT>
         void runRegularRPHASTSearchesFrom(const int startId, const int endId,
-                                       const SpotContainerT &pdLocs,
-                                       FeasibleEllipticDistancesT& feasibleEllipticDistances) {
+                                          const SpotContainerT &pdLocs,
+                                          FeasibleEllipticDistancesT &feasibleEllipticDistances) {
             KASSERT(endId > startId && endId - startId <= K);
 
             std::array<int, K> pdLocHeads;
@@ -145,31 +152,33 @@ namespace karri {
                 pdLocHeads[i] = ch.rank(inputGraph.edgeHead(location));
             }
 
-            fromQuery.run(pdLocHeads);
+            fromQuery.run(targetsSelection, pdLocHeads);
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += fromQuery.getNumEdgeRelaxations();
             totalNumVerticesSettled += fromQuery.getNumVerticesSettled();
 
             // Store results for each stop where a feasible distance has been found:
-            for (const auto& [prevStopId, rank, offset] : targetStopsByRank) {
+            for (const auto &[prevStopId, rank, offset]: targetStopsByRank) {
+                const auto rankInSubgraph = targetsSelection.fullToSubMapping[rank];
                 const auto leeway = routeState.leewayOfLegStartingAt(prevStopId);
-                const auto dist = fromQuery.getDistances(rank) + offset;
+                const auto dist = fromQuery.getDistances(rankInSubgraph) + offset;
                 const auto holdsLeeway = dist <= leeway;
                 if (anySet(holdsLeeway)) {
                     const DistanceLabel meetingVertices = 0;
                     if constexpr (StoreMeetingVertices) {
-                        meetingVertices = fromQuery.getMeetingVertices(rank);
+                        meetingVertices = fromQuery.getMeetingVertices(rankInSubgraph);
                     }
-                    feasibleEllipticDistances.updateDistanceFromPDLocToNextStop(prevStopId, startId, dist, meetingVertices);
+                    feasibleEllipticDistances.updateDistanceFromPDLocToNextStop(prevStopId, startId, dist,
+                                                                                meetingVertices);
                 }
             }
         }
 
         template<typename SpotContainerT>
         void runRegularRPHASTSearchesTo(const int startId, const int endId,
-                                     const SpotContainerT &pdLocs,
-                                     FeasibleEllipticDistancesT& feasibleEllipticDistances) {
+                                        const SpotContainerT &pdLocs,
+                                        FeasibleEllipticDistancesT &feasibleEllipticDistances) {
             KASSERT(endId > startId && endId - startId <= K);
 
             std::array<int, K> travelTimes;
@@ -186,21 +195,22 @@ namespace karri {
                 pdLocTails[i] = ch.rank(inputGraph.edgeTail(location));
             }
 
-            toQuery.run(pdLocTails, travelTimes);
+            toQuery.run(sourcesSelection, pdLocTails, travelTimes);
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += toQuery.getNumEdgeRelaxations();
             totalNumVerticesSettled += toQuery.getNumVerticesSettled();
 
             // Store results for each stop where a feasible distance has been found:
-            for (const auto& [stopId, rank] : sourceStopsByRank) {
+            for (const auto &[stopId, rank]: sourceStopsByRank) {
+                const auto rankInSubgraph = sourcesSelection.fullToSubMapping[rank];
                 const auto leeway = routeState.leewayOfLegStartingAt(stopId);
-                const auto dist = toQuery.getDistances(rank);
+                const auto dist = toQuery.getDistances(rankInSubgraph);
                 const auto holdsLeeway = dist <= leeway;
                 if (anySet(holdsLeeway)) {
                     const DistanceLabel meetingVertices = 0;
                     if constexpr (StoreMeetingVertices) {
-                        meetingVertices = fromQuery.getMeetingVertices(rank);
+                        meetingVertices = fromQuery.getMeetingVertices(rankInSubgraph);
                     }
                     feasibleEllipticDistances.updateDistanceFromStopToPDLoc(stopId, startId, dist, meetingVertices);
                 }
@@ -211,8 +221,10 @@ namespace karri {
         const Fleet &fleet;
         const CH &ch;
         const RouteState &routeState;
-        const std::vector<StopWithRank>& sourceStopsByRank;
-        const std::vector<StopWithRankAndOffset>& targetStopsByRank;
+        const std::vector<StopWithRank> &sourceStopsByRank;
+        const RPHASTSelection &sourcesSelection;
+        const std::vector<StopWithRankAndOffset> &targetStopsByRank;
+        const RPHASTSelection &targetsSelection;
 
         typename RPHASTEnvironment::template Query<LabelSetT> toQuery;
         typename RPHASTEnvironment::template Query<LabelSetT> fromQuery;

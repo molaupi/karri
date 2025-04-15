@@ -287,7 +287,10 @@ namespace karri {
                 ellipticSearches([&]() {
                     return EllipticBCHSearchesImpl(vehicleInputGraph, fleet, vehChEnv.getCH(), rphastEnv,
                                                    ordinaryStopsRphastSelection.getSourceStopsByRank(),
-                                                   ordinaryStopsRphastSelection.getTargetStopsByRank(), routeState);
+                                                   ordinaryStopsRphastSelection.getSourcesSelection(),
+                                                   ordinaryStopsRphastSelection.getTargetStopsByRank(),
+                                                   ordinaryStopsRphastSelection.getTargetsSelection(),
+                                                   routeState);
                 }),
                 relevantPdLocsFilter(
                         [&]() { return RelevantPDLocsFilterImpl(fleet, vehicleInputGraph, vehChEnv, routeState); }),

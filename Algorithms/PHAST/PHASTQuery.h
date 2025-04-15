@@ -27,10 +27,11 @@
 
 #include <array>
 #include <vector>
-#include "Algorithms/Dijkstra/Dijkstra.h"
+#include "Algorithms/Dijkstra/DagShortestPaths.h"
 #include "DataStructures/Labels/Containers/StampedDistanceLabelContainer.h"
+#include "RPHASTSelectionPhase.h"
 
-template<typename SourceGraphT, typename TargetGraphT, typename WeightT, typename LabelSetT,
+template<typename SourceGraphT, typename WeightT, typename LabelSetT,
         bool StoreMeetingVertices = false,
         template<typename> class DistanceLabelContainerT = StampedDistanceLabelContainer>
 class PHASTQuery {
@@ -42,55 +43,61 @@ class PHASTQuery {
 
     struct SetDistanceInDownwardArray {
 
-        SetDistanceInDownwardArray(DistanceLabelContainerT<DistanceLabel> &downwardArray,
-                                   const std::vector<int> &sourceToTargetMapping)
-                : downwardArray(downwardArray), sourceToTargetMapping(sourceToTargetMapping) {}
+        SetDistanceInDownwardArray(DistanceLabelContainerT<DistanceLabel> &downwardArray)
+                : downwardArray(downwardArray), sourceToTargetMapping(nullptr) {}
 
         template<typename DistLabelT, typename DistLabelContT>
         bool operator()(const int v, DistLabelT &upDistToV, const DistLabelContT &) {
-            downwardArray[sourceToTargetMapping[v]] = upDistToV;
+            downwardArray[sourceToTargetMapping->at(v)] = upDistToV;
             return false;
+        }
+
+
+        void setSourceToTargetMapping(std::vector<int> const *mapping) {
+            sourceToTargetMapping = mapping;
         }
 
     private:
         DistanceLabelContainerT<DistanceLabel> &downwardArray;
-        const std::vector<int> &sourceToTargetMapping;
+        std::vector<int> const *sourceToTargetMapping;
 
     };
 
 public:
-    PHASTQuery(const SourceGraphT &sourceGraph, const TargetGraphT &targetGraph,
-               const std::vector<int> &sourceToTargetMapping, const std::vector<int> &targetToSourceMapping)
-            : sourceGraph(sourceGraph), targetGraph(targetGraph), sourceToTargetMapping(sourceToTargetMapping),
-              targetToSourceMapping(targetToSourceMapping),
+    PHASTQuery(const SourceGraphT &sourceGraph)
+            : sourceGraph(sourceGraph),
               distances(0),
               meetingVertices(0),
-              upwardSearch(sourceGraph, SetDistanceInDownwardArray(distances, sourceToTargetMapping)) {}
+              upwardSearch(sourceGraph, SetDistanceInDownwardArray(distances)) {}
 
-    void run(const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
-        sanityCheckTargetGraphValidity();
-        runUpwardSearchAndInitializeDownwardDistances(sources, offsets);
-        runDownwardSweep();
+    void run(const RPHASTSelection& selection, const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
+        sanityCheckTargetGraphValidity(selection);
+        runUpwardSearchAndInitializeDownwardDistances(selection, sources, offsets);
+        runDownwardSweep(selection);
     }
 
+    // Returns distance from i-th source to vertex v found in last call to run().
+    // Vertex ID of v has to be ID in subgraph of selection passed to last call of run().
     int getDistance(const int v, const int i = 0) const {
-        KASSERT(distances[targetGraph.numVertices()][i] == INFTY);
-        return distances.readDistance(sourceToTargetMapping[v])[i];
+        KASSERT(v >= 0 && v < distances.size());
+        return distances.readDistance(v)[i];
     }
 
+    // Returns distance from all K sources to vertex v found in last call to run().
+    // Vertex ID of v has to be ID in subgraph of selection passed to last call of run().
     DistanceLabel getDistances(const int v) const {
-        KASSERT(allSet(distances[targetGraph.numVertices()] == INFTY));
-        return distances.readDistance(sourceToTargetMapping[v]);
+        KASSERT(v >= 0 && v < distances.size());
+        return distances.readDistance(v);
     }
 
     int getMeetingVertex(const int v, const int i = 0) const requires StoreMeetingVertices {
-        KASSERT(meetingVertices[targetGraph.numVertices()][i] == INVALID_VERTEX);
-        return meetingVertices[sourceToTargetMapping[v]][i];
+        KASSERT(v >= 0 && v < meetingVertices.size());
+        return meetingVertices[v][i];
     }
 
     DistanceLabel getMeetingVertices(const int v) const requires StoreMeetingVertices {
-        KASSERT(allSet(meetingVertices[targetGraph.numVertices()] == INVALID_VERTEX));
-        return meetingVertices[sourceToTargetMapping[v]];
+        KASSERT(v >= 0 && v < meetingVertices.size());
+        return meetingVertices[v];
     }
 
     int getNumVerticesSettled() const {
@@ -103,39 +110,41 @@ public:
 
 private:
 
-    void runUpwardSearchAndInitializeDownwardDistances(const std::array<int, K> &sources,
+    void runUpwardSearchAndInitializeDownwardDistances(const RPHASTSelection& selection,
+                                                       const std::array<int, K> &sources,
                                                        const std::array<int, K> &offsets = {}) {
-        KASSERT(sourceToTargetMapping.size() == sourceGraph.numVertices());
-        distances.resize(targetGraph.numVertices() + 1);
+        KASSERT(selection.fullToSubMapping.size() == sourceGraph.numVertices());
+        distances.resize(selection.subGraph.numVertices() + 1);
         distances.init();
         if constexpr (StoreMeetingVertices) {
-            meetingVertices.resize(targetGraph.numVertices() + 1);
+            meetingVertices.resize(selection.subGraph.numVertices() + 1);
         }
 
+        upwardSearch.getPruningCriterion().setSourceToTargetMapping(&selection.fullToSubMapping);
         upwardSearch.runWithOffset(sources, offsets);
 
         // All vertices which are not present in target graph have distance INFTY.
-        distances[targetGraph.numVertices()] = INFTY;
+        distances[selection.subGraph.numVertices()] = INFTY;
 
         numVerticesSettled = upwardSearch.getNumVerticesSettled();
         numEdgesRelaxed = upwardSearch.getNumEdgeRelaxations();
     }
 
-    void runDownwardSweep() {
+    void runDownwardSweep(const RPHASTSelection& selection) {
         // Vertices in target graph are ordered by decreasing rank. Downward sweep simply settles vertices in order.
-        const int numVertices = targetGraph.numVertices();
+        const int numVertices = selection.subGraph.numVertices();
         for (int v = 0; v < numVertices; ++v) {
             ++numVerticesSettled;
             auto &distAtV = distances[v];
 
             if constexpr (StoreMeetingVertices) {
-                meetingVertices[v] = targetToSourceMapping[v];
+                meetingVertices[v] = selection.subToFullMapping[v];
             }
 
             // Relax all incoming edges to finalize the distances and meeting vertices at v.
-            FORALL_INCIDENT_EDGES(targetGraph, v, e) {
+            FORALL_INCIDENT_EDGES(selection.subGraph, v, e) {
                 ++numEdgesRelaxed;
-                const auto w = targetGraph.edgeHead(e);
+                const auto w = selection.subGraph.edgeHead(e);
                 // TODO: There could be a way to mark vertices as irrelevant based on leeways and known best costs.
                 //  After settling w, w is irrelevant if:
                 //  1. Distance to w is guaranteed to lead to higher costs then best known.
@@ -150,7 +159,7 @@ private:
                 //  don't have to perform most of the work (reading distance, adding weight, updating distance).
                 KASSERT(!distances.isStale(w));
                 const auto distToW = distances.readDistanceWithoutStaleCheck(w);
-                const auto distViaW = distToW + targetGraph.template get<WeightT>(e);
+                const auto distViaW = distToW + selection.subGraph.template get<WeightT>(e);
                 if constexpr (StoreMeetingVertices) {
                     const auto improved = distViaW < distAtV;
                     if (anySet(improved)) {
@@ -164,27 +173,20 @@ private:
         }
     }
 
-    void sanityCheckTargetGraphValidity() {
-        KASSERT(targetToSourceMapping.size() == targetGraph.numVertices());
-        KASSERT(sourceToTargetMapping.size() == sourceGraph.numVertices());
+    void sanityCheckTargetGraphValidity(const RPHASTSelection& selection) {
+        KASSERT(selection.subToFullMapping.size() == selection.subGraph.numVertices());
+        KASSERT(selection.fullToSubMapping.size() == sourceGraph.numVertices());
         int numValidMapping = 0;
         FORALL_VERTICES(sourceGraph, v) {
-            const auto w = sourceToTargetMapping[v];
-            numValidMapping += (w < targetGraph.numVertices());
-            KASSERT(w >= 0 && w < targetGraph.numVertices() + 1);
+            const auto w = selection.fullToSubMapping[v];
+            numValidMapping += (w < selection.subGraph.numVertices());
+            KASSERT(w >= 0 && w < selection.subGraph.numVertices() + 1);
         }
-        KASSERT(numValidMapping == targetGraph.numVertices());
+        KASSERT(numValidMapping == selection.subGraph.numVertices());
     }
 
 
     const SourceGraphT &sourceGraph;
-    const TargetGraphT &targetGraph;
-    // Maps vertex IDs of source graph to vertex IDs of target graph. Vertices v with no equivalent in the targetGraph
-    // should have sourceToTargetMapping[v] == targetGraph.numVertices().
-    const std::vector<int> &sourceToTargetMapping;
-
-    // Maps vertex IDs of target graph to vertex IDs of source graph.
-    const std::vector<int> &targetToSourceMapping;
 
 
     DistanceLabelContainerT<DistanceLabel> distances;

@@ -16,33 +16,61 @@ namespace karri {
     template<typename InputGraphT>
     class OrdinaryStopsRPHASTSelection {
 
+        struct PruneIfDistanceGreaterZero {
+            template<typename DistLabelT, typename DistLabelContT>
+            bool operator()(const int, DistLabelT &distToV, const DistLabelContT &) {
+                static DistLabelT ZeroLabel = 0;
+                return allSet(distToV > ZeroLabel);
+            }
+        };
+
+//        using PruningCriterion = PruneIfDistanceGreaterZero;
+        using PruningCriterion = dij::NoCriterion;
+
     public:
 
-        OrdinaryStopsRPHASTSelection(const InputGraphT& inputGraph, const CH& ch,
-                                       const Fleet& fleet, const RouteState& routeState,
-                                       RPHASTEnvironment& rphastEnv) :
+        OrdinaryStopsRPHASTSelection(const InputGraphT &inputGraph, const CH &ch,
+                                     const Fleet &fleet, const RouteState &routeState,
+                                     const RPHASTEnvironment &rphastEnv) :
                 inputGraph(inputGraph),
                 ch(ch),
                 fleet(fleet),
                 routeState(routeState),
-                rphastEnv(rphastEnv) {}
+                sourcesSelectionPhase(rphastEnv.getSourcesSelectionPhase<PruningCriterion>()),
+                targetsSelectionPhase(rphastEnv.getTargetsSelectionPhase<PruningCriterion>()) {}
 
         // Run RPHAST target selection for all ordinary stops.
         void runSelectionPhaseForOrdinaryStops() {
 
             initSourceStopLocations();
             std::vector<int> stopRanks;
+            std::vector<int> offsets;
+            stopRanks.reserve(sourceStopsByRank.size());
+            offsets.reserve(sourceStopsByRank.size());
             for (const auto &sourceStop: sourceStopsByRank) {
                 stopRanks.push_back(sourceStop.rank);
+                offsets.push_back(-routeState.leewayOfLegStartingAt(sourceStop.stopId));
             }
-            rphastEnv.runSourceSelection(stopRanks);
+            // Run RPHAST selection phase for sources. Offsets are -1 * leeway so whenever selection search
+            // settles a vertex v, its distance label is -1 * maximum remaining leeway for any stop from which v is
+            // reached. The pruning criterion uses this to prune if the maximum remaining leeway becomes negative.
+            // Further, we can use the known maximum remaining leeway later to prune queries.
+            sourcesSelection = sourcesSelectionPhase.run(stopRanks, offsets);
 
             initTargetStopLocations();
             stopRanks.clear();
+            offsets.clear();
+            stopRanks.reserve(targetStopsByRank.size());
+            offsets.reserve(targetStopsByRank.size());
             for (const auto &targetStop: targetStopsByRank) {
                 stopRanks.push_back(targetStop.rank);
+                offsets.push_back(-(routeState.leewayOfLegStartingAt(targetStop.prevStopId) - targetStop.offset));
             }
-            rphastEnv.runTargetSelection(stopRanks);
+            // Run RPHAST selection phase for targets. Offsets are -1 * leeway so whenever selection search
+            // settles a vertex v, its distance label is -1 * maximum remaining leeway for any stop from which v is
+            // reached. The pruning criterion uses this to prune if the maximum remaining leeway becomes negative.
+            // Further, we can use the known maximum remaining leeway later to prune queries.
+            targetsSelection = targetsSelectionPhase.run(stopRanks, offsets);
 
             // Store source / target stops ordered by decreasing rank to allow fast access when reading results of
             // RPHAST query for stops.
@@ -54,12 +82,19 @@ namespace karri {
             });
         }
 
+        const RPHASTSelection &getSourcesSelection() const {
+            return sourcesSelection;
+        }
 
-        const std::vector<StopWithRank>& getSourceStopsByRank() const {
+        const std::vector<StopWithRank> &getSourceStopsByRank() const {
             return sourceStopsByRank;
         }
 
-        const std::vector<StopWithRankAndOffset>& getTargetStopsByRank() const {
+        const RPHASTSelection &getTargetsSelection() const {
+            return targetsSelection;
+        }
+
+        const std::vector<StopWithRankAndOffset> &getTargetStopsByRank() const {
             return targetStopsByRank;
         }
 
@@ -103,9 +138,14 @@ namespace karri {
         const CH &ch;
         const Fleet &fleet;
         const RouteState &routeState;
-        RPHASTEnvironment& rphastEnv;
+
 
         std::vector<StopWithRank> sourceStopsByRank;
+        RPHASTSelectionPhase<PruningCriterion> sourcesSelectionPhase;
+        RPHASTSelection sourcesSelection;
+
+        RPHASTSelection targetsSelection;
+        RPHASTSelectionPhase<PruningCriterion> targetsSelectionPhase;
         std::vector<StopWithRankAndOffset> targetStopsByRank;
 
     };

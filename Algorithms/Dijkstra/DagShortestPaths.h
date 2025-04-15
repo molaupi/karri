@@ -60,6 +60,10 @@ class DagShortestPaths {
     friend
     class karri::EllipticBucketsEnvironment;
 
+    template<typename>
+    friend
+    class RPHASTSelectionPhase;
+
     using DistanceLabel = typename LabelSetT::DistanceLabel; // The distance label of a vertex.
     using ParentLabel = typename LabelSetT::ParentLabel;     // The parent label of a vertex.
     static constexpr int K = LabelSetT::K; // The number of simultaneous shortest-path computations.
