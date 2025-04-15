@@ -32,9 +32,12 @@
 #include "RPHASTSelectionPhase.h"
 
 template<typename SourceGraphT, typename WeightT, typename LabelSetT,
+        typename PruningCriterionT = dij::NoCriterion,
         bool StoreMeetingVertices = false,
         template<typename> class DistanceLabelContainerT = StampedDistanceLabelContainer>
 class PHASTQuery {
+
+    static constexpr bool WithPruning = !std::is_same_v<PruningCriterionT, dij::NoCriterion>;
 
     static constexpr int K = LabelSetT::K;
     using DistanceLabel = typename LabelSetT::DistanceLabel;
@@ -64,13 +67,16 @@ class PHASTQuery {
     };
 
 public:
-    PHASTQuery(const SourceGraphT &sourceGraph)
+    PHASTQuery(const SourceGraphT &sourceGraph, PruningCriterionT prune = {})
             : sourceGraph(sourceGraph),
+              prune(prune),
               distances(0),
               meetingVertices(0),
+              isRelevant(),
               upwardSearch(sourceGraph, SetDistanceInDownwardArray(distances)) {}
 
-    void run(const RPHASTSelection& selection, const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
+    void
+    run(const RPHASTSelection &selection, const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
         sanityCheckTargetGraphValidity(selection);
         runUpwardSearchAndInitializeDownwardDistances(selection, sources, offsets);
         runDownwardSweep(selection);
@@ -110,7 +116,7 @@ public:
 
 private:
 
-    void runUpwardSearchAndInitializeDownwardDistances(const RPHASTSelection& selection,
+    void runUpwardSearchAndInitializeDownwardDistances(const RPHASTSelection &selection,
                                                        const std::array<int, K> &sources,
                                                        const std::array<int, K> &offsets = {}) {
         KASSERT(selection.fullToSubMapping.size() == sourceGraph.numVertices());
@@ -130,7 +136,12 @@ private:
         numEdgesRelaxed = upwardSearch.getNumEdgeRelaxations();
     }
 
-    void runDownwardSweep(const RPHASTSelection& selection) {
+    void runDownwardSweep(const RPHASTSelection &selection) {
+        if constexpr (WithPruning) {
+            isRelevant.resize(selection.subGraph.numVertices());
+            isRelevant.reset();
+        }
+
         // Vertices in target graph are ordered by decreasing rank. Downward sweep simply settles vertices in order.
         const int numVertices = selection.subGraph.numVertices();
         for (int v = 0; v < numVertices; ++v) {
@@ -143,20 +154,12 @@ private:
 
             // Relax all incoming edges to finalize the distances and meeting vertices at v.
             FORALL_INCIDENT_EDGES(selection.subGraph, v, e) {
-                ++numEdgesRelaxed;
                 const auto w = selection.subGraph.edgeHead(e);
-                // TODO: There could be a way to mark vertices as irrelevant based on leeways and known best costs.
-                //  After settling w, w is irrelevant if:
-                //  1. Distance to w is guaranteed to lead to higher costs then best known.
-                //  2. Distance to w is larger than largest remaining leeway at w.
-                //  Condition 1 may not help prune very much and condition 2 requires overhead in tracking maximum
-                //  remaining leeway at every vertex. This would require replacing BFS for target selection with a
-                //  topological upward search rooted at every stop. However, we run target selection pretty rarely
-                //  so the overhead may be worth it. This could also help to prune the target graph: Every vertex
-                //  with maximum remaining leeway of less than 0 does not have to be part of target graph.
-                //  Irrelevant vertices can be treated as if having distance INFTY. We can store a isIrrelevant flag
-                //  for every vertex and when relaxing edge (w, v) we can check if w is irrelevant. If it is, we
-                //  don't have to perform most of the work (reading distance, adding weight, updating distance).
+                if constexpr (WithPruning)
+                    if (!isRelevant.isSet(w))
+                        continue;
+
+                ++numEdgesRelaxed;
                 KASSERT(!distances.isStale(w));
                 const auto distToW = distances.readDistanceWithoutStaleCheck(w);
                 const auto distViaW = distToW + selection.subGraph.template get<WeightT>(e);
@@ -170,10 +173,14 @@ private:
                     distAtV.min(distViaW);
                 }
             }
+
+            if constexpr (WithPruning)
+                if (!prune(v, distAtV, distances))
+                    isRelevant.set(v);
         }
     }
 
-    void sanityCheckTargetGraphValidity(const RPHASTSelection& selection) {
+    void sanityCheckTargetGraphValidity(const RPHASTSelection &selection) {
         KASSERT(selection.subToFullMapping.size() == selection.subGraph.numVertices());
         KASSERT(selection.fullToSubMapping.size() == sourceGraph.numVertices());
         int numValidMapping = 0;
@@ -188,9 +195,12 @@ private:
 
     const SourceGraphT &sourceGraph;
 
+    PruningCriterionT prune;
 
     DistanceLabelContainerT<DistanceLabel> distances;
     AlignedVector<DistanceLabel> meetingVertices;
+
+    FastResetFlagArray<uint32_t> isRelevant;
 
     using UpwardSearch = DagShortestPaths<SourceGraphT, WeightT, LabelSetT, SetDistanceInDownwardArray, DistanceLabelContainerT>;
     UpwardSearch upwardSearch;

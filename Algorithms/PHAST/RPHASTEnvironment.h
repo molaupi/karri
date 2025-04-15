@@ -43,41 +43,6 @@ public:
 
     explicit RPHASTEnvironment(const CH &ch) : upwardGraph(ch.upwardGraph()), downwardGraph(ch.downwardGraph()) {}
 
-//
-//    // Runs RPHAST target selection phase for given sources in upward graph.
-//    // Given sources should be ranks in the CH.
-//    // If using PruningCriterion, offsets to initialize the distance at each source may be given.
-//    void runSourceSelection(const std::vector<int> &sources, const std::vector<int>& offsets = {}) {
-//        findVerticesInSourcesSubgraph(sources, offsets);
-//        sourcesSubgraph = constructOrderedSubgraph(upwardGraph, verticesInSubgraph, sourcesFullToSubMapping);
-//        sourcesSubToFullMapping.resize(verticesInSubgraph.size());
-//        for (const auto& v : verticesInSubgraph)
-//            sourcesSubToFullMapping[sourcesFullToSubMapping[v]] = v;
-//    }
-//
-//    int getDistanceFromClosestSource(const int v) const requires WithPruning {
-//        KASSERT(v >= 0);
-//        KASSERT(v < upwardGraph.numVertices());
-//        return sourcesSelectionSearch.getDistance(v);
-//    }
-//
-//    // Runs RPHAST target selection phase for given targets in downward graph.
-//    // Given targets should be ranks in the CH.
-//    // If using PruningCriterion, offsets to initialize the distance at each target may be given.
-//    void runTargetSelection(const std::vector<int> &targets, const std::vector<int>& offsets = {}) {
-//        findVerticesInTargetsSubgraph(targets, offsets);
-//        targetsSubgraph = constructOrderedSubgraph(downwardGraph, verticesInSubgraph, targetsFullToSubMapping);
-//        targetsSubToFullMapping.resize(verticesInSubgraph.size());
-//        for (const auto& v : verticesInSubgraph)
-//            targetsSubToFullMapping[targetsFullToSubMapping[v]] = v;
-//    }
-//
-//    int getDistanceToClosestTarget(const int v) const requires WithPruning {
-//        KASSERT(v >= 0);
-//        KASSERT(v < upwardGraph.numVertices());
-//        return targetsSelectionSearch.getDistance(v);
-//    }
-
     template<typename PruningCriterionT = dij::NoCriterion>
     RPHASTSelectionPhase<PruningCriterionT> getTargetsSelectionPhase(PruningCriterionT pruningCriterion = {}) const {
         return RPHASTSelectionPhase<PruningCriterionT>(downwardGraph, pruningCriterion);
@@ -89,24 +54,25 @@ public:
     }
 
 
-    template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
-    using Query = PHASTQuery<SearchGraph, typename CH::Weight, LabelSetT>;
+    template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>,
+            typename PruningCriterionT = dij::NoCriterion>
+    using Query = PHASTQuery<SearchGraph, typename CH::Weight, LabelSetT, PruningCriterionT>;
 
     // Returns a forward RPHAST query that uses the result of the target selection phase completed by the last
     // call to runTargetSelection().
-    template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
-    Query<LabelSetT> getForwardRPHASTQuery() const {
-        return Query<LabelSetT>(upwardGraph);
+    template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>,
+            typename PruningCriterionT = dij::NoCriterion>
+    Query<LabelSetT, PruningCriterionT> getForwardRPHASTQuery(PruningCriterionT prune = {}) const {
+        return Query<LabelSetT, PruningCriterionT>(upwardGraph, prune);
     }
 
     // Returns a reverse RPHAST query that uses the result of the target selection phase completed by the last
     // call to runSourceSelection().
-    template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
-    Query<LabelSetT> getReverseRPHASTQuery() const {
-        return Query<LabelSetT>(downwardGraph);
+    template<typename LabelSetT = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>,
+            typename PruningCriterionT = dij::NoCriterion>
+    Query<LabelSetT, PruningCriterionT> getReverseRPHASTQuery(PruningCriterionT prune = {}) const {
+        return Query<LabelSetT, PruningCriterionT>(downwardGraph, prune);
     }
-
-
 
 
 private:
@@ -114,19 +80,5 @@ private:
     // Full CH search graphs with vertices ordered by increasing rank. Used for query side ("one" side of one-to-many) of RPHAST queries.
     const SearchGraph& upwardGraph;
     const SearchGraph& downwardGraph;
-
-//    // Subgraphs of the upward and downward search graphs with vertices ordered by decreasing rank.
-//    // Used for the target side ("many" side of one-to-many) of RPHAST queries.
-//    // Full-to-sub mappings map each vertex ID in the full graph to the according ID in the subgraph if present.
-//    // If vertex v is not present in the subgraph, its mapping is subGraph.numVertices() to mark it as invalid.
-//    // Sub-to-full mappings map each vertex ID in the subgraph to the according ID in the full graph.
-//    // Subgraphs and mappings are constructed for a specific set of sources/targets passed to
-//    // runSourceSelection/runTargetSelection.
-//    SearchGraph sourcesSubgraph;
-//    std::vector<int> sourcesFullToSubMapping;
-//    std::vector<int> sourcesSubToFullMapping;
-//    SearchGraph targetsSubgraph;
-//    std::vector<int> targetsFullToSubMapping;
-//    std::vector<int> targetsSubToFullMapping;
 
 };

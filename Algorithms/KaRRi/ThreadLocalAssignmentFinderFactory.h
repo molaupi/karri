@@ -130,7 +130,7 @@ namespace karri {
         tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticPickups;
         tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticDropoffs;
 
-        using EllipticBCHSearchesImpl = EllipticRPHASTSearches<VehicleInputGraph, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
+        using EllipticBCHSearchesImpl = EllipticRPHASTSearches<VehicleInputGraph, OrdinaryStopsRPHASTSelectionT, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
         tbb::enumerable_thread_specific<EllipticBCHSearchesImpl> ellipticSearches;
 
         using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph, VehCHEnv>;
@@ -286,11 +286,7 @@ namespace karri {
                 feasibleEllipticDropoffs([&]() { return FeasibleEllipticDistancesImpl(fleet.size(), routeState); }),
                 ellipticSearches([&]() {
                     return EllipticBCHSearchesImpl(vehicleInputGraph, fleet, vehChEnv.getCH(), rphastEnv,
-                                                   ordinaryStopsRphastSelection.getSourceStopsByRank(),
-                                                   ordinaryStopsRphastSelection.getSourcesSelection(),
-                                                   ordinaryStopsRphastSelection.getTargetStopsByRank(),
-                                                   ordinaryStopsRphastSelection.getTargetsSelection(),
-                                                   routeState);
+                                                   ordinaryStopsRphastSelection, routeState);
                 }),
                 relevantPdLocsFilter(
                         [&]() { return RelevantPDLocsFilterImpl(fleet, vehicleInputGraph, vehChEnv, routeState); }),

@@ -42,6 +42,7 @@
 namespace karri {
 
     template<typename InputGraphT,
+            typename OrdinaryStopsRPHASTSelectionT,
             typename FeasibleEllipticDistancesT,
             typename LabelSetT,
             bool StoreMeetingVertices = false>
@@ -60,21 +61,18 @@ namespace karri {
                                const Fleet &fleet,
                                const CH &ch,
                                const RPHASTEnvironment &rphastEnv,
-                               const std::vector<StopWithRank> &sourceStopsByRank,
-                               const RPHASTSelection &sourcesSelection,
-                               const std::vector<StopWithRankAndOffset> &targetStopsByRank,
-                               const RPHASTSelection &targetsSelection,
+                               const OrdinaryStopsRPHASTSelectionT& ordinaryStopsRphastSelection,
                                const RouteState &routeState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   ch(ch),
                   routeState(routeState),
-                  sourceStopsByRank(sourceStopsByRank),
-                  sourcesSelection(sourcesSelection),
-                  targetStopsByRank(targetStopsByRank),
-                  targetsSelection(targetsSelection),
-                  toQuery(rphastEnv.getReverseRPHASTQuery<LabelSetT>()),
-                  fromQuery(rphastEnv.getForwardRPHASTQuery<LabelSetT>()) {}
+                  sourceStopsByRank(ordinaryStopsRphastSelection.getSourceStopsByRank()),
+                  sourcesSelection(ordinaryStopsRphastSelection.getSourcesSelection()),
+                  targetStopsByRank(ordinaryStopsRphastSelection.getTargetStopsByRank()),
+                  targetsSelection(ordinaryStopsRphastSelection.getTargetsSelection()),
+                  toQuery(rphastEnv.getReverseRPHASTQuery<LabelSetT, typename OrdinaryStopsRPHASTSelectionT::QueryPruningCriterion>(ordinaryStopsRphastSelection.getSourcesQueryPrune())),
+                  fromQuery(rphastEnv.getForwardRPHASTQuery<LabelSetT, typename OrdinaryStopsRPHASTSelectionT::QueryPruningCriterion>(ordinaryStopsRphastSelection.getTargetsQueryPrune())) {}
 
 
         // Run Elliptic RPHAST searches for pickups and dropoffs
@@ -226,8 +224,8 @@ namespace karri {
         const std::vector<StopWithRankAndOffset> &targetStopsByRank;
         const RPHASTSelection &targetsSelection;
 
-        typename RPHASTEnvironment::template Query<LabelSetT> toQuery;
-        typename RPHASTEnvironment::template Query<LabelSetT> fromQuery;
+        typename RPHASTEnvironment::template Query<LabelSetT, typename OrdinaryStopsRPHASTSelectionT::QueryPruningCriterion> toQuery;
+        typename RPHASTEnvironment::template Query<LabelSetT, typename OrdinaryStopsRPHASTSelectionT::QueryPruningCriterion> fromQuery;
 
         int numSearchesRun;
         int totalNumEdgeRelaxations;

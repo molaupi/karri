@@ -16,7 +16,7 @@ namespace karri {
     template<typename InputGraphT>
     class OrdinaryStopsRPHASTSelection {
 
-        struct PruneIfDistanceGreaterZero {
+        struct PruneSelectionIfDistanceGreaterZero {
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int, DistLabelT &distToV, const DistLabelContT &) {
                 static DistLabelT ZeroLabel = 0;
@@ -24,10 +24,31 @@ namespace karri {
             }
         };
 
-//        using PruningCriterion = PruneIfDistanceGreaterZero;
-        using PruningCriterion = dij::NoCriterion;
+//        using SelectionPruningCriterion = PruneSelectionIfDistanceGreaterZero;
+        using SelectionPruningCriterion = dij::NoCriterion;
+        using SelectionPhase = RPHASTSelectionPhase<SelectionPruningCriterion>;
+
+        struct PruneQueryIfMaxRemainingLeewayExceeded {
+
+            PruneQueryIfMaxRemainingLeewayExceeded(const std::vector<int> &remainingLeeways)
+                    : remainingLeeways(remainingLeeways) {}
+
+            template<typename DistLabelT, typename DistLabelContT>
+            bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
+                KASSERT(v >= 0 && v < remainingLeeways.size());
+                KASSERT(remainingLeeways[v] >= 0);
+                const DistLabelT maxRemLeeway = remainingLeeways[v];
+                return allSet(distToV > maxRemLeeway);
+            }
+
+        private:
+            const std::vector<int> &remainingLeeways;
+        };
 
     public:
+
+//        using QueryPruningCriterion = PruneQueryIfMaxRemainingLeewayExceeded;
+        using QueryPruningCriterion = dij::NoCriterion;
 
         OrdinaryStopsRPHASTSelection(const InputGraphT &inputGraph, const CH &ch,
                                      const Fleet &fleet, const RouteState &routeState,
@@ -36,8 +57,10 @@ namespace karri {
                 ch(ch),
                 fleet(fleet),
                 routeState(routeState),
-                sourcesSelectionPhase(rphastEnv.getSourcesSelectionPhase<PruningCriterion>()),
-                targetsSelectionPhase(rphastEnv.getTargetsSelectionPhase<PruningCriterion>()) {}
+                sourcesSelectionPhase(rphastEnv.getSourcesSelectionPhase<SelectionPruningCriterion>()),
+                sourcesQueryPrune(),
+                targetsSelectionPhase(rphastEnv.getTargetsSelectionPhase<SelectionPruningCriterion>()),
+                targetsQueryPrune() {}
 
         // Run RPHAST target selection for all ordinary stops.
         void runSelectionPhaseForOrdinaryStops() {
@@ -56,6 +79,8 @@ namespace karri {
             // reached. The pruning criterion uses this to prune if the maximum remaining leeway becomes negative.
             // Further, we can use the known maximum remaining leeway later to prune queries.
             sourcesSelection = sourcesSelectionPhase.run(stopRanks, offsets);
+//            setRemainingLeewaysForSubgraphVertices(sourcesSelection, sourcesSelectionPhase, sourcesRemainingLeeways);
+
 
             initTargetStopLocations();
             stopRanks.clear();
@@ -71,6 +96,7 @@ namespace karri {
             // reached. The pruning criterion uses this to prune if the maximum remaining leeway becomes negative.
             // Further, we can use the known maximum remaining leeway later to prune queries.
             targetsSelection = targetsSelectionPhase.run(stopRanks, offsets);
+//            setRemainingLeewaysForSubgraphVertices(targetsSelection, targetsSelectionPhase, targetsRemainingLeeways);
 
             // Store source / target stops ordered by decreasing rank to allow fast access when reading results of
             // RPHAST query for stops.
@@ -90,6 +116,10 @@ namespace karri {
             return sourceStopsByRank;
         }
 
+        const QueryPruningCriterion &getSourcesQueryPrune() const {
+            return sourcesQueryPrune;
+        }
+
         const RPHASTSelection &getTargetsSelection() const {
             return targetsSelection;
         }
@@ -98,6 +128,9 @@ namespace karri {
             return targetStopsByRank;
         }
 
+        const QueryPruningCriterion &getTargetsQueryPrune() const {
+            return targetsQueryPrune;
+        }
 
     private:
 
@@ -134,6 +167,19 @@ namespace karri {
             }
         }
 
+//        void setRemainingLeewaysForSubgraphVertices(const RPHASTSelection &selection,
+//                                                    const SelectionPhase &selectionPhase,
+//                                                    std::vector<int> &remainingLeeways) {
+//            KASSERT(selection.subGraph.numVertices() == selection.subToFullMapping.size());
+//            const auto numVertices = selection.subGraph.numVertices();
+//            remainingLeeways.resize(numVertices);
+//            for (int i = 0; i < numVertices; ++i) {
+//                const auto v = selection.subToFullMapping[i];
+//                remainingLeeways[i] = -selectionPhase.getDistanceToClosestTarget(v);
+//            }
+//        }
+
+
         const InputGraphT &inputGraph;
         const CH &ch;
         const Fleet &fleet;
@@ -141,12 +187,16 @@ namespace karri {
 
 
         std::vector<StopWithRank> sourceStopsByRank;
-        RPHASTSelectionPhase<PruningCriterion> sourcesSelectionPhase;
+        SelectionPhase sourcesSelectionPhase;
         RPHASTSelection sourcesSelection;
+        std::vector<int> sourcesRemainingLeeways;
+        QueryPruningCriterion sourcesQueryPrune;
 
         RPHASTSelection targetsSelection;
-        RPHASTSelectionPhase<PruningCriterion> targetsSelectionPhase;
+        SelectionPhase targetsSelectionPhase;
         std::vector<StopWithRankAndOffset> targetStopsByRank;
+        std::vector<int> targetsRemainingLeeways;
+        QueryPruningCriterion targetsQueryPrune;
 
     };
 }
