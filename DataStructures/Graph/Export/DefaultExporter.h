@@ -24,4 +24,28 @@
 
 
 #pragma once
-class DefaultExporter { public: DefaultExporter(bool) {} void ignoreAttribute(std::string) {} };
+
+class DefaultExporter {
+public:
+    DefaultExporter(bool /*compress*/) {}
+
+    void ignoreAttribute(std::string /*attrName*/) {}
+
+    void init(std::string /*filename*/) {}
+
+    void writeHeader(int /*numVertices*/, int /*numEdges*/) {}
+
+    void startVertex(const int /*vertexId*/) {}
+
+    template<typename Attr>
+    void setCurrentVertexAttributeValue(const typename Attr::Type& /*value*/) {}
+
+    void finalizeVertex() {}
+
+    void startEdge(int /*tail*/, int /*head*/) {}
+
+    template<typename Attr>
+    void setCurrentEdgeAttributeValue(const typename Attr::Type& /*value*/) {}
+
+    void finalizeEdge() {}
+};

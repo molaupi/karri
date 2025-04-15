@@ -779,8 +779,27 @@ public:
     }
 
     // Writes a graph to disk. Different exporters support different file formats.
-    template<typename ExporterT = DefaultExporter>
-    void exportTo(const std::string & /*filename*/, ExporterT /*ex*/ = ExporterT()) const {}
+    template<typename ExporterT>
+    void exportTo(const std::string & filename, ExporterT& ex ) const {
+        assert(validate());
+        assert(isDefrag());
+
+        ex.init(filename);
+        ex.writeHeader(numVertices(), numEdges());
+        for (int v = 0; v < numVertices(); ++v) {
+            ex.startVertex(v);
+            RUN_FORALL(ex.template setCurrentVertexAttributeValue<VertexAttributes>(VertexAttributes::values[v]));
+            ex.finalizeVertex();
+        }
+
+        for (int v = 0; v < numVertices(); ++v) {
+            for (int e = firstEdge(v); e != lastEdge(v); ++e) {
+                ex.startEdge(v, edgeHeads[e]);
+                RUN_FORALL(ex.template setCurrentEdgeAttributeValue<EdgeAttributes>(EdgeAttributes::values[e]));
+                ex.finalizeEdge();
+            }
+        }
+    }
 
     // Reads a graph from a binary file. Attributes that are present in the file, but not associated
     // with the graph are ignored. Attributes that are associated with the graph, but not present in

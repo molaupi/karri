@@ -57,6 +57,7 @@
 #include "DataStructures/Graph/Import/XatfImporter.h"
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "Tools/ContainerHelpers.h"
+#include "DataStructures/Graph/Export/DimacsExporter.h"
 
 inline void printUsage() {
   std::cout <<
@@ -156,7 +157,7 @@ inline GraphT importGraph(const CommandLineParser& clp) {
 
 // Executes a graph export using the specified exporter.
 template <typename ExporterT>
-inline void doExport(const CommandLineParser& clp, const GraphT& graph, ExporterT ex) {
+inline void doExport(const CommandLineParser& clp, const GraphT& graph, ExporterT& ex) {
   // Output only those attributes specified on the command line.
   auto attrsToOutput = clp.getValues<std::string>("a");
   for (const auto& attr : GraphT::getAttributeNames())
@@ -184,7 +185,11 @@ inline void exportGraph(const CommandLineParser& clp, const GraphT& graph) {
         attrsToIgnore.push_back(attr);
     graph.writeTo(out, attrsToIgnore);
   } else if (format == "default") {
-    doExport(clp, graph, DefaultExporter(compress));
+      DefaultExporter exporter(compress);
+    doExport(clp, graph, exporter);
+  } else if (format == "dimacs") {
+      DimacsExporter<TravelTimeAttribute, LatLngAttribute> exporter(compress);
+      doExport(clp, graph, exporter);
   } else {
     throw std::invalid_argument("unrecognized output file format -- '" + format + "'");
   }
