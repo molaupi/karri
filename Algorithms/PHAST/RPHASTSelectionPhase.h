@@ -132,7 +132,7 @@ public:
         }
 
         RPHASTSelection result;
-        result.subGraph = constructOrderedSubgraph(verticesInSubgraph, result.fullToSubMapping);
+        result.subGraph = constructVertexInducedOrderedSubgraph(verticesInSubgraph, result.fullToSubMapping);
         result.subToFullMapping.resize(verticesInSubgraph.size());
         for (const auto &v: verticesInSubgraph) {
             result.subToFullMapping[result.fullToSubMapping[v]] = v;
@@ -140,7 +140,7 @@ public:
         return result;
     }
 
-    RPHASTSelection runForKnownVertices(const std::vector<int>& subgraphVertices) {
+    RPHASTSelection runForKnownVertices(const std::vector<int> &subgraphVertices) {
         verticesInSubgraph.clear();
         for (const auto &v: subgraphVertices) {
             verticesInSubgraph.insert(v);
@@ -149,7 +149,28 @@ public:
         std::sort(verticesInSubgraph.begin(), verticesInSubgraph.end(), std::greater<>());
 
         RPHASTSelection result;
-        result.subGraph = constructOrderedSubgraph(verticesInSubgraph, result.fullToSubMapping);
+        result.subGraph = constructVertexInducedOrderedSubgraph(verticesInSubgraph, result.fullToSubMapping);
+        result.subToFullMapping.resize(verticesInSubgraph.size());
+        for (const auto &v: verticesInSubgraph) {
+            result.subToFullMapping[result.fullToSubMapping[v]] = v;
+        }
+        return result;
+    }
+
+    template<typename EdgesSubsetT>
+    RPHASTSelection runForKnownVerticesAndEdges(const std::vector<int> &subgraphVertices,
+                                                const EdgesSubsetT &subgraphEdges) {
+        KASSERT(std::none_of(subgraphEdges.begin(), subgraphEdges.end(),
+                             [](const auto &e) { return e == INVALID_EDGE; }));
+        verticesInSubgraph.clear();
+        for (const auto &v: subgraphVertices) {
+            verticesInSubgraph.insert(v);
+        }
+        // Order vertices by decreasing rank
+        std::sort(verticesInSubgraph.begin(), verticesInSubgraph.end(), std::greater<>());
+
+        RPHASTSelection result;
+        result.subGraph = constructEdgeInducedOrderedSubgraph(verticesInSubgraph, subgraphEdges, result.fullToSubMapping);
         result.subToFullMapping.resize(verticesInSubgraph.size());
         for (const auto &v: verticesInSubgraph) {
             result.subToFullMapping[result.fullToSubMapping[v]] = v;
@@ -276,7 +297,8 @@ private:
     // TODO: The UnpackingInfoAttribute is not adequately updated for the new edge IDs in the subgraph.
     //  When we want to retrieve paths, we need to implement an appropriate update.
     SearchGraph
-    constructOrderedSubgraph(const LightweightSubset &sortedSubgraphVertices, std::vector<int> &origToNewIds) {
+    constructVertexInducedOrderedSubgraph(const LightweightSubset &sortedSubgraphVertices,
+                                          std::vector<int> &origToNewIds) {
         const auto numVertices = sortedSubgraphVertices.size();
         // Invalid mapping is represented by number of vertices in subgraph (i.e. one past last valid vertex).
         origToNewIds = std::vector<int>(fullGraph.numVertices(), numVertices);
@@ -317,6 +339,59 @@ private:
                     unpackingInfo[edgeCount] = fullGraph.template get<UnpackingInfoAttribute>(e);
                     ++edgeCount;
                 }
+            }
+        }
+        KASSERT(edgeCount == numEdges);
+
+        outEdges.back().last() = edgeCount;
+        return SearchGraph(std::move(outEdges), std::move(edgeHeads), edgeCount, std::move(weights),
+                           std::move(unpackingInfo));
+    }
+
+    // Constructs a subgraph containing the given set of vertices and edges.
+    // The subgraph is ordered in given order of vertices.
+    // TODO: The UnpackingInfoAttribute is not adequately updated for the new edge IDs in the subgraph.
+    //  When we want to retrieve paths, we need to implement an appropriate update.
+    template<typename EdgesSubsetT>
+    SearchGraph
+    constructEdgeInducedOrderedSubgraph(const LightweightSubset &subgraphVertices,
+                                        const EdgesSubsetT &subgraphEdges,
+                                        std::vector<int> &origToNewIds) {
+        const auto numVertices = subgraphVertices.size();
+        const auto numEdges = subgraphEdges.size();
+        // Invalid mapping is represented by number of vertices in subgraph (i.e. one past last valid vertex).
+        origToNewIds = std::vector<int>(fullGraph.numVertices(), numVertices);
+
+        // Assign new sequential IDs to the vertices in the subgraph. Vertex IDs in subgraph will be assigned according
+        // to order of passed vertices.
+        int nextId = 0;
+        for (auto it = subgraphVertices.begin(); it != subgraphVertices.end(); ++it)
+            origToNewIds[*it] = nextId++;
+
+        // Count the edges in the subgraph.
+        AlignedVector<SearchGraph::OutEdgeRange> outEdges(nextId + 1);
+        AlignedVector<int32_t> edgeHeads(numEdges);
+        AlignedVector<typename CH::Weight::Type> weights(numEdges);
+        AlignedVector<typename UnpackingInfoAttribute::Type> unpackingInfo(numEdges);
+
+        int edgeCount = 0;
+        for (int i = 0; i < numVertices; ++i) {
+            const auto u = *(subgraphVertices.begin() + i);
+            // Copy the current vertex belonging to the subgraph.
+            outEdges[i].first() = edgeCount;
+
+            // Copy the edges out of u that belong to the subgraph.
+            // Edges in full graph are ordered by increasing rank of head vertex. We order edges in subgraph
+            // by decreasing rank of head vertex.
+            for (int e = fullGraph.lastEdge(u) - 1; e >= fullGraph.firstEdge(u); --e) {
+                if (!subgraphEdges.contains(e))
+                    continue;
+                const int v = origToNewIds[fullGraph.edgeHead(e)];
+                KASSERT(v != numVertices);
+                edgeHeads[edgeCount] = v;
+                weights[edgeCount] = fullGraph.template get<typename CH::Weight>(e);
+                unpackingInfo[edgeCount] = fullGraph.template get<UnpackingInfoAttribute>(e);
+                ++edgeCount;
             }
         }
         KASSERT(edgeCount == numEdges);

@@ -91,6 +91,10 @@ namespace karri {
                 return elements;
             }
 
+            bool contains(const int& element) const {
+                return indexAndCount[element].index != INVALID_INDEX;
+            }
+
             void addOccurrence(const int i) {
                 KASSERT(i >= 0 && i < indexAndCount.size());
                 if (indexAndCount[i].index == INVALID_INDEX) {
@@ -130,6 +134,8 @@ namespace karri {
                   targetPos(inputGraph.numVertices(), dynamic_ragged2d::ValueBlockPosition(0, 0)),
                   sourceVerticesUnion(inputGraph.numVertices()),
                   targetVerticesUnion(inputGraph.numVertices()),
+                  sourceEdgesUnion(ch.upwardGraph().numEdges()),
+                  targetEdgesUnion(ch.downwardGraph().numEdges()),
                   forwardSearchFromNewStop(
                           chEnv.getForwardTopologicalSearch(StoreSearchSpace(searchSpaceForUpSearch),
                                                             StopWhenLeewayExceeded(currentLeeway))),
@@ -142,12 +148,20 @@ namespace karri {
                   searchSpaceForUpSearch(),
                   descendentHasEntry(inputGraph.numVertices()) {}
 
-        const std::vector<int> &getUnionOfSourceSearchSpaces() const {
+        const std::vector<int> &getUnionOfSourceSearchSpaceVertices() const {
             return sourceVerticesUnion.getElements();
         }
 
-        const std::vector<int> &getUnionOfTargetSearchSpaces() const {
+        const std::vector<int> &getUnionOfTargetSearchSpaceVertices() const {
             return targetVerticesUnion.getElements();
+        }
+
+        const CountSubset &getUnionOfSourceSearchSpaceEdges() const {
+            return sourceEdgesUnion;
+        }
+
+        const CountSubset &getUnionOfTargetSearchSpaceEdges() const {
+            return targetEdgesUnion;
         }
 
         void generateSourceSearchSpace(const int vehId, const int stopIndex,
@@ -175,7 +189,8 @@ namespace karri {
             generateSearchSpace(stopId, leeway,
                                 newStopRoot, 0, forwardSearchFromNewStop, ch.upwardGraph(),
                                 nextStopRoot, nextStopOffset, reverseSearchFromNextStop, ch.downwardGraph(),
-                                sourcePos, sourceSearchSpaces, sourceVerticesUnion, stats);
+                                sourcePos, sourceSearchSpaceVertices, sourceSearchSpaceEdges, sourceVerticesUnion,
+                                sourceEdgesUnion, stats);
         }
 
         void generateTargetSearchSpace(const int vehId, const int stopIndex,
@@ -202,7 +217,8 @@ namespace karri {
             generateSearchSpace(stopId, leeway,
                                 newStopRoot, newStopOffset, reverseSearchFromNewStop, ch.downwardGraph(),
                                 prevStopRoot, 0, forwardSearchFromPrevStop, ch.upwardGraph(),
-                                targetPos, targetSearchSpaces, targetVerticesUnion, stats);
+                                targetPos, targetSearchSpaceVertices, targetSearchSpaceEdges, targetVerticesUnion,
+                                targetEdgesUnion, stats);
         }
 
         void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle &) {
@@ -215,12 +231,14 @@ namespace karri {
 
         void deleteSourceSearchSpace(const int vehId, const int stopIndex) {
             const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
-            deleteSearchSpace(stopId, sourcePos, sourceSearchSpaces, sourceVerticesUnion);
+            deleteSearchSpace(stopId, sourcePos, sourceSearchSpaceVertices, sourceSearchSpaceEdges, sourceVerticesUnion,
+                              sourceEdgesUnion);
         }
 
         void deleteTargetSearchSpace(const int vehId, const int stopIndex) {
             const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
-            deleteSearchSpace(stopId, targetPos, targetSearchSpaces, targetVerticesUnion);
+            deleteSearchSpace(stopId, targetPos, targetSearchSpaceVertices, targetSearchSpaceEdges, targetVerticesUnion,
+                              targetEdgesUnion);
         }
 
     private:
@@ -239,8 +257,10 @@ namespace karri {
                                  SearchFromNeighbor &searchFromNeighbor,
                                  const CH::SearchGraph &neighborGraph,
                                  std::vector<dynamic_ragged2d::ValueBlockPosition> &pos,
-                                 std::vector<int> &searchSpaces,
+                                 std::vector<int> &searchSpaceVertices,
+                                 std::vector<int> &searchSpaceEdges,
                                  CountSubset &verticesUnion,
+                                 CountSubset &edgesUnion,
                                  stats::UpdatePerformanceStats &stats) {
             int64_t numEntriesGenerated = 0;
             Timer timer;
@@ -278,8 +298,12 @@ namespace karri {
                 // Check if vertex is in ellipse using distances to neighbor:
                 const bool inEllipse = searchFromNewStop.getDistance(v) + searchFromNeighbor.getDistance(v) <= leeway;
                 if ((!betterHigherPathExists && inEllipse) || descendentHasEntry[v]) {
-                    dynamic_ragged2d::insertion(stopId, v, pos, searchSpaces);
+                    const int idx = dynamic_ragged2d::insertion(stopId, v, pos, searchSpaceVertices, searchSpaceEdges);
+                    const auto parentEdge = searchFromNewStop.getParentEdge(v);
+                    searchSpaceEdges[idx] = parentEdge;
                     verticesUnion.addOccurrence(v);
+                    if (parentEdge != INVALID_EDGE)
+                        edgesUnion.addOccurrence(parentEdge);
                     ++numEntriesGenerated;
 
                     // Always insert entries at every vertex on the branch, so we obtain a tree of entries.
@@ -294,21 +318,27 @@ namespace karri {
             stats.elliptic_generate_numEntriesInserted += numEntriesGenerated;
         }
 
-        void
-        deleteSearchSpace(const int stopId,
-                          std::vector<dynamic_ragged2d::ValueBlockPosition> &pos,
-                          std::vector<int> &searchSpaces,
-                          CountSubset &verticesUnion) {
+        void deleteSearchSpace(const int stopId,
+                               std::vector<dynamic_ragged2d::ValueBlockPosition> &pos,
+                               std::vector<int> &searchSpaceVertices,
+                               std::vector<int> &searchSpaceEdges,
+                               CountSubset &verticesUnion,
+                               CountSubset &edgesUnion) {
 
             const auto start = pos[stopId].start;
             const auto end = pos[stopId].end;
             for (int i = start; i < end; ++i) {
-                const auto v = searchSpaces[i];
+                const auto v = searchSpaceVertices[i];
                 verticesUnion.removeOccurrence(v);
+                const auto e = searchSpaceEdges[i];
+                KASSERT(i < end - 1 || e == INVALID_EDGE);
+                if (i < end - 1) {
+                    KASSERT(e != INVALID_EDGE);
+                    edgesUnion.removeOccurrence(e);
+                }
             }
 
-            dynamic_ragged2d::removalOfAllCols(stopId, pos, searchSpaces);
-
+            dynamic_ragged2d::removalOfAllCols(stopId, pos, searchSpaceVertices);
         }
 
 
@@ -317,13 +347,18 @@ namespace karri {
         const RouteState &routeState;
 
         std::vector<dynamic_ragged2d::ValueBlockPosition> sourcePos;
-        std::vector<int> sourceSearchSpaces;
+        std::vector<int> sourceSearchSpaceVertices;
+        std::vector<int> sourceSearchSpaceEdges;
 
         std::vector<dynamic_ragged2d::ValueBlockPosition> targetPos;
-        std::vector<int> targetSearchSpaces;
+        std::vector<int> targetSearchSpaceVertices;
+        std::vector<int> targetSearchSpaceEdges;
 
         CountSubset sourceVerticesUnion;
         CountSubset targetVerticesUnion;
+
+        CountSubset sourceEdgesUnion;
+        CountSubset targetEdgesUnion;
 
         SearchFromNewStop forwardSearchFromNewStop;
         SearchFromNewStop reverseSearchFromNewStop;

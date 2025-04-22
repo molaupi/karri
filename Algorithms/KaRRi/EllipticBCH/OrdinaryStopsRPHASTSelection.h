@@ -55,7 +55,7 @@ namespace karri {
         OrdinaryStopsRPHASTSelection(const InputGraphT &inputGraph, const CH &ch,
                                      const Fleet &fleet,
                                      const RouteState &routeState,
-                                     const EllipticSearchSpacesT& ellipticSearchSpaces,
+                                     const EllipticSearchSpacesT &ellipticSearchSpaces,
                                      const RPHASTEnvironment &rphastEnv) :
                 inputGraph(inputGraph),
                 ch(ch),
@@ -94,8 +94,14 @@ namespace karri {
 //            sourcesSelection = sourcesSelectionPhase.run(stopRanks, offsets);
 //            setRemainingLeewaysForSubgraphVertices(sourcesSelection, sourcesSelectionPhase, sourcesRemainingLeeways);
 
-            sourcesSelection = sourcesSelectionPhase.runForKnownVertices(ellipticSearchSpaces.getUnionOfSourceSearchSpaces());
-            KASSERT(sourcesSelection.subGraph.numVertices() == ellipticSearchSpaces.getUnionOfSourceSearchSpaces().size());
+//            sourcesSelection = sourcesSelectionPhase.runForKnownVertices(ellipticSearchSpaces.getUnionOfSourceSearchSpaceVertices());
+            sourcesSelection = sourcesSelectionPhase.runForKnownVerticesAndEdges(
+                    ellipticSearchSpaces.getUnionOfSourceSearchSpaceVertices(),
+                    ellipticSearchSpaces.getUnionOfSourceSearchSpaceEdges());
+            KASSERT(sourcesSelection.subGraph.numVertices() ==
+                    ellipticSearchSpaces.getUnionOfSourceSearchSpaceVertices().size());
+            KASSERT(sourcesSelection.subGraph.numEdges() ==
+                    ellipticSearchSpaces.getUnionOfSourceSearchSpaceEdges().size());
             KASSERT(sourcesSelection.subToFullMapping.size() == sourcesSelection.subGraph.numVertices());
             const auto sourcesSelectionTime = timer.elapsed<std::chrono::nanoseconds>();
 
@@ -116,8 +122,14 @@ namespace karri {
 //            targetsSelection = targetsSelectionPhase.run(stopRanks, offsets);
 //            setRemainingLeewaysForSubgraphVertices(targetsSelection, targetsSelectionPhase, targetsRemainingLeeways);
 
-            targetsSelection = targetsSelectionPhase.runForKnownVertices(ellipticSearchSpaces.getUnionOfTargetSearchSpaces());
-            KASSERT(targetsSelection.subGraph.numVertices() == ellipticSearchSpaces.getUnionOfTargetSearchSpaces().size());
+//            targetsSelection = targetsSelectionPhase.runForKnownVertices(ellipticSearchSpaces.getUnionOfTargetSearchSpaceVertices());
+            targetsSelection = targetsSelectionPhase.runForKnownVerticesAndEdges(
+                    ellipticSearchSpaces.getUnionOfTargetSearchSpaceVertices(),
+                    ellipticSearchSpaces.getUnionOfTargetSearchSpaceEdges());
+            KASSERT(targetsSelection.subGraph.numVertices() ==
+                    ellipticSearchSpaces.getUnionOfTargetSearchSpaceVertices().size());
+            KASSERT(targetsSelection.subGraph.numEdges() ==
+                    ellipticSearchSpaces.getUnionOfTargetSearchSpaceEdges().size());
             KASSERT(targetsSelection.subToFullMapping.size() == targetsSelection.subGraph.numVertices());
             const auto targetsSelectionTime = timer.elapsed<std::chrono::nanoseconds>();
 
@@ -214,7 +226,7 @@ namespace karri {
         const CH &ch;
         const Fleet &fleet;
         const RouteState &routeState;
-        const EllipticSearchSpacesT& ellipticSearchSpaces;
+        const EllipticSearchSpacesT &ellipticSearchSpaces;
 
 
         std::vector<StopWithRank> sourceStopsByRank;

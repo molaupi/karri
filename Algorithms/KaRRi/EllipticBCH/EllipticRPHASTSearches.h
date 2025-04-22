@@ -105,10 +105,9 @@ namespace karri {
                  stats::EllipticBCHPerformanceStats &stats) {
 
             // Run for pickups:
-            Timer timer;
             runRPHASTSearchesFromAndTo(requestState, pdLocs.pickups, feasibleEllipticPickups);
-            const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
-            stats.pickupTime += pickupTime;
+            stats.pickupSearchTime += totalSearchTime;
+            stats.pickupPostprocessTime += totalPostprocessTime;
             stats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
             stats.pickupNumVerticesSettled += totalNumVerticesSettled;
             stats.pickupNumEntriesScanned += totalNumEntriesScanned;
@@ -116,10 +115,9 @@ namespace karri {
             stats.pickupNumStopsSeen += feasibleEllipticPickups.numStopsWithRelevantPDLocs();
 
             // Run for dropoffs:
-            timer.restart();
             runRPHASTSearchesFromAndTo(requestState, pdLocs.dropoffs, feasibleEllipticDropoffs);
-            const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
-            stats.dropoffTime += dropoffTime;
+            stats.dropoffSearchTime += totalSearchTime;
+            stats.dropoffPostprocessTime += totalPostprocessTime;
             stats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
             stats.dropoffNumVerticesSettled += totalNumVerticesSettled;
             stats.dropoffNumEntriesScanned += totalNumEntriesScanned;
@@ -141,6 +139,8 @@ namespace karri {
             totalNumEdgeRelaxations = 0;
             totalNumVerticesSettled = 0;
             totalNumEntriesScanned = 0;
+            totalSearchTime = 0;
+            totalPostprocessTime = 0;
 
             // Set an upper bound distance for the searches comprised of the maximum leeway or an upper bound based on the
             // current best costs (we compute the maximum detour that would still allow an assignment with costs smaller
@@ -168,6 +168,8 @@ namespace karri {
                                           FeasibleEllipticDistancesT &feasibleEllipticDistances) {
             KASSERT(endId > startId && endId - startId <= K);
 
+            Timer timer;
+
             std::array<int, K> pdLocHeads;
 
             for (unsigned int i = 0; i < K; ++i) {
@@ -182,10 +184,13 @@ namespace karri {
 
             fromQuery.run(targetsSelection, pdLocHeads);
 
+            totalSearchTime += timer.elapsed<std::chrono::nanoseconds>();
+
             ++numSearchesRun;
             totalNumEdgeRelaxations += fromQuery.getNumEdgeRelaxations();
             totalNumVerticesSettled += fromQuery.getNumVerticesSettled();
 
+            timer.restart();
             // Store results for each stop where a feasible distance has been found:
             for (const auto &[prevStopId, rank, offset]: targetStopsByRank) {
                 const auto rankInSubgraph = targetsSelection.fullToSubMapping[rank];
@@ -201,6 +206,7 @@ namespace karri {
                                                                                 meetingVertices);
                 }
             }
+            totalPostprocessTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
         template<typename SpotContainerT>
@@ -208,6 +214,8 @@ namespace karri {
                                         const SpotContainerT &pdLocs,
                                         FeasibleEllipticDistancesT &feasibleEllipticDistances) {
             KASSERT(endId > startId && endId - startId <= K);
+
+            Timer timer;
 
             std::array<int, K> travelTimes;
             std::array<int, K> pdLocTails;
@@ -225,10 +233,13 @@ namespace karri {
 
             toQuery.run(sourcesSelection, pdLocTails, travelTimes);
 
+            totalSearchTime += timer.elapsed<std::chrono::nanoseconds>();
+
             ++numSearchesRun;
             totalNumEdgeRelaxations += toQuery.getNumEdgeRelaxations();
             totalNumVerticesSettled += toQuery.getNumVerticesSettled();
 
+            timer.restart();
             // Store results for each stop where a feasible distance has been found:
             for (const auto &[stopId, rank]: sourceStopsByRank) {
                 const auto rankInSubgraph = sourcesSelection.fullToSubMapping[rank];
@@ -243,6 +254,7 @@ namespace karri {
                     feasibleEllipticDistances.updateDistanceFromStopToPDLoc(stopId, startId, dist, meetingVertices);
                 }
             }
+            totalPostprocessTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
         const InputGraphT &inputGraph;
@@ -264,5 +276,8 @@ namespace karri {
         int totalNumVerticesSettled;
         int totalNumEntriesScanned;
         int totalNumEntriesScannedWithDistSmallerLeeway;
+
+        int64_t totalSearchTime;
+        int64_t totalPostprocessTime;
     };
 }

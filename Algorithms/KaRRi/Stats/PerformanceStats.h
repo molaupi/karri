@@ -70,8 +70,10 @@ namespace karri::stats {
 
     struct EllipticBCHPerformanceStats {
         int64_t initializationTime;
-        int64_t pickupTime;
-        int64_t dropoffTime;
+        int64_t pickupSearchTime;
+        int64_t pickupPostprocessTime;
+        int64_t dropoffSearchTime;
+        int64_t dropoffPostprocessTime;
         int64_t pickupNumEdgeRelaxations;
         int64_t pickupNumVerticesSettled;
         int64_t pickupNumEntriesScanned;
@@ -84,13 +86,16 @@ namespace karri::stats {
         int64_t dropoffNumStopsSeen;
 
         int64_t getTotalTime() const {
-            return initializationTime + pickupTime + dropoffTime;
+            return initializationTime + pickupSearchTime + pickupPostprocessTime + dropoffSearchTime +
+                   dropoffPostprocessTime;
         }
 
         void clear() {
             initializationTime = 0;
-            pickupTime = 0;
-            dropoffTime = 0;
+            pickupSearchTime = 0;
+            pickupPostprocessTime = 0;
+            dropoffSearchTime = 0;
+            dropoffPostprocessTime = 0;
             pickupNumEdgeRelaxations = 0;
             pickupNumVerticesSettled = 0;
             pickupNumEntriesScanned = 0;
@@ -106,8 +111,10 @@ namespace karri::stats {
         static constexpr auto LOGGER_NAME = "perf_ellipticbch.csv";
         static constexpr auto LOGGER_COLS =
                 "initialization_time,"
-                "pickup_time,"
-                "dropoff_time,"
+                "pickup_search_time,"
+                "pickup_postprocess_time,"
+                "dropoff_search_time,"
+                "dropoff_postprocess_time,"
                 "pickup_num_edge_relaxations,"
                 "pickup_num_vertices_settled,"
                 "pickup_num_entries_scanned,"
@@ -124,8 +131,10 @@ namespace karri::stats {
         std::string getLoggerRow() const {
             std::stringstream ss;
             ss << initializationTime << ", "
-               << pickupTime << ", "
-               << dropoffTime << ", "
+               << pickupSearchTime << ", "
+               << pickupPostprocessTime << ", "
+               << dropoffSearchTime << ", "
+               << dropoffPostprocessTime << ", "
                << pickupNumEdgeRelaxations << ", "
                << pickupNumVerticesSettled << ", "
                << pickupNumEntriesScanned << ", "
