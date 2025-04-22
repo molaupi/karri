@@ -145,7 +145,7 @@ public:
         DistanceLabel() = default;
 
         // Constructs a distance label with all k values set to val. Converting constructor.
-        DistanceLabel(const int val) {
+        constexpr DistanceLabel(const int val) {
             std::fill(values.begin(), values.end(), val);
         }
 
