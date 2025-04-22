@@ -37,10 +37,11 @@
 #include "Tools/Constants.h"
 
 
+
 // Forward declarations for friend
 namespace karri {
-    template<typename, typename, bool>
-    class EllipticBucketsEnvironment;
+    template<typename, typename>
+    class EllipticSearchSpaces;
 }
 
 // Implementation of a shortest-path search on a directed acyclic graph. The vertices must be
@@ -56,9 +57,9 @@ template<
         typename QueueT = AddressableQuadHeap>
 class DagShortestPaths {
 
-    template<typename, typename, bool>
+    template<typename, typename>
     friend
-    class karri::EllipticBucketsEnvironment;
+    class karri::EllipticSearchSpaces;
 
     using DistanceLabel = typename LabelSetT::DistanceLabel; // The distance label of a vertex.
     using ParentLabel = typename LabelSetT::ParentLabel;     // The parent label of a vertex.
@@ -97,7 +98,7 @@ public:
         std::array<int, K> offsets;
         sources.fill(s);
         offsets.fill(offset);
-        init(s, offset);
+        init(sources, offsets);
         while (!queue.empty())
             settleNextVertex();
     }

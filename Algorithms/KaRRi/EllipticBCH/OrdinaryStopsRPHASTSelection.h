@@ -16,7 +16,7 @@ namespace karri {
 // Runs the RPHAST selection phase for all ordinary stops.
 // Can be called once before processing a request batch to update the RPHAST selection for the current route state
 // and then be used by all threads for all requests during the batch.
-    template<typename InputGraphT, typename LoggerT = NullLogger>
+    template<typename InputGraphT, typename EllipticSearchSpacesT, typename LoggerT = NullLogger>
     class OrdinaryStopsRPHASTSelection {
 
         struct PruneSelectionIfDistanceGreaterZero {
@@ -53,12 +53,15 @@ namespace karri {
         using QueryPruningCriterion = dij::NoCriterion;
 
         OrdinaryStopsRPHASTSelection(const InputGraphT &inputGraph, const CH &ch,
-                                     const Fleet &fleet, const RouteState &routeState,
+                                     const Fleet &fleet,
+                                     const RouteState &routeState,
+                                     const EllipticSearchSpacesT& ellipticSearchSpaces,
                                      const RPHASTEnvironment &rphastEnv) :
                 inputGraph(inputGraph),
                 ch(ch),
                 fleet(fleet),
                 routeState(routeState),
+                ellipticSearchSpaces(ellipticSearchSpaces),
                 sourcesSelectionPhase(rphastEnv.getSourcesSelectionPhase<SelectionPruningCriterion>()),
                 sourcesQueryPrune(),
                 targetsSelectionPhase(rphastEnv.getTargetsSelectionPhase<SelectionPruningCriterion>()),
@@ -76,38 +79,46 @@ namespace karri {
 
             Timer timer;
             initSourceStopLocations();
-            std::vector<int> stopRanks;
-            std::vector<int> offsets;
-            stopRanks.reserve(sourceStopsByRank.size());
-            offsets.reserve(sourceStopsByRank.size());
-            for (const auto &sourceStop: sourceStopsByRank) {
-                stopRanks.push_back(sourceStop.rank);
-                offsets.push_back(-routeState.leewayOfLegStartingAt(sourceStop.stopId));
-            }
+//            std::vector<int> stopRanks;
+//            std::vector<int> offsets;
+//            stopRanks.reserve(sourceStopsByRank.size());
+//            offsets.reserve(sourceStopsByRank.size());
+//            for (const auto &sourceStop: sourceStopsByRank) {
+//                stopRanks.push_back(sourceStop.rank);
+//                offsets.push_back(-routeState.leewayOfLegStartingAt(sourceStop.stopId));
+//            }
             // Run RPHAST selection phase for sources. Offsets are -1 * leeway so whenever selection search
             // settles a vertex v, its distance label is -1 * maximum remaining leeway for any stop from which v is
             // reached. The pruning criterion uses this to prune if the maximum remaining leeway becomes negative.
             // Further, we can use the known maximum remaining leeway later to prune queries.
-            sourcesSelection = sourcesSelectionPhase.run(stopRanks, offsets);
+//            sourcesSelection = sourcesSelectionPhase.run(stopRanks, offsets);
 //            setRemainingLeewaysForSubgraphVertices(sourcesSelection, sourcesSelectionPhase, sourcesRemainingLeeways);
+
+            sourcesSelection = sourcesSelectionPhase.runForKnownVertices(ellipticSearchSpaces.getUnionOfSourceSearchSpaces());
+            KASSERT(sourcesSelection.subGraph.numVertices() == ellipticSearchSpaces.getUnionOfSourceSearchSpaces().size());
+            KASSERT(sourcesSelection.subToFullMapping.size() == sourcesSelection.subGraph.numVertices());
             const auto sourcesSelectionTime = timer.elapsed<std::chrono::nanoseconds>();
 
             timer.restart();
             initTargetStopLocations();
-            stopRanks.clear();
-            offsets.clear();
-            stopRanks.reserve(targetStopsByRank.size());
-            offsets.reserve(targetStopsByRank.size());
-            for (const auto &targetStop: targetStopsByRank) {
-                stopRanks.push_back(targetStop.rank);
-                offsets.push_back(-(routeState.leewayOfLegStartingAt(targetStop.prevStopId) - targetStop.offset));
-            }
+//            stopRanks.clear();
+//            offsets.clear();
+//            stopRanks.reserve(targetStopsByRank.size());
+//            offsets.reserve(targetStopsByRank.size());
+//            for (const auto &targetStop: targetStopsByRank) {
+//                stopRanks.push_back(targetStop.rank);
+//                offsets.push_back(-(routeState.leewayOfLegStartingAt(targetStop.prevStopId) - targetStop.offset));
+//            }
             // Run RPHAST selection phase for targets. Offsets are -1 * leeway so whenever selection search
             // settles a vertex v, its distance label is -1 * maximum remaining leeway for any stop from which v is
             // reached. The pruning criterion uses this to prune if the maximum remaining leeway becomes negative.
             // Further, we can use the known maximum remaining leeway later to prune queries.
-            targetsSelection = targetsSelectionPhase.run(stopRanks, offsets);
+//            targetsSelection = targetsSelectionPhase.run(stopRanks, offsets);
 //            setRemainingLeewaysForSubgraphVertices(targetsSelection, targetsSelectionPhase, targetsRemainingLeeways);
+
+            targetsSelection = targetsSelectionPhase.runForKnownVertices(ellipticSearchSpaces.getUnionOfTargetSearchSpaces());
+            KASSERT(targetsSelection.subGraph.numVertices() == ellipticSearchSpaces.getUnionOfTargetSearchSpaces().size());
+            KASSERT(targetsSelection.subToFullMapping.size() == targetsSelection.subGraph.numVertices());
             const auto targetsSelectionTime = timer.elapsed<std::chrono::nanoseconds>();
 
             // Store source / target stops ordered by decreasing rank to allow fast access when reading results of
@@ -203,6 +214,7 @@ namespace karri {
         const CH &ch;
         const Fleet &fleet;
         const RouteState &routeState;
+        const EllipticSearchSpacesT& ellipticSearchSpaces;
 
 
         std::vector<StopWithRank> sourceStopsByRank;

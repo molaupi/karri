@@ -108,6 +108,7 @@
 #include "Algorithms/KaRRi/ThreadLocalAssignmentFinderFactory.h"
 #include "Algorithms/KaRRi/BatchAssignmentFinder.h"
 #include "Algorithms/KaRRi/EllipticBCH/OrdinaryStopsRPHASTSelection.h"
+#include "Algorithms/KaRRi/EllipticBCH/EllipticSearchSpaces.h"
 
 #elif KARRI_DALS_STRATEGY == KARRI_IND
 
@@ -457,9 +458,12 @@ int main(int argc, char *argv[]) {
 
         RPHASTEnvironment rphastEnv(vehChEnv->getCH());
 
-        using OrdinaryStopsRPHASTSelectionImpl = OrdinaryStopsRPHASTSelection<VehicleInputGraph, NullLogger>;
+        using EllipticSearchSpacesImpl = EllipticSearchSpaces<VehicleInputGraph, VehCHEnv>;
+        EllipticSearchSpacesImpl ellipticSearchSpaces(vehicleInputGraph, *vehChEnv, routeState);
+
+        using OrdinaryStopsRPHASTSelectionImpl = OrdinaryStopsRPHASTSelection<VehicleInputGraph, EllipticSearchSpacesImpl, std::ofstream>;
         OrdinaryStopsRPHASTSelectionImpl ordinaryStopsRphastSelection(vehicleInputGraph, vehChEnv->getCH(), fleet,
-                                                                      routeState, rphastEnv);
+                                                                      routeState, ellipticSearchSpaces, rphastEnv);
 
         using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, PDLocsAtExistingStopsFinderImpl, OrdinaryStopsRPHASTSelectionImpl, LastStopBucketsEnv>;
         ThreadLocalAssignmentFinderFactoryImpl asgnFinderFactory(vehicleInputGraph, revVehicleGraph, psgInputGraph,
@@ -480,9 +484,10 @@ int main(int argc, char *argv[]) {
 
         using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
         VehicleLocatorImpl ssUlocator(vehicleInputGraph, *vehChEnv, routeState);
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, OrdinaryStopsRPHASTSelectionImpl, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, std::ofstream>;
+        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticSearchSpacesImpl, OrdinaryStopsRPHASTSelectionImpl, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, std::ofstream>;
         SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, ssUlocator,
-                                                  pathTracker, routeState, ordinaryStopsAtLocations,
+                                                  pathTracker, routeState, ellipticSearchSpaces,
+                                                  ordinaryStopsAtLocations,
                                                   ordinaryStopsRphastSelection, lastStopBucketsEnv);
 
 

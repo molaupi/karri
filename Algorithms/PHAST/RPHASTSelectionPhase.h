@@ -140,6 +140,23 @@ public:
         return result;
     }
 
+    RPHASTSelection runForKnownVertices(const std::vector<int>& subgraphVertices) {
+        verticesInSubgraph.clear();
+        for (const auto &v: subgraphVertices) {
+            verticesInSubgraph.insert(v);
+        }
+        // Order vertices by decreasing rank
+        std::sort(verticesInSubgraph.begin(), verticesInSubgraph.end(), std::greater<>());
+
+        RPHASTSelection result;
+        result.subGraph = constructOrderedSubgraph(verticesInSubgraph, result.fullToSubMapping);
+        result.subToFullMapping.resize(verticesInSubgraph.size());
+        for (const auto &v: verticesInSubgraph) {
+            result.subToFullMapping[result.fullToSubMapping[v]] = v;
+        }
+        return result;
+    }
+
     // Given a rank in the full graph, this returns the distance from v to the closest target in the last call to run()
     // or INFTY if v was not reached.
     int getDistanceToClosestTarget(const int v) const requires WithPruning {

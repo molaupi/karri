@@ -37,6 +37,7 @@ namespace karri {
     // Updates the system state consisting of the route state (schedules of vehicles and additional information about
     // stops) as well as the bucket state (precomputed information for fast shortest path queries to vehicle stops).
     template<typename InputGraphT,
+            typename EllipticSearchSpacesT,
             typename OrdinaryStopsRPHASTSelectionT,
             typename LastStopBucketsEnvT,
             typename VehicleLocatorT,
@@ -51,6 +52,7 @@ namespace karri {
                            VehicleLocatorT &vehicleLocator,
                            PathTrackerT &pathTracker,
                            RouteState &routeState,
+                           EllipticSearchSpacesT& ellipticSearchSpaces,
                            OrdinaryStopsAtLocations &ordinaryStopsAtLocations,
                            OrdinaryStopsRPHASTSelectionT& ordinaryStopsRphastSelection,
                            LastStopBucketsEnvT &lastStopBucketsEnv)
@@ -59,6 +61,7 @@ namespace karri {
                   vehicleLocator(vehicleLocator),
                   pathTracker(pathTracker),
                   routeState(routeState),
+                  ellipticSearchSpaces(ellipticSearchSpaces),
                   ordinaryStopsAtLocations(ordinaryStopsAtLocations),
                   ordinaryStopsRphastSelection(ordinaryStopsRphastSelection),
                   lastStopBucketsEnv(lastStopBucketsEnv),
@@ -183,10 +186,7 @@ namespace karri {
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.updateRoutesTime += routeUpdateTime;
 
-
-            // TODO: Memorize only which stops to generate elliptic bucket entries for, then do searches for finding
-            //  specific entry insertions in parallel.
-            updateStopsAtLocations(asgn, pickupIndex, dropoffIndex);
+            updateOrdinaryStopsInfo(asgn, pickupIndex, dropoffIndex, stats);
             updateLastStopBuckets(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore, stats);
 
             if (rerouteVehicle) {
@@ -259,7 +259,7 @@ namespace karri {
                 const auto routeUpdateTime = internalRouteStateUpdateTimer.elapsed<std::chrono::nanoseconds>();
                 stats.updateRoutesTime += routeUpdateTime;
 
-                updateStopsAtLocations(asgn, pickupIndex, dropoffIndex);
+                updateOrdinaryStopsInfo(asgn, pickupIndex, dropoffIndex, stats);
 
 //                lastStopBucketsTimer.restart();
                 updateLastStopBuckets(asgn, pickupIndex, dropoffIndex, depTimeAtLastStopBefore, stats,
@@ -280,6 +280,7 @@ namespace karri {
                                                               routeState.stopIdsFor(vehId)[dropoffIndex]);
             }
             const auto updateRouteStateTime = timer.elapsed<std::chrono::nanoseconds>();
+
 
             LastStopBucketUpdateStats lastStopBucketUpdateStats;
 
@@ -373,6 +374,8 @@ namespace karri {
         void notifyStopStarted(const Vehicle &veh) {
 
             // Update buckets and route state
+            ellipticSearchSpaces.deleteSourceSearchSpace(veh.vehicleId, 0);
+            ellipticSearchSpaces.deleteTargetSearchSpace(veh.vehicleId, 1);
             const auto stopId = routeState.stopIdsFor(veh.vehicleId)[0];
             const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[0];
             ordinaryStopsAtLocations.removeStopAtLocation(stopId, stopLoc);
@@ -480,13 +483,15 @@ namespace karri {
         // making it the new stop 0. Thus, we do not need to compute target bucket entries for the stop.
         void
         createIntermediateStopAtCurrentLocationForReroute(const Vehicle &veh, const int now, const VehicleLocation &loc,
-                                                          stats::UpdatePerformanceStats &) {
+                                                          stats::UpdatePerformanceStats &stats) {
             LIGHT_KASSERT(loc.depTimeAtHead >= now);
             routeState.createIntermediateStopForReroute(veh.vehicleId, loc.location, now, loc.depTimeAtHead);
             ordinaryStopsAtLocations.addStopAtLocation(routeState.stopIdsFor(veh.vehicleId)[1], loc.location);
+            ellipticSearchSpaces.generateSourceSearchSpace(veh.vehicleId, 1, stats);
         }
 
-        void updateStopsAtLocations(const Assignment &asgn, const int pickupIndex, const int dropoffIndex) {
+        void updateOrdinaryStopsInfo(const Assignment &asgn, const int pickupIndex, const int dropoffIndex,
+                                     stats::UpdatePerformanceStats& stats) {
             const auto vehId = asgn.vehicle->vehicleId;
             const auto stopIds = routeState.stopIdsFor(vehId);
             const auto stopLocations = routeState.stopLocationsFor(vehId);
@@ -494,18 +499,28 @@ namespace karri {
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
             if (!pickupAtExistingStop) {
                 ordinaryStopsAtLocations.addStopAtLocation(stopIds[pickupIndex], stopLocations[pickupIndex]);
+                ellipticSearchSpaces.generateSourceSearchSpace(vehId, pickupIndex, stats);
+                ellipticSearchSpaces.generateTargetSearchSpace(vehId, pickupIndex, stats);
             }
-            if (!dropoffAtExistingStop && dropoffIndex < routeState.numStopsOf(vehId) - 1) {
+
+            if (dropoffAtExistingStop)
+                return;
+
+            ellipticSearchSpaces.generateTargetSearchSpace(vehId, dropoffIndex, stats);
+
+            if (dropoffIndex < routeState.numStopsOf(vehId) - 1) {
                 ordinaryStopsAtLocations.addStopAtLocation(stopIds[dropoffIndex], stopLocations[dropoffIndex]);
+                ellipticSearchSpaces.generateSourceSearchSpace(vehId, dropoffIndex, stats);
             }
 
             // If last stop changed (dropoff is the new last stop), former last stop becomes ordinary stop
             const auto numStops = routeState.numStopsOf(vehId);
-            if (dropoffIndex == numStops - 1 && !dropoffAtExistingStop) {
+            if (dropoffIndex == numStops - 1) {
                 const auto pickupAtEnd = pickupIndex + 1 == dropoffIndex && pickupIndex > asgn.pickupStopIdx;
                 const int formerLastStopIdx = dropoffIndex - pickupAtEnd - 1;
                 ordinaryStopsAtLocations.addStopAtLocation(stopIds[formerLastStopIdx],
                                                            stopLocations[formerLastStopIdx]);
+                ellipticSearchSpaces.generateSourceSearchSpace(vehId, formerLastStopIdx, stats);
             }
         }
 
@@ -552,6 +567,8 @@ namespace karri {
 
         // Route state
         RouteState &routeState;
+
+        EllipticSearchSpacesT& ellipticSearchSpaces;
 
         OrdinaryStopsAtLocations &ordinaryStopsAtLocations;
 
