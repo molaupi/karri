@@ -39,10 +39,12 @@
 struct RPHASTSelection {
 
     RPHASTSelection() = default;
-    RPHASTSelection(const RPHASTSelection&) = delete;
-    RPHASTSelection& operator=(const RPHASTSelection&) = delete;
 
-    RPHASTSelection& operator=(RPHASTSelection&& other) {
+    RPHASTSelection(const RPHASTSelection &) = delete;
+
+    RPHASTSelection &operator=(const RPHASTSelection &) = delete;
+
+    RPHASTSelection &operator=(RPHASTSelection &&other) {
         if (this != &other) {
             subGraph = std::move(other.subGraph);
             fullToSubMapping = std::move(other.fullToSubMapping);
@@ -51,7 +53,7 @@ struct RPHASTSelection {
         return *this;
     }
 
-    RPHASTSelection(RPHASTSelection&& other)
+    RPHASTSelection(RPHASTSelection &&other)
             : subGraph(std::move(other.subGraph)),
               fullToSubMapping(std::move(other.fullToSubMapping)),
               subToFullMapping(std::move(other.subToFullMapping)) {}
@@ -69,31 +71,22 @@ struct RPHASTSelection {
 
 };
 
-template<typename PruningCriterionT = dij::NoCriterion>
+template<typename PruningCriterionT = dij::NoCriterion,
+        bool OrderByLevels = false>
 class RPHASTSelectionPhase {
 
     static constexpr bool WithPruning = !std::is_same_v<PruningCriterionT, dij::NoCriterion>;
 
-    struct RememberSearchSpace {
+    using SearchGraph = typename CH::SearchGraph;
+//    using SelectionSearch = DagShortestPaths<SearchGraph, typename CH::Weight, BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>, dij::CompoundCriterion<PruningCriterionT, RememberSearchSpace>>;
 
-        explicit RememberSearchSpace(LightweightSubset& searchSpace)
-                : searchSpace(searchSpace) {}
 
-        template<typename DistLabelT, typename DistLabelContT>
-        bool operator()(const int v, DistLabelT &, const DistLabelContT &) {
-            searchSpace.insert(v);
-            return false;
-        }
-
-    private:
-        LightweightSubset& searchSpace;
-
+    struct SubgraphVertexWithLevel {
+        int vertex = INVALID_VERTEX;
+        int level = -1;
     };
 
-    using SearchGraph = typename CH::SearchGraph;
-    using SelectionSearch = DagShortestPaths<SearchGraph, typename CH::Weight, BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>, dij::CompoundCriterion<PruningCriterionT, RememberSearchSpace>>;
-
-    bool validateVerticesInIncreasingRankOrder(const SearchGraph& graph) {
+    bool validateVerticesInIncreasingRankOrder(const SearchGraph &graph) {
         FORALL_VERTICES(graph, u) {
             int prevEdgeHead = -1;
             FORALL_INCIDENT_EDGES(graph, u, e) {
@@ -112,22 +105,38 @@ class RPHASTSelectionPhase {
 
 public:
 
-    explicit RPHASTSelectionPhase(const SearchGraph& fullGraph, PruningCriterionT prune = {}) : fullGraph(fullGraph),
-                                                                             verticesInSubgraph(fullGraph.numVertices()), selectionQueue(),
-                                                                             selectionSearch(fullGraph, {prune, RememberSearchSpace(verticesInSubgraph)}) {
-        if constexpr (!WithPruning) {
-            selectionQueue.reserve(fullGraph.numVertices());
+    explicit RPHASTSelectionPhase(const SearchGraph &fullGraph,
+                                  const CH &ch,
+                                  PruningCriterionT prune = {})
+            : fullGraph(fullGraph),
+              ch(ch),
+              verticesInSubgraph(fullGraph.numVertices()),
+              upSearchPriorityQueue(fullGraph.numVertices()),
+              upSearchLevels(fullGraph.numVertices(), -1),
+              upSearchDistances(0),
+              pruneUpSearch(prune) {
+        if constexpr (WithPruning) {
+            upSearchDistances.resize(fullGraph.numVertices());
+        } else {
+            upBfsQueue.reserve(fullGraph.numVertices());
         }
         KASSERT(validateVerticesInIncreasingRankOrder(fullGraph));
     }
 
-    RPHASTSelection run(const std::vector<int> &targets, const std::vector<int>& offsets = {}) {
-        findVerticesInSubgraph(targets, offsets);
+    RPHASTSelection run(const std::vector<int> &targets, const std::vector<int> &offsets = {}) {
+
+        if constexpr (WithPruning || OrderByLevels) {
+            findVerticesInSubgraphOrderedByLevels(targets, offsets);
+        } else {
+            findVerticesInSubgraphOrderedByRanks(targets);
+        }
+
         RPHASTSelection result;
         result.subGraph = constructOrderedSubgraph(verticesInSubgraph, result.fullToSubMapping);
         result.subToFullMapping.resize(verticesInSubgraph.size());
-        for (const auto& v : verticesInSubgraph)
+        for (const auto &v: verticesInSubgraph) {
             result.subToFullMapping[result.fullToSubMapping[v]] = v;
+        }
         return result;
     }
 
@@ -136,75 +145,135 @@ public:
     int getDistanceToClosestTarget(const int v) const requires WithPruning {
         KASSERT(v >= 0);
         KASSERT(v < fullGraph.numVertices());
-        return selectionSearch.getDistance(v);
+        return upSearchDistances.readDistance(v);
     }
 
 private:
 
-    void findVerticesInSubgraph(const std::vector<int> &targets, const std::vector<int>&) requires (!WithPruning) {
+    void findVerticesInSubgraphOrderedByRanks(const std::vector<int> &targets) {
+        findVerticesUsingBfs(targets);
+
+        // Order vertices in subgraph by decreasing rank.
+        std::sort(verticesInSubgraph.begin(), verticesInSubgraph.end(), std::greater<>());
+    }
+
+    void findVerticesInSubgraphOrderedByLevels(const std::vector<int> &targets, const std::vector<int> &offsets) {
+        findVerticesUsingTopoSearch<WithPruning, true>(targets, offsets);
+
+        // Order vertices in subgraph by decreasing level (and by input order within each level).
+        std::sort(verticesInSubgraph.begin(), verticesInSubgraph.end(), [&](const auto &v1, const auto &v2) {
+            const auto l1 = upSearchLevels[v1];
+            const auto l2 = upSearchLevels[v2];
+            return l1 > l2 || (l1 == l2 && ch.contractionOrder(v1) < ch.contractionOrder(v2));
+        });
+    }
+
+    void findVerticesUsingBfs(const std::vector<int> &targets) {
         verticesInSubgraph.clear();
-        selectionQueue.resize(0);
+        upBfsQueue.resize(0);
         for (const auto &t: targets) {
             if (verticesInSubgraph.insert(t)) {
-                selectionQueue.push_back(t);
+                upBfsQueue.push_back(t);
             }
         }
-        LIGHT_KASSERT(selectionQueue.capacity() >= fullGraph.numVertices());
-        for (auto it = selectionQueue.begin(); it != selectionQueue.end(); ++it) {
+        LIGHT_KASSERT(upBfsQueue.capacity() >= fullGraph.numVertices());
+        for (auto it = upBfsQueue.begin(); it != upBfsQueue.end(); ++it) {
             const auto v = *it;
             FORALL_INCIDENT_EDGES(fullGraph, v, e) {
                 const auto w = fullGraph.edgeHead(e);
                 if (verticesInSubgraph.insert(w)) {
-                    selectionQueue.push_back(w);
+                    upBfsQueue.push_back(w);
                 }
             }
         }
     }
 
-    void findVerticesInSubgraph(const std::vector<int> &targets, const std::vector<int>& offsets) requires WithPruning {
+    template<bool TrackDistances, bool TrackLevels>
+    void findVerticesUsingTopoSearch(const std::vector<int> &targets, const std::vector<int> &offsets) {
         verticesInSubgraph.clear();
 
         // Initialize topological upward search rooted at all targets with given offsets.
-        selectionSearch.numVerticesSettled = 0;
-        selectionSearch.numEdgeRelaxations = 0;
-        selectionSearch.distanceLabels.init();
-        selectionSearch.queue.clear();
+        upSearchPriorityQueue.clear();
 
-        for (int i = 0; i < targets.size(); ++i) {
-            const auto t = targets[i];
-            selectionSearch.distanceLabels[t] = offsets[i];
+        if constexpr (TrackLevels) {
+            upSearchLevels.init();
+            for (const auto &t: targets) {
+                upSearchLevels[t] = 0;
+            }
         }
 
-        for (const auto& t : targets) {
-            if (!selectionSearch.queue.contains(t))
-                selectionSearch.queue.insert(t, t);
+        if constexpr (TrackDistances) {
+            upSearchDistances.init();
+            for (int i = 0; i < targets.size(); ++i) {
+                const auto t = targets[i];
+                auto &dist = upSearchDistances[t];
+                dist = std::min(dist, offsets[i]);
+            }
+        }
+
+        for (const auto &t: targets) {
+            if (!upSearchPriorityQueue.contains(t))
+                upSearchPriorityQueue.insert(t, t);
         }
 
         // Run topological upward search, populating verticesInSubgraph with all vertices reached
         // while applying pruning criterion.
-        while (!selectionSearch.queue.empty())
-            selectionSearch.settleNextVertex();
+        while (!upSearchPriorityQueue.empty()) {
+            int v, key;
+            upSearchPriorityQueue.deleteMin(v, key);
+
+            if constexpr (TrackDistances && WithPruning) {
+                auto &distToV = upSearchDistances[v];
+                // Check whether the search can be pruned at v.
+                if (pruneUpSearch(v, distToV, upSearchDistances))
+                    continue;
+            }
+
+            KASSERT(!contains(verticesInSubgraph.begin(), verticesInSubgraph.end(), v));
+            verticesInSubgraph.insert(v);
+
+            // Relax all edges out of v.
+            FORALL_INCIDENT_EDGES(fullGraph, v, e) {
+                const auto w = fullGraph.edgeHead(e);
+
+                if (!upSearchPriorityQueue.contains(w))
+                    upSearchPriorityQueue.insert(w, w);
+
+                if constexpr (TrackLevels) {
+                    const auto levelOfV = upSearchLevels.readDistanceWithoutStaleCheck(v);
+                    auto &levelOfW = upSearchLevels[w];
+                    levelOfW = std::max(levelOfW, levelOfV + 1);
+                }
+
+                if constexpr (TrackDistances) {
+                    const auto &distToV = upSearchDistances.readDistanceWithoutStaleCheck(v);
+                    auto &distToW = upSearchDistances[w];
+                    const auto distViaV = distToV + fullGraph.template get<CH::Weight>(e);
+                    distToW = std::min(distToW, distViaV);
+                }
+            }
+        }
     }
 
     // Constructs a subgraph induced by the given set of vertices. The subgraph is ordered by decreasing vertex rank.
     // TODO: The UnpackingInfoAttribute is not adequately updated for the new edge IDs in the subgraph.
     //  When we want to retrieve paths, we need to implement an appropriate update.
     SearchGraph
-    constructOrderedSubgraph(LightweightSubset &vertices, std::vector<int> &origToNewIds) {
-        const auto numVertices = vertices.size();
+    constructOrderedSubgraph(const LightweightSubset &sortedSubgraphVertices, std::vector<int> &origToNewIds) {
+        const auto numVertices = sortedSubgraphVertices.size();
         // Invalid mapping is represented by number of vertices in subgraph (i.e. one past last valid vertex).
         origToNewIds = std::vector<int>(fullGraph.numVertices(), numVertices);
 
-        // Assign new sequential IDs to the vertices in the subgraph. Make sure that IDs are assigned in
-        // decreasing order of the original vertex ranks.
-        std::sort(vertices.begin(), vertices.end(), std::greater<>());
+        // Assign new sequential IDs to the vertices in the subgraph. Vertex IDs in subgraph will be assigned according
+        // to order of passed vertices.
+
         int nextId = 0;
-        for (auto it = vertices.begin(); it != vertices.end(); ++it)
+        for (auto it = sortedSubgraphVertices.begin(); it != sortedSubgraphVertices.end(); ++it)
             origToNewIds[*it] = nextId++;
 
         // Count the edges in the subgraph.
         int numEdges = 0;
-        for (const auto& v : vertices) {
+        for (const auto &v: sortedSubgraphVertices) {
             for (int e = fullGraph.firstEdge(v); e != fullGraph.lastEdge(v); ++e)
                 numEdges += origToNewIds[fullGraph.edgeHead(e)] != numVertices;
         }
@@ -216,7 +285,7 @@ private:
 
         int edgeCount = 0;
         for (int i = 0; i < numVertices; ++i) {
-            const auto u = *(vertices.begin() + i);
+            const auto u = *(sortedSubgraphVertices.begin() + i);
             // Copy the current vertex belonging to the subgraph.
             outEdges[i].first() = edgeCount;
 
@@ -240,11 +309,19 @@ private:
                            std::move(unpackingInfo));
     }
 
-    const SearchGraph& fullGraph;
+    const SearchGraph &fullGraph;
+    const CH &ch;
     LightweightSubset verticesInSubgraph;
 
-    std::vector<int> selectionQueue;
-    SelectionSearch selectionSearch;
+//    std::vector<int> verticesInSubgraph;
 
+    std::vector<int> upBfsQueue;
+
+    using PriorityQueue = AddressableQuadHeap;
+    PriorityQueue upSearchPriorityQueue; // The priority queue of unsettled vertices in the upward selection search.
+    StampedDistanceLabelContainer<int> upSearchLevels;
+
+    StampedDistanceLabelContainer<int> upSearchDistances; // The distance labels of the vertices in the upward selection search. Used if pruning is active.
+    PruningCriterionT pruneUpSearch;    // The criterion used to prune the upward selection search.
 };
 

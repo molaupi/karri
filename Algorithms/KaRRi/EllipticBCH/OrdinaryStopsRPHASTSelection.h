@@ -7,20 +7,22 @@
 #include "Algorithms/KaRRi/Stats/PerformanceStats.h"
 #include "Algorithms/KaRRi/RouteState.h"
 #include "StopWithRank.h"
+//#include "Algorithms/Dijkstra/Dijkstra.h"
+//#include "DataStructures/Labels/BasicLabelSet.h"
+//#include "DataStructures/Labels/SimdLabelSet.h"
 
 namespace karri {
 
 // Runs the RPHAST selection phase for all ordinary stops.
 // Can be called once before processing a request batch to update the RPHAST selection for the current route state
 // and then be used by all threads for all requests during the batch.
-    template<typename InputGraphT>
+    template<typename InputGraphT, typename LoggerT = NullLogger>
     class OrdinaryStopsRPHASTSelection {
 
         struct PruneSelectionIfDistanceGreaterZero {
-            template<typename DistLabelT, typename DistLabelContT>
-            bool operator()(const int, DistLabelT &distToV, const DistLabelContT &) {
-                static DistLabelT ZeroLabel = 0;
-                return allSet(distToV > ZeroLabel);
+            template<typename DistLabelContT>
+            bool operator()(const int, const int &distToV, const DistLabelContT &) {
+                return distToV > 0;
             }
         };
 
@@ -60,11 +62,19 @@ namespace karri {
                 sourcesSelectionPhase(rphastEnv.getSourcesSelectionPhase<SelectionPruningCriterion>()),
                 sourcesQueryPrune(),
                 targetsSelectionPhase(rphastEnv.getTargetsSelectionPhase<SelectionPruningCriterion>()),
-                targetsQueryPrune() {}
+                targetsQueryPrune(),
+                ordinaryRphastSelectionLogger(LogManager<LoggerT>::getLogger("ordinary_rphast_selection.csv",
+                                                                             "time_sources,"
+                                                                             "num_vertices_sources,"
+                                                                             "num_edges_sources,"
+                                                                             "time_targets,"
+                                                                             "num_vertices_targets,"
+                                                                             "num_edges_targets\n")) {}
 
         // Run RPHAST target selection for all ordinary stops.
         void runSelectionPhaseForOrdinaryStops() {
 
+            Timer timer;
             initSourceStopLocations();
             std::vector<int> stopRanks;
             std::vector<int> offsets;
@@ -80,8 +90,9 @@ namespace karri {
             // Further, we can use the known maximum remaining leeway later to prune queries.
             sourcesSelection = sourcesSelectionPhase.run(stopRanks, offsets);
 //            setRemainingLeewaysForSubgraphVertices(sourcesSelection, sourcesSelectionPhase, sourcesRemainingLeeways);
+            const auto sourcesSelectionTime = timer.elapsed<std::chrono::nanoseconds>();
 
-
+            timer.restart();
             initTargetStopLocations();
             stopRanks.clear();
             offsets.clear();
@@ -97,6 +108,7 @@ namespace karri {
             // Further, we can use the known maximum remaining leeway later to prune queries.
             targetsSelection = targetsSelectionPhase.run(stopRanks, offsets);
 //            setRemainingLeewaysForSubgraphVertices(targetsSelection, targetsSelectionPhase, targetsRemainingLeeways);
+            const auto targetsSelectionTime = timer.elapsed<std::chrono::nanoseconds>();
 
             // Store source / target stops ordered by decreasing rank to allow fast access when reading results of
             // RPHAST query for stops.
@@ -106,6 +118,13 @@ namespace karri {
             std::sort(targetStopsByRank.begin(), targetStopsByRank.end(), [](const auto &a, const auto &b) {
                 return a.rank > b.rank;
             });
+
+            ordinaryRphastSelectionLogger << sourcesSelectionTime << ","
+                                          << sourcesSelection.subGraph.numVertices() << ","
+                                          << sourcesSelection.subGraph.numEdges() << ","
+                                          << targetsSelectionTime << ","
+                                          << targetsSelection.subGraph.numVertices() << ","
+                                          << targetsSelection.subGraph.numEdges() << "\n";
         }
 
         const RPHASTSelection &getSourcesSelection() const {
@@ -189,14 +208,16 @@ namespace karri {
         std::vector<StopWithRank> sourceStopsByRank;
         SelectionPhase sourcesSelectionPhase;
         RPHASTSelection sourcesSelection;
-        std::vector<int> sourcesRemainingLeeways;
+//        std::vector<int> sourcesRemainingLeeways;
         QueryPruningCriterion sourcesQueryPrune;
 
         RPHASTSelection targetsSelection;
         SelectionPhase targetsSelectionPhase;
         std::vector<StopWithRankAndOffset> targetStopsByRank;
-        std::vector<int> targetsRemainingLeeways;
+//        std::vector<int> targetsRemainingLeeways;
         QueryPruningCriterion targetsQueryPrune;
+
+        LoggerT &ordinaryRphastSelectionLogger;
 
     };
 }

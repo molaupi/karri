@@ -41,16 +41,16 @@ class RPHASTEnvironment {
 public:
     using SearchGraph = typename CH::SearchGraph;
 
-    explicit RPHASTEnvironment(const CH &ch) : upwardGraph(ch.upwardGraph()), downwardGraph(ch.downwardGraph()) {}
+    explicit RPHASTEnvironment(const CH &ch) : ch(ch), upwardGraph(ch.upwardGraph()), downwardGraph(ch.downwardGraph()) {}
 
     template<typename PruningCriterionT = dij::NoCriterion>
     RPHASTSelectionPhase<PruningCriterionT> getTargetsSelectionPhase(PruningCriterionT pruningCriterion = {}) const {
-        return RPHASTSelectionPhase<PruningCriterionT>(downwardGraph, pruningCriterion);
+        return RPHASTSelectionPhase<PruningCriterionT>(downwardGraph, ch, pruningCriterion);
     }
 
     template<typename PruningCriterionT = dij::NoCriterion>
     RPHASTSelectionPhase<PruningCriterionT> getSourcesSelectionPhase(PruningCriterionT pruningCriterion = {}) const {
-        return RPHASTSelectionPhase<PruningCriterionT>(upwardGraph, pruningCriterion);
+        return RPHASTSelectionPhase<PruningCriterionT>(upwardGraph, ch, pruningCriterion);
     }
 
 
@@ -78,6 +78,7 @@ public:
 private:
 
     // Full CH search graphs with vertices ordered by increasing rank. Used for query side ("one" side of one-to-many) of RPHAST queries.
+    const CH& ch;
     const SearchGraph& upwardGraph;
     const SearchGraph& downwardGraph;
 

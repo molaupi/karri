@@ -457,7 +457,7 @@ int main(int argc, char *argv[]) {
 
         RPHASTEnvironment rphastEnv(vehChEnv->getCH());
 
-        using OrdinaryStopsRPHASTSelectionImpl = OrdinaryStopsRPHASTSelection<VehicleInputGraph>;
+        using OrdinaryStopsRPHASTSelectionImpl = OrdinaryStopsRPHASTSelection<VehicleInputGraph, NullLogger>;
         OrdinaryStopsRPHASTSelectionImpl ordinaryStopsRphastSelection(vehicleInputGraph, vehChEnv->getCH(), fleet,
                                                                       routeState, rphastEnv);
 

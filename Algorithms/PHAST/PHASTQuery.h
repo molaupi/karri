@@ -175,8 +175,7 @@ private:
             }
 
             if constexpr (WithPruning)
-                if (!prune(v, distAtV, distances))
-                    isRelevant.set(v);
+                isRelevant.setIf(v, !prune(v, distAtV, distances));
         }
     }
 

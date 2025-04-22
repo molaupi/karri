@@ -55,13 +55,32 @@ namespace karri {
         using LabelMask = typename LabelSetT::LabelMask;
 
 
+        struct PruneIfDistanceExceeded {
+
+            PruneIfDistanceExceeded(const DistanceLabel &maxDist)
+                    : maxDist(maxDist) {}
+
+            template<typename DistLabelT, typename DistLabelContT>
+            bool operator()(const int, DistLabelT &distToV, const DistLabelContT &) {
+                return allSet(distToV > maxDist);
+            }
+
+        private:
+            const DistanceLabel &maxDist;
+        };
+
+//        using PruningCriterion = dij::CompoundCriterion<PruneIfDistanceExceeded,
+//                typename OrdinaryStopsRPHASTSelectionT::QueryPruningCriterion>;
+        using PruningCriterion = dij::NoCriterion;
+        using Query = typename RPHASTEnvironment::Query<LabelSetT, PruningCriterion>;
+
     public:
 
         EllipticRPHASTSearches(const InputGraphT &inputGraph,
                                const Fleet &fleet,
                                const CH &ch,
                                const RPHASTEnvironment &rphastEnv,
-                               const OrdinaryStopsRPHASTSelectionT& ordinaryStopsRphastSelection,
+                               const OrdinaryStopsRPHASTSelectionT &ordinaryStopsRphastSelection,
                                const RouteState &routeState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
@@ -71,8 +90,11 @@ namespace karri {
                   sourcesSelection(ordinaryStopsRphastSelection.getSourcesSelection()),
                   targetStopsByRank(ordinaryStopsRphastSelection.getTargetStopsByRank()),
                   targetsSelection(ordinaryStopsRphastSelection.getTargetsSelection()),
-                  toQuery(rphastEnv.getReverseRPHASTQuery<LabelSetT, typename OrdinaryStopsRPHASTSelectionT::QueryPruningCriterion>(ordinaryStopsRphastSelection.getSourcesQueryPrune())),
-                  fromQuery(rphastEnv.getForwardRPHASTQuery<LabelSetT, typename OrdinaryStopsRPHASTSelectionT::QueryPruningCriterion>(ordinaryStopsRphastSelection.getTargetsQueryPrune())) {}
+                  toQuery(rphastEnv.getReverseRPHASTQuery<LabelSetT, PruningCriterion>()),
+//                          dij::CompoundCriterion(PruneIfDistanceExceeded(distUpperBound), ordinaryStopsRphastSelection.getSourcesQueryPrune()))),
+                  fromQuery(rphastEnv.getForwardRPHASTQuery<LabelSetT, PruningCriterion>())
+//                          dij::CompoundCriterion(PruneIfDistanceExceeded(distUpperBound), ordinaryStopsRphastSelection.getTargetsQueryPrune())))
+                           {}
 
 
         // Run Elliptic RPHAST searches for pickups and dropoffs
@@ -112,13 +134,21 @@ namespace karri {
     private:
 
         template<typename SpotContainerT>
-        void runRPHASTSearchesFromAndTo(const RequestState &, SpotContainerT &pdLocs,
+        void runRPHASTSearchesFromAndTo(const RequestState &requestState, SpotContainerT &pdLocs,
                                         FeasibleEllipticDistancesT &feasibleEllipticDistances) {
 
             numSearchesRun = 0;
             totalNumEdgeRelaxations = 0;
             totalNumVerticesSettled = 0;
             totalNumEntriesScanned = 0;
+
+            // Set an upper bound distance for the searches comprised of the maximum leeway or an upper bound based on the
+            // current best costs (we compute the maximum detour that would still allow an assignment with costs smaller
+            // than the best known and add the maximum leg length since a distance to a PD loc dist cannot lead to a
+            // better assignment than the best known if dist - max leg length > max allowed detour).
+            const int maxDistBasedOnVehCost = CostCalculator::CostFunction::calcMinDistFromOrToPDLocSuchThatVehCostReachesMinCost(
+                    requestState.getBestCost(), routeState.getMaxLegLength());
+            distUpperBound = std::min(maxDistBasedOnVehCost, routeState.getMaxLeeway());
 
             // Process in batches of size K
             for (int i = 0; i < pdLocs.size(); i += K) {
@@ -224,8 +254,10 @@ namespace karri {
         const std::vector<StopWithRankAndOffset> &targetStopsByRank;
         const RPHASTSelection &targetsSelection;
 
-        typename RPHASTEnvironment::template Query<LabelSetT, typename OrdinaryStopsRPHASTSelectionT::QueryPruningCriterion> toQuery;
-        typename RPHASTEnvironment::template Query<LabelSetT, typename OrdinaryStopsRPHASTSelectionT::QueryPruningCriterion> fromQuery;
+        Query toQuery;
+        Query fromQuery;
+
+        DistanceLabel distUpperBound;
 
         int numSearchesRun;
         int totalNumEdgeRelaxations;

@@ -35,76 +35,81 @@
 
 // A container maintaining distance labels. It stores a global clock and a timestamp for each
 // distance label. The timestamp indicates whether a distance label has a valid value or not.
-template <typename DistanceLabelT>
+template<typename DistanceLabelT>
 class StampedDistanceLabelContainer {
- public:
-  // Constructs a distance label container using timestamps.
-  explicit StampedDistanceLabelContainer(const int numVertices) : clock(0) {
-    resize(numVertices);
-  }
-
-  size_t size() const {
-    return distanceLabels.size();
-  }
-
-  // Ensures that this container can hold the specified number of distance labels.
-  void resize(const int numVertices) {
-    const auto currentSize = distanceLabels.size();
-    if (numVertices < currentSize) {
-      distanceLabels.erase(distanceLabels.begin() + numVertices, distanceLabels.end());
-      timestamps.erase(timestamps.begin() + numVertices, timestamps.end());
-    } else {
-      distanceLabels.insert(distanceLabels.end(), numVertices - currentSize, DistanceLabelT());
-      timestamps.insert(timestamps.end(), numVertices - currentSize, 0);
+public:
+    // Constructs a distance label container using timestamps.
+    explicit StampedDistanceLabelContainer(const int numVertices, DistanceLabelT INVALID_VAL = INFTY)
+            : INVALID_VAL(INVALID_VAL), clock(0) {
+        resize(numVertices);
     }
-  }
 
-  // Initializes all distance labels to infinity.
-  void init() {
-    ++clock;
-    if (UNLIKELY(clock < 0)) {
-      // Clock overflow occurred. Extremely unlikely.
-      std::fill(timestamps.begin(), timestamps.end(), 0);
-      clock = 1;
+    size_t size() const {
+        return distanceLabels.size();
     }
-  }
 
-  // Returns a reference to the distance label of v.
-  DistanceLabelT& operator[](const int v) {
-    assert(v >= 0); assert(v < distanceLabels.size());
-    if (timestamps[v] != clock) {
-      assert(timestamps[v] < clock);
-      distanceLabels[v] = INFTY;
-      timestamps[v] = clock;
+    // Ensures that this container can hold the specified number of distance labels.
+    void resize(const int numVertices) {
+        const auto currentSize = distanceLabels.size();
+        if (numVertices < currentSize) {
+            distanceLabels.erase(distanceLabels.begin() + numVertices, distanceLabels.end());
+            timestamps.erase(timestamps.begin() + numVertices, timestamps.end());
+        } else {
+            distanceLabels.insert(distanceLabels.end(), numVertices - currentSize, DistanceLabelT());
+            timestamps.insert(timestamps.end(), numVertices - currentSize, 0);
+        }
     }
-    return distanceLabels[v];
-  }
 
-  // Returns the distance at vertex v or a value of at least INFTY if the value at v has not been set since
-  // the last initialization.
-  DistanceLabelT readDistance(const int v) const {
-      static DistanceLabelT InftyLabel = DistanceLabelT(INFTY);
-      assert(v >= 0); assert(v < distanceLabels.size());
-      if (timestamps[v] != clock) {
-          assert(timestamps[v] < clock);
-          return InftyLabel;
-      }
-      return distanceLabels[v];
-  }
+    // Initializes all distance labels to INVALID_VAL.
+    void init() {
+        ++clock;
+        if (UNLIKELY(clock < 0)) {
+            // Clock overflow occurred. Extremely unlikely.
+            std::fill(timestamps.begin(), timestamps.end(), 0);
+            clock = 1;
+        }
+    }
 
-  // Returns the distance value that was last written for vertex v without guaranteeing that the value is not stale.
-  DistanceLabelT readDistanceWithoutStaleCheck(const int v) const {
-      assert(v >= 0); assert(v < distanceLabels.size());
-      return distanceLabels[v];
-  }
+    // Returns a reference to the distance label of v.
+    DistanceLabelT &operator[](const int v) {
+        assert(v >= 0);
+        assert(v < distanceLabels.size());
+        if (timestamps[v] != clock) {
+            assert(timestamps[v] < clock);
+            distanceLabels[v] = INVALID_VAL;
+            timestamps[v] = clock;
+        }
+        return distanceLabels[v];
+    }
 
-  bool isStale(const int v) const {
-      assert(v >= 0); assert(v < distanceLabels.size());
-      return timestamps[v] != clock;
-  }
+    // Returns the distance at vertex v or a value of INVALID_VAL if the value at v has not been set since
+    // the last initialization.
+    DistanceLabelT readDistance(const int v) const {
+        assert(v >= 0);
+        assert(v < distanceLabels.size());
+        if (timestamps[v] != clock) {
+            assert(timestamps[v] < clock);
+            return INVALID_VAL;
+        }
+        return distanceLabels[v];
+    }
 
- private:
-  AlignedVector<DistanceLabelT> distanceLabels; // The distance labels of the vertices.
-  std::vector<int> timestamps;                  // The timestamps indicating if a label is valid.
-  int clock;                                    // The global clock.
+    // Returns the distance value that was last written for vertex v without guaranteeing that the value is not stale.
+    DistanceLabelT readDistanceWithoutStaleCheck(const int v) const {
+        assert(v >= 0);
+        assert(v < distanceLabels.size());
+        return distanceLabels[v];
+    }
+
+    bool isStale(const int v) const {
+        assert(v >= 0);
+        assert(v < distanceLabels.size());
+        return timestamps[v] != clock;
+    }
+
+private:
+    AlignedVector<DistanceLabelT> distanceLabels; // The distance labels of the vertices.
+    DistanceLabelT INVALID_VAL;
+    std::vector<int> timestamps;                  // The timestamps indicating if a label is valid.
+    int clock;                                    // The global clock.
 };
