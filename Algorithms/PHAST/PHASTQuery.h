@@ -43,26 +43,36 @@ class PHASTQuery {
     using DistanceLabel = typename LabelSetT::DistanceLabel;
     using LabelMask = typename LabelSetT::LabelMask;
 
-
     struct SetDistanceInDownwardArray {
 
-        SetDistanceInDownwardArray(DistanceLabelContainerT<DistanceLabel> &downwardArray)
-                : downwardArray(downwardArray), sourceToTargetMapping(nullptr) {}
+        explicit SetDistanceInDownwardArray(FastResetFlagArray<>& hasBeenSeenInUpSearch,
+                                            AlignedVector<DistanceLabel> &upDists)
+                : hasBeenSeenInUpSearch(hasBeenSeenInUpSearch), upDists(upDists), sourceToTargetMapping(nullptr), targetNumVertices(0) {}
 
         template<typename DistLabelT, typename DistLabelContT>
         bool operator()(const int v, DistLabelT &upDistToV, const DistLabelContT &) {
-            downwardArray[sourceToTargetMapping->at(v)] = upDistToV;
+
+            const auto vInTarget = sourceToTargetMapping->at(v);
+            if (vInTarget == targetNumVertices)
+                return false;
+
+            hasBeenSeenInUpSearch.set(vInTarget);
+            upDists.push_back(upDistToV);
+//            upDistEntries.push_back({vInTarget, upDistToV});
             return false;
         }
 
 
-        void setSourceToTargetMapping(std::vector<int> const *mapping) {
+        void setSourceToTargetMapping(std::vector<int> const *mapping, const int numVertices) {
             sourceToTargetMapping = mapping;
+            targetNumVertices = numVertices;
         }
 
     private:
-        DistanceLabelContainerT<DistanceLabel> &downwardArray;
+        FastResetFlagArray<> &hasBeenSeenInUpSearch;
+        AlignedVector<DistanceLabel> &upDists;
         std::vector<int> const *sourceToTargetMapping;
+        int targetNumVertices;
 
     };
 
@@ -73,7 +83,9 @@ public:
               distances(0),
               meetingVertices(0),
               isRelevant(),
-              upwardSearch(sourceGraph, SetDistanceInDownwardArray(distances)) {}
+              hasBeenSeenInUpSearch(),
+              upDists(),
+              upwardSearch(sourceGraph, SetDistanceInDownwardArray(hasBeenSeenInUpSearch, upDists)) {}
 
     void
     run(const RPHASTSelection &selection, const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
@@ -86,14 +98,16 @@ public:
     // Vertex ID of v has to be ID in subgraph of selection passed to last call of run().
     int getDistance(const int v, const int i = 0) const {
         KASSERT(v >= 0 && v < distances.size());
-        return distances.readDistance(v)[i];
+//        return distances.readDistance(v)[i];
+        return distances[v][i];
     }
 
     // Returns distance from all K sources to vertex v found in last call to run().
     // Vertex ID of v has to be ID in subgraph of selection passed to last call of run().
     DistanceLabel getDistances(const int v) const {
         KASSERT(v >= 0 && v < distances.size());
-        return distances.readDistance(v);
+//        return distances.readDistance(v);
+        return distances[v];
     }
 
     int getMeetingVertex(const int v, const int i = 0) const requires StoreMeetingVertices {
@@ -120,17 +134,24 @@ private:
                                                        const std::array<int, K> &sources,
                                                        const std::array<int, K> &offsets = {}) {
         KASSERT(selection.fullToSubMapping.size() == sourceGraph.numVertices());
-        distances.resize(selection.subGraph.numVertices() + 1);
-        distances.init();
+        distances.resize(selection.subGraph.numVertices());
+        hasBeenSeenInUpSearch.resize(selection.subGraph.numVertices());
+        hasBeenSeenInUpSearch.reset();
+//        distances.init();
         if constexpr (StoreMeetingVertices) {
-            meetingVertices.resize(selection.subGraph.numVertices() + 1);
+            meetingVertices.resize(selection.subGraph.numVertices());
         }
 
-        upwardSearch.getPruningCriterion().setSourceToTargetMapping(&selection.fullToSubMapping);
+        upDists.clear();
+        upwardSearch.getPruningCriterion().setSourceToTargetMapping(&selection.fullToSubMapping,
+                                                                    selection.subGraph.numVertices());
         upwardSearch.runWithOffset(sources, offsets);
 
-        // All vertices which are not present in target graph have distance INFTY.
-        distances[selection.subGraph.numVertices()] = INFTY;
+        // Reverse the order of vertices in the subgraph seen by the upward search so they are in downward order.
+        std::reverse(upDists.begin(), upDists.end());
+
+//        // All vertices which are not present in target graph have distance INFTY.
+//        distances[selection.subGraph.numVertices()] = INFTY;
 
         numVerticesSettled = upwardSearch.getNumVerticesSettled();
         numEdgesRelaxed = upwardSearch.getNumEdgeRelaxations();
@@ -144,9 +165,27 @@ private:
 
         // Vertices in target graph are ordered by decreasing rank. Downward sweep simply settles vertices in order.
         const int numVertices = selection.subGraph.numVertices();
+        int lastEdge = -1;
+        unused(lastEdge);
+//        int curSeenInUpSearchIndex = 0;
+        auto nextUpDist = upDists.begin();
+//        DistanceLabel InftyLabel;
         for (int v = 0; v < numVertices; ++v) {
-            ++numVerticesSettled;
+
+            // Initialize distance at v. Check if v is next vertex that has been seen by upward search
+            // (stored in downward order). If so, initialize to distance in upward search, otherwise initialize to
+            // INFTY.
             auto &distAtV = distances[v];
+//            const auto &nextUpDistEntry = upDistEntries[curSeenInUpSearchIndex];
+            const bool isNextSeenByUpSearch = hasBeenSeenInUpSearch.isSet(v);
+//            InftyLabel = INFTY;
+//            InftyLabel.multiplyWithScalar(static_cast<int>(!isNextSeenByUpSearch));
+//            distAtV = nextUpDistEntry.dist;
+//            distAtV.multiplyWithScalar(static_cast<int>(isNextSeenByUpSearch));
+//            distAtV += InftyLabel;
+            distAtV = multiplyDistanceLabelAndScalar(*nextUpDist, isNextSeenByUpSearch) + DistanceLabel(!isNextSeenByUpSearch * INFTY);
+            nextUpDist += isNextSeenByUpSearch;
+
 
             if constexpr (StoreMeetingVertices) {
                 meetingVertices[v] = selection.subToFullMapping[v];
@@ -154,14 +193,16 @@ private:
 
             // Relax all incoming edges to finalize the distances and meeting vertices at v.
             FORALL_INCIDENT_EDGES(selection.subGraph, v, e) {
+                KASSERT(++lastEdge == e);
                 const auto w = selection.subGraph.edgeHead(e);
                 if constexpr (WithPruning)
                     if (!isRelevant.isSet(w))
                         continue;
 
                 ++numEdgesRelaxed;
-                KASSERT(!distances.isStale(w));
-                const auto distToW = distances.readDistanceWithoutStaleCheck(w);
+//                KASSERT(!distances.isStale(w));
+//                const auto distToW = distances.readDistanceWithoutStaleCheck(w);
+                const auto distToW = distances[w];
                 const auto distViaW = distToW + selection.subGraph.template get<WeightT>(e);
                 if constexpr (StoreMeetingVertices) {
                     const auto improved = distViaW < distAtV;
@@ -177,6 +218,8 @@ private:
             if constexpr (WithPruning)
                 isRelevant.setIf(v, !prune(v, distAtV, distances));
         }
+
+        numVerticesSettled += numVertices;
     }
 
     void sanityCheckTargetGraphValidity(const RPHASTSelection &selection) {
@@ -196,11 +239,13 @@ private:
 
     PruningCriterionT prune;
 
-    DistanceLabelContainerT<DistanceLabel> distances;
+    AlignedVector<DistanceLabel> distances;
     AlignedVector<DistanceLabel> meetingVertices;
 
     FastResetFlagArray<uint32_t> isRelevant;
 
+    FastResetFlagArray<> hasBeenSeenInUpSearch;
+    AlignedVector<DistanceLabel> upDists;
     using UpwardSearch = DagShortestPaths<SourceGraphT, WeightT, LabelSetT, SetDistanceInDownwardArray, DistanceLabelContainerT>;
     UpwardSearch upwardSearch;
 

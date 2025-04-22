@@ -160,7 +160,7 @@ public:
     template<typename EdgesSubsetT>
     RPHASTSelection runForKnownVerticesAndEdges(const std::vector<int> &subgraphVertices,
                                                 const EdgesSubsetT &subgraphEdges) {
-        KASSERT(std::none_of(subgraphEdges.begin(), subgraphEdges.end(),
+        KASSERT(std::none_of(subgraphEdges.getElements().begin(), subgraphEdges.getElements().end(),
                              [](const auto &e) { return e == INVALID_EDGE; }));
         verticesInSubgraph.clear();
         for (const auto &v: subgraphVertices) {

@@ -300,6 +300,7 @@ namespace karri {
                 if ((!betterHigherPathExists && inEllipse) || descendentHasEntry[v]) {
                     const int idx = dynamic_ragged2d::insertion(stopId, v, pos, searchSpaceVertices, searchSpaceEdges);
                     const auto parentEdge = searchFromNewStop.getParentEdge(v);
+                    KASSERT((v == newStopRoot && parentEdge == INVALID_EDGE) || (v != newStopRoot && parentEdge != INVALID_EDGE));
                     searchSpaceEdges[idx] = parentEdge;
                     verticesUnion.addOccurrence(v);
                     if (parentEdge != INVALID_EDGE)
@@ -331,9 +332,7 @@ namespace karri {
                 const auto v = searchSpaceVertices[i];
                 verticesUnion.removeOccurrence(v);
                 const auto e = searchSpaceEdges[i];
-                KASSERT(i < end - 1 || e == INVALID_EDGE);
-                if (i < end - 1) {
-                    KASSERT(e != INVALID_EDGE);
+                if (e != INVALID_EDGE) {
                     edgesUnion.removeOccurrence(e);
                 }
             }

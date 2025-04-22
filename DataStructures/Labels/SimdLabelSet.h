@@ -206,6 +206,18 @@ public:
             return values[i / VECTOR_SIZE].extract(i % VECTOR_SIZE);
         }
 
+        DistanceLabel& operator+=(const DistanceLabel &rhs) {
+            for (int i = 0; i < NUM_VECTORS; ++i)
+                values[i] += rhs.values[i];
+            return *this;
+        }
+
+        DistanceLabel& operator-=(const DistanceLabel &rhs) {
+            for (int i = 0; i < NUM_VECTORS; ++i)
+                values[i] -= rhs.values[i];
+            return *this;
+        }
+
         // Returns the packed sum of lhs and rhs.
         friend DistanceLabel operator+(const DistanceLabel &lhs, const DistanceLabel &rhs) {
             DistanceLabel sum;
@@ -301,6 +313,13 @@ public:
         void multiplyWithScalar(const int s) {
             for (int i = 0; i < NUM_VECTORS; ++i)
                 values[i] = s * values[i];
+        }
+
+        friend DistanceLabel multiplyDistanceLabelAndScalar(const DistanceLabel &l, const int s) {
+            DistanceLabel res;
+            for (int i = 0; i < NUM_VECTORS; ++i)
+                res.values[i] = s * l.values[i];
+            return res;
         }
 
         // Sets this label at all slots i where mask[i] = true.

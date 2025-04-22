@@ -62,6 +62,25 @@ class SimpleDistanceLabelContainer {
     return distanceLabels[v];
   }
 
+    // Returns distance at v. Implements StampedDistanceLabelContainer interface.
+    DistanceLabelT readDistance(const int v) const {
+        assert(v >= 0);
+        assert(v < distanceLabels.size());
+        return distanceLabels[v];
+    }
+
+    // Returns distance at v. Implements StampedDistanceLabelContainer interface.
+    DistanceLabelT readDistanceWithoutStaleCheck(const int v) const {
+        assert(v >= 0);
+        assert(v < distanceLabels.size());
+        return distanceLabels[v];
+    }
+
+    // Returns true. Implements StampedDistanceLabelContainer interface.
+    bool isStale(const int ) const {
+        return true;
+    }
+
  private:
   AlignedVector<DistanceLabelT> distanceLabels; // The distance labels of the vertices.
 };
