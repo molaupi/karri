@@ -50,24 +50,35 @@ inline void printUsage() {
 
 
 template<typename InputGraphT>
-nlohmann::json generateGeoJsonFeatureForEdge(const InputGraphT &inputGraph, const int e, const int reqId) {
+nlohmann::json generateGeoJsonFeatureForEdge(const InputGraphT &inputGraph, const int e, const int reqId,
+                                             const std::string& type) {
 
-    static char color[] = "blue";
+//    static char color[] = "blue";
+
+assert(type == "origin" || type == "destination");
+    const std::string color = type == "origin"? "blue" : "red";
+
     nlohmann::json feature;
-    feature["type"] = "LineString";
+    feature["type"] = "Feature";
 
+    // Add properties
+    feature["properties"] = {{"stroke",       color},
+//                             {"stroke-width", 1},
+                             {"edge_id",      e},
+                             {"request_id",   reqId},
+                             {"type",         type}};
+
+    // Make LineString geometry member for edge
+    nlohmann::json geometry;
+    geometry["type"] = "LineString";
     const auto tailLatLng = inputGraph.latLng(inputGraph.edgeTail(e));
     const auto tailCoordinate = nlohmann::json::array({tailLatLng.lngInDeg(), tailLatLng.latInDeg()});
-    feature["coordinates"].push_back(tailCoordinate);
+    geometry["coordinates"].push_back(tailCoordinate);
 
     const auto headLatLng = inputGraph.latLng(inputGraph.edgeHead(e));
     const auto headCoordinate = nlohmann::json::array({headLatLng.lngInDeg(), headLatLng.latInDeg()});
-    feature["coordinates"].push_back(headCoordinate);
-
-    feature["properties"] = {{"stroke",       color},
-                             {"stroke-width", 3},
-                             {"edge_id",      e},
-                             {"request_id",   reqId}};
+    geometry["coordinates"].push_back(headCoordinate);
+    feature["geometry"] = geometry;
 
     return feature;
 }
@@ -77,12 +88,12 @@ nlohmann::json
 generateGeoJsonObjectForRequestEdges(const InputGraphT &inputGraph, const std::vector<karri::Request> &requests) {
     // Construct the needed GeoJSON object
     nlohmann::json topGeoJson;
-    topGeoJson["type"] = "GeometryCollection";
+    topGeoJson["type"] = "FeatureCollection";
 
     for (const auto &req: requests) {
 
-        topGeoJson["geometries"].push_back(generateGeoJsonFeatureForEdge(inputGraph, req.origin, req.requestId));
-        topGeoJson["geometries"].push_back(generateGeoJsonFeatureForEdge(inputGraph, req.destination, req.requestId));
+        topGeoJson["features"].push_back(generateGeoJsonFeatureForEdge(inputGraph, req.origin, req.requestId, "origin"));
+        topGeoJson["features"].push_back(generateGeoJsonFeatureForEdge(inputGraph, req.destination, req.requestId, "destination"));
 
     }
 
@@ -148,9 +159,9 @@ int main(int argc, char *argv[]) {
         io::CSVReader<3, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_no_column, "pickup_spot", "dropoff_spot", "min_dep_time");
+            reqFileReader.read_header(io::ignore_extra_column, "pickup_spot", "dropoff_spot", "min_dep_time");
         } else {
-            reqFileReader.read_header(io::ignore_no_column, "origin", "destination", "req_time");
+            reqFileReader.read_header(io::ignore_extra_column, "origin", "destination", "req_time");
         }
 
         while (reqFileReader.read_row(origin, destination, requestTime)) {
