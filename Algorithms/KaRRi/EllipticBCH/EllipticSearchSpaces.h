@@ -130,8 +130,8 @@ namespace karri {
 
         EllipticSearchSpaces(const InputGraphT &inputGraph, const CHEnvT &chEnv, const RouteState &routeState)
                 : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState),
-                  sourcePos(inputGraph.numVertices(), dynamic_ragged2d::ValueBlockPosition(0, 0)),
-                  targetPos(inputGraph.numVertices(), dynamic_ragged2d::ValueBlockPosition(0, 0)),
+                  sourcePos(routeState.getMaxStopId() + 1, dynamic_ragged2d::ValueBlockPosition(0, 0)),
+                  targetPos(routeState.getMaxStopId() + 1, dynamic_ragged2d::ValueBlockPosition(0, 0)),
                   sourceVerticesUnion(inputGraph.numVertices()),
                   targetVerticesUnion(inputGraph.numVertices()),
                   sourceEdgesUnion(ch.upwardGraph().numEdges()),
@@ -169,6 +169,12 @@ namespace karri {
             assert(routeState.numStopsOf(vehId) > stopIndex + 1);
 
             const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
+
+            if (sourcePos.size() <= stopId) {
+                const auto curTotalNumEntries = sourceSearchSpaceVertices.size();
+                sourcePos.resize(stopId + 1, dynamic_ragged2d::ValueBlockPosition(curTotalNumEntries, curTotalNumEntries));
+            }
+
             const int leeway = std::max(routeState.maxArrTimesFor(vehId)[stopIndex + 1],
                                         routeState.schedDepTimesFor(vehId)[stopIndex + 1]) -
                                routeState.schedDepTimesFor(vehId)[stopIndex] -
@@ -198,6 +204,12 @@ namespace karri {
             assert(stopIndex > 0);
 
             const int stopId = routeState.stopIdsFor(vehId)[stopIndex];
+
+            if (targetPos.size() <= stopId) {
+                const auto curTotalNumEntries = targetSearchSpaceVertices.size();
+                targetPos.resize(stopId + 1, dynamic_ragged2d::ValueBlockPosition(curTotalNumEntries, curTotalNumEntries));
+            }
+
             const int leeway = std::max(routeState.maxArrTimesFor(vehId)[stopIndex],
                                         routeState.schedDepTimesFor(vehId)[stopIndex]) -
                                routeState.schedDepTimesFor(vehId)[stopIndex - 1] -
@@ -262,6 +274,7 @@ namespace karri {
                                  CountSubset &verticesUnion,
                                  CountSubset &edgesUnion,
                                  stats::UpdatePerformanceStats &stats) {
+            KASSERT(stopId < pos.size());
             int64_t numEntriesGenerated = 0;
             Timer timer;
 
@@ -325,6 +338,7 @@ namespace karri {
                                std::vector<int> &searchSpaceEdges,
                                CountSubset &verticesUnion,
                                CountSubset &edgesUnion) {
+            KASSERT(stopId < pos.size());
 
             const auto start = pos[stopId].start;
             const auto end = pos[stopId].end;

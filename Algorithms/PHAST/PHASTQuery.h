@@ -127,7 +127,7 @@ private:
         if (upDists.size() < selection.subGraph.numVertices() + 1) {
             upDists.resize(selection.subGraph.numVertices() + 1, INFTY);
         }
-        KASSERT(std::all_of(upDists.begin(), upDists.end(), [](const auto &dist) { return dist == INFTY; }));
+        KASSERT(std::all_of(upDists.begin(), upDists.end(), [](const auto &dist) { return allSet(dist == INFTY); }));
         if constexpr (StoreMeetingVertices) {
             meetingVertices.resize(selection.subGraph.numVertices());
         }
