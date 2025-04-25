@@ -184,7 +184,7 @@ eventSimulationPerfStats <- function(file_base) {
 
 
 library(dplyr)
-batchDispatchPerfStats <- function(file_base) {
+batchDispatchPerfStats <- function(file_base, num_threads = 1) {
   
   stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
   if(!("init_iteration_running_time" %in% colnames(stats)))
@@ -195,8 +195,12 @@ batchDispatchPerfStats <- function(file_base) {
   
   print(paste0("Total time (batch dispatch): ", sum(stats$init_iteration_running_time + stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
   
+  stats$num_batches <- stats$num_requests / num_threads
+  
   stats <- stats %>% group_by(occurence_time) %>% summarise(
     num_iterations = max(iteration),
+    assignments_work = sum(num_requests),
+    assignments_span = sum(num_batches),
     num_requests = max(num_requests),
     init_iteration_running_time = sum(init_iteration_running_time, na.rm = TRUE),
     find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
