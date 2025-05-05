@@ -44,8 +44,7 @@ inline void printUsage() {
               "Usage: GenerateGeoJsonForPaths -g <file> -r <file> -o <file>\n"
               "Outputs all paths in a given file as GeoJson given the underlying network containing geographic coordinates.\n"
               "  -g <file>              input road network in binary format.\n"
-              "  -p <file>              input paths in CSV format.\n"
-              "  -path-col-name <name>  name of column in paths CSV that contains paths. Paths are expected to be in format 'e_1 : e_2 : ... : e_n'.\n"
+              "  -p <file>              input paths in binary format as output by FindMixedFixedFlexibleNetwork.\n"
               "  -o <file>              place GeoJSON in <file>\n"
               "  -help                  display this help and exit\n";
 }
@@ -54,25 +53,30 @@ inline void printUsage() {
 template<typename InputGraphT>
 nlohmann::json generateGeoJsonFeatureForPath(const InputGraphT &inputGraph, const std::vector<int>& edges) {
 
-    static char color[] = "blue";
+    static char color[] = "black";
     nlohmann::json feature;
-    feature["type"] = "LineString";
+    feature["type"] = "Feature";
+//    feature["properties"] = {{"stroke",       color}
+//    , {"stroke-width", 3}
+//    };
+
+    nlohmann::json geometry;
+    geometry["type"] = "LineString";
 
     for (int i = 0; i < edges.size(); ++i) {
         const auto e = edges[i];
         const auto tail = inputGraph.edgeTail(e);
         const auto latLng = inputGraph.latLng(tail);
         const auto coord = nlohmann::json::array({latLng.lngInDeg(), latLng.latInDeg()});
-        feature["coordinates"].push_back(coord);
+        geometry["coordinates"].push_back(coord);
     }
     if (!edges.empty()) {
         const auto latLng = inputGraph.latLng(inputGraph.edgeHead(edges.back()));
         const auto coord = nlohmann::json::array({latLng.lngInDeg(), latLng.latInDeg()});
-        feature["coordinates"].push_back(coord);
+        geometry["coordinates"].push_back(coord);
     }
 
-    feature["properties"] = {{"stroke",       color},
-                             {"stroke-width", 3}};
+    feature["geometry"] = geometry;
 
     return feature;
 }
@@ -82,26 +86,13 @@ nlohmann::json
 generateGeoJsonObjectForPaths(const InputGraphT &inputGraph, const std::vector<std::vector<int>> &paths) {
     // Construct the needed GeoJSON object
     nlohmann::json topGeoJson;
-    topGeoJson["type"] = "GeometryCollection";
+    topGeoJson["type"] = "FeatureCollection";
 
     for (const auto &path: paths) {
-        topGeoJson["geometries"].push_back(generateGeoJsonFeatureForPath(inputGraph, path));
+        topGeoJson["features"].push_back(generateGeoJsonFeatureForPath(inputGraph, path));
     }
 
     return topGeoJson;
-}
-
-std::vector<int> parseEdgePathString(std::string s) {
-    // Paths are expected to be sequence of edge ids separated by " : "
-    s.erase(remove(s.begin(), s.end(), ' '), s.end());
-    std::vector<int> result;
-    std::stringstream ss(s);
-    std::string item;
-    while (getline(ss, item, ':')) {
-        result.push_back(std::stoi(item));
-    }
-
-    return result;
 }
 
 int main(int argc, char *argv[]) {
@@ -116,8 +107,8 @@ int main(int argc, char *argv[]) {
         if (!endsWith(inputGraphFileName, ".gr.bin"))
             inputGraphFileName += ".gr.bin";
         auto pathFileName = clp.getValue<std::string>("p");
-        if (!endsWith(pathFileName, ".csv"))
-            pathFileName += ".csv";
+        if (!endsWith(pathFileName, ".bin"))
+            pathFileName += ".bin";
         const std::string pathColName = clp.getValue<std::string>("path-col-name");
         auto outputFileName = clp.getValue<std::string>("o");
         if (!endsWith(outputFileName, ".geojson"))
@@ -159,21 +150,10 @@ int main(int argc, char *argv[]) {
         // Read the request data from file.
         std::cout << "Reading path data from file... " << std::flush;
         std::vector<std::vector<int>> paths;
-        std::string pathStr;
-        io::CSVReader<1, io::trim_chars<' '>> pathFileReader(pathFileName);
-        pathFileReader.read_header(io::ignore_extra_column, pathColName);
-
-
-        while (pathFileReader.read_row(pathStr)) {
-            if (pathStr.empty())
-                continue;
-            std::vector<int> edges = parseEdgePathString(pathStr);
-            LIGHT_KASSERT(std::all_of(edges.begin(), edges.end(),
-                                      [&](const int e) { return e < inputGraph.numEdges(); }));
-            if (edges.empty())
-                continue;
-            paths.push_back(std::move(edges));
-        }
+        std::ifstream pathsFile(pathFileName, std::ios::binary);
+        if (!pathsFile.good())
+            throw std::invalid_argument("file not found -- '" + pathFileName + "'");
+        bio::read(pathsFile, paths);
         std::cout << "done.\n";
 
 
