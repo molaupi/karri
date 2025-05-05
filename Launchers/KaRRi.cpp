@@ -143,6 +143,7 @@ inline void printUsage() {
               "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
               "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
+              "  -max-num-threads <num> maximum number of threads to use for parallel ellipse reconstruction.\n"
               "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
               "  -help                  show usage help text.\n";
 }
@@ -463,7 +464,9 @@ int main(int argc, char *argv[]) {
         using FeasibleEllipticDistancesImpl = FeasibleEllipticDistances<EllipticBCHLabelSet>;
 
         using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, typename EllipticBucketsEnv::BucketContainer, LastStopAtVerticesInfo>;
-        PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, *vehChEnv, ellipticBucketsEnv.getSourceBuckets(), lastStopBucketsEnv, routeState, reqState.stats().ellipticBchStats);
+        PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, *vehChEnv,
+                                                              ellipticBucketsEnv.getSourceBuckets(), lastStopBucketsEnv,
+                                                              routeState, reqState.stats().ellipticBchStats);
 
         using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
                 EllipticBucketsEnv, LastStopAtVerticesInfo, FeasibleEllipticDistancesImpl, EllipticBCHLabelSet>;
@@ -572,7 +575,12 @@ int main(int argc, char *argv[]) {
         using DijkstraEllipseReconstructorImpl = DijkstraEllipseReconstructor<VehicleInputGraph>;
         DijkstraEllipseReconstructorImpl dijkstraEllipseReconstructor(vehicleInputGraph, revVehicleGraph, routeState);
 
-        using CHEllipseReconstructorImpl = CHEllipseReconstructor<VehCHEnv, EllipticBucketsEnv, TraversalCostAttribute, std::ofstream>;
+        static constexpr bool ELLIPSE_RECONSTRUCTOR_USE_SIMD = true;
+        static constexpr int ELLIPSE_RECONSTRUCTOR_LOG_K = 3;
+        using CHEllipseReconstructorLabelSet = std::conditional_t<ELLIPSE_RECONSTRUCTOR_USE_SIMD,
+                SimdLabelSet<ELLIPSE_RECONSTRUCTOR_LOG_K, ParentInfo::NO_PARENT_INFO>,
+                BasicLabelSet<ELLIPSE_RECONSTRUCTOR_LOG_K, ParentInfo::NO_PARENT_INFO>>;
+        using CHEllipseReconstructorImpl = CHEllipseReconstructor<VehCHEnv, EllipticBucketsEnv, TraversalCostAttribute, CHEllipseReconstructorLabelSet, std::ofstream>;
         CHEllipseReconstructorImpl chEllipseReconstructor(*vehChEnv, ellipticBucketsEnv, routeState);
 
 
@@ -591,7 +599,8 @@ int main(int argc, char *argv[]) {
                 DijkstraEllipseReconstructorImpl,
                 CHEllipseReconstructorImpl>;
         InsertionFinderImpl insertionFinder(reqState, vehicleInputGraph, fleet, routeState,
-                                            requestStateInitializer, pdLocsAtExistingStops, ellipticSearches, ffPDDistanceQuery,
+                                            requestStateInitializer, pdLocsAtExistingStops, ellipticSearches,
+                                            ffPDDistanceQuery,
                                             ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
                                             dalsInsertionsFinder, relevantPdLocsFilter,
                                             dijkstraEllipseReconstructor, chEllipseReconstructor);

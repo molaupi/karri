@@ -40,16 +40,15 @@ namespace karri {
     // Computes the set of vertices contained in the detour ellipse between a pair of consecutive stops in a vehicle
     // route using bucket entries and a CH topological downward search.
     template<typename CHEnvT, typename EllipticBucketsEnvironmentT, typename WeightT = TraversalCostAttribute,
+            typename LabelSetT = SimdLabelSet<3, ParentInfo::NO_PARENT_INFO>,
             typename LoggerT = NullLogger>
     class CHEllipseReconstructor {
 
-        using LabelSet = SimdLabelSet<3, ParentInfo::NO_PARENT_INFO>;
-//        using LabelSet = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>;
-        using DistanceLabel = typename LabelSet::DistanceLabel;
-        using LabelMask = typename LabelSet::LabelMask;
-        static constexpr int K = LabelSet::K;
+        using DistanceLabel = typename LabelSetT::DistanceLabel;
+        using LabelMask = typename LabelSetT::LabelMask;
+        static constexpr int K = LabelSetT::K;
 
-        using Query = CHEllipseReconstructorQuery<EllipticBucketsEnvironmentT, LabelSet, WeightT>;
+        using Query = CHEllipseReconstructorQuery<EllipticBucketsEnvironmentT, LabelSetT, WeightT>;
 
         struct QueryStats {
             int numVerticesSettled = 0;

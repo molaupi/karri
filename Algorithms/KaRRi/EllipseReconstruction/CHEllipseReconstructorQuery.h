@@ -75,9 +75,6 @@ namespace karri {
                                                       int64_t &postprocessTime) {
             KASSERT(stopIds.size() <= K);
 
-            numVerticesSettled = 0;
-            numEdgesRelaxed = 0;
-
             Timer timer;
             initializeDistanceArrays();
             DistanceLabel leeways = 0;
