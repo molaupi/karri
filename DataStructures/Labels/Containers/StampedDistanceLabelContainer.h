@@ -43,6 +43,10 @@ class StampedDistanceLabelContainer {
     resize(numVertices);
   }
 
+  auto size() const {
+      return distanceLabels.size();
+  }
+
   // Ensures that this container can hold the specified number of distance labels.
   void resize(const int numVertices) {
     const auto currentSize = distanceLabels.size();
@@ -74,6 +78,12 @@ class StampedDistanceLabelContainer {
       timestamps[v] = clock;
     }
     return distanceLabels[v];
+  }
+
+  // Return the last value written to the distance label of v without checking if it is stale.
+  // Use when certain that value has already been accessed since last call to init().
+  const DistanceLabelT& readDistanceWithoutStaleCheck(const int v) const {
+      return distanceLabels[v];
   }
 
  private:

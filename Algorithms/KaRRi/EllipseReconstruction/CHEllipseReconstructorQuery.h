@@ -45,15 +45,15 @@ namespace karri {
     public:
 
         CHEllipseReconstructorQuery(const CH &ch,
-                                    const typename CH::SearchGraph &downGraph,
-                                    const typename CH::SearchGraph &upGraph,
+                                    const typename CH::SearchGraph &reverseDownGraph,
+                                    const typename CH::SearchGraph &forwardUpGraph,
                                     const Permutation &topDownRankPermutation,
                                     const EllipticBucketsEnvironmentT &ellipticBucketsEnv,
                                     const RouteState &routeState)
                 : ch(ch),
-                  numVertices(downGraph.numVertices()),
-                  downGraph(downGraph),
-                  upGraph(upGraph),
+                  numVertices(reverseDownGraph.numVertices()),
+                  reverseDownGraph(reverseDownGraph),
+                  forwardUpGraph(forwardUpGraph),
                   topDownRankPermutation(topDownRankPermutation),
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   routeState(routeState),
@@ -61,10 +61,12 @@ namespace karri {
                   distTo(numVertices, INFTY),
                   distFrom(numVertices, INFTY),
                   verticesInAnyEllipse(),
+                  hasBeenInitializedInToSearch(numVertices),
+                    hasBeenInitializedInFromSearch(numVertices),
                   relevantInToSearch(numVertices),
                   relevantInFromSearch(numVertices) {
-            KASSERT(downGraph.numVertices() == numVertices);
-            KASSERT(upGraph.numVertices() == numVertices);
+            KASSERT(reverseDownGraph.numVertices() == numVertices);
+            KASSERT(forwardUpGraph.numVertices() == numVertices);
             verticesInAnyEllipse.reserve(numVertices);
         }
 
@@ -98,6 +100,8 @@ namespace karri {
             // Accumulate result per ellipse
             timer.restart();
             std::vector<std::vector<VertexInEllipse>> ellipses(numEllipses);
+            for (auto &ellipse: ellipses)
+                ellipse.reserve(verticesInAnyEllipse.size());
             for (const auto &r: verticesInAnyEllipse) {
                 const auto originalRank = numVertices - r - 1; // Reverse permutation in search graphs
                 const int vertex = ch.contractionOrder(originalRank);
@@ -113,6 +117,8 @@ namespace karri {
                     }
                 }
             }
+            for (auto &ellipse: ellipses)
+                ellipse.shrink_to_fit();
             postprocessTime += timer.elapsed<std::chrono::nanoseconds>();
 
             return ellipses;
@@ -123,13 +129,10 @@ namespace karri {
 
         void initializeDistanceArrays() {
             KASSERT(distTo.size() == distFrom.size());
-            while (numVertices > distTo.size()) {
-                distTo.resize(std::max(1ul, distTo.size() * 2));
-                distFrom.resize(std::max(1ul, distFrom.size() * 2));
-            }
-
             relevantInToSearch.reset();
             relevantInFromSearch.reset();
+            hasBeenInitializedInToSearch.reset();
+            hasBeenInitializedInFromSearch.reset();
 
             verticesInAnyEllipse.clear();
         }
@@ -150,30 +153,22 @@ namespace karri {
 
                 // Map to vertex ordering of CH graphs used
                 const auto r = topDownRankPermutation[e.rank];
-
-                if (!relevantInToSearch.isSet(r)) {
-                    // Distances for input ranks are initialized here. Distances of other ranks are initialized
-                    // on-the-fly later.
+                if (!hasBeenInitializedInToSearch.isSet(r)) {
                     distTo[r] = INFTY;
+                    hasBeenInitializedInToSearch.set(r);
                 }
-                relevantInToSearch.set(r);
-
+//                relevantInToSearch.set(r);
                 distTo[r][ellipseIdx] = e.distance;
             }
 
             for (const auto &e: ranksWithTargetBucketEntries) {
                 // Map to vertex ordering of CH graphs used
                 const auto r = topDownRankPermutation[e.rank];
-
-                if (!relevantInFromSearch.isSet(r)) {
-                    // Distances for input ranks are initialized here. Distances of other ranks are initialized
-                    // on-the-fly later.
+                if (!hasBeenInitializedInFromSearch.isSet(r)) {
                     distFrom[r] = INFTY;
+                    hasBeenInitializedInFromSearch.set(r);
                 }
-                relevantInFromSearch.set(r);
-
-                // Distances for input ranks are initialized here. Distances of other ranks are initialized
-                // on-the-fly later.
+//                relevantInFromSearch.set(r);
                 distFrom[r][ellipseIdx] = e.distance;
             }
         }
@@ -181,48 +176,97 @@ namespace karri {
         void settleVertexInTopodownSearch(const int v, const DistanceLabel &leeway,
                                           int &numEdgesRelaxed) {
 
+            static const DistanceLabel InftyLabel = DistanceLabel(INFTY);
 
             auto &distToV = distTo[v];
-            if (!relevantInToSearch.isSet(v)) {
-                distToV = INFTY;
-            }
-
-            FORALL_INCIDENT_EDGES(downGraph, v, e) {
-                const auto head = downGraph.edgeHead(e);
-
-                ++numEdgesRelaxed;
-                const auto &distToHead = distTo[head];
-                const auto distViaHead = distToHead + downGraph.template get<WeightT>(e);
-                distToV.min(distViaHead);
-            }
-
             auto &distFromV = distFrom[v];
-            if (!relevantInFromSearch.isSet(v)) {
-                distFromV = INFTY;
+            // Vertices with initial entries are starting points of search. Other vertices are initialized to INFTY
+            // and only settled if they have relevant upward neighbors.
+            bool hasRelevantUpwardNeighborsInToSearch = hasBeenInitializedInToSearch.isSet(v);
+            bool hasRelevantUpwardNeighborsInFromSearch = hasBeenInitializedInFromSearch.isSet(v);
+            if (!hasRelevantUpwardNeighborsInToSearch)
+                distToV = InftyLabel;
+            if (!hasRelevantUpwardNeighborsInFromSearch)
+                distFromV = InftyLabel;
+
+            FORALL_INCIDENT_EDGES(reverseDownGraph, v, e) {
+                const auto head = reverseDownGraph.edgeHead(e);
+                hasRelevantUpwardNeighborsInToSearch |= relevantInToSearch.isSet(head);
             }
 
-            FORALL_INCIDENT_EDGES(upGraph, v, e) {
-                const auto head = upGraph.edgeHead(e);
-
-                ++numEdgesRelaxed;
-                const auto &distFromHead = distFrom[head];
-                const auto distViaHead = distFromHead + upGraph.template get<WeightT>(e);
-                distFromV.min(distViaHead);
+            FORALL_INCIDENT_EDGES(forwardUpGraph, v, e) {
+                const auto head = forwardUpGraph.edgeHead(e);
+                hasRelevantUpwardNeighborsInFromSearch |= relevantInFromSearch.isSet(head);
             }
+
+            // Skip if irrelevant on both sides.
+            if (!hasRelevantUpwardNeighborsInToSearch && !hasRelevantUpwardNeighborsInFromSearch) {
+                return;
+            }
+
+            if (hasRelevantUpwardNeighborsInToSearch) {
+                relaxIncomingEdgesInToSearch(v, distToV, numEdgesRelaxed);
+            }
+
+            if (hasRelevantUpwardNeighborsInFromSearch) {
+                relaxIncomingEdgesInFromSearch(v, distFromV, numEdgesRelaxed);
+            }
+
+            const auto sum = distToV + distFromV;
+            const auto sumGreaterLeeway = sum > leeway;
+            const auto sumSmallerInfty = sum < InftyLabel;
+            const auto toGreaterLeeway = distToV > leeway;
+            const auto fromGreaterLeeway = distFromV > leeway;
+
+            // We can prune if for all stop pairs one of the following holds:
+            // 1. Both distance to v and from v are greater than the leeway (including unknown distances = INFTY).
+            // 2. Both distance to v and from v are known and the sum breaks the leeway.
+            const auto canPrune = allSet((toGreaterLeeway & fromGreaterLeeway) | (sumSmallerInfty & sumGreaterLeeway));
+            if (canPrune)
+                return;
 
             // If vertex is in any ellipse, store it
-            const auto sum = distToV + distFromV;
-            const bool allSumGreaterLeeway = allSet(sum > leeway);
+            const bool allSumGreaterLeeway = allSet(sumGreaterLeeway);
             if (!allSumGreaterLeeway) {
                 verticesInAnyEllipse.push_back(v);
             }
+
+            if (!allSet(toGreaterLeeway)) {
+//                markDownwardNeighborsInToSearchAsPotentiallyRelevant(v);
+                relevantInToSearch.set(v);
+            }
+            if (!allSet(fromGreaterLeeway)) {
+//                markDownwardNeighborsInFromSearchAsPotentiallyRelevant(v);
+                relevantInFromSearch.set(v);
+            }
         }
 
+        inline void relaxIncomingEdgesInToSearch(const int v, DistanceLabel &distToV, int &numEdgesRelaxed) const {
+            FORALL_INCIDENT_EDGES(reverseDownGraph, v, e) {
+                const auto head = reverseDownGraph.edgeHead(e);
+
+                ++numEdgesRelaxed;
+                const auto &distToHead = distTo[head];
+                const auto distViaHead = distToHead + reverseDownGraph.template get<WeightT>(e);
+                distToV.min(distViaHead);
+            }
+        }
+
+        inline void relaxIncomingEdgesInFromSearch(const int v, DistanceLabel &distFromV, int &numEdgesRelaxed) const {
+            FORALL_INCIDENT_EDGES(forwardUpGraph, v, e) {
+                const auto head = forwardUpGraph.edgeHead(e);
+
+                ++numEdgesRelaxed;
+                const auto &distFromHead = distFrom[head];
+                const auto distViaHead = distFromHead + forwardUpGraph.template get<WeightT>(e);
+                distFromV.min(distViaHead);
+            }
+        }
 
         const CH &ch;
         const size_t numVertices;
-        const CH::SearchGraph &downGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
-        const CH::SearchGraph &upGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
+        const CH::SearchGraph &reverseDownGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
+        const CH::SearchGraph &forwardUpGraph; // Forward upward edges in CH. Vertices ordered by decreasing rank.
         const Permutation &topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
         const EllipticBucketsEnvironmentT &ellipticBucketsEnv;
         const RouteState &routeState;
@@ -233,6 +277,8 @@ namespace karri {
         AlignedVector<DistanceLabel> distFrom;
         std::vector<int> verticesInAnyEllipse;
 
+        FastResetFlagArray<> hasBeenInitializedInToSearch; // Flags that mark whether vertex distance has been initialized in to search.
+        FastResetFlagArray<> hasBeenInitializedInFromSearch; // Flags that mark whether vertex distance has been initialized in from search.
         FastResetFlagArray<> relevantInToSearch; // Flags that mark whether vertex is relevant in to search.
         FastResetFlagArray<> relevantInFromSearch; // Flags that mark whether vertex is relevant in from search.
     };

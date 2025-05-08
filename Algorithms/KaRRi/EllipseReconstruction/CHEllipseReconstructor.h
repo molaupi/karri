@@ -61,12 +61,14 @@ namespace karri {
 
         CHEllipseReconstructor(const CHEnvT &chEnv, const EllipticBucketsEnvironmentT &ellipticBucketsEnv,
                                const RouteState &routeState)
-                  : ch(chEnv.getCH()),
-                  downGraph(chEnv.getCH().downwardGraph()),
-                  upGraph(chEnv.getCH().upwardGraph()),
+                : ch(chEnv.getCH()),
+                  reverseDownGraph(chEnv.getCH().downwardGraph()),
+                  forwardUpGraph(chEnv.getCH().upwardGraph()),
                   topDownRankPermutation(chEnv.getCH().downwardGraph().numVertices()),
-                  query([&](){return Query(ch, downGraph, upGraph, topDownRankPermutation,
-                        ellipticBucketsEnv, routeState);}),
+                  query([&]() {
+                      return Query(ch, reverseDownGraph, forwardUpGraph, topDownRankPermutation,
+                                   ellipticBucketsEnv, routeState);
+                  }),
                   logger(LogManager<LoggerT>::getLogger("ch_ellipse_reconstruction.csv",
                                                         "num_ellipses,"
                                                         "init_time,"
@@ -75,13 +77,13 @@ namespace karri {
                                                         "total_time,"
                                                         "topo_search_num_vertices_settled,"
                                                         "topo_search_num_edges_relaxed\n")) {
-            KASSERT(downGraph.numVertices() == upGraph.numVertices());
-            const int numVertices = downGraph.numVertices();
+            KASSERT(reverseDownGraph.numVertices() == forwardUpGraph.numVertices());
+            const int numVertices = reverseDownGraph.numVertices();
             for (int r = 0; r < numVertices; ++r)
                 topDownRankPermutation[r] = numVertices - r - 1;
 
-            downGraph.permuteVertices(topDownRankPermutation);
-            upGraph.permuteVertices(topDownRankPermutation);
+            reverseDownGraph.permuteVertices(topDownRankPermutation);
+            forwardUpGraph.permuteVertices(topDownRankPermutation);
         }
 
         std::vector<std::vector<VertexInEllipse>>
@@ -102,13 +104,14 @@ namespace karri {
             std::vector<std::vector<VertexInEllipse>> ellipses;
             ellipses.resize(numEllipses);
             tbb::parallel_for(0ul, numBatches, [&](size_t i) {
-                auto& localQuery = query.local();
-                auto& localStats = queryStats.local();
+                auto &localQuery = query.local();
+                auto &localStats = queryStats.local();
                 std::vector<int> batchStopIds;
                 for (int j = 0; j < K && i * K + j < numEllipses; ++j) {
                     batchStopIds.push_back(stopIds[i * K + j]);
                 }
-                auto batchResult = localQuery.run(batchStopIds, localStats.numVerticesSettled, localStats.numEdgesRelaxed, localStats.initTime,
+                auto batchResult = localQuery.run(batchStopIds, localStats.numVerticesSettled,
+                                                  localStats.numEdgesRelaxed, localStats.initTime,
                                                   localStats.topoSearchTime, localStats.postprocessTime);
                 for (int j = 0; j < K && i * K + j < numEllipses; ++j) {
                     ellipses[i * K + j].swap(batchResult[j]);
@@ -118,7 +121,7 @@ namespace karri {
             int64_t totalInitTime = 0;
             int64_t totalTopoSearchTime = 0;
             int64_t totalPostprocessTime = 0;
-            for (auto& localStats : queryStats) {
+            for (auto &localStats: queryStats) {
                 totalNumVerticesSettled += localStats.numVerticesSettled;
                 totalNumEdgesRelaxed += localStats.numEdgesRelaxed;
                 totalInitTime += localStats.initTime;
@@ -134,7 +137,8 @@ namespace karri {
             const auto totalTime = timer.elapsed<std::chrono::nanoseconds>();
 
             logger << numEllipses << "," << totalInitTime << "," << totalTopoSearchTime << ","
-                   << totalPostprocessTime << "," << totalTime << "," << totalNumVerticesSettled << "," << totalNumEdgesRelaxed << "\n";
+                   << totalPostprocessTime << "," << totalTime << "," << totalNumVerticesSettled << ","
+                   << totalNumEdgesRelaxed << "\n";
 
             return ellipses;
         }
@@ -142,9 +146,9 @@ namespace karri {
 
     private:
 
-        const CH& ch;
-        CH::SearchGraph downGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
-        CH::SearchGraph upGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
+        const CH &ch;
+        CH::SearchGraph reverseDownGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
+        CH::SearchGraph forwardUpGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
 
         Permutation topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
 

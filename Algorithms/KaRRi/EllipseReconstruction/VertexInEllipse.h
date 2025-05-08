@@ -29,6 +29,12 @@
 // Represents a vertex in a detour ellipse with according distances from previous stop to vertex and from vertex to
 // next stop.
 struct VertexInEllipse {
+
+    VertexInEllipse(const int vertex, const int distToVertex, const int distFromVertex) : vertex(vertex),
+                                                                                          distToVertex(distToVertex),
+                                                                                          distFromVertex(
+                                                                                                  distFromVertex) {}
+
     int vertex = INVALID_VERTEX;
     int distToVertex = INFTY;
     int distFromVertex = INFTY;
