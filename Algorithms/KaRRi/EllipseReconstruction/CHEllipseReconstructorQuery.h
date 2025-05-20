@@ -49,7 +49,8 @@ namespace karri {
                                     const typename CH::SearchGraph &upGraph,
                                     const Permutation &topDownRankPermutation,
                                     const EllipticBucketsEnvironmentT &ellipticBucketsEnv,
-                                    const RouteState &routeState)
+                                    const RouteState &routeState,
+                                    const std::vector<int>& eliminationTree)
                 : ch(ch),
                   numVertices(downGraph.numVertices()),
                   downGraph(downGraph),
@@ -57,12 +58,15 @@ namespace karri {
                   topDownRankPermutation(topDownRankPermutation),
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   routeState(routeState),
+                  eliminationTree(eliminationTree),
                   enumerateBucketEntriesSearchSpace(numVertices),
                   distTo(numVertices, INFTY),
                   distFrom(numVertices, INFTY),
                   verticesInAnyEllipse(),
                   relevantInToSearch(numVertices),
-                  relevantInFromSearch(numVertices) {
+                  relevantInFromSearch(numVertices),
+                  highestRelInElimTreeBranchToSearch(numVertices, -1),
+                  highestRelInElimTreeBranchFromSearch(numVertices, -1) {
             KASSERT(downGraph.numVertices() == numVertices);
             KASSERT(upGraph.numVertices() == numVertices);
             verticesInAnyEllipse.reserve(numVertices);
@@ -98,7 +102,7 @@ namespace karri {
             // Accumulate result per ellipse
             timer.restart();
             std::vector<std::vector<VertexInEllipse>> ellipses(numEllipses);
-            for (auto& ellipse : ellipses)
+            for (auto &ellipse: ellipses)
                 ellipse.reserve(verticesInAnyEllipse.size());
             for (const auto &r: verticesInAnyEllipse) {
                 const auto originalRank = numVertices - r - 1; // Reverse permutation in search graphs
@@ -115,7 +119,7 @@ namespace karri {
                     }
                 }
             }
-            for (auto &ellipse : ellipses) {
+            for (auto &ellipse: ellipses) {
                 ellipse.shrink_to_fit();
             }
             postprocessTime += timer.elapsed<std::chrono::nanoseconds>();
@@ -137,6 +141,9 @@ namespace karri {
             relevantInFromSearch.reset();
 
             verticesInAnyEllipse.clear();
+
+            std::fill(highestRelInElimTreeBranchToSearch.begin(), highestRelInElimTreeBranchToSearch.end(), -1);
+            std::fill(highestRelInElimTreeBranchFromSearch.begin(), highestRelInElimTreeBranchFromSearch.end(), -1);
         }
 
         void initializeDistancesForStopBasedOnBuckets(const int stopId, const int ellipseIdx) {
@@ -186,19 +193,9 @@ namespace karri {
         void settleVertexInTopodownSearch(const int v, const DistanceLabel &leeway,
                                           int &numEdgesRelaxed) {
 
-
             auto &distToV = distTo[v];
             if (!relevantInToSearch.isSet(v)) {
                 distToV = INFTY;
-            }
-
-            FORALL_INCIDENT_EDGES(downGraph, v, e) {
-                const auto head = downGraph.edgeHead(e);
-
-                ++numEdgesRelaxed;
-                const auto &distToHead = distTo[head];
-                const auto distViaHead = distToHead + downGraph.template get<WeightT>(e);
-                distToV.min(distViaHead);
             }
 
             auto &distFromV = distFrom[v];
@@ -206,8 +203,28 @@ namespace karri {
                 distFromV = INFTY;
             }
 
+            // Propagate information on highest relevant rank along elimination tree edge.
+            const auto &parentElimTree = eliminationTree[v];
+            auto& highestRelToV = highestRelInElimTreeBranchToSearch[v];
+            auto& highestRelFromV = highestRelInElimTreeBranchFromSearch[v];
+            highestRelToV = highestRelInElimTreeBranchToSearch[parentElimTree];
+            highestRelFromV = highestRelInElimTreeBranchFromSearch[parentElimTree];
+
+            FORALL_INCIDENT_EDGES(downGraph, v, e) {
+                const auto head = downGraph.edgeHead(e);
+                if (head > highestRelToV) // Only relax edges up to highest relevant rank
+                    break;
+
+                ++numEdgesRelaxed;
+                const auto &distToHead = distTo[head];
+                const auto distViaHead = distToHead + downGraph.template get<WeightT>(e);
+                distToV.min(distViaHead);
+            }
+
             FORALL_INCIDENT_EDGES(upGraph, v, e) {
                 const auto head = upGraph.edgeHead(e);
+                if (head > highestRelFromV) // Only relax edges up to highest relevant rank
+                    break;
 
                 ++numEdgesRelaxed;
                 const auto &distFromHead = distFrom[head];
@@ -217,10 +234,27 @@ namespace karri {
 
             // If vertex is in any ellipse, store it
             const auto sum = distToV + distFromV;
-            const bool allSumGreaterLeeway = allSet(sum > leeway);
-            if (!allSumGreaterLeeway) {
+            const auto sumGreaterLeeway = sum > leeway;
+            if (!allSet(sumGreaterLeeway)) {
                 verticesInAnyEllipse.push_back(v);
+                highestRelToV = v;
+                highestRelFromV = v;
+                return;
             }
+
+            // If for any of the K ellipses, distance from vertex is INFTY and distance to vertex is smaller
+            // than the leeway, then the vertex is relevant in the to search.
+            highestRelToV += anySet((distFromV == INFTY) & (distToV <= leeway)) * (v - highestRelToV); // sets highestRelToV to v if relevant
+//            if (anySet((distFromV == INFTY) & (distToV <= leeway))) {
+//                highestRelToV = v;
+//            }
+
+            // If for any of the K ellipses distance to vertex is INFTY and distance from vertex is smaller
+            // than the leeway, then the vertex is relevant in the from search.
+            highestRelFromV += anySet((distToV == INFTY) & (distFromV <= leeway)) * (v - highestRelFromV); // sets highestRelFromV to v if relevant
+//            if (anySet((distToV == INFTY) & (distFromV <= leeway))) {
+//                highestRelFromV = v;
+//            }
         }
 
 
@@ -231,6 +265,7 @@ namespace karri {
         const Permutation &topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
         const EllipticBucketsEnvironmentT &ellipticBucketsEnv;
         const RouteState &routeState;
+        const std::vector<int> &eliminationTree; // Elimination tree with vertices ordered by decreasing rank.
 
         Subset enumerateBucketEntriesSearchSpace;
 
@@ -240,6 +275,12 @@ namespace karri {
 
         FastResetFlagArray<> relevantInToSearch; // Flags that mark whether vertex is relevant in to search.
         FastResetFlagArray<> relevantInFromSearch; // Flags that mark whether vertex is relevant in from search.
+
+        // highestRelInElimTreeBranchToSearch[v]/highestRelInElimTreeFromSearch[v] is the highest rank
+        // (permuted, so least important vertex) that is relevant in the to/from search. When settling vertex v, we only
+        // have to relax edges with head ranks up to highestRelInElimTreeBranchToSearch[v]/highestRelInElimTreeFromSearch[v].
+        std::vector<int> highestRelInElimTreeBranchToSearch;
+        std::vector<int> highestRelInElimTreeBranchFromSearch;
     };
 
 } // karri

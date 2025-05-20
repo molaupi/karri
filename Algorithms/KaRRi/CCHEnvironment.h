@@ -75,6 +75,9 @@ namespace karri {
             return minimumWeightedCH;
         }
 
+        const CCH& getCCH() const noexcept {
+            return cch;
+        }
 
         template<typename LabelSetT = DefaultLabelSet>
         FullCHQuery<LabelSetT> getFullCHQuery() const {

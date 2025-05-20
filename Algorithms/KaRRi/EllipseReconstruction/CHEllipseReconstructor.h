@@ -64,9 +64,10 @@ namespace karri {
                   : ch(chEnv.getCH()),
                   downGraph(chEnv.getCH().downwardGraph()),
                   upGraph(chEnv.getCH().upwardGraph()),
+                  eliminationTree(chEnv.getCCH().getEliminationTree()),
                   topDownRankPermutation(chEnv.getCH().downwardGraph().numVertices()),
                   query([&](){return Query(ch, downGraph, upGraph, topDownRankPermutation,
-                        ellipticBucketsEnv, routeState);}),
+                        ellipticBucketsEnv, routeState, eliminationTree);}),
                   logger(LogManager<LoggerT>::getLogger("ch_ellipse_reconstruction.csv",
                                                         "num_ellipses,"
                                                         "init_time,"
@@ -81,7 +82,27 @@ namespace karri {
                 topDownRankPermutation[r] = numVertices - r - 1;
 
             downGraph.permuteVertices(topDownRankPermutation);
+            downGraph.sortOutgoingEdges();
             upGraph.permuteVertices(topDownRankPermutation);
+            upGraph.sortOutgoingEdges();
+
+            // Permute tails of elimination tree
+            topDownRankPermutation.applyTo(eliminationTree);
+
+            // Permute heads of elimination tree
+            for (auto& parent : eliminationTree) {
+                if (parent == -1) // Root of tree does not have a parent, no need to permute
+                    continue;
+                parent = topDownRankPermutation[parent];
+            }
+
+            for (int i = 0; i < eliminationTree.size(); ++i) {
+                KASSERT(eliminationTree[i] < i);
+            }
+
+
+            // Our permuted elimination tree marks root (rank 0) by being its own parent.
+            eliminationTree[0] = 0;
         }
 
         std::vector<std::vector<VertexInEllipse>>
@@ -145,6 +166,7 @@ namespace karri {
         const CH& ch;
         CH::SearchGraph downGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
         CH::SearchGraph upGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
+        std::vector<int> eliminationTree; // Elimination tree of the CH with vertices ordered by decreasing rank.
 
         Permutation topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
 

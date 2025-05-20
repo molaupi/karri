@@ -544,11 +544,28 @@ public:
             head = perm[head];
     }
 
+    // For each vertex u, sorts outgoing edges (u, v) by edge head v.
+    void sortOutgoingEdges() {
+        std::vector<int> permData(edgeHeads.size());
+        for (int e = 0; e < edgeHeads.size(); ++e)
+            permData[e] = e;
+        for (int u = 0; u < numVertices(); ++u) {
+            const int first = firstEdge(u);
+            const int last = lastEdge(u);
+            std::sort(permData.begin() + first, permData.begin() + last, [&](const int e1, const int e2) {
+                return edgeHeads[e1] < edgeHeads[e2];
+            });
+        }
+        Permutation perm(permData.begin(), permData.end());
+        perm.applyTo(edgeHeads);
+        RUN_FORALL(perm.applyTo(EdgeAttributes::values));
+    }
+
     // Removes all vertices and edges that do not lie in the vertex-induced subgraph specified by the
     // given bitmask. The bitmask must contain one bit per vertex, which should be set iff the vertex
     // belongs to the subgraph. Optionally, writes a mapping of edge IDs of the full graph to the edge
     // IDs of the subgraph into a given edgeMapping for any edges that are kept.
-    void extractVertexInducedSubgraph(const BitVector& bitmask) {
+    void extractVertexInducedSubgraph(const BitVector &bitmask) {
         struct {
             int field;
 
@@ -559,7 +576,7 @@ public:
 
 
     template<typename EdgeMappingT>
-    void extractVertexInducedSubgraph(const BitVector& bitmask, EdgeMappingT &origToNewEdgeMapping) {
+    void extractVertexInducedSubgraph(const BitVector &bitmask, EdgeMappingT &origToNewEdgeMapping) {
         assert(bitmask.size() == numVertices());
         using std::swap;
         int nextId = 0;
