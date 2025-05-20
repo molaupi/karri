@@ -40,48 +40,58 @@
 // Inserting elements, and testing elements for membership take constant time. Iterating through and clearing a
 // NonAddressableSubset of size k both take time O(k).
 class LightweightSubset {
- public:
-  // Constructs an empty subset of a finite set of the specified size.
-  explicit LightweightSubset(const int size) : hasElement(size) {}
+public:
+    // Constructs an empty subset of a finite set of the specified size.
+    explicit LightweightSubset(const int size) : hasElement(size) {
+        elements.reserve(size);
+    }
 
-  // Returns an iterator referring to the first element in the subset.
-  std::vector<int32_t>::const_iterator begin() const noexcept {
-    return elements.begin();
-  }
+    // Returns an iterator referring to the first element in the subset.
+    std::vector<int32_t>::const_iterator begin() const noexcept {
+        return elements.begin();
+    }
 
-  // Returns the past-the-end iterator for the subset.
-  std::vector<int32_t>::const_iterator end() const noexcept {
-    return elements.end();
-  }
+    // Returns the past-the-end iterator for the subset.
+    std::vector<int32_t>::const_iterator end() const noexcept {
+        return elements.end();
+    }
 
-  // Returns the number of elements in the subset.
-  int size() const noexcept {
-	  return elements.size();
-  }
+    // Returns the number of elements in the subset.
+    int size() const noexcept {
+        return elements.size();
+    }
 
-  // Inserts the specified element into the subset. Invalidates only the past-the-end iterator.
-  bool insert(const int element) {
-    if (contains(element))
-      return false;
-    hasElement[element] = true;
-    elements.push_back(element);
-    return true;
-  }
+    void resize(const int newSize) {
+        if (newSize > hasElement.size()) {
+            elements.reserve(newSize);
+        }
+        hasElement.resize(newSize, false);
+    }
 
-  // Removes all elements in the subset. May invalidate all iterators.
-  void clear() {
-    for (const auto element : elements)
-      hasElement[element] = false;
-    elements.clear();
-  }
+    // Inserts the specified element into the subset. Invalidates only the past-the-end iterator.
+    bool insert(const int element) {
+        if (contains(element))
+            return false;
+        hasElement[element] = true;
+        elements.push_back(element);
+        return true;
+    }
 
-  // Returns true if the subset contains the specified element.
-  bool contains(const int element) const {
-    KASSERT(element >= 0); assert(element < hasElement.size());
-    return hasElement[element];
-  }
+    // Removes all elements in the subset. May invalidate all iterators.
+    void clear() {
+        for (const auto element: elements)
+            hasElement[element] = false;
+        elements.clear();
+    }
 
- private:
-  std::vector<int32_t> elements;          // The elements contained in the subset.
-  BitVector hasElement;
+    // Returns true if the subset contains the specified element.
+    bool contains(const int element) const {
+        KASSERT(element >= 0);
+        assert(element < hasElement.size());
+        return hasElement[element];
+    }
+
+private:
+    std::vector<int32_t> elements;          // The elements contained in the subset.
+    BitVector hasElement;
 };

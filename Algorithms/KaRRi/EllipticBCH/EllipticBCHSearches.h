@@ -37,6 +37,7 @@
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
+#include "Algorithms/KaRRi/EllipticBCH/LazyPeak/LazyPeakBuckets.h"
 
 namespace karri {
 
@@ -58,6 +59,7 @@ namespace karri {
 
 
         using Buckets = typename EllipticBucketsEnvT::BucketContainer;
+        using LazyPeakBucketsT = LazyPeakBuckets<Buckets>;
 
         struct StopBCHQuery {
 
@@ -79,11 +81,29 @@ namespace karri {
         };
 
 
+        // Given rank r, returns true if r is greater than some threshold.
+        struct IsInPeak {
+            IsInPeak(const int threshold) : threshold(threshold) {}
+
+            bool operator()(const int r) const {
+                return r >= threshold;
+            }
+
+        private:
+            const int threshold;
+        };
+
         template<typename UpdateDistancesT>
         struct ScanOrdinaryBucket {
-            explicit ScanOrdinaryBucket(const Buckets &buckets, UpdateDistancesT &updateDistances,
-                                        int &numEntriesVisited, int &numEntriesVisitedWithDistSmallerLeeway)
+            explicit ScanOrdinaryBucket(const Buckets &buckets,
+                                        LazyPeakBucketsT &lazyPeakBuckets,
+                                        const IsInPeak &isInPeak,
+                                        UpdateDistancesT &updateDistances,
+                                        int &numEntriesVisited,
+                                        int &numEntriesVisitedWithDistSmallerLeeway)
                     : buckets(buckets),
+                        lazyPeakBuckets(lazyPeakBuckets),
+                        isInPeak(isInPeak),
                       updateDistances(updateDistances),
                       numEntriesVisited(numEntriesVisited),
                       numEntriesVisitedWithDistSmallerLeeway(numEntriesVisitedWithDistSmallerLeeway) {}
@@ -91,7 +111,20 @@ namespace karri {
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
 
-                for (const auto &entry: buckets.getBucketOf(v)) {
+                // If vertex lies in peak, use the lazy peak buckets and prune.
+                if (isInPeak(v)) {
+                    const auto bucket = lazyPeakBuckets.getBucketOf(v);
+                    scanEntries(bucket, v, distToV);
+                    return true;
+                }
+
+                scanEntries(buckets.getBucketOf(v), v, distToV);
+                return false;
+            }
+
+            template<typename Bucket, typename DistLabelT>
+            void scanEntries(const Bucket &bucket, const int v, const DistLabelT &distToV) {
+                for (const auto &entry: bucket) {
                     ++numEntriesVisited;
                     const auto distViaV = distToV + entry.distToTarget;
 
@@ -108,12 +141,12 @@ namespace karri {
                     ++numEntriesVisitedWithDistSmallerLeeway;
                     updateDistances(v, entry, distViaV);
                 }
-
-                return false;
             }
 
         private:
             const Buckets &buckets;
+            LazyPeakBucketsT &lazyPeakBuckets;
+            const IsInPeak &isInPeak;
             UpdateDistancesT &updateDistances;
             int &numEntriesVisited;
             int &numEntriesVisitedWithDistSmallerLeeway;
@@ -125,11 +158,11 @@ namespace karri {
             UpdateDistancesToPDLocs() : curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
             void operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
-                                 const DistanceLabel &distsToPDLocs) {
+                            const DistanceLabel &distsToPDLocs) {
 
                 assert(curFeasible);
                 curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, curFirstIdOfBatch,
-                                                                  distsToPDLocs, meetingVertex);
+                                                           distsToPDLocs, meetingVertex);
             }
 
 
@@ -152,7 +185,7 @@ namespace karri {
                     : routeState(routeState), curFeasible(nullptr), curFirstIdOfBatch(INVALID_ID) {}
 
             void operator()(const int meetingVertex, const BucketEntryWithLeeway &entry,
-                                 const DistanceLabel &distsFromPDLocs) {
+                            const DistanceLabel &distsFromPDLocs) {
 
                 const auto &prevStopId = routeState.idOfPreviousStopOf(entry.targetId);
 
@@ -162,7 +195,7 @@ namespace karri {
 
                 assert(curFeasible);
                 curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, curFirstIdOfBatch,
-                                                                      distsFromPDLocs, meetingVertex);
+                                                               distsFromPDLocs, meetingVertex);
             }
 
             void setCurFeasible(FeasibleEllipticDistancesT *const newCurFeasible) {
@@ -184,8 +217,9 @@ namespace karri {
         using ScanTargetBuckets = ScanOrdinaryBucket<UpdateDistancesFromPDLocs>;
 
 
-
     public:
+
+        static constexpr int PEAK_REV_THRESHOLD = 5000;
 
         EllipticBCHSearches(const InputGraphT &inputGraph,
                             const Fleet &fleet,
@@ -193,7 +227,6 @@ namespace karri {
                             const LastStopsAtVerticesT &lastStopsAtVertices,
                             const CHEnvT &chEnv,
                             const RouteState &routeState,
-
                             RequestState &requestState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
@@ -206,13 +239,16 @@ namespace karri {
                   updateDistancesToPdLocs(),
                   updateDistancesFromPdLocs(routeState),
                   toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
-                          ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), updateDistancesToPdLocs,
+                          ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), lazyPeakSourceBuckets, isInPeak, updateDistancesToPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
                           StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
                   fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
-                          ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), updateDistancesFromPdLocs,
+                          ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), lazyPeakTargetBuckets, isInPeak, updateDistancesFromPdLocs,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
+                  isInPeak(std::max(inputGraph.numVertices() - PEAK_REV_THRESHOLD, 0)),
+                  lazyPeakSourceBuckets(ch.downwardGraph(), ellipticBucketsEnv.getSourceBuckets()),
+                  lazyPeakTargetBuckets(ch.upwardGraph(), ellipticBucketsEnv.getTargetBuckets()) {}
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
@@ -244,7 +280,10 @@ namespace karri {
         }
 
         void init() {
-            // no op
+            Timer timer;
+            lazyPeakSourceBuckets.init(routeState.getMaxStopId() + 1 );
+            lazyPeakTargetBuckets.init(routeState.getMaxStopId() + 1 );
+            requestState.stats().ellipticBchStats.initializationTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
     private:
@@ -345,6 +384,10 @@ namespace karri {
         UpdateDistancesFromPDLocs updateDistancesFromPdLocs;
         typename CHEnvT::template UpwardSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT> toQuery;
         typename CHEnvT::template UpwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT> fromQuery;
+
+        IsInPeak isInPeak;
+        LazyPeakBucketsT lazyPeakSourceBuckets;
+        LazyPeakBucketsT lazyPeakTargetBuckets;
 
         int numSearchesRun;
         int numTimesStoppingCriterionMet;
