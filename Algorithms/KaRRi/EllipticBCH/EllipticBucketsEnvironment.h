@@ -74,6 +74,9 @@ namespace karri {
             std::vector<int> &searchSpace;
         };
 
+        // Top PEAK_SIZE vertices make up peak for which we store up-down-buckets instead of only up- or down-buckets.
+        static constexpr int PEAK_SIZE = 2500;
+
     public:
 
 
@@ -88,6 +91,7 @@ namespace karri {
                                    karri::stats::UpdatePerformanceStats &stats)
                 : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState),
                   sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
+                    sourcePeakBuckets(inputGraph.numVertices()), targetPeakBuckets(inputGraph.numVertices()),
                   forwardSearchFromNewStop(
                           chEnv.getForwardTopologicalSearch(StoreSearchSpace(searchSpace),
                                                             StopWhenLeewayExceeded(currentLeeway))),
@@ -109,6 +113,14 @@ namespace karri {
 
         const BucketContainer &getTargetBuckets() const {
             return targetBuckets;
+        }
+
+        const BucketContainer &getSourcePeakBuckets() const {
+            return sourcePeakBuckets;
+        }
+
+        const BucketContainer &getTargetPeakBuckets() const {
+            return targetPeakBuckets;
         }
 
         void generateSourceBucketEntries(const Vehicle &veh, const int stopIndex) {
@@ -134,7 +146,7 @@ namespace karri {
             generateBucketEntries(stopId, leeway,
                                   newStopRoot, 0, forwardSearchFromNewStop, ch.upwardGraph(),
                                   nextStopRoot, nextStopOffset, reverseSearchFromNextStop, ch.downwardGraph(),
-                                  sourceBuckets);
+                                  sourceBuckets, sourcePeakBuckets);
         }
 
         void generateTargetBucketEntries(const Vehicle &veh, const int stopIndex) {
@@ -159,10 +171,11 @@ namespace karri {
             generateBucketEntries(stopId, leeway,
                                   newStopRoot, newStopOffset, reverseSearchFromNewStop, ch.downwardGraph(),
                                   prevStopRoot, 0, forwardSearchFromPrevStop, ch.upwardGraph(),
-                                  targetBuckets);
+                                  targetBuckets, targetPeakBuckets);
         }
 
         void updateLeewayInSourceBucketsForAllStopsOf(const Vehicle& veh) {
+            // TODO: update leeways in peak buckets?
             const auto numStops = routeState.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
@@ -199,6 +212,7 @@ namespace karri {
         }
 
         void updateLeewayInTargetBucketsForAllStopsOf(const Vehicle& veh) {
+            // TODO: update leeways in peak buckets?
             const auto numStops = routeState.numStopsOf(veh.vehicleId);
             if (numStops <= 1)
                 return;
@@ -238,15 +252,20 @@ namespace karri {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeHead(stopLoc));
-            deleteBucketEntries(stopId, root, ch.upwardGraph(), sourceBuckets);
+            deleteBucketEntries(stopId, root, ch.upwardGraph(), sourceBuckets, sourcePeakBuckets);
         }
 
         void deleteTargetBucketEntries(const Vehicle &veh, const int stopIndex) {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeTail(stopLoc));
-            deleteBucketEntries(stopId, root, ch.downwardGraph(), targetBuckets);
+            deleteBucketEntries(stopId, root, ch.downwardGraph(), targetBuckets, targetPeakBuckets);
         }
+
+        static bool isInPeak(const int v, const int numVertices) {
+            return v >= numVertices - PEAK_SIZE;
+        }
+
 
     private:
 
@@ -263,7 +282,8 @@ namespace karri {
                                    const int neighborRoot, const int neighborOffset,
                                    SearchFromNeighbor &searchFromNeighbor,
                                    const CH::SearchGraph &neighborGraph,
-                                   BucketContainer &buckets) {
+                                   BucketContainer &buckets,
+                                   BucketContainer &peakBuckets) {
             int64_t numEntriesGenerated = 0;
             Timer timer;
 
@@ -310,6 +330,21 @@ namespace karri {
                 }
             }
 
+            // Propagate distances from new stop to all vertices in the peak and add entries to peak buckets:
+            for (int v = inputGraph.numVertices() - 1; v >= inputGraph.numVertices() - PEAK_SIZE; --v) {
+
+                int minDistViaHigherPath = INFTY;
+                FORALL_INCIDENT_EDGES(neighborGraph, v, e) {
+                    const int higherVertex = neighborGraph.edgeHead(e);
+                    const int distViaHigherVertex = searchFromNewStop.getDistance(higherVertex) + neighborGraph.traversalCost(e);
+                    minDistViaHigherPath = std::min(minDistViaHigherPath, distViaHigherVertex);
+                }
+                searchFromNewStop.distanceLabels[v].min(minDistViaHigherPath); // Shortest up-down path distance to v
+                if (allSet(searchFromNewStop.distanceLabels[v] >= leeway))
+                    continue;
+                peakBuckets.insert(v, {stopId, searchFromNewStop.getDistance(v), leeway});
+            }
+
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_generate_time += time;
             stats.elliptic_generate_numVerticesInSearchSpace += searchSpace.size();
@@ -317,7 +352,8 @@ namespace karri {
         }
 
         void
-        deleteBucketEntries(const int stopId, const int root, const CH::SearchGraph &graph, BucketContainer &buckets) {
+        deleteBucketEntries(const int stopId, const int root, const CH::SearchGraph &graph,
+                            BucketContainer &buckets, BucketContainer &peakBuckets) {
             int64_t numVerticesVisited = 0, numEntriesScanned = 0;
             Timer timer;
             deleteSearchSpace.clear();
@@ -333,6 +369,13 @@ namespace karri {
                 ++numVerticesVisited;
                 numEntriesScanned += buckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
+
+            // Remove entries from peak buckets:
+            // TODO: do this only for those vertices that actually have entries in peak buckets somehow
+            for (int v = inputGraph.numVertices() - 1; v >= inputGraph.numVertices() - PEAK_SIZE; --v) {
+                peakBuckets.remove(v, stopId);
+            }
+
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_delete_time += time;
             stats.elliptic_delete_numVerticesVisited += numVerticesVisited;
@@ -347,11 +390,16 @@ namespace karri {
         BucketContainer sourceBuckets;
         BucketContainer targetBuckets;
 
+        // Up-down buckets for small subset of vertices at the top of the CH (peak vertices).
+        BucketContainer sourcePeakBuckets;
+        BucketContainer targetPeakBuckets;
+
         SearchFromNewStop forwardSearchFromNewStop;
         SearchFromNewStop reverseSearchFromNewStop;
         SearchFromNeighbor forwardSearchFromPrevStop;
         SearchFromNeighbor reverseSearchFromNextStop;
         int currentLeeway;
+
 
         std::vector<int> searchSpace;
         BitVector descendentHasEntry;
