@@ -219,7 +219,7 @@ namespace karri {
 
     public:
 
-        static constexpr int PEAK_REV_THRESHOLD = 5000;
+        static constexpr int PEAK_REV_THRESHOLD = 2500;
 
         EllipticBCHSearches(const InputGraphT &inputGraph,
                             const Fleet &fleet,

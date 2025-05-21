@@ -51,7 +51,13 @@ namespace karri {
                   upDownBuckets(upGraph.numVertices()),
                   constructed(upGraph.numVertices()),
                   merger(0, INFTY),
-                  bucketMembers(0) {}
+                  bucketMembers(0),
+                  stack(),
+                  ptoQueue(),
+                  inPTOQueue(upGraph.numVertices()) {
+            stack.reserve(upGraph.numVertices());
+            ptoQueue.reserve(upGraph.numVertices());
+        }
 
         void init(const int numTargets) {
             upDownBuckets.clear();
@@ -72,14 +78,56 @@ namespace karri {
     private:
 
         void constructBucket(const int rank) {
+
             if (constructed.isSet(rank))
                 return;
 
-            // TODO: Replace recursion with iteration
-            // Recurse on upward neighbors
-            FORALL_INCIDENT_EDGES(upGraph, rank, e) {
-                constructBucket(upGraph.edgeHead(e));
+            // Find out for which vertices in upward search space we need to construct the bucket (ptoQueue).
+            computeVerticesToConstruct(rank);
+
+            // For all vertices in queue, construct the bucket:
+            for (const auto &v: ptoQueue) {
+                KASSERT(!constructed.isSet(v));
+                inPTOQueue[v] = false; // Reset for next call
+                constructBucketForFinishedParents(v);
+                constructed.set(v);
             }
+            ptoQueue.clear();
+        }
+
+        // Given a source rank, traverses the upward search space and writes the vertices that are reachable from the
+        // source and that do not already have a bucket to ptoQueue in post-traversal order.
+        void computeVerticesToConstruct(const int source) {
+            if (constructed.isSet(source))
+                return;
+            KASSERT(stack.empty() && ptoQueue.empty());
+            stack.emplace_back(source, upGraph.firstEdge(source));
+            while (!stack.empty()) {
+                auto& pair = stack.back();
+                auto& e = pair.second;
+                const auto tail = pair.first;
+                if (e >= upGraph.lastEdge(tail)) {
+                    // All outgoing edges of tail have been processed and all its ancestors are already in ptoQueue.
+                    // Add tail to ptoQueue and retreat to its parent, proceeding with next child of parent.
+                    ptoQueue.push_back(tail);
+                    inPTOQueue[tail] = true;
+                    stack.pop_back();
+                    ++stack.back().second; // Proceed with next outgoing edge of parent
+                    continue;
+                }
+                const auto head = upGraph.edgeHead(e);
+                if (inPTOQueue[head] || constructed.isSet(head)) {
+                    // If child is already in ptoQueue or already has a bucket, proceed with next child.
+                    ++stack.back().second;
+                    continue;
+                }
+                // Advance to child and first outgoing edge of child
+                stack.emplace_back(head, upGraph.firstEdge(head));
+            }
+        }
+
+        void constructBucketForFinishedParents(const int rank) {
+            KASSERT(!constructed.isSet(rank));
 
             // Initialize up-down bucket at rank with down bucket at rank
             merger.clear();
@@ -94,6 +142,7 @@ namespace karri {
             FORALL_INCIDENT_EDGES(upGraph, rank, e) {
                 const int offset = upGraph.template get<CH::Weight>(e);
                 const int neighbor = upGraph.edgeHead(e);
+                KASSERT(constructed.isSet(neighbor));
                 for (const auto &entry: upDownBuckets.getBucketOf(neighbor)) {
                     auto &val = merger[entry.targetId];
                     val = std::min(val, offset + entry.distToTarget);
@@ -111,19 +160,21 @@ namespace karri {
                     continue; // No leeway left for this entry
                 upDownBuckets.insert(rank, BucketEntryWithLeeway(targetId, distToTarget, leeway));
             }
-
-            constructed.set(rank);
         }
 
         const typename CH::SearchGraph &upGraph;
         const BucketContainerT &downBuckets;
 
         BucketContainerT upDownBuckets;
-        FastResetFlagArray<uint16_t> constructed;
+        FastResetFlagArray<> constructed;
 
-        TimestampedVector<int, std::vector> merger;
+        TimestampedVector<int> merger;
         std::vector<int> leeways;
         LightweightSubset bucketMembers;
+
+        std::vector<std::pair<int, int>> stack;
+        std::vector<int> ptoQueue;
+        BitVector inPTOQueue;
 
 
     };
