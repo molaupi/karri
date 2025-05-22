@@ -175,13 +175,17 @@ eventSimulationPerfStats <- function(file_base) {
   
   stats <- read.csv(paste0(file_base, ".eventsimulationstats.csv"))
   df <- data.frame(
-    vehicle_startup_event_time = c(mean(stats[stats$type=="VehicleStartupEvent", ]$running_time)),
-    vehicle_arrival_event_time = c(mean(stats[stats$type=="VehicleArrivalEvent", ]$running_time)),
-    vehicle_departure_event_time = c(mean(stats[stats$type=="VehicleDepartureEvent", ]$running_time)),
-    vehicle_shutdown_event_time = c(mean(stats[stats$type=="VehicleShutdownEvent", ]$running_time)),
-    request_receipt_event_time = c(mean(stats[stats$type=="RequestReceiptEvent",]$running_time)),
-    request_pure_walking_arrival_event_time = c(mean(stats[stats$type=="PureWalkingArrivalEvent",]$running_time))
+    vehicle_startup_event_time = c(mean(stats[stats$type=="VehicleStartup", ]$running_time)),
+    vehicle_arrival_event_time = c(mean(stats[stats$type=="VehicleArrival", ]$running_time)),
+    vehicle_departure_event_time = c(mean(stats[stats$type=="VehicleDeparture", ]$running_time)),
+    vehicle_shutdown_event_time = c(mean(stats[stats$type=="VehicleShutdown", ]$running_time)),
+    request_receipt_event_time = c(mean(stats[stats$type=="RequestReceipt",]$running_time)),
+    request_pure_walking_arrival_event_time = c(mean(stats[stats$type=="RequestWalkingArrival",]$running_time))
   )
   
   print(df)
+  
+  num_requests <- sum(stats$type == "RequestReceipt")
+  total_time <- sum(stats$running_time) 
+  print(paste0("Total time per request: ", total_time / num_requests))
 }

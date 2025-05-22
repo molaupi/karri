@@ -75,9 +75,13 @@ namespace karri::stats {
         int64_t pickupNumEdgeRelaxations;
         int64_t pickupNumVerticesSettled;
         int64_t pickupNumEntriesScanned;
+        int64_t pickupNumPeakVerticesSettled;
+        int64_t pickupNumPeakEntriesScanned;
         int64_t dropoffNumEdgeRelaxations;
         int64_t dropoffNumVerticesSettled;
         int64_t dropoffNumEntriesScanned;
+        int64_t dropoffNumPeakVerticesSettled;
+        int64_t dropoffNumPeakEntriesScanned;
 
         int64_t getTotalTime() const {
             return initializationTime + pickupTime + dropoffTime;
@@ -90,9 +94,13 @@ namespace karri::stats {
             pickupNumEdgeRelaxations = 0;
             pickupNumVerticesSettled = 0;
             pickupNumEntriesScanned = 0;
+            pickupNumPeakVerticesSettled = 0;
+            pickupNumPeakEntriesScanned = 0;
             dropoffNumEdgeRelaxations = 0;
             dropoffNumVerticesSettled = 0;
             dropoffNumEntriesScanned = 0;
+            dropoffNumPeakVerticesSettled = 0;
+            dropoffNumPeakEntriesScanned = 0;
         }
 
         static constexpr auto LOGGER_NAME = "perf_ellipticbch.csv";
@@ -103,9 +111,13 @@ namespace karri::stats {
                 "pickup_num_edge_relaxations,"
                 "pickup_num_vertices_settled,"
                 "pickup_num_entries_scanned,"
+                "pickup_num_peak_vertices_settled,"
+                "pickup_num_peak_entries_scanned,"
                 "dropoff_num_edge_relaxations,"
                 "dropoff_num_vertices_settled,"
                 "dropoff_num_entries_scanned,"
+                "dropoff_num_peak_vertices_settled,"
+                "dropoff_num_peak_entries_scanned,"
                 "total_time\n";
 
 
@@ -117,9 +129,13 @@ namespace karri::stats {
                << pickupNumEdgeRelaxations << ", "
                << pickupNumVerticesSettled << ", "
                << pickupNumEntriesScanned << ", "
+               << pickupNumPeakVerticesSettled << ", "
+               << pickupNumPeakEntriesScanned << ", "
                << dropoffNumEdgeRelaxations << ", "
                << dropoffNumVerticesSettled << ", "
                << dropoffNumEntriesScanned << ", "
+               << dropoffNumPeakVerticesSettled << ", "
+               << dropoffNumPeakEntriesScanned << ", "
                << getTotalTime();
             return ss.str();
         }

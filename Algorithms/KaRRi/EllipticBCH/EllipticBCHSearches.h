@@ -86,32 +86,38 @@ namespace karri {
                                         const int numVertices,
                                         UpdateDistancesT &updateDistances,
                                         int &numEntriesVisited,
-                                        int &numEntriesVisitedWithDistSmallerLeeway)
+                                        int &numEntriesVisitedWithDistSmallerLeeway,
+                                        int &numPeakEntriesVisited,
+                                        int &numPeakVerticesSettled)
                     : buckets(buckets),
                       peakBuckets(peakBuckets),
                       numVertices(numVertices),
                       updateDistances(updateDistances),
                       numEntriesVisited(numEntriesVisited),
-                      numEntriesVisitedWithDistSmallerLeeway(numEntriesVisitedWithDistSmallerLeeway) {}
+                      numEntriesVisitedWithDistSmallerLeeway(numEntriesVisitedWithDistSmallerLeeway),
+                      numPeakEntriesVisited(numPeakEntriesVisited),
+                      numPeakVerticesSettled(numPeakVerticesSettled) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
 
                 // If vertex lies in peak, use the lazy peak buckets and prune.
                 if (EllipticBucketsEnvT::isInPeak(v, numVertices)) {
+                    ++numPeakVerticesSettled;
                     const auto bucket = peakBuckets.getBucketOf(v);
-                    scanEntries(bucket, v, distToV);
+                    scanEntries<true>(bucket, v, distToV);
                     return true;
                 }
 
-                scanEntries(buckets.getBucketOf(v), v, distToV);
+                scanEntries<false>(buckets.getBucketOf(v), v, distToV);
                 return false;
             }
 
-            template<typename Bucket, typename DistLabelT>
+            template<bool IsPeak, typename Bucket, typename DistLabelT>
             void scanEntries(const Bucket &bucket, const int v, const DistLabelT &distToV) {
                 for (const auto &entry: bucket) {
                     ++numEntriesVisited;
+                    numPeakEntriesVisited += IsPeak;
                     const auto distViaV = distToV + entry.distToTarget;
 
                     if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
@@ -136,6 +142,8 @@ namespace karri {
             UpdateDistancesT &updateDistances;
             int &numEntriesVisited;
             int &numEntriesVisitedWithDistSmallerLeeway;
+            int &numPeakEntriesVisited;
+            int &numPeakVerticesSettled;
         };
 
 
@@ -227,13 +235,15 @@ namespace karri {
                           ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(),
                                             ellipticBucketsEnv.getSourcePeakBuckets(), inputGraph.numVertices(),
                                             updateDistancesToPdLocs,
-                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
+                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway,
+                                            totalNumPeakEntriesScanned, totalNumPeakVerticesSettled),
                           StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
                   fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
                           ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(),
                                             ellipticBucketsEnv.getTargetPeakBuckets(), inputGraph.numVertices(),
                                             updateDistancesFromPdLocs,
-                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
+                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway,
+                                            totalNumPeakEntriesScanned, totalNumPeakVerticesSettled),
                           StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
 
 
@@ -251,6 +261,8 @@ namespace karri {
             requestState.stats().ellipticBchStats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
             requestState.stats().ellipticBchStats.pickupNumVerticesSettled += totalNumVerticesSettled;
             requestState.stats().ellipticBchStats.pickupNumEntriesScanned += totalNumEntriesScanned;
+            requestState.stats().ellipticBchStats.pickupNumPeakVerticesSettled += totalNumPeakVerticesSettled;
+            requestState.stats().ellipticBchStats.pickupNumPeakEntriesScanned += totalNumPeakEntriesScanned;
 
             // Run for dropoffs:
             timer.restart();
@@ -263,6 +275,8 @@ namespace karri {
             requestState.stats().ellipticBchStats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
             requestState.stats().ellipticBchStats.dropoffNumVerticesSettled += totalNumVerticesSettled;
             requestState.stats().ellipticBchStats.dropoffNumEntriesScanned += totalNumEntriesScanned;
+            requestState.stats().ellipticBchStats.dropoffNumPeakVerticesSettled += totalNumPeakVerticesSettled;
+            requestState.stats().ellipticBchStats.dropoffNumPeakEntriesScanned += totalNumPeakEntriesScanned;
         }
 
         void init() {
@@ -282,6 +296,8 @@ namespace karri {
             totalNumEdgeRelaxations = 0;
             totalNumVerticesSettled = 0;
             totalNumEntriesScanned = 0;
+            totalNumPeakEntriesScanned = 0;
+            totalNumPeakVerticesSettled = 0;
 
             // Set an upper bound distance for the searches comprised of the maximum leeway or an upper bound based on the
             // current best costs (we compute the maximum detour that would still allow an assignment with costs smaller
@@ -374,5 +390,7 @@ namespace karri {
         int totalNumVerticesSettled;
         int totalNumEntriesScanned;
         int totalNumEntriesScannedWithDistSmallerLeeway;
+        int totalNumPeakEntriesScanned;
+        int totalNumPeakVerticesSettled;
     };
 }

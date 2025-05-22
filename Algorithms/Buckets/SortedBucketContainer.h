@@ -65,23 +65,53 @@ public:
         assert(vertex >= 0);
         assert(vertex < bucketPositions.size());
 
-        const auto &pos = bucketPositions[vertex];
+        const auto pos = bucketPositions[vertex];
         assert(std::is_sorted(entries.begin() + pos.start, entries.begin() + pos.end,
                               [&](const auto &e1, const auto &e2) { return comp(e1, e2); }));
 
         numEntriesVisited = 0;
         bool anyUpdated = false;
+        std::vector<int> oldInternalPosOfTransformed;
+        std::vector<BucketEntryT> transformed;
         for (auto i = pos.start; i < pos.end; ++i) {
             ++numEntriesVisited;
-            const bool transformed = transform(entries[i]);
-            anyUpdated |= transformed;
+            if (transform(entries[i])) {
+                oldInternalPosOfTransformed.push_back(i - pos.start);
+                transformed.push_back(entries[i]);
+                anyUpdated = true;
+            }
         }
         if (!anyUpdated)
             return false;
 
-        // If any entries were updated, fix sorting of bucket:
-        std::sort(entries.begin() + pos.start, entries.begin() + pos.end,
+        // Remove transformed entries from the bucket:
+        stableRemovalOfSortedCols(vertex, oldInternalPosOfTransformed, bucketPositions, entries);
+
+        // Sort transformed entries:
+        std::sort(transformed.begin(), transformed.end(),
                   [&](const auto &e1, const auto &e2) { return comp(e1, e2); });
+
+        // Insert transformed entries back into the bucket:
+        auto& newPos = bucketPositions[vertex];
+        newPos.end += transformed.size(); // stable removal moved end back by transformed.size()
+        KASSERT(newPos.end == pos.end && newPos.end <= entries.size());
+        int i = newPos.end - 1;
+        while (!transformed.empty()) {
+            KASSERT(i >= newPos.start && i < newPos.end && i >= 0 && i < entries.size());
+            const int readIdx = i - static_cast<int>(transformed.size());
+            if (readIdx >= newPos.start && comp(transformed.back(), entries[readIdx])) {
+                entries[i] = entries[readIdx];
+            } else {
+                entries[i] = transformed.back();
+                transformed.pop_back();
+            }
+            --i;
+        }
+
+
+        KASSERT(!contains(entries.begin() + bucketPositions[vertex].start, entries.begin() + bucketPositions[vertex].end, BucketEntryT()));
+        KASSERT(std::is_sorted(entries.begin() + bucketPositions[vertex].start, entries.begin() + bucketPositions[vertex].end,
+                               [&](const auto &e1, const auto &e2) { return comp(e1, e2); }));
         return true;
     }
 
