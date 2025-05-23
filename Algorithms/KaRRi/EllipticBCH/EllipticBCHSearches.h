@@ -79,71 +79,62 @@ namespace karri {
             int &numTimesStoppingCriterionMet;
         };
 
+        template<typename Bucket, typename UpdateDistancesT>
+        static int scanEntries(const Bucket &bucket, const int v, const DistanceLabel &distToV, UpdateDistancesT& updateDistances) {
+            int numEntriesScannedHere = 0;
+            for (const auto &entry: bucket) {
+                ++numEntriesScannedHere;
+                const auto distViaV = distToV + entry.distToTarget;
+
+                if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
+                    // Entries in a bucket are ordered by the remaining leeway, i.e. the leeway minus the distance from/to
+                    // the stop to/from this vertex.
+                    // If all distances break the remaining leeway for this entry, then they also break the remaining leeway
+                    // of the rest of the entries in this bucket, and we can stop scanning the bucket.
+                    if (allSet(entry.leeway < distViaV))
+                        break;
+                }
+
+                // Otherwise, check if the tentative distances needs to be updated.
+                updateDistances(v, entry, distViaV);
+            }
+            return numEntriesScannedHere;
+        }
+
         template<typename UpdateDistancesT>
         struct ScanOrdinaryBucket {
             explicit ScanOrdinaryBucket(const Buckets &buckets,
-                                        const Buckets &peakBuckets,
                                         const int numVertices,
                                         UpdateDistancesT &updateDistances,
                                         int &numEntriesVisited,
-                                        int &numEntriesVisitedWithDistSmallerLeeway,
-                                        int &numPeakEntriesVisited,
-                                        int &numPeakVerticesSettled)
+                                        LightweightSubset &uniquePeakVerticesSettled)
                     : buckets(buckets),
-                      peakBuckets(peakBuckets),
                       numVertices(numVertices),
                       updateDistances(updateDistances),
                       numEntriesVisited(numEntriesVisited),
-                      numEntriesVisitedWithDistSmallerLeeway(numEntriesVisitedWithDistSmallerLeeway),
-                      numPeakEntriesVisited(numPeakEntriesVisited),
-                      numPeakVerticesSettled(numPeakVerticesSettled) {}
+                      uniquePeakVerticesSettled(uniquePeakVerticesSettled) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
 
                 // If vertex lies in peak, use the lazy peak buckets and prune.
                 if (EllipticBucketsEnvT::isInPeak(v, numVertices)) {
-                    ++numPeakVerticesSettled;
-                    const auto bucket = peakBuckets.getBucketOf(v);
-                    scanEntries<true>(bucket, v, distToV);
+                    uniquePeakVerticesSettled.insert(v); // Memorize and scan peak bucket at end of query
                     return true;
                 }
 
-                scanEntries<false>(buckets.getBucketOf(v), v, distToV);
+                numEntriesVisited += scanEntries(buckets.getBucketOf(v), v, distToV, updateDistances);
                 return false;
             }
 
-            template<bool IsPeak, typename Bucket, typename DistLabelT>
-            void scanEntries(const Bucket &bucket, const int v, const DistLabelT &distToV) {
-                for (const auto &entry: bucket) {
-                    ++numEntriesVisited;
-                    numPeakEntriesVisited += IsPeak;
-                    const auto distViaV = distToV + entry.distToTarget;
 
-                    if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
-                        // Entries in a bucket are ordered by the remaining leeway, i.e. the leeway minus the distance from/to
-                        // the stop to/from this vertex.
-                        // If all distances break the remaining leeway for this entry, then they also break the remaining leeway
-                        // of the rest of the entries in this bucket, and we can stop scanning the bucket.
-                        if (allSet(entry.leeway < distViaV))
-                            break;
-                    }
-
-                    // Otherwise, check if the tentative distances needs to be updated.
-                    ++numEntriesVisitedWithDistSmallerLeeway;
-                    updateDistances(v, entry, distViaV);
-                }
-            }
 
         private:
             const Buckets &buckets;
-            const Buckets &peakBuckets;
             const int numVertices;
             UpdateDistancesT &updateDistances;
             int &numEntriesVisited;
-            int &numEntriesVisitedWithDistSmallerLeeway;
-            int &numPeakEntriesVisited;
-            int &numPeakVerticesSettled;
+            LightweightSubset &uniquePeakVerticesSettled;
         };
 
 
@@ -217,7 +208,7 @@ namespace karri {
         EllipticBCHSearches(const InputGraphT &inputGraph,
                             const Fleet &fleet,
                             const EllipticBucketsEnvT &ellipticBucketsEnv,
-                            const LastStopsAtVerticesT &lastStopsAtVertices,
+                            const LastStopsAtVerticesT &,
                             const CHEnvT &chEnv,
                             const RouteState &routeState,
                             RequestState &requestState)
@@ -226,25 +217,22 @@ namespace karri {
                   ch(chEnv.getCH()),
                   routeState(routeState),
                   requestState(requestState),
-                  sourceBuckets(ellipticBucketsEnv.getSourceBuckets()),
-                  lastStopsAtVertices(lastStopsAtVertices),
+                  sourcePeakBuckets(ellipticBucketsEnv.getSourcePeakBuckets()),
+                    targetPeakBuckets(ellipticBucketsEnv.getTargetPeakBuckets()),
                   distUpperBound(INFTY),
                   updateDistancesToPdLocs(),
                   updateDistancesFromPdLocs(routeState),
                   toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
-                          ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(),
-                                            ellipticBucketsEnv.getSourcePeakBuckets(), inputGraph.numVertices(),
-                                            updateDistancesToPdLocs,
-                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway,
-                                            totalNumPeakEntriesScanned, totalNumPeakVerticesSettled),
+                          ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), inputGraph.numVertices(),
+                                            updateDistancesToPdLocs, totalNumEntriesScanned,
+                                            uniquePeakVerticesSettled),
                           StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
                   fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
-                          ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(),
-                                            ellipticBucketsEnv.getTargetPeakBuckets(), inputGraph.numVertices(),
-                                            updateDistancesFromPdLocs,
-                                            totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway,
-                                            totalNumPeakEntriesScanned, totalNumPeakVerticesSettled),
-                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
+                          ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), inputGraph.numVertices(),
+                                            updateDistancesFromPdLocs, totalNumEntriesScanned,
+                                            uniquePeakVerticesSettled),
+                          StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
+                  uniquePeakVerticesSettled(inputGraph.numVertices()) {}
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
@@ -334,8 +322,18 @@ namespace karri {
                 pdLocHeads[i] = ch.rank(inputGraph.edgeHead(location));
             }
 
+            uniquePeakVerticesSettled.clear();
             updateDistancesFromPdLocs.setCurFirstIdOfBatch(startId);
             fromQuery.runWithOffset(pdLocHeads, {});
+
+            // Scan peak buckets of peak vertices memorized during query
+            for (const auto& v : uniquePeakVerticesSettled) {
+                const auto bucket = targetPeakBuckets.getBucketOf(v);
+                const int numEntriesScanned = scanEntries(bucket, v, fromQuery.getDistanceLabel(v), updateDistancesFromPdLocs);
+                totalNumEntriesScanned += numEntriesScanned;
+                totalNumPeakEntriesScanned += numEntriesScanned;
+            }
+            totalNumPeakVerticesSettled += uniquePeakVerticesSettled.size();
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += fromQuery.getNumEdgeRelaxations();
@@ -361,8 +359,18 @@ namespace karri {
                 pdLocTails[i] = ch.rank(inputGraph.edgeTail(location));
             }
 
+            uniquePeakVerticesSettled.clear();
             updateDistancesToPdLocs.setCurFirstIdOfBatch(startId);
             toQuery.runWithOffset(pdLocTails, travelTimes);
+
+            // Scan peak buckets of peak vertices memorized during query
+            for (const auto& v : uniquePeakVerticesSettled) {
+                const auto bucket = sourcePeakBuckets.getBucketOf(v);
+                const auto numEntriesScanned = scanEntries(bucket, v, toQuery.getDistanceLabel(v), updateDistancesToPdLocs);
+                totalNumEntriesScanned += numEntriesScanned;
+                totalNumPeakEntriesScanned += numEntriesScanned;
+            }
+            totalNumPeakVerticesSettled += uniquePeakVerticesSettled.size();
 
             ++numSearchesRun;
             totalNumEdgeRelaxations += toQuery.getNumEdgeRelaxations();
@@ -375,8 +383,8 @@ namespace karri {
         const RouteState &routeState;
         RequestState &requestState;
 
-        const typename EllipticBucketsEnvT::BucketContainer &sourceBuckets;
-        const LastStopsAtVerticesT &lastStopsAtVertices;
+        const typename EllipticBucketsEnvT::BucketContainer &sourcePeakBuckets;
+        const typename EllipticBucketsEnvT::BucketContainer &targetPeakBuckets;
 
         int distUpperBound;
         UpdateDistancesToPDLocs updateDistancesToPdLocs;
@@ -389,8 +397,9 @@ namespace karri {
         int totalNumEdgeRelaxations;
         int totalNumVerticesSettled;
         int totalNumEntriesScanned;
-        int totalNumEntriesScannedWithDistSmallerLeeway;
         int totalNumPeakEntriesScanned;
         int totalNumPeakVerticesSettled;
+
+        LightweightSubset uniquePeakVerticesSettled;
     };
 }
