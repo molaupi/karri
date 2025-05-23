@@ -209,18 +209,18 @@ namespace karri {
                 numEntriesScanned += sourceBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
 
-            // Update entries in peak buckets:
-            for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
-                const auto v = *iter;
-                if (sourcePeakBuckets.updateAllEntries(v, updateSourceLeeway)) {
-                    FORALL_INCIDENT_EDGES(revDownGraph, v, e) {
-                        const auto w = revDownGraph.edgeHead(e);
-                        deleteSearchSpace.insert(w);
-                    }
-                }
-                ++numVerticesVisited;
-                numEntriesScanned += sourcePeakBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
-            }
+//            // Update entries in peak buckets:
+//            for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
+//                const auto v = *iter;
+//                if (sourcePeakBuckets.updateAllEntries(v, updateSourceLeeway)) {
+//                    FORALL_INCIDENT_EDGES(revDownGraph, v, e) {
+//                        const auto w = revDownGraph.edgeHead(e);
+//                        deleteSearchSpace.insert(w);
+//                    }
+//                }
+//                ++numVerticesVisited;
+//                numEntriesScanned += sourcePeakBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
+//            }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_update_time += time;
@@ -259,18 +259,18 @@ namespace karri {
                 numEntriesScanned += targetBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
 
-            // Update entries in peak buckets:
-            for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
-                const auto v = *iter;
-                if (targetPeakBuckets.updateAllEntries(v, updateTargetLeeway)) {
-                    FORALL_INCIDENT_EDGES(revUpGraph, v, e) {
-                        const auto w = revUpGraph.edgeHead(e);
-                        deleteSearchSpace.insert(w);
-                    }
-                }
-                ++numVerticesVisited;
-                numEntriesScanned += targetPeakBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
-            }
+//            // Update entries in peak buckets:
+//            for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
+//                const auto v = *iter;
+//                if (targetPeakBuckets.updateAllEntries(v, updateTargetLeeway)) {
+//                    FORALL_INCIDENT_EDGES(revUpGraph, v, e) {
+//                        const auto w = revUpGraph.edgeHead(e);
+//                        deleteSearchSpace.insert(w);
+//                    }
+//                }
+//                ++numVerticesVisited;
+//                numEntriesScanned += targetPeakBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
+//            }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_update_time += time;
