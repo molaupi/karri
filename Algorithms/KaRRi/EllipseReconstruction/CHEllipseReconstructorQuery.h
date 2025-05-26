@@ -50,7 +50,7 @@ namespace karri {
                                     const Permutation &topDownRankPermutation,
                                     const EllipticBucketsEnvironmentT &ellipticBucketsEnv,
                                     const RouteState &routeState,
-                                    const std::vector<int>& eliminationTree)
+                                    const std::vector<int> &eliminationTree)
                 : ch(ch),
                   numVertices(downGraph.numVertices()),
                   downGraph(downGraph),
@@ -83,8 +83,9 @@ namespace karri {
             initializeDistanceArrays();
             DistanceLabel leeways = 0;
             const auto numEllipses = stopIds.size();
+            int highestInitializedVertex = -1;
             for (int i = 0; i < numEllipses; ++i) {
-                initializeDistancesForStopBasedOnBuckets(stopIds[i], i);
+                initializeDistancesForStopBasedOnBuckets(stopIds[i], i, highestInitializedVertex);
                 leeways[i] = routeState.leewayOfLegStartingAt(stopIds[i]);
             }
             initTime += timer.elapsed<std::chrono::nanoseconds>();
@@ -93,9 +94,13 @@ namespace karri {
             // The number of vertices that need to be settled can be expected to be quite large. Thus, we avoid
             // using a PQ with many costly deleteMin() operations and instead settle every vertex in the graph.
             timer.restart();
-            for (int r = 0; r < numVertices; ++r) {
+            for (int r = 0; r < highestInitializedVertex + 1; ++r) {
                 ++numVerticesSettled;
                 settleVertexInTopodownSearch(r, leeways, numEdgesRelaxed);
+            }
+            for (int r = highestInitializedVertex + 1; r < numVertices; ++r) {
+                ++numVerticesSettled;
+                settleVertexBelowAnyInitial(r, leeways, numEdgesRelaxed);
             }
             topoSearchTime += timer.elapsed<std::chrono::nanoseconds>();
 
@@ -146,7 +151,7 @@ namespace karri {
             std::fill(highestRelInElimTreeBranchFromSearch.begin(), highestRelInElimTreeBranchFromSearch.end(), -1);
         }
 
-        void initializeDistancesForStopBasedOnBuckets(const int stopId, const int ellipseIdx) {
+        void initializeDistancesForStopBasedOnBuckets(const int stopId, const int ellipseIdx, int& highestInitialized) {
             KASSERT(ellipseIdx >= 0 && ellipseIdx < K);
             const int vehId = routeState.vehicleIdOf(stopId);
             const int stopIdx = routeState.stopPositionOf(stopId);
@@ -171,6 +176,7 @@ namespace karri {
                 relevantInToSearch.set(r);
 
                 distTo[r][ellipseIdx] = e.distance;
+                highestInitialized = std::max(highestInitialized, r);
             }
 
             for (const auto &e: ranksWithTargetBucketEntries) {
@@ -187,49 +193,57 @@ namespace karri {
                 // Distances for input ranks are initialized here. Distances of other ranks are initialized
                 // on-the-fly later.
                 distFrom[r][ellipseIdx] = e.distance;
+                highestInitialized = std::max(highestInitialized, r);
             }
         }
 
-        void settleVertexInTopodownSearch(const int v, const DistanceLabel &leeway,
+        inline void settleVertexInTopodownSearch(const int v, const DistanceLabel &leeway,
                                           int &numEdgesRelaxed) {
 
             auto &distToV = distTo[v];
-            if (!relevantInToSearch.isSet(v)) {
+            const bool notInitInToSearch = !relevantInToSearch.isSet(v);
+            if (notInitInToSearch) {
                 distToV = INFTY;
             }
 
             auto &distFromV = distFrom[v];
-            if (!relevantInFromSearch.isSet(v)) {
+            const bool notInitInFromSearch = !relevantInFromSearch.isSet(v);
+            if (notInitInFromSearch) {
                 distFromV = INFTY;
             }
 
             // Propagate information on highest relevant rank along elimination tree edge.
             const auto &parentElimTree = eliminationTree[v];
-            auto& highestRelToV = highestRelInElimTreeBranchToSearch[v];
-            auto& highestRelFromV = highestRelInElimTreeBranchFromSearch[v];
+            auto &highestRelToV = highestRelInElimTreeBranchToSearch[v];
+            auto &highestRelFromV = highestRelInElimTreeBranchFromSearch[v];
             highestRelToV = highestRelInElimTreeBranchToSearch[parentElimTree];
             highestRelFromV = highestRelInElimTreeBranchFromSearch[parentElimTree];
 
-            FORALL_INCIDENT_EDGES(downGraph, v, e) {
-                const auto head = downGraph.edgeHead(e);
-                if (head > highestRelToV) // Only relax edges up to highest relevant rank
-                    break;
+            const bool needToSettleInToSearch = downGraph.lastEdge(v) > downGraph.firstEdge(v) &&
+                                                downGraph.edgeHead(downGraph.firstEdge(v)) <= highestRelToV;
+            const bool needToSettleInFromSearch = upGraph.lastEdge(v) > upGraph.firstEdge(v) &&
+                                                  upGraph.edgeHead(upGraph.firstEdge(v)) <= highestRelFromV;
 
-                ++numEdgesRelaxed;
-                const auto &distToHead = distTo[head];
-                const auto distViaHead = distToHead + downGraph.template get<WeightT>(e);
-                distToV.min(distViaHead);
+            if (needToSettleInToSearch) {
+                FORALL_INCIDENT_EDGES(downGraph, v, e) {
+                    const auto head = downGraph.edgeHead(e);
+
+                    ++numEdgesRelaxed;
+                    const auto &distToHead = distTo[head];
+                    const auto distViaHead = distToHead + downGraph.template get<WeightT>(e);
+                    distToV.min(distViaHead);
+                }
             }
 
-            FORALL_INCIDENT_EDGES(upGraph, v, e) {
-                const auto head = upGraph.edgeHead(e);
-                if (head > highestRelFromV) // Only relax edges up to highest relevant rank
-                    break;
+            if (needToSettleInFromSearch) {
+                FORALL_INCIDENT_EDGES(upGraph, v, e) {
+                    const auto head = upGraph.edgeHead(e);
 
-                ++numEdgesRelaxed;
-                const auto &distFromHead = distFrom[head];
-                const auto distViaHead = distFromHead + upGraph.template get<WeightT>(e);
-                distFromV.min(distViaHead);
+                    ++numEdgesRelaxed;
+                    const auto &distFromHead = distFrom[head];
+                    const auto distViaHead = distFromHead + upGraph.template get<WeightT>(e);
+                    distFromV.min(distViaHead);
+                }
             }
 
             // If vertex is in any ellipse, store it
@@ -244,17 +258,86 @@ namespace karri {
 
             // If for any of the K ellipses, distance from vertex is INFTY and distance to vertex is smaller
             // than the leeway, then the vertex is relevant in the to search.
-            highestRelToV += anySet((distFromV == INFTY) & (distToV <= leeway)) * (v - highestRelToV); // sets highestRelToV to v if relevant
-//            if (anySet((distFromV == INFTY) & (distToV <= leeway))) {
-//                highestRelToV = v;
-//            }
+            if (anySet((distFromV == INFTY) & (distToV <= leeway))) {
+                highestRelToV = v;
+            }
 
             // If for any of the K ellipses distance to vertex is INFTY and distance from vertex is smaller
             // than the leeway, then the vertex is relevant in the from search.
-            highestRelFromV += anySet((distToV == INFTY) & (distFromV <= leeway)) * (v - highestRelFromV); // sets highestRelFromV to v if relevant
-//            if (anySet((distToV == INFTY) & (distFromV <= leeway))) {
-//                highestRelFromV = v;
-//            }
+            if (anySet((distToV == INFTY) & (distFromV <= leeway))) {
+                highestRelFromV = v;
+            }
+        }
+
+        inline void settleVertexBelowAnyInitial(const int v, const DistanceLabel &leeway,
+                                         int &numEdgesRelaxed) {
+
+            KASSERT(!relevantInToSearch.isSet(v) && !relevantInFromSearch.isSet(v));
+
+            auto &distToV = distTo[v];
+            distToV = INFTY;
+
+            auto &distFromV = distFrom[v];
+            distFromV = INFTY;
+
+            // Propagate information on highest relevant rank along elimination tree edge.
+            const auto &parentElimTree = eliminationTree[v];
+            auto &highestRelToV = highestRelInElimTreeBranchToSearch[v];
+            auto &highestRelFromV = highestRelInElimTreeBranchFromSearch[v];
+            highestRelToV = highestRelInElimTreeBranchToSearch[parentElimTree];
+            highestRelFromV = highestRelInElimTreeBranchFromSearch[parentElimTree];
+
+            const bool needToSettleInToSearch = downGraph.lastEdge(v) > downGraph.firstEdge(v) &&
+                                                downGraph.edgeHead(downGraph.firstEdge(v)) <= highestRelToV;
+            const bool needToSettleInFromSearch = upGraph.lastEdge(v) > upGraph.firstEdge(v) &&
+                                                  upGraph.edgeHead(upGraph.firstEdge(v)) <= highestRelFromV;
+
+            if (!needToSettleInToSearch && !needToSettleInFromSearch)
+                return;
+
+            if (needToSettleInToSearch) {
+                FORALL_INCIDENT_EDGES(downGraph, v, e) {
+                    const auto head = downGraph.edgeHead(e);
+
+                    ++numEdgesRelaxed;
+                    const auto &distToHead = distTo[head];
+                    const auto distViaHead = distToHead + downGraph.template get<WeightT>(e);
+                    distToV.min(distViaHead);
+                }
+            }
+
+            if (needToSettleInFromSearch) {
+                FORALL_INCIDENT_EDGES(upGraph, v, e) {
+                    const auto head = upGraph.edgeHead(e);
+
+                    ++numEdgesRelaxed;
+                    const auto &distFromHead = distFrom[head];
+                    const auto distViaHead = distFromHead + upGraph.template get<WeightT>(e);
+                    distFromV.min(distViaHead);
+                }
+            }
+
+            // If vertex is in any ellipse, store it
+            const auto sum = distToV + distFromV;
+            const auto sumGreaterLeeway = sum > leeway;
+            if (!allSet(sumGreaterLeeway)) {
+                verticesInAnyEllipse.push_back(v);
+                highestRelToV = v;
+                highestRelFromV = v;
+                return;
+            }
+
+            // If for any of the K ellipses, distance from vertex is INFTY and distance to vertex is smaller
+            // than the leeway, then the vertex is relevant in the to search.
+            if (anySet((distFromV == INFTY) & (distToV <= leeway))) {
+                highestRelToV = v;
+            }
+
+            // If for any of the K ellipses distance to vertex is INFTY and distance from vertex is smaller
+            // than the leeway, then the vertex is relevant in the from search.
+            if (anySet((distToV == INFTY) & (distFromV <= leeway))) {
+                highestRelFromV = v;
+            }
         }
 
 
