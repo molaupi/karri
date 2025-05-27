@@ -70,6 +70,7 @@ namespace karri {
 
         std::vector<std::vector<VertexInEllipse>> run(const std::vector<int> &stopIds,
                                                       int &numVerticesSettled, int &numEdgesRelaxed,
+                                                      int &numVerticesInAnyEllipse,
                                                       int64_t &initTime,
                                                       int64_t &topoSearchTime,
                                                       int64_t &postprocessTime) {
@@ -88,12 +89,14 @@ namespace karri {
             // Run search until queue becomes empty.
             // The number of vertices that need to be settled can be expected to be quite large. Thus, we avoid
             // using a PQ with many costly deleteMin() operations and instead settle every vertex in the graph.
+            static constexpr bool TRACK_NUM_EDGES_RELAXED = false;
             timer.restart();
             for (int r = 0; r < numVertices; ++r) {
-                ++numVerticesSettled;
-                settleVertexInTopodownSearch(r, leeways, numEdgesRelaxed);
+                settleVertexInTopodownSearch<TRACK_NUM_EDGES_RELAXED>(r, leeways, numEdgesRelaxed);
             }
             topoSearchTime += timer.elapsed<std::chrono::nanoseconds>();
+            numVerticesSettled += numVertices;
+            numVerticesInAnyEllipse += verticesInAnyEllipse.size();
 
             // Accumulate result per ellipse
             timer.restart();
@@ -183,6 +186,7 @@ namespace karri {
             }
         }
 
+        template<bool TRACK_NUM_EDGES = false>
         void settleVertexInTopodownSearch(const int v, const DistanceLabel &leeway,
                                           int &numEdgesRelaxed) {
 
@@ -195,7 +199,7 @@ namespace karri {
             FORALL_INCIDENT_EDGES(downGraph, v, e) {
                 const auto head = downGraph.edgeHead(e);
 
-                ++numEdgesRelaxed;
+                if constexpr (TRACK_NUM_EDGES) ++numEdgesRelaxed;
                 const auto &distToHead = distTo[head];
                 const auto distViaHead = distToHead + downGraph.template get<WeightT>(e);
                 distToV.min(distViaHead);
@@ -209,7 +213,7 @@ namespace karri {
             FORALL_INCIDENT_EDGES(upGraph, v, e) {
                 const auto head = upGraph.edgeHead(e);
 
-                ++numEdgesRelaxed;
+                if constexpr (TRACK_NUM_EDGES) ++numEdgesRelaxed;
                 const auto &distFromHead = distFrom[head];
                 const auto distViaHead = distFromHead + upGraph.template get<WeightT>(e);
                 distFromV.min(distViaHead);

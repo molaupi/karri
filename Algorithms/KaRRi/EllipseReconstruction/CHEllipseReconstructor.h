@@ -53,6 +53,7 @@ namespace karri {
         struct QueryStats {
             int numVerticesSettled = 0;
             int numEdgesRelaxed = 0;
+            int numVerticesInAnyEllipse = 0;
             int64_t initTime = 0;
             int64_t topoSearchTime = 0;
             int64_t postprocessTime = 0;
@@ -61,12 +62,12 @@ namespace karri {
 
         CHEllipseReconstructor(const CHEnvT &chEnv, const EllipticBucketsEnvironmentT &ellipticBucketsEnv,
                                const RouteState &routeState)
-                  : ch(chEnv.getCH()),
+                : ch(chEnv.getCH()),
                   downGraph(chEnv.getCH().downwardGraph()),
                   upGraph(chEnv.getCH().upwardGraph()),
                   topDownRankPermutation(chEnv.getCH().downwardGraph().numVertices()),
                   query([&](){return Query(ch, downGraph, upGraph, topDownRankPermutation,
-                        ellipticBucketsEnv, routeState);}),
+                                           ellipticBucketsEnv, routeState);}),
                   logger(LogManager<LoggerT>::getLogger("ch_ellipse_reconstruction.csv",
                                                         "num_ellipses,"
                                                         "init_time,"
@@ -74,7 +75,8 @@ namespace karri {
                                                         "postprocess_time,"
                                                         "total_time,"
                                                         "topo_search_num_vertices_settled,"
-                                                        "topo_search_num_edges_relaxed\n")) {
+                                                        "topo_search_num_edges_relaxed,"
+                                                        "topo_search_num_vertices_in_any_ellipse\n")) {
             KASSERT(downGraph.numVertices() == upGraph.numVertices());
             const int numVertices = downGraph.numVertices();
             for (int r = 0; r < numVertices; ++r)
@@ -93,6 +95,7 @@ namespace karri {
             if (stopIds.empty())
                 return {};
 
+            int totalNumVerticesInAnyEllipse = 0;
             Timer timer;
 
             const size_t numEllipses = stopIds.size();
@@ -108,7 +111,7 @@ namespace karri {
                 for (int j = 0; j < K && i * K + j < numEllipses; ++j) {
                     batchStopIds.push_back(stopIds[i * K + j]);
                 }
-                auto batchResult = localQuery.run(batchStopIds, localStats.numVerticesSettled, localStats.numEdgesRelaxed, localStats.initTime,
+                auto batchResult = localQuery.run(batchStopIds, localStats.numVerticesSettled, localStats.numEdgesRelaxed, localStats.numVerticesInAnyEllipse, localStats.initTime,
                                                   localStats.topoSearchTime, localStats.postprocessTime);
                 for (int j = 0; j < K && i * K + j < numEllipses; ++j) {
                     ellipses[i * K + j].swap(batchResult[j]);
@@ -121,11 +124,13 @@ namespace karri {
             for (auto& localStats : queryStats) {
                 totalNumVerticesSettled += localStats.numVerticesSettled;
                 totalNumEdgesRelaxed += localStats.numEdgesRelaxed;
+                totalNumVerticesInAnyEllipse += localStats.numVerticesInAnyEllipse;
                 totalInitTime += localStats.initTime;
                 totalTopoSearchTime += localStats.topoSearchTime;
                 totalPostprocessTime += localStats.postprocessTime;
                 localStats.numVerticesSettled = 0;
                 localStats.numEdgesRelaxed = 0;
+                localStats.numVerticesInAnyEllipse = 0;
                 localStats.initTime = 0;
                 localStats.topoSearchTime = 0;
                 localStats.postprocessTime = 0;
@@ -134,7 +139,8 @@ namespace karri {
             const auto totalTime = timer.elapsed<std::chrono::nanoseconds>();
 
             logger << numEllipses << "," << totalInitTime << "," << totalTopoSearchTime << ","
-                   << totalPostprocessTime << "," << totalTime << "," << totalNumVerticesSettled << "," << totalNumEdgesRelaxed << "\n";
+                   << totalPostprocessTime << "," << totalTime << "," << totalNumVerticesSettled << "," << totalNumEdgesRelaxed
+                   << "," <<  totalNumVerticesInAnyEllipse << "\n";
 
             return ellipses;
         }
