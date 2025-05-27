@@ -59,26 +59,17 @@ namespace karri {
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   routeState(routeState),
                   eliminationTree(eliminationTree),
-//                  lowestNeighborInDown(numVertices),
-//                  lowestNeighborInUp(numVertices),
                   lowestNeighbor(numVertices),
                   enumerateBucketEntriesSearchSpace(numVertices),
                   distTo(numVertices, INFTY),
                   distFrom(numVertices, INFTY),
                   verticesInAnyEllipse(),
-//                  initializedInToSearch(numVertices),
-//                  initializedInFromSearch(numVertices),
                   initialized(numVertices),
                   highestRelInElimTreeBranch(numVertices, -1) {
             KASSERT(downGraph.numVertices() == numVertices);
             KASSERT(upGraph.numVertices() == numVertices);
             verticesInAnyEllipse.reserve(numVertices);
             for (int v = 0; v < numVertices; ++v) {
-//                lowestNeighborInDown[v] =
-//                        downGraph.lastEdge(v) == downGraph.firstEdge(v) ? numVertices : downGraph.edgeHead(
-//                                downGraph.firstEdge(v));
-//                lowestNeighborInUp[v] = upGraph.lastEdge(v) == upGraph.firstEdge(v) ? numVertices : upGraph.edgeHead(
-//                        upGraph.firstEdge(v));
                 const int lowestNeighborInDown =
                         downGraph.lastEdge(v) == downGraph.firstEdge(v) ? numVertices : downGraph.edgeHead(
                                 downGraph.firstEdge(v));
