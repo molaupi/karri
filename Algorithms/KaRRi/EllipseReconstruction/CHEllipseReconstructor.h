@@ -39,7 +39,7 @@ namespace karri {
 
     // Computes the set of vertices contained in the detour ellipse between a pair of consecutive stops in a vehicle
     // route using bucket entries and a CH topological downward search.
-    template<typename CHEnvT, typename EllipticBucketsEnvironmentT, typename WeightT = TraversalCostAttribute,
+    template<typename InputGraphT, typename CHEnvT, typename EllipticBucketsEnvironmentT, typename WeightT = TraversalCostAttribute,
             typename LabelSetT = SimdLabelSet<3, ParentInfo::NO_PARENT_INFO>,
             typename LoggerT = NullLogger>
     class CHEllipseReconstructor {
@@ -60,15 +60,20 @@ namespace karri {
         };
     public:
 
-        CHEllipseReconstructor(const CHEnvT &chEnv, const EllipticBucketsEnvironmentT &ellipticBucketsEnv,
+        CHEllipseReconstructor(const InputGraphT &inputGraph, const CHEnvT &chEnv,
+                               const EllipticBucketsEnvironmentT &ellipticBucketsEnv,
                                const RouteState &routeState)
-                  : ch(chEnv.getCH()),
+                : inputGraph(inputGraph),
+                  ch(chEnv.getCH()),
+                  routeState(routeState),
                   downGraph(chEnv.getCH().downwardGraph()),
                   upGraph(chEnv.getCH().upwardGraph()),
                   eliminationTree(chEnv.getCCH().getEliminationTree()),
                   topDownRankPermutation(chEnv.getCH().downwardGraph().numVertices()),
-                  query([&](){return Query(ch, downGraph, upGraph, topDownRankPermutation,
-                        ellipticBucketsEnv, routeState, eliminationTree);}),
+                  query([&]() {
+                      return Query(ch, downGraph, upGraph, topDownRankPermutation,
+                                   ellipticBucketsEnv, routeState, eliminationTree);
+                  }),
                   logger(LogManager<LoggerT>::getLogger("ch_ellipse_reconstruction.csv",
                                                         "num_ellipses,"
                                                         "init_time,"
@@ -88,11 +93,18 @@ namespace karri {
             upGraph.permuteVertices(topDownRankPermutation);
             upGraph.sortOutgoingEdges();
 
+            // Compute zones of bounded diameter based on elimination tree
+            static constexpr int MAX_DIAM = 60;
+            zone = deductCellsFromEliminationTree<MAX_DIAM>(eliminationTree);
+
+            // Permute zone
+            topDownRankPermutation.applyTo(zone);
+
             // Permute tails of elimination tree
             topDownRankPermutation.applyTo(eliminationTree);
 
             // Permute heads of elimination tree
-            for (auto& parent : eliminationTree) {
+            for (auto &parent: eliminationTree) {
                 if (parent == -1) // Root of tree does not have a parent, no need to permute
                     continue;
                 parent = topDownRankPermutation[parent];
@@ -121,28 +133,47 @@ namespace karri {
 
             const size_t numEllipses = stopIds.size();
 
+            // Order stop pairs by zone to exploit locality
+            std::vector<std::pair<int, int>> stopPairZones(stopIds.size());
+            for (int i = 0; i < numEllipses; ++i) {
+                const int stopId = stopIds[i];
+                const int vehId = routeState.vehicleIdOf(stopId);
+                const int stopIdx = routeState.stopPositionOf(stopId);
+                const auto locs = routeState.stopLocationsFor(vehId);
+                const int firstStopHead = topDownRankPermutation[ch.rank(inputGraph.edgeHead(locs[stopIdx]))];
+                const int secondStopTail = topDownRankPermutation[ch.rank(inputGraph.edgeTail(locs[stopIdx + 1]))];
+                stopPairZones[i] = {zone[firstStopHead], zone[secondStopTail]};
+            }
+            std::vector<int> order(numEllipses);
+            std::iota(order.begin(), order.end(), 0);
+            std::sort(order.begin(), order.end(), [&](const auto &a, const auto &b) {
+                return stopPairZones[a] < stopPairZones[b];
+            });
+
             const size_t numBatches = numEllipses / K + (numEllipses % K != 0);
 
             std::vector<std::vector<VertexInEllipse>> ellipses;
             ellipses.resize(numEllipses);
             tbb::parallel_for(0ul, numBatches, [&](size_t i) {
-                auto& localQuery = query.local();
-                auto& localStats = queryStats.local();
+                auto &localQuery = query.local();
+                auto &localStats = queryStats.local();
                 std::vector<int> batchStopIds;
                 for (int j = 0; j < K && i * K + j < numEllipses; ++j) {
-                    batchStopIds.push_back(stopIds[i * K + j]);
+                    batchStopIds.push_back(stopIds[order[i * K + j]]);
                 }
-                auto batchResult = localQuery.run(batchStopIds, localStats.numVerticesSettled, localStats.numEdgesRelaxed, localStats.numVerticesInAnyEllipse, localStats.initTime,
+                auto batchResult = localQuery.run(batchStopIds, localStats.numVerticesSettled,
+                                                  localStats.numEdgesRelaxed, localStats.numVerticesInAnyEllipse,
+                                                  localStats.initTime,
                                                   localStats.topoSearchTime, localStats.postprocessTime);
                 for (int j = 0; j < K && i * K + j < numEllipses; ++j) {
-                    ellipses[i * K + j].swap(batchResult[j]);
+                    ellipses[order[i * K + j]].swap(batchResult[j]);
                 }
             });
 
             int64_t totalInitTime = 0;
             int64_t totalTopoSearchTime = 0;
             int64_t totalPostprocessTime = 0;
-            for (auto& localStats : queryStats) {
+            for (auto &localStats: queryStats) {
                 totalNumVerticesSettled += localStats.numVerticesSettled;
                 totalNumEdgesRelaxed += localStats.numEdgesRelaxed;
                 totalNumVerticesInAnyEllipse += localStats.numVerticesInAnyEllipse;
@@ -160,8 +191,9 @@ namespace karri {
             const auto totalTime = timer.elapsed<std::chrono::nanoseconds>();
 
             logger << numEllipses << "," << totalInitTime << "," << totalTopoSearchTime << ","
-                   << totalPostprocessTime << "," << totalTime << "," << totalNumVerticesSettled << "," << totalNumEdgesRelaxed
-                   << "," <<  totalNumVerticesInAnyEllipse << "\n";
+                   << totalPostprocessTime << "," << totalTime << "," << totalNumVerticesSettled << ","
+                   << totalNumEdgesRelaxed
+                   << "," << totalNumVerticesInAnyEllipse << "\n";
 
             return ellipses;
         }
@@ -169,10 +201,86 @@ namespace karri {
 
     private:
 
-        const CH& ch;
+        // An active vertex during a DFS, i.e., a vertex that has been reached but not finished.
+        struct ActiveVertex {
+            // Constructs an active vertex.
+            ActiveVertex(const int id, const int nextUnexploredEdge)
+                    : id(id), nextUnexploredEdge(nextUnexploredEdge) {}
+
+            int id;                 // The ID of the active vertex.
+            int nextUnexploredEdge; // The next unexplored incident edge.
+        };
+
+        // Taken from Valentin Buchhold's routing-framework. Algorithm described in
+        // "Real-time traffic assignment using engineered customizable contraction hierarchies", JEA, Vol. 24, 2019.
+        // Given an in-elimination tree (vertex IDs ordered by increasing rank), this function decomposes the graph
+        // into cells of bounded diameter and returns the cell ID for each rank.
+        template<int maxDiam>
+        std::vector<int> deductCellsFromEliminationTree(const std::vector<int> &tree) {
+            const auto numVertices = tree.size();
+            // Build the elimination out-tree from the elimination in-tree.
+            std::vector<int> firstChild(numVertices + 1);
+            std::vector<int> children(numVertices - 1);
+            for (auto v = 0; v < numVertices - 1; ++v)
+                ++firstChild[tree[v]];
+            auto firstEdge = 0; // The index of the first edge out of the current/next vertex.
+            for (auto v = 0; v <= numVertices; ++v) {
+                std::swap(firstEdge, firstChild[v]);
+                firstEdge += firstChild[v];
+            }
+            for (auto v = 0; v < numVertices - 1; ++v)
+                children[firstChild[tree[v]]++] = v;
+            for (auto v = numVertices - 1; v > 0; --v)
+                firstChild[v] = firstChild[v - 1];
+            firstChild[0] = 0;
+
+            // Decompose the elimination tree into as few cells with bounded diameter as possible.
+            BitVector isRoot(numVertices);
+            std::vector<int> height(numVertices); // height[v] is the height of the subtree rooted at v.
+            for (auto v = 0; v < numVertices; ++v) {
+                const auto first = firstChild[v];
+                const auto last = firstChild[v + 1];
+                std::sort(children.begin() + first, children.begin() + last, [&](const auto u, const auto v) {
+                    assert(u >= 0);
+                    assert(u < height.size());
+                    assert(v >= 0);
+                    assert(v < height.size());
+                    return height[u] < height[v];
+                });
+                for (auto i = first; i < last; ++i)
+                    if (height[v] + 1 + height[children[i]] <= maxDiam)
+                        height[v] = 1 + height[children[i]];
+                    else
+                        isRoot[children[i]] = true;
+            }
+
+            // Number the cells in the order in which they are discovered during a DFS from the root.
+            int freeCellId = 1; // The next free cell ID.
+            std::vector<int> cellIds(numVertices);
+            std::stack<ActiveVertex, std::vector<ActiveVertex>> activeVertices;
+            activeVertices.emplace(numVertices - 1, firstChild[numVertices - 1]);
+            while (!activeVertices.empty()) {
+                auto &v = activeVertices.top();
+                const auto head = children[v.nextUnexploredEdge];
+                ++v.nextUnexploredEdge;
+                cellIds[head] = isRoot[head] ? freeCellId++ : cellIds[v.id];
+                if (v.nextUnexploredEdge == firstChild[v.id + 1])
+                    activeVertices.pop();
+                if (firstChild[head] != firstChild[head + 1])
+                    activeVertices.emplace(head, firstChild[head]);
+            }
+
+            return cellIds;
+        }
+
+
+        const InputGraphT &inputGraph;
+        const CH &ch;
+        const RouteState &routeState;
         CH::SearchGraph downGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
         CH::SearchGraph upGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
         std::vector<int> eliminationTree; // Elimination tree of the CH with vertices ordered by decreasing rank.
+        std::vector<int> zone; // Zone of each vertex, i.e., the cell ID of the cell that contains the vertex.
 
         Permutation topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
 

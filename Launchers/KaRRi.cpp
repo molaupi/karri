@@ -580,8 +580,8 @@ int main(int argc, char *argv[]) {
         using CHEllipseReconstructorLabelSet = std::conditional_t<ELLIPSE_RECONSTRUCTOR_USE_SIMD,
                 SimdLabelSet<ELLIPSE_RECONSTRUCTOR_LOG_K, ParentInfo::NO_PARENT_INFO>,
                 BasicLabelSet<ELLIPSE_RECONSTRUCTOR_LOG_K, ParentInfo::NO_PARENT_INFO>>;
-        using CHEllipseReconstructorImpl = CHEllipseReconstructor<VehCHEnv, EllipticBucketsEnv, TraversalCostAttribute, CHEllipseReconstructorLabelSet, std::ofstream>;
-        CHEllipseReconstructorImpl chEllipseReconstructor(*vehChEnv, ellipticBucketsEnv, routeState);
+        using CHEllipseReconstructorImpl = CHEllipseReconstructor<VehicleInputGraph, VehCHEnv, EllipticBucketsEnv, TraversalCostAttribute, CHEllipseReconstructorLabelSet, std::ofstream>;
+        CHEllipseReconstructorImpl chEllipseReconstructor(vehicleInputGraph, *vehChEnv, ellipticBucketsEnv, routeState);
 
 
         using InsertionFinderImpl = AssignmentFinder<
