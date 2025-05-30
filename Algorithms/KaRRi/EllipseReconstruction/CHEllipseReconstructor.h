@@ -70,9 +70,11 @@ namespace karri {
                   upGraph(chEnv.getCH().upwardGraph()),
                   eliminationTree(chEnv.getCCH().getEliminationTree()),
                   topDownRankPermutation(chEnv.getCH().downwardGraph().numVertices()),
+                  lowestNeighbor(inputGraph.numVertices()),
+                    lowestNeighborInSubtree(inputGraph.numVertices()),
                   query([&]() {
-                      return Query(ch, downGraph, upGraph, topDownRankPermutation,
-                                   ellipticBucketsEnv, routeState, eliminationTree);
+                      return Query(ch, downGraph, upGraph, topDownRankPermutation, inverseTopDownRankPermutation,
+                                   ellipticBucketsEnv, routeState, eliminationTree, lowestNeighbor, lowestNeighborInSubtree);
                   }),
                   logger(LogManager<LoggerT>::getLogger("ch_ellipse_reconstruction.csv",
                                                         "num_ellipses,"
@@ -87,6 +89,8 @@ namespace karri {
             const int numVertices = downGraph.numVertices();
             for (int r = 0; r < numVertices; ++r)
                 topDownRankPermutation[r] = numVertices - r - 1;
+
+            inverseTopDownRankPermutation = topDownRankPermutation.getInversePermutation();
 
             downGraph.permuteVertices(topDownRankPermutation);
             downGraph.sortOutgoingEdges();
@@ -117,6 +121,22 @@ namespace karri {
 
             // Our permuted elimination tree marks root (rank 0) by being its own parent.
             eliminationTree[0] = 0;
+
+            // Compute neighbor with lowest permuted rank (i.e. most important neighbor) in either graph for every
+            // vertex. Additionally compute the lowest such neighbor in the subtree of the elimination tree rooted at
+            // each vertex.
+            for (int v = 0; v < numVertices; ++v) {
+                const int lowestNeighborInDown =
+                        downGraph.lastEdge(v) == downGraph.firstEdge(v) ? numVertices : downGraph.edgeHead(
+                                downGraph.firstEdge(v));
+                const int lowestNeighborInUp =
+                        upGraph.lastEdge(v) == upGraph.firstEdge(v) ? numVertices : upGraph.edgeHead(
+                                upGraph.firstEdge(v));
+                lowestNeighbor[v] = std::min(lowestNeighborInDown, lowestNeighborInUp);
+                lowestNeighborInSubtree[v] = std::min(lowestNeighborInSubtree[v], lowestNeighbor[v]);
+                const auto p = eliminationTree[v];
+                lowestNeighborInSubtree[p] = std::min(lowestNeighborInSubtree[p], lowestNeighborInSubtree[v]);
+            }
         }
 
         std::vector<std::vector<VertexInEllipse>>
@@ -216,7 +236,7 @@ namespace karri {
         // Given an in-elimination tree (vertex IDs ordered by increasing rank), this function decomposes the graph
         // into cells of bounded diameter and returns the cell ID for each rank.
         template<int maxDiam>
-        std::vector<int> deductCellsFromEliminationTree(const std::vector<int> &tree) {
+        static std::vector<int> deductCellsFromEliminationTree(const std::vector<int> &tree) {
             const auto numVertices = tree.size();
             // Build the elimination out-tree from the elimination in-tree.
             std::vector<int> firstChild(numVertices + 1);
@@ -283,6 +303,10 @@ namespace karri {
         std::vector<int> zone; // Zone of each vertex, i.e., the cell ID of the cell that contains the vertex.
 
         Permutation topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
+        Permutation inverseTopDownRankPermutation;
+
+        std::vector<int> lowestNeighbor; // lowest (i.e. most important) neighbor in either graph
+        std::vector<int> lowestNeighborInSubtree; // lowest (i.e. most important) neighbor in subtree of elimination tree rooted at vertex
 
         tbb::enumerable_thread_specific<QueryStats> queryStats;
         tbb::enumerable_thread_specific<Query> query;

@@ -48,18 +48,23 @@ namespace karri {
                                     const typename CH::SearchGraph &downGraph,
                                     const typename CH::SearchGraph &upGraph,
                                     const Permutation &topDownRankPermutation,
+                                    const Permutation &inverseTopDownRankPermutation,
                                     const EllipticBucketsEnvironmentT &ellipticBucketsEnv,
                                     const RouteState &routeState,
-                                    const std::vector<int> &eliminationTree)
+                                    const std::vector<int> &eliminationTree,
+                                    const std::vector<int> &lowestNeighbor,
+                                    const std::vector<int> &lowestNeighborInSubtree)
                 : ch(ch),
                   numVertices(downGraph.numVertices()),
                   downGraph(downGraph),
                   upGraph(upGraph),
                   topDownRankPermutation(topDownRankPermutation),
+                  inverseTopDownRankPermutation(inverseTopDownRankPermutation),
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   routeState(routeState),
                   eliminationTree(eliminationTree),
-                  lowestNeighbor(numVertices),
+                  lowestNeighbor(lowestNeighbor),
+                  lowestNeighborInSubtree(lowestNeighborInSubtree),
                   enumerateBucketEntriesSearchSpace(numVertices),
                   distTo(numVertices, INFTY),
                   distFrom(numVertices, INFTY),
@@ -69,16 +74,6 @@ namespace karri {
             KASSERT(downGraph.numVertices() == numVertices);
             KASSERT(upGraph.numVertices() == numVertices);
             verticesInAnyEllipse.reserve(numVertices);
-            for (int v = 0; v < numVertices; ++v) {
-                const int lowestNeighborInDown =
-                        downGraph.lastEdge(v) == downGraph.firstEdge(v) ? numVertices : downGraph.edgeHead(
-                                downGraph.firstEdge(v));
-                const int lowestNeighborInUp =
-                        upGraph.lastEdge(v) == upGraph.firstEdge(v) ? numVertices : upGraph.edgeHead(
-                                upGraph.firstEdge(v));
-                lowestNeighbor[v] = std::min(lowestNeighborInDown, lowestNeighborInUp);
-            }
-
         }
 
         std::vector<std::vector<VertexInEllipse>> run(const std::vector<int> &stopIds,
@@ -95,12 +90,11 @@ namespace karri {
             const auto numEllipses = stopIds.size();
             int highestInitializedVertex = -1;
             for (int i = 0; i < numEllipses; ++i) {
-                const auto leewayI = routeState.leewayOfLegStartingAt(stopIds[i]);
-                initializeDistancesWithSourceBuckets(stopIds[i], i, leewayI, highestInitializedVertex);
-                leeways[i] = leewayI;
+                initializeDistancesWithSourceBuckets(stopIds[i], i, highestInitializedVertex);
+                leeways[i] = routeState.leewayOfLegStartingAt(stopIds[i]);
             }
             for (int i = 0; i < numEllipses; ++i) {
-                initializeDistancesWithTargetBuckets(stopIds[i], i, leeways[i], highestInitializedVertex);
+                initializeDistancesWithTargetBuckets(stopIds[i], i, highestInitializedVertex);
             }
             initTime += timer.elapsed<std::chrono::nanoseconds>();
 
@@ -141,7 +135,7 @@ namespace karri {
             verticesInAnyEllipse.clear();
         }
 
-        void initializeDistancesWithSourceBuckets(const int stopId, const int ellipseIdx, const int leeway,
+        void initializeDistancesWithSourceBuckets(const int stopId, const int ellipseIdx,
                                                   int &highestInitialized) {
             KASSERT(ellipseIdx >= 0 && ellipseIdx < K);
             const int vehId = routeState.vehicleIdOf(stopId);
@@ -155,7 +149,6 @@ namespace karri {
 
                 // Map to vertex ordering of CH graphs used
                 const auto r = topDownRankPermutation[e.rank];
-                KASSERT(e.distance <= leeway);
 
                 if (!initialized.isSet(r)) {
                     // Distances for input ranks are initialized here. Distances of other ranks are initialized
@@ -171,7 +164,7 @@ namespace karri {
             }
         }
 
-        void initializeDistancesWithTargetBuckets(const int stopId, const int ellipseIdx, const int leeway,
+        void initializeDistancesWithTargetBuckets(const int stopId, const int ellipseIdx,
                                                   int &highestInitialized) {
             KASSERT(ellipseIdx >= 0 && ellipseIdx < K);
             const int vehId = routeState.vehicleIdOf(stopId);
@@ -184,7 +177,6 @@ namespace karri {
             for (const auto &e: ranksWithTargetBucketEntries) {
                 // Map to vertex ordering of CH graphs used
                 const auto r = topDownRankPermutation[e.rank];
-                KASSERT(e.distance <= leeway);
 
                 if (!initialized.isSet(r)) {
                     // Distances for input ranks are initialized here. Distances of other ranks are initialized
@@ -258,7 +250,7 @@ namespace karri {
             for (auto &ellipse: ellipses)
                 ellipse.reserve(verticesInAnyEllipse.size());
             for (const auto &r: verticesInAnyEllipse) {
-                const auto originalRank = numVertices - r - 1; // Reverse permutation in search graphs
+                const auto originalRank = inverseTopDownRankPermutation[r]; // Reverse permutation in search graphs
                 const int vertex = ch.contractionOrder(originalRank);
 
                 const auto &distToVertex = distTo[r];
@@ -284,11 +276,13 @@ namespace karri {
         const CH::SearchGraph &downGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
         const CH::SearchGraph &upGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
         const Permutation &topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
+        const Permutation &inverseTopDownRankPermutation;
         const EllipticBucketsEnvironmentT &ellipticBucketsEnv;
         const RouteState &routeState;
         const std::vector<int> &eliminationTree; // Elimination tree with vertices ordered by decreasing rank.
 
-        std::vector<int> lowestNeighbor;
+        const std::vector<int> &lowestNeighbor; // lowest (i.e. most important) neighbor in either graph
+        const std::vector<int> &lowestNeighborInSubtree; // lowest (i.e. most important) neighbor in subtree of elimination tree rooted at vertex
 
         Subset enumerateBucketEntriesSearchSpace;
 
@@ -297,7 +291,7 @@ namespace karri {
         std::vector<int> verticesInAnyEllipse;
 
         // Flags that indicate whether distances have been initialized with bucket entries
-        FastResetFlagArray <> initialized;
+        FastResetFlagArray<> initialized;
 
         // highestRelInElimTreeBranch[v] is the highest rank (permuted, so least important vertex) on the
         // elimination-tree branch of v that is in an ellipse. When settling vertex v, we only
