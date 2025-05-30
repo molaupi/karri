@@ -298,7 +298,7 @@ private:
     using ParentLabelCont = ParentLabelContainer<CH::SearchGraph, LabelSetT>;
 
     const CH::SearchGraph &searchGraph;          // The upward or downward graph we work on.
-    const std::vector<int32_t> &eliminationTree; // eliminationTree[v] is the parent of v in the tree.
+    const std::vector<int32_t> &eliminationTree; // elimTreeParent[v] is the parent of v in the tree.
 
     DistanceLabelCont distanceLabels;             // The distance labels of the vertices.
     ParentLabelCont parent;                       // The parent information for each vertex.

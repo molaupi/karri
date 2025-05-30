@@ -68,13 +68,15 @@ namespace karri {
                   routeState(routeState),
                   downGraph(chEnv.getCH().downwardGraph()),
                   upGraph(chEnv.getCH().upwardGraph()),
-                  eliminationTree(chEnv.getCCH().getEliminationTree()),
+                  level(inputGraph.numVertices(), 0),
+                  elimTreeParent(chEnv.getCCH().getEliminationTree()),
                   topDownRankPermutation(chEnv.getCH().downwardGraph().numVertices()),
                   lowestNeighbor(inputGraph.numVertices()),
-                    lowestNeighborInSubtree(inputGraph.numVertices()),
+                  lowestNeighborInSubtree(inputGraph.numVertices()),
                   query([&]() {
                       return Query(ch, downGraph, upGraph, topDownRankPermutation, inverseTopDownRankPermutation,
-                                   ellipticBucketsEnv, routeState, eliminationTree, lowestNeighbor, lowestNeighborInSubtree);
+                                   ellipticBucketsEnv, routeState, elimTreeParent, firstElimTreeChild, elimTreeChildren,
+                                   lowestNeighbor, lowestNeighborInSubtree, maxLevel, level, levelStart);
                   }),
                   logger(LogManager<LoggerT>::getLogger("ch_ellipse_reconstruction.csv",
                                                         "num_ellipses,"
@@ -87,44 +89,102 @@ namespace karri {
                                                         "topo_search_num_vertices_in_any_ellipse\n")) {
             KASSERT(downGraph.numVertices() == upGraph.numVertices());
             const int numVertices = downGraph.numVertices();
-            for (int r = 0; r < numVertices; ++r)
-                topDownRankPermutation[r] = numVertices - r - 1;
-
-            inverseTopDownRankPermutation = topDownRankPermutation.getInversePermutation();
-
-            downGraph.permuteVertices(topDownRankPermutation);
-            downGraph.sortOutgoingEdges();
-            upGraph.permuteVertices(topDownRankPermutation);
-            upGraph.sortOutgoingEdges();
 
             // Compute zones of bounded diameter based on elimination tree
             static constexpr int MAX_DIAM = 60;
-            zone = deductCellsFromEliminationTree<MAX_DIAM>(eliminationTree);
+            zone = deductCellsFromEliminationTree<MAX_DIAM>(elimTreeParent);
 
-            // Permute zone
-            topDownRankPermutation.applyTo(zone);
+            // Compute levels of vertices in elimination tree (level[v] = tree height - height of subtree rooted at v)
+            KASSERT(elimTreeParent[numVertices - 1] == -1); // assert that root has rank numVertices - 1
+            for (int v = 0; v < numVertices - 1; ++v) {
+                const auto levelV = level[v];
+                auto &levelParent = level[elimTreeParent[v]];
+                levelParent = std::max(levelParent, levelV + 1);
+            }
+            maxLevel = level[numVertices - 1];
+            for (auto &l: level)
+                l = maxLevel - l; // Reverse levels to have root at level 0.
 
-            // Permute tails of elimination tree
-            topDownRankPermutation.applyTo(eliminationTree);
 
-            // Permute heads of elimination tree
-            for (auto &parent: eliminationTree) {
+            // Compute top-down rank permutation based on levels
+
+            // Build out elimination tree
+            convertInTreeToOutTree(elimTreeParent, firstElimTreeChild, elimTreeChildren);
+            for (int v = 0; v < numVertices; ++v) {
+                for (int i = firstElimTreeChild[v]; i < firstElimTreeChild[v + 1] - 1; ++i) {
+                    KASSERT(elimTreeChildren[i] < elimTreeChildren[i + 1]);
+                }
+            }
+
+            // Compute index where each level starts by finding level sizes and computing prefix sum
+            levelStart.resize(maxLevel + 2);
+            for (int v = 0; v < numVertices; ++v)
+                ++levelStart[level[v]];
+            int curStart = 0;
+            for (int l = 0; l <= maxLevel + 1; ++l) {
+                const int nextStart = curStart + levelStart[l];
+                levelStart[l] = curStart;
+                curStart = nextStart;
+            }
+            KASSERT(curStart == numVertices && levelStart[maxLevel + 1] == numVertices);
+
+            // Traverse elimination tree level by level, constructing lower levels in order vertices are seen.
+            auto nextInLevel = levelStart;
+            std::vector<int> inversePermData(numVertices, INVALID_INDEX);
+            inversePermData[0] = numVertices - 1; // root
+            ++nextInLevel[0];
+            for (int l = 0; l <= maxLevel; ++l) {
+                // Level l is full. Loop over vertices in this level and add children to the current end of their
+                // respective levels.
+                KASSERT(nextInLevel[l] == levelStart[l + 1]);
+                for (int i = levelStart[l]; i < levelStart[l + 1]; ++i) {
+                    const auto v = inversePermData[i];
+                    KASSERT(v >= 0 && v < numVertices);
+                    KASSERT(level[v] == l);
+                    // Add children to their respective levels
+                    for (int j = firstElimTreeChild[v]; j < firstElimTreeChild[v + 1]; ++j) {
+                        const auto child = elimTreeChildren[j];
+                        KASSERT(child < v);
+                        inversePermData[nextInLevel[level[child]]] = child;
+                        ++nextInLevel[level[child]];
+                    }
+                }
+            }
+
+            inverseTopDownRankPermutation = Permutation(inversePermData.begin(), inversePermData.end());
+            topDownRankPermutation = inverseTopDownRankPermutation.getInversePermutation();
+
+            topDownRankPermutation.applyTo(level);
+            KASSERT(std::is_sorted(level.begin(), level.end()));
+
+            // Permute tails of in elimination tree
+            topDownRankPermutation.applyTo(elimTreeParent);
+
+            // Permute heads of in elimination tree
+            for (auto &parent: elimTreeParent) {
                 if (parent == -1) // Root of tree does not have a parent, no need to permute
                     continue;
                 parent = topDownRankPermutation[parent];
             }
 
-            for (int i = 0; i < eliminationTree.size(); ++i) {
-                KASSERT(eliminationTree[i] < i);
-            }
+            // Our permuted in elimination tree marks root (rank 0) by being its own parent.
+            elimTreeParent[0] = 0;
 
+            // Permute out elimination tree
+            convertInTreeToOutTree(elimTreeParent, firstElimTreeChild, elimTreeChildren);
 
-            // Our permuted elimination tree marks root (rank 0) by being its own parent.
-            eliminationTree[0] = 0;
+            // Permute search graphs
+            downGraph.permuteVertices(topDownRankPermutation);
+            downGraph.sortOutgoingEdges();
+            upGraph.permuteVertices(topDownRankPermutation);
+            upGraph.sortOutgoingEdges();
+
+            // Permute zone
+            topDownRankPermutation.applyTo(zone);
 
             // Compute neighbor with lowest permuted rank (i.e. most important neighbor) in either graph for every
             // vertex. Additionally compute the lowest such neighbor in the subtree of the elimination tree rooted at
-            // each vertex.
+            // each vertex (subtree excluding the vertex itself).
             for (int v = 0; v < numVertices; ++v) {
                 const int lowestNeighborInDown =
                         downGraph.lastEdge(v) == downGraph.firstEdge(v) ? numVertices : downGraph.edgeHead(
@@ -133,8 +193,12 @@ namespace karri {
                         upGraph.lastEdge(v) == upGraph.firstEdge(v) ? numVertices : upGraph.edgeHead(
                                 upGraph.firstEdge(v));
                 lowestNeighbor[v] = std::min(lowestNeighborInDown, lowestNeighborInUp);
-                lowestNeighborInSubtree[v] = std::min(lowestNeighborInSubtree[v], lowestNeighbor[v]);
-                const auto p = eliminationTree[v];
+            }
+
+            std::fill(lowestNeighborInSubtree.begin(), lowestNeighborInSubtree.end(), INFTY);
+            for (int v = numVertices - 1; v >= 0; --v) {
+                const auto p = elimTreeParent[v];
+                lowestNeighborInSubtree[p] = std::min(lowestNeighborInSubtree[p], lowestNeighbor[v]);
                 lowestNeighborInSubtree[p] = std::min(lowestNeighborInSubtree[p], lowestNeighborInSubtree[v]);
             }
         }
@@ -239,20 +303,9 @@ namespace karri {
         static std::vector<int> deductCellsFromEliminationTree(const std::vector<int> &tree) {
             const auto numVertices = tree.size();
             // Build the elimination out-tree from the elimination in-tree.
-            std::vector<int> firstChild(numVertices + 1);
-            std::vector<int> children(numVertices - 1);
-            for (auto v = 0; v < numVertices - 1; ++v)
-                ++firstChild[tree[v]];
-            auto firstEdge = 0; // The index of the first edge out of the current/next vertex.
-            for (auto v = 0; v <= numVertices; ++v) {
-                std::swap(firstEdge, firstChild[v]);
-                firstEdge += firstChild[v];
-            }
-            for (auto v = 0; v < numVertices - 1; ++v)
-                children[firstChild[tree[v]]++] = v;
-            for (auto v = numVertices - 1; v > 0; --v)
-                firstChild[v] = firstChild[v - 1];
-            firstChild[0] = 0;
+            std::vector<int> firstChild;
+            std::vector<int> children;
+            convertInTreeToOutTree(tree, firstChild, children);
 
             // Decompose the elimination tree into as few cells with bounded diameter as possible.
             BitVector isRoot(numVertices);
@@ -293,20 +346,54 @@ namespace karri {
             return cellIds;
         }
 
+        static void convertInTreeToOutTree(const std::vector<int> &parent,
+                                           std::vector<int> &firstChild,
+                                           std::vector<int> &children) {
+            const auto numVertices = parent.size();
+            // Build the elimination out-tree from the elimination in-tree.
+            firstChild = std::vector<int>(numVertices + 1);
+            children = std::vector<int>(numVertices - 1);
+            for (auto v = 0; v < numVertices; ++v) {
+                const auto p = parent[v];
+                if (p == -1 || p == v) // Root of tree may be marked by -1 or edge to self
+                    continue;
+                ++firstChild[parent[v]];
+            }
+            auto firstEdge = 0; // The index of the first edge out of the current/next vertex.
+            for (auto v = 0; v <= numVertices; ++v) {
+                std::swap(firstEdge, firstChild[v]);
+                firstEdge += firstChild[v];
+            }
+            for (auto v = 0; v < numVertices; ++v) {
+                const auto p = parent[v];
+                if (p == -1 || p == v) // Root of tree may be marked by -1 or edge to self
+                    continue;
+                children[firstChild[p]++] = v;
+            }
+            for (auto v = numVertices - 1; v > 0; --v)
+                firstChild[v] = firstChild[v - 1];
+            firstChild[0] = 0;
+        }
+
 
         const InputGraphT &inputGraph;
         const CH &ch;
         const RouteState &routeState;
         CH::SearchGraph downGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
         CH::SearchGraph upGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
-        std::vector<int> eliminationTree; // Elimination tree of the CH with vertices ordered by decreasing rank.
+        int maxLevel;
+        std::vector<int> level; // Level of vertex in elimination tree from root (lower level means more important)
+        std::vector<int> levelStart;
+        std::vector<int> elimTreeParent; // Elimination tree of the CH with vertices ordered by decreasing rank (parent pointers).
+        std::vector<int> firstElimTreeChild; // First in range of children in out elimination tree
+        std::vector<int> elimTreeChildren; // Array of children in out elimination tree
         std::vector<int> zone; // Zone of each vertex, i.e., the cell ID of the cell that contains the vertex.
 
         Permutation topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
         Permutation inverseTopDownRankPermutation;
 
         std::vector<int> lowestNeighbor; // lowest (i.e. most important) neighbor in either graph
-        std::vector<int> lowestNeighborInSubtree; // lowest (i.e. most important) neighbor in subtree of elimination tree rooted at vertex
+        std::vector<int> lowestNeighborInSubtree; // lowest (i.e. most important) neighbor in subtree of elimination tree rooted at vertex excluding itself
 
         tbb::enumerable_thread_specific<QueryStats> queryStats;
         tbb::enumerable_thread_specific<Query> query;

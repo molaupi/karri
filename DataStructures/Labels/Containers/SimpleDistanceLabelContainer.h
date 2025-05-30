@@ -42,6 +42,10 @@ class SimpleDistanceLabelContainer {
     resize(numLabels);
   }
 
+    size_t size() const {
+        return distanceLabels.size();
+    }
+
   // Ensures that this container can hold the specified number of distance labels.
   void resize(const int numLabels) {
     const auto currentSize = distanceLabels.size();
