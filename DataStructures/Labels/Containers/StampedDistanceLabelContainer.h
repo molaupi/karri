@@ -91,6 +91,14 @@ public:
         return distanceLabels[v];
     }
 
+    // Returns a const-reference to the distance label of v without checking if it is stale.
+    // Value is not treated as initialized after this call if it was not already initialized.
+    const DistanceLabelT &readWithoutStaleCheckAndWithoutTimeUpdate(const int v) const {
+        assert(v >= 0);
+        assert(v < distanceLabels.size());
+        return distanceLabels[v];
+    }
+
 private:
     AlignedVector<DistanceLabelT> distanceLabels; // The distance labels of the vertices.
     std::vector<int> timestamps;                  // The timestamps indicating if a label is valid.

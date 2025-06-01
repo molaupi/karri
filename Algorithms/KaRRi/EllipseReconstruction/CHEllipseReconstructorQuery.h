@@ -49,44 +49,38 @@ namespace karri {
                                     const typename CH::SearchGraph &upGraph,
                                     const Permutation &topDownRankPermutation,
                                     const Permutation &inverseTopDownRankPermutation,
+                                    const std::vector<int> &nextIndependentSubtree,
                                     const EllipticBucketsEnvironmentT &ellipticBucketsEnv,
                                     const RouteState &routeState,
                                     const std::vector<int> &elimTreeParent,
-                                    const std::vector<int> &firstElimTreeChild,
-                                    const std::vector<int> &elimTreeChildren,
                                     const std::vector<int> &lowestNeighbor,
-                                    const std::vector<int> &lowestNeighborInSubtree,
-                                    const int maxLevel,
-                                    const std::vector<int> &level,
-                                    const std::vector<int> &levelStart)
+                                    const std::vector<int> &lowestNeighborInSubtree)
                 : ch(ch),
                   numVertices(downGraph.numVertices()),
                   downGraph(downGraph),
                   upGraph(upGraph),
                   topDownRankPermutation(topDownRankPermutation),
                   inverseTopDownRankPermutation(inverseTopDownRankPermutation),
+                  nextIndependentSubtree(nextIndependentSubtree),
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   routeState(routeState),
                   elimTreeParent(elimTreeParent),
-                  firstElimTreeChild(firstElimTreeChild),
-                  elimTreeChildren(elimTreeChildren),
                   lowestNeighbor(lowestNeighbor),
                   lowestNeighborInSubtree(lowestNeighborInSubtree),
-                  maxLevel(maxLevel),
-                  level(level),
-                  levelStart(levelStart),
                   enumerateBucketEntriesSearchSpace(numVertices),
-                  endToSettleInLevel(maxLevel + 1),
-                  toSettleInLevel(numVertices),
-                  initInLevel(maxLevel + 1),
-                  distTo(numVertices),
-                  distFrom(numVertices),
+                  distTo(numVertices, INFTY),
+                  distFrom(numVertices, INFTY),
                   verticesInAnyEllipse(),
-                  initialized(numVertices),
+                  isInitialized(numVertices),
                   highestRelInElimTreeBranch(numVertices, -1) {
             KASSERT(downGraph.numVertices() == numVertices);
             KASSERT(upGraph.numVertices() == numVertices);
+
             verticesInAnyEllipse.reserve(numVertices);
+            settled.reserve(numVertices);
+
+            beginAfterPrune.push(numVertices); // Sentinel
+            endOfRestart.push(numVertices); // Sentinel
         }
 
         std::vector<std::vector<VertexInEllipse>> run(const std::vector<int> &stopIds,
@@ -99,11 +93,6 @@ namespace karri {
 
             Timer timer;
             initializeDistanceArrays();
-
-            for (int l = 0; l <= maxLevel; ++l) {
-                endToSettleInLevel[l] = levelStart[l];
-                initInLevel[l].clear();
-            }
 
             DistanceLabel leeways = 0;
             const auto numEllipses = stopIds.size();
@@ -118,46 +107,72 @@ namespace karri {
 
             initTime += timer.elapsed<std::chrono::nanoseconds>();
 
-            // Run search until queue becomes empty.
-            // The number of vertices that need to be settled can be expected to be quite large. Thus, we avoid
-            // using a PQ with many costly deleteMin() operations and instead settle every vertex in the graph.
             static constexpr bool TRACK_NUM_EDGES_RELAXED = true;
             timer.restart();
             int numEdgesRelaxed = 0;
-            for (int l = 0; l <= maxLevel; ++l) {
 
-                const auto startOfLevel = toSettleInLevel.begin() + levelStart[l];
-                auto endOfLevel = toSettleInLevel.begin() + endToSettleInLevel[l];
-                KASSERT(std::is_sorted(startOfLevel, endOfLevel));
+            KASSERT(!initialized.empty());
+            std::sort(initialized.begin(), initialized.end());
+            initialized.push_back(numVertices); // Sentinel
 
-                // Make sure vertices in this level that were initialized with bucket entries are settled. Insert them
-                // at the right spot in range of vertices that need to be settled if they are not included yet.
-                // In almost all cases, either all initialized vertices will already be included or the range will be
-                // empty before this, so the overhead is small.
-                auto& initInThisLevel = initInLevel[l];
-                std::sort(initInThisLevel.begin(), initInThisLevel.end());
-                auto it = startOfLevel;
-                for (const auto& v : initInThisLevel) {
-                    while (it != endOfLevel && *it < v) {
-                        ++it;
+            // Traverse elimination tree in inverted post-traversal order, starting at first initialized vertex.
+            // Whenever we reach a vertex v at which we can prune, continue with root of next independent subtree w or
+            // restart at the next initialized vertex r if r < w. In the latter case, memorize w as well as the next
+            // root u of the next independent subtree of r. When we reach u after restarting at r, we can proceed to w.
+            while (beginAfterPrune.size() > 1) {
+                KASSERT(beginAfterPrune.top() == numVertices);
+                beginAfterPrune.pop();
+            }
+            while (endOfRestart.size() > 1) {
+                KASSERT(endOfRestart.top() == numVertices);
+                endOfRestart.pop();
+            }
+            int v = initialized[0];
+            auto nextInitialized = initialized.begin() + 1;
+            while (v < numVertices) {
+
+                // If we have reached the next initialized vertex, step over it
+                if (v == *nextInitialized)
+                    ++nextInitialized;
+
+                // If we reach the end of the last restart (the root of the next independent subtree of the restart),
+                // then finish the restart by proceeding to the next vertex after the latest prune or restart at the
+                // next initialized vertex if it is smaller.
+                if (endOfRestart.top() == v) {
+                    endOfRestart.pop();
+                    if (*nextInitialized < beginAfterPrune.top()) {
+                        v = *nextInitialized;
+                        ++nextInitialized;
+                        endOfRestart.push(nextIndependentSubtree[v]);
+                    } else {
+                        v = beginAfterPrune.top();
+                        beginAfterPrune.pop();
                     }
-                    if (it != endOfLevel && *it == v)
-                        continue; // Already included.
-                    std::copy_backward(it, endOfLevel, endOfLevel + 1);
-                    *it = v;
-                    ++endToSettleInLevel[l];
-                    ++endOfLevel;
-                    ++it;
+                    continue;
                 }
-                KASSERT(endToSettleInLevel[l] <= levelStart[l + 1]);
-                KASSERT(std::is_sorted(startOfLevel, endOfLevel));
 
-                // Settle all required vertices at the current level.
-                for (auto vIt = startOfLevel; vIt < endOfLevel; ++vIt) {
-                    const auto v = *vIt;
-                    settleVertexInTopodownSearch<TRACK_NUM_EDGES_RELAXED>(v, leeways, numEdgesRelaxed);
-                    ++numVerticesSettled;
+                // Settle v
+                settleVertexInTopodownSearch<TRACK_NUM_EDGES_RELAXED>(v, leeways, numEdgesRelaxed);
+                ++numVerticesSettled;
+                settled.push_back(v);
+
+                // If no vertex in the sub elimination tree rooted at v has a neighbor lower than the highest relevant
+                // rank on the elimination tree branch, then we can prune at v.
+                const bool canPrune = lowestNeighborInSubtree[v] > highestRelInElimTreeBranch[v];
+                if (canPrune) {
+                    // If we can prune, proceed to the root of the next independent subtree from v or restart at the
+                    // next initialized vertex if it is smaller.
+                    v = nextIndependentSubtree[v];
+                    if (*nextInitialized < v) {
+                        beginAfterPrune.push(v);
+                        v = *nextInitialized;
+                        ++nextInitialized;
+                        endOfRestart.push(nextIndependentSubtree[v]);
+                    }
+                    continue;
                 }
+
+                ++v;
             }
 
             topoSearchTime += timer.elapsed<std::chrono::nanoseconds>();
@@ -175,18 +190,33 @@ namespace karri {
 
     private:
 
+
         void initializeDistanceArrays() {
             KASSERT(distTo.size() == distFrom.size());
-            while (numVertices > distTo.size()) {
-                distTo.resize(std::max(1ul, distTo.size() * 2));
-                distFrom.resize(std::max(1ul, distFrom.size() * 2));
-            }
+            KASSERT(distTo.size() == numVertices);
+            KASSERT(distFrom.size() == numVertices);
 
-            initialized.reset();
-            distTo.init();
-            distFrom.init();
+            initialized.clear();
+            isInitialized.reset();
+
+            static const DistanceLabel InftyLabel = DistanceLabel(INFTY);
+            for (const auto &v: settled) {
+                distTo[v] = InftyLabel;
+                distFrom[v] = InftyLabel;
+            }
+            settled.clear();
+            KASSERT(allLabelsInfty(distTo));
+            KASSERT(allLabelsInfty(distFrom));
 
             verticesInAnyEllipse.clear();
+        }
+
+        static bool allLabelsInfty(const auto &vals) {
+            static const DistanceLabel InftyLabel = DistanceLabel(INFTY);
+            for (int i = 0; i < vals.size(); ++i) {
+                if (!allSet(vals[i] == InftyLabel)) return false;
+            }
+            return true;
         }
 
         void initializeDistancesWithSourceBuckets(const int stopId, const int ellipseIdx,
@@ -204,14 +234,13 @@ namespace karri {
                 // Map to vertex ordering of CH graphs used
                 const auto r = topDownRankPermutation[e.rank];
 
-                if (!initialized.isSet(r)) {
+                if (!isInitialized.isSet(r)) {
                     // Distances for input ranks are initialized here. Distances of other ranks are initialized
                     // on-the-fly later.
-                    distTo[r] = INFTY;
-                    distFrom[r] = INFTY;
-                    initialized.set(r);
-                    KASSERT(level[r] <= maxLevel);
-                    initInLevel[level[r]].push_back(r);
+                    KASSERT(allSet(distTo[r] == INFTY));
+                    KASSERT(allSet(distFrom[r] == INFTY));
+                    isInitialized.set(r);
+                    initialized.push_back(r);
                 }
 
                 distTo[r][ellipseIdx] = e.distance;
@@ -234,14 +263,13 @@ namespace karri {
                 // Map to vertex ordering of CH graphs used
                 const auto r = topDownRankPermutation[e.rank];
 
-                if (!initialized.isSet(r)) {
+                if (!isInitialized.isSet(r)) {
                     // Distances for input ranks are initialized here. Distances of other ranks are initialized
                     // on-the-fly later.
-                    distTo[r] = INFTY;
-                    distFrom[r] = INFTY;
-                    initialized.set(r);
-                    KASSERT(level[r] <= maxLevel);
-                    initInLevel[level[r]].push_back(r);
+                    KASSERT(allSet(distTo[r] == INFTY));
+                    KASSERT(allSet(distFrom[r] == INFTY));
+                    isInitialized.set(r);
+                    initialized.push_back(r);
                 }
 
                 KASSERT(distFrom[r][ellipseIdx] == INFTY);
@@ -254,24 +282,23 @@ namespace karri {
         template<bool TRACK_NUM_EDGES = false>
         void settleVertexInTopodownSearch(const int v, const DistanceLabel &leeway, int &numEdgesRelaxed) {
 
-            const auto init = initialized.isSet(v);
-            auto &distToV = distTo.getWithoutStaleCheck(v);
-            auto &distFromV = distFrom.getWithoutStaleCheck(v);
-            if (!init) {
-                static const DistanceLabel InftyLabel = DistanceLabel(INFTY);
-                distToV = InftyLabel;
-                distFromV = InftyLabel;
-            }
+            auto &distToV = distTo[v];
+            auto &distFromV = distFrom[v];
 
             // Propagate information on highest relevant rank along elimination tree edge.
             auto &highestRel = highestRelInElimTreeBranch[v];
             highestRel = highestRelInElimTreeBranch[elimTreeParent[v]];
             const bool needToSettle = lowestNeighbor[v] <= highestRel;
 
+            const auto init = isInitialized.isSet(v);
+            if (!init && !needToSettle)
+                return;
+
             // If there are no relevant distances at upward neighbors (!needToSettle) and there are no distances
             // from bucket entries (!initV), then skip relaxations and check for ellipse membership.
             if (needToSettle) {
-                FORALL_INCIDENT_EDGES(downGraph, v, e) {
+                const int lastDownEdge = downGraph.lastEdge(v);
+                for (int e = downGraph.firstEdge(v); e < lastDownEdge; ++e) {
                     const auto head = downGraph.edgeHead(e);
 
                     if constexpr (TRACK_NUM_EDGES) ++numEdgesRelaxed;
@@ -280,7 +307,8 @@ namespace karri {
                     distToV.min(distViaHead);
                 }
 
-                FORALL_INCIDENT_EDGES(upGraph, v, e) {
+                const int lastUpEdge = upGraph.lastEdge(v);
+                for (int e = upGraph.firstEdge(v); e < lastUpEdge; ++e) {
                     const auto head = upGraph.edgeHead(e);
 
                     if constexpr (TRACK_NUM_EDGES) ++numEdgesRelaxed;
@@ -291,25 +319,11 @@ namespace karri {
             }
 
             // If vertex is in any ellipse, store it
-            if (init || needToSettle) {
-                const auto sum = distToV + distFromV;
-                const auto sumGreaterLeeway = sum > leeway;
-                if (!allSet(sumGreaterLeeway)) {
-                    verticesInAnyEllipse.push_back(v);
-                    highestRel = v;
-                }
-            }
-
-            // If no vertex in the sub elimination tree rooted at v has a neighbor lower than the highest relevant
-            // rank on the elimination tree branch, then we do not have to keep going on this branch.
-            const bool needToPropagate = lowestNeighborInSubtree[v] <= highestRel;
-            if (needToPropagate) {
-                // Store all elimination tree children to be settled
-                for (int i = firstElimTreeChild[v]; i < firstElimTreeChild[v + 1]; ++i) {
-                    const auto child = elimTreeChildren[i];
-                    KASSERT(child > v);
-                    toSettleInLevel[endToSettleInLevel[level[child]]++] = child;
-                }
+            const auto sum = distToV + distFromV;
+            const auto sumGreaterLeeway = sum > leeway;
+            if (!allSet(sumGreaterLeeway)) {
+                verticesInAnyEllipse.push_back(v);
+                highestRel = v;
             }
         }
 
@@ -322,8 +336,8 @@ namespace karri {
                 const auto originalRank = inverseTopDownRankPermutation[r]; // Reverse permutation in search graphs
                 const int vertex = ch.contractionOrder(originalRank);
 
-                const auto &distToVertex = distTo[r];
                 const auto &distFromVertex = distFrom[r];
+                const auto &distToVertex = distTo[r];
                 const auto breaksLeeway = distToVertex + distFromVertex > leeways;
                 KASSERT(!allSet(breaksLeeway));
                 for (int j = 0; j < numEllipses; ++j) {
@@ -346,38 +360,27 @@ namespace karri {
         const CH::SearchGraph &upGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
         const Permutation &topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
         const Permutation &inverseTopDownRankPermutation;
+        const std::vector<int> &nextIndependentSubtree;
         const EllipticBucketsEnvironmentT &ellipticBucketsEnv;
         const RouteState &routeState;
         const std::vector<int> &elimTreeParent; // Elimination tree with vertices ordered by decreasing rank.
-        const std::vector<int> &firstElimTreeChild; // First in range of children in out elimination tree
-        const std::vector<int> &elimTreeChildren; // Array of children in out elimination tree
 
         const std::vector<int> &lowestNeighbor; // lowest (i.e. most important) neighbor in either graph
         const std::vector<int> &lowestNeighborInSubtree; // lowest (i.e. most important) neighbor in subtree of elimination tree rooted at vertex
 
-        const int maxLevel;
-        const std::vector<int> &level; // Level of vertex in elimination tree from root (lower level means more important)
-        const std::vector<int> &levelStart; // Top-down rank at which level starts
-
         Subset enumerateBucketEntriesSearchSpace;
 
-        // When reaching level l, all vertices in the range toSettleInLevel[levelStart[l] .. endToSettleInLevel[l])
-        // must be settled where always endToSettleInLevel[l] <= levelStart[l + 1].
-        std::vector<int> endToSettleInLevel;
-        std::vector<int> toSettleInLevel;
-
-        std::vector<std::vector<int>> initInLevel; // For each level, the vertices that have been initialized with bucket entries.
-
-//        AlignedVector <DistanceLabel> distTo;
-//        AlignedVector <DistanceLabel> distFrom;
-        StampedDistanceLabelContainer<DistanceLabel> distTo;
-        StampedDistanceLabelContainer<DistanceLabel> distFrom;
-//        SimpleDistanceLabelContainer<DistanceLabel> distTo;
-//        SimpleDistanceLabelContainer<DistanceLabel> distFrom;
+        AlignedVector<DistanceLabel> distTo;
+        AlignedVector<DistanceLabel> distFrom;
         std::vector<int> verticesInAnyEllipse;
 
         // Flags that indicate whether distances have been initialized with bucket entries
-        FastResetFlagArray<> initialized;
+        FastResetFlagArray<> isInitialized;
+        std::vector<int> initialized;
+        std::vector<int> settled;
+
+        std::stack<int, std::vector<int>> beginAfterPrune;
+        std::stack<int, std::vector<int>> endOfRestart;
 
         // highestRelInElimTreeBranch[v] is the highest rank (permuted, so least important vertex) on the
         // elimination-tree branch of v that is in an ellipse. When settling vertex v, we only

@@ -68,15 +68,14 @@ namespace karri {
                   routeState(routeState),
                   downGraph(chEnv.getCH().downwardGraph()),
                   upGraph(chEnv.getCH().upwardGraph()),
-                  level(inputGraph.numVertices(), 0),
                   elimTreeParent(chEnv.getCCH().getEliminationTree()),
                   topDownRankPermutation(chEnv.getCH().downwardGraph().numVertices()),
                   lowestNeighbor(inputGraph.numVertices()),
                   lowestNeighborInSubtree(inputGraph.numVertices()),
                   query([&]() {
                       return Query(ch, downGraph, upGraph, topDownRankPermutation, inverseTopDownRankPermutation,
-                                   ellipticBucketsEnv, routeState, elimTreeParent, firstElimTreeChild, elimTreeChildren,
-                                   lowestNeighbor, lowestNeighborInSubtree, maxLevel, level, levelStart);
+                                   nextIndependentSubtree, ellipticBucketsEnv, routeState, elimTreeParent,
+                                   lowestNeighbor, lowestNeighborInSubtree);
                   }),
                   logger(LogManager<LoggerT>::getLogger("ch_ellipse_reconstruction.csv",
                                                         "num_ellipses,"
@@ -90,72 +89,35 @@ namespace karri {
             KASSERT(downGraph.numVertices() == upGraph.numVertices());
             const int numVertices = downGraph.numVertices();
 
+            // Compute out elimination tree from in elimination tree
+            convertInTreeToOutTree(elimTreeParent, firstElimTreeChild, elimTreeChildren);
+
             // Compute zones of bounded diameter based on elimination tree
             static constexpr int MAX_DIAM = 60;
-            zone = deductCellsFromEliminationTree<MAX_DIAM>(elimTreeParent);
+            zone = deductCellsFromOutEliminationTree<MAX_DIAM>(firstElimTreeChild, elimTreeChildren);
 
-            // Compute levels of vertices in elimination tree (level[v] = tree height - height of subtree rooted at v)
-            KASSERT(elimTreeParent[numVertices - 1] == -1); // assert that root has rank numVertices - 1
-            for (int v = 0; v < numVertices - 1; ++v) {
-                const auto levelV = level[v];
-                auto &levelParent = level[elimTreeParent[v]];
-                levelParent = std::max(levelParent, levelV + 1);
-            }
-            maxLevel = level[numVertices - 1];
-            for (auto &l: level)
-                l = maxLevel - l; // Reverse levels to have root at level 0.
+            // Compute inverted post-traversal order for elimination tree
+            auto [iPto, lastHorPred] = computeDfsPostTraversalOrderAndLastHorizontalPredecessor(firstElimTreeChild,
+                                                                                                elimTreeChildren);
+            for (auto &v: iPto)
+                v = numVertices - 1 - v;
+            for (auto &p: lastHorPred)
+                p = numVertices - 1 - p;
 
+            topDownRankPermutation = Permutation(iPto.begin(), iPto.end());
+            inverseTopDownRankPermutation = topDownRankPermutation.getInversePermutation();
 
-            // Compute top-down rank permutation based on levels
+            // Permute last horizontal predecessor array due to new vertex order
+            topDownRankPermutation.applyTo(lastHorPred);
+            KASSERT(lastHorPred[0] == numVertices); // sanity check: root must have invalid last horizontal predecessor
 
-            // Build out elimination tree
-            convertInTreeToOutTree(elimTreeParent, firstElimTreeChild, elimTreeChildren);
+            // w = nextIndependentSubtree[v] is the next vertex in the inverted PTO that is not contained in the subtree
+            // of the elimination tree rooted at v. The subtree rooted at w is entirely independent of the one rooted at
+            // v s.t. when a traversal of the tree in inverted PTO can be pruned at v, it is correct to continue at w.
+            nextIndependentSubtree = lastHorPred;
             for (int v = 0; v < numVertices; ++v) {
-                for (int i = firstElimTreeChild[v]; i < firstElimTreeChild[v + 1] - 1; ++i) {
-                    KASSERT(elimTreeChildren[i] < elimTreeChildren[i + 1]);
-                }
+                KASSERT(v < nextIndependentSubtree[v]);
             }
-
-            // Compute index where each level starts by finding level sizes and computing prefix sum
-            levelStart.resize(maxLevel + 2);
-            for (int v = 0; v < numVertices; ++v)
-                ++levelStart[level[v]];
-            int curStart = 0;
-            for (int l = 0; l <= maxLevel + 1; ++l) {
-                const int nextStart = curStart + levelStart[l];
-                levelStart[l] = curStart;
-                curStart = nextStart;
-            }
-            KASSERT(curStart == numVertices && levelStart[maxLevel + 1] == numVertices);
-
-            // Traverse elimination tree level by level, constructing lower levels in order vertices are seen.
-            auto nextInLevel = levelStart;
-            std::vector<int> inversePermData(numVertices, INVALID_INDEX);
-            inversePermData[0] = numVertices - 1; // root
-            ++nextInLevel[0];
-            for (int l = 0; l <= maxLevel; ++l) {
-                // Level l is full. Loop over vertices in this level and add children to the current end of their
-                // respective levels.
-                KASSERT(nextInLevel[l] == levelStart[l + 1]);
-                for (int i = levelStart[l]; i < levelStart[l + 1]; ++i) {
-                    const auto v = inversePermData[i];
-                    KASSERT(v >= 0 && v < numVertices);
-                    KASSERT(level[v] == l);
-                    // Add children to their respective levels
-                    for (int j = firstElimTreeChild[v]; j < firstElimTreeChild[v + 1]; ++j) {
-                        const auto child = elimTreeChildren[j];
-                        KASSERT(child < v);
-                        inversePermData[nextInLevel[level[child]]] = child;
-                        ++nextInLevel[level[child]];
-                    }
-                }
-            }
-
-            inverseTopDownRankPermutation = Permutation(inversePermData.begin(), inversePermData.end());
-            topDownRankPermutation = inverseTopDownRankPermutation.getInversePermutation();
-
-            topDownRankPermutation.applyTo(level);
-            KASSERT(std::is_sorted(level.begin(), level.end()));
 
             // Permute tails of in elimination tree
             topDownRankPermutation.applyTo(elimTreeParent);
@@ -170,7 +132,7 @@ namespace karri {
             // Our permuted in elimination tree marks root (rank 0) by being its own parent.
             elimTreeParent[0] = 0;
 
-            // Permute out elimination tree
+            // Re-compute out elimination tree for new order
             convertInTreeToOutTree(elimTreeParent, firstElimTreeChild, elimTreeChildren);
 
             // Permute search graphs
@@ -295,17 +257,45 @@ namespace karri {
             int nextUnexploredEdge; // The next unexplored incident edge.
         };
 
+        static void convertInTreeToOutTree(const std::vector<int> &parent,
+                                           std::vector<int> &firstChild,
+                                           std::vector<int> &children) {
+            const auto numVertices = parent.size();
+            // Build the elimination out-tree from the elimination in-tree.
+            firstChild = std::vector<int>(numVertices + 1);
+            children = std::vector<int>(numVertices - 1);
+            for (auto v = 0; v < numVertices; ++v) {
+                const auto p = parent[v];
+                if (p == -1 || p == v) // Root of tree may be marked by -1 or edge to self
+                    continue;
+                ++firstChild[parent[v]];
+            }
+            auto firstEdge = 0; // The index of the first edge out of the current/next vertex.
+            for (auto v = 0; v <= numVertices; ++v) {
+                std::swap(firstEdge, firstChild[v]);
+                firstEdge += firstChild[v];
+            }
+            for (auto v = 0; v < numVertices; ++v) {
+                const auto p = parent[v];
+                if (p == -1 || p == v) // Root of tree may be marked by -1 or edge to self
+                    continue;
+                children[firstChild[p]++] = v;
+            }
+            for (auto v = numVertices - 1; v > 0; --v)
+                firstChild[v] = firstChild[v - 1];
+            firstChild[0] = 0;
+        }
+
         // Taken from Valentin Buchhold's routing-framework. Algorithm described in
         // "Real-time traffic assignment using engineered customizable contraction hierarchies", JEA, Vol. 24, 2019.
-        // Given an in-elimination tree (vertex IDs ordered by increasing rank), this function decomposes the graph
+        // Given an out-elimination tree (vertex IDs ordered by increasing rank), this function decomposes the graph
         // into cells of bounded diameter and returns the cell ID for each rank.
         template<int maxDiam>
-        static std::vector<int> deductCellsFromEliminationTree(const std::vector<int> &tree) {
-            const auto numVertices = tree.size();
-            // Build the elimination out-tree from the elimination in-tree.
-            std::vector<int> firstChild;
-            std::vector<int> children;
-            convertInTreeToOutTree(tree, firstChild, children);
+        static std::vector<int> deductCellsFromOutEliminationTree(const std::vector<int> &firstChild,
+                                                                  const std::vector<int> &childrenIn) {
+
+            auto children = childrenIn; // Copy to allow sorting by height in algorithm
+            const int numVertices = static_cast<int>(firstChild.size()) - 1;
 
             // Decompose the elimination tree into as few cells with bounded diameter as possible.
             BitVector isRoot(numVertices);
@@ -346,33 +336,44 @@ namespace karri {
             return cellIds;
         }
 
-        static void convertInTreeToOutTree(const std::vector<int> &parent,
-                                           std::vector<int> &firstChild,
-                                           std::vector<int> &children) {
-            const auto numVertices = parent.size();
-            // Build the elimination out-tree from the elimination in-tree.
-            firstChild = std::vector<int>(numVertices + 1);
-            children = std::vector<int>(numVertices - 1);
-            for (auto v = 0; v < numVertices; ++v) {
-                const auto p = parent[v];
-                if (p == -1 || p == v) // Root of tree may be marked by -1 or edge to self
+        // Compute a DFS post traversal order for the given tree in out format.
+        // Expects root of tree to be at index firstChild.size() - 1.
+        static std::pair<std::vector<int>, std::vector<int>> computeDfsPostTraversalOrderAndLastHorizontalPredecessor(
+                const std::vector<int> &firstChild,
+                const std::vector<int> &children) {
+            const int numVertices = static_cast<int>(firstChild.size()) - 1;
+            std::vector<int> pto(numVertices, INVALID_VERTEX);
+            int nextRank = 0;
+            std::stack<ActiveVertex, std::vector<ActiveVertex>> activeVertices;
+            // Contains PTO rank of the last horizontal predecessor, i.e. PTO of a previous sibling if one exists or
+            // PTO of the last horizontal predecessor of the parent otherwise. If there is no horizontal predecessor
+            // at all (first branch from the root), the placeholder -1 is used.
+            std::vector<int> lastHorizontalPred(numVertices, -2);
+            activeVertices.emplace(numVertices - 1, firstChild[numVertices - 1]); // add root
+            lastHorizontalPred[numVertices - 1] = -1;
+            while (!activeVertices.empty()) {
+                auto &v = activeVertices.top();
+                if (v.nextUnexploredEdge == firstChild[v.id + 1]) {
+                    // Finished with this v, add to post traversal order.
+                    pto[v.id] = nextRank++;
+                    activeVertices.pop();
                     continue;
-                ++firstChild[parent[v]];
+                }
+                // Advance to next child
+                const auto child = children[v.nextUnexploredEdge];
+                const auto lastHor = v.nextUnexploredEdge == firstChild[v.id] ? lastHorizontalPred[v.id] : pto[children[
+                        v.nextUnexploredEdge - 1]];
+                lastHorizontalPred[child] = lastHor;
+                ++v.nextUnexploredEdge; // When backtracking from child later, look at next sibling
+                activeVertices.emplace(child, firstChild[child]);
             }
-            auto firstEdge = 0; // The index of the first edge out of the current/next vertex.
-            for (auto v = 0; v <= numVertices; ++v) {
-                std::swap(firstEdge, firstChild[v]);
-                firstEdge += firstChild[v];
-            }
-            for (auto v = 0; v < numVertices; ++v) {
-                const auto p = parent[v];
-                if (p == -1 || p == v) // Root of tree may be marked by -1 or edge to self
-                    continue;
-                children[firstChild[p]++] = v;
-            }
-            for (auto v = numVertices - 1; v > 0; --v)
-                firstChild[v] = firstChild[v - 1];
-            firstChild[0] = 0;
+            KASSERT(nextRank == numVertices);
+            KASSERT(pto[numVertices - 1] == numVertices - 1); // root must be last in post traversal order
+            KASSERT(std::all_of(pto.begin(), pto.end(), [&](const auto r) { return r >= 0 && r < numVertices; }));
+            KASSERT(std::all_of(lastHorizontalPred.begin(), lastHorizontalPred.end(),
+                                [&](const auto r) { return r >= -1 && r < numVertices; }));
+
+            return {pto, lastHorizontalPred};
         }
 
 
@@ -381,16 +382,19 @@ namespace karri {
         const RouteState &routeState;
         CH::SearchGraph downGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
         CH::SearchGraph upGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
-        int maxLevel;
-        std::vector<int> level; // Level of vertex in elimination tree from root (lower level means more important)
-        std::vector<int> levelStart;
         std::vector<int> elimTreeParent; // Elimination tree of the CH with vertices ordered by decreasing rank (parent pointers).
         std::vector<int> firstElimTreeChild; // First in range of children in out elimination tree
         std::vector<int> elimTreeChildren; // Array of children in out elimination tree
         std::vector<int> zone; // Zone of each vertex, i.e., the cell ID of the cell that contains the vertex.
 
-        Permutation topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
+        Permutation topDownRankPermutation; // Maps vertex rank to traversal order of sweep.
         Permutation inverseTopDownRankPermutation;
+
+        // w = nextIndependentSubtree[v] is the next vertex in the inverted PTO that is not contained in the subtree
+        // of the elimination tree rooted at v. The subtree rooted at w is entirely independent of the one rooted at
+        // v s.t. when a traversal of the tree in inverted PTO can be pruned at v, it is correct to continue at w.
+        // If the traversal is done after processing the subtree rooted at v, then nextIndependentSubtree[v] == numVertices.
+        std::vector<int> nextIndependentSubtree;
 
         std::vector<int> lowestNeighbor; // lowest (i.e. most important) neighbor in either graph
         std::vector<int> lowestNeighborInSubtree; // lowest (i.e. most important) neighbor in subtree of elimination tree rooted at vertex excluding itself
