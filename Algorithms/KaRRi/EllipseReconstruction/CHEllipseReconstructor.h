@@ -69,11 +69,11 @@ namespace karri {
                   downGraph(chEnv.getCH().downwardGraph()),
                   upGraph(chEnv.getCH().upwardGraph()),
                   elimTreeParent(chEnv.getCCH().getEliminationTree()),
-                  topDownRankPermutation(chEnv.getCH().downwardGraph().numVertices()),
+                  traversalPermutation(chEnv.getCH().downwardGraph().numVertices()),
                   lowestNeighbor(inputGraph.numVertices()),
                   lowestNeighborInSubtree(inputGraph.numVertices()),
                   query([&]() {
-                      return Query(ch, downGraph, upGraph, topDownRankPermutation, inverseTopDownRankPermutation,
+                      return Query(ch, downGraph, upGraph, traversalPermutation, permutedToInputGraphId,
                                    nextIndependentSubtree, ellipticBucketsEnv, routeState, elimTreeParent,
                                    lowestNeighbor, lowestNeighborInSubtree);
                   }),
@@ -104,11 +104,15 @@ namespace karri {
             for (auto &p: lastHorPred)
                 p = numVertices - 1 - p;
 
-            topDownRankPermutation = Permutation(iPto.begin(), iPto.end());
-            inverseTopDownRankPermutation = topDownRankPermutation.getInversePermutation();
+            traversalPermutation = Permutation(iPto.begin(), iPto.end());
+            permutedToInputGraphId = Permutation(numVertices);
+            for (int v = 0; v < numVertices; ++v) {
+                permutedToInputGraphId[traversalPermutation[ch.rank(v)]] = v;
+            }
+            KASSERT(permutedToInputGraphId.validate());
 
             // Permute last horizontal predecessor array due to new vertex order
-            topDownRankPermutation.applyTo(lastHorPred);
+            traversalPermutation.applyTo(lastHorPred);
             KASSERT(lastHorPred[0] == numVertices); // sanity check: root must have invalid last horizontal predecessor
 
             // w = nextIndependentSubtree[v] is the next vertex in the inverted PTO that is not contained in the subtree
@@ -120,13 +124,13 @@ namespace karri {
             }
 
             // Permute tails of in elimination tree
-            topDownRankPermutation.applyTo(elimTreeParent);
+            traversalPermutation.applyTo(elimTreeParent);
 
             // Permute heads of in elimination tree
             for (auto &parent: elimTreeParent) {
                 if (parent == -1) // Root of tree does not have a parent, no need to permute
                     continue;
-                parent = topDownRankPermutation[parent];
+                parent = traversalPermutation[parent];
             }
 
             // Our permuted in elimination tree marks root (rank 0) by being its own parent.
@@ -136,13 +140,13 @@ namespace karri {
             convertInTreeToOutTree(elimTreeParent, firstElimTreeChild, elimTreeChildren);
 
             // Permute search graphs
-            downGraph.permuteVertices(topDownRankPermutation);
+            downGraph.permuteVertices(traversalPermutation);
             downGraph.sortOutgoingEdges();
-            upGraph.permuteVertices(topDownRankPermutation);
+            upGraph.permuteVertices(traversalPermutation);
             upGraph.sortOutgoingEdges();
 
             // Permute zone
-            topDownRankPermutation.applyTo(zone);
+            traversalPermutation.applyTo(zone);
 
             // Compute neighbor with lowest permuted rank (i.e. most important neighbor) in either graph for every
             // vertex. Additionally compute the lowest such neighbor in the subtree of the elimination tree rooted at
@@ -186,8 +190,8 @@ namespace karri {
                 const int vehId = routeState.vehicleIdOf(stopId);
                 const int stopIdx = routeState.stopPositionOf(stopId);
                 const auto locs = routeState.stopLocationsFor(vehId);
-                const int firstStopHead = topDownRankPermutation[ch.rank(inputGraph.edgeHead(locs[stopIdx]))];
-                const int secondStopTail = topDownRankPermutation[ch.rank(inputGraph.edgeTail(locs[stopIdx + 1]))];
+                const int firstStopHead = traversalPermutation[ch.rank(inputGraph.edgeHead(locs[stopIdx]))];
+                const int secondStopTail = traversalPermutation[ch.rank(inputGraph.edgeTail(locs[stopIdx + 1]))];
                 stopPairZones[i] = {zone[firstStopHead], zone[secondStopTail]};
             }
             std::vector<int> order(numEllipses);
@@ -387,8 +391,8 @@ namespace karri {
         std::vector<int> elimTreeChildren; // Array of children in out elimination tree
         std::vector<int> zone; // Zone of each vertex, i.e., the cell ID of the cell that contains the vertex.
 
-        Permutation topDownRankPermutation; // Maps vertex rank to traversal order of sweep.
-        Permutation inverseTopDownRankPermutation;
+        Permutation traversalPermutation; // Maps vertex rank to traversal order of sweep.
+        Permutation permutedToInputGraphId; // Maps vertex ID in permutation to vertex ID in input graph
 
         // w = nextIndependentSubtree[v] is the next vertex in the inverted PTO that is not contained in the subtree
         // of the elimination tree rooted at v. The subtree rooted at w is entirely independent of the one rooted at

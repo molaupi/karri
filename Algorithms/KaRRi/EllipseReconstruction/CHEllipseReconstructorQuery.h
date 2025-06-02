@@ -59,8 +59,8 @@ namespace karri {
                   numVertices(downGraph.numVertices()),
                   downGraph(downGraph),
                   upGraph(upGraph),
-                  topDownRankPermutation(topDownRankPermutation),
-                  inverseTopDownRankPermutation(inverseTopDownRankPermutation),
+                  traversalPermutation(topDownRankPermutation),
+                  permutedToInputGraphId(inverseTopDownRankPermutation),
                   nextIndependentSubtree(nextIndependentSubtree),
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   routeState(routeState),
@@ -107,7 +107,7 @@ namespace karri {
 
             initTime += timer.elapsed<std::chrono::nanoseconds>();
 
-            static constexpr bool TRACK_NUM_EDGES_RELAXED = true;
+            static constexpr bool TRACK_NUM_EDGES_RELAXED = false;
             timer.restart();
             int numEdgesRelaxed = 0;
 
@@ -232,7 +232,7 @@ namespace karri {
             for (const auto &e: ranksWithSourceBucketEntries) {
 
                 // Map to vertex ordering of CH graphs used
-                const auto r = topDownRankPermutation[e.rank];
+                const auto r = traversalPermutation[e.rank];
 
                 if (!isInitialized.isSet(r)) {
                     // Distances for input ranks are initialized here. Distances of other ranks are initialized
@@ -261,7 +261,7 @@ namespace karri {
 
             for (const auto &e: ranksWithTargetBucketEntries) {
                 // Map to vertex ordering of CH graphs used
-                const auto r = topDownRankPermutation[e.rank];
+                const auto r = traversalPermutation[e.rank];
 
                 if (!isInitialized.isSet(r)) {
                     // Distances for input ranks are initialized here. Distances of other ranks are initialized
@@ -333,8 +333,7 @@ namespace karri {
             for (auto &ellipse: ellipses)
                 ellipse.reserve(verticesInAnyEllipse.size());
             for (const auto &r: verticesInAnyEllipse) {
-                const auto originalRank = inverseTopDownRankPermutation[r]; // Reverse permutation in search graphs
-                const int vertex = ch.contractionOrder(originalRank);
+                const int vertex = permutedToInputGraphId[r]; // vertex ID in input graph
 
                 const auto &distFromVertex = distFrom[r];
                 const auto &distToVertex = distTo[r];
@@ -358,8 +357,8 @@ namespace karri {
         const size_t numVertices;
         const CH::SearchGraph &downGraph; // Reverse downward edges in CH. Vertices ordered by decreasing rank.
         const CH::SearchGraph &upGraph; // Upward edges in CH. Vertices ordered by decreasing rank.
-        const Permutation &topDownRankPermutation; // Maps vertex rank to n - rank in order to linearize top-down passes.
-        const Permutation &inverseTopDownRankPermutation;
+        const Permutation &traversalPermutation; // Maps vertex rank in CH to rank in traversal order.
+        const Permutation &permutedToInputGraphId; // Maps rank in traversal order to vertex ID in input graph
         const std::vector<int> &nextIndependentSubtree;
         const EllipticBucketsEnvironmentT &ellipticBucketsEnv;
         const RouteState &routeState;
