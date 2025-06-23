@@ -32,9 +32,6 @@
 #include "DataStructures/Containers/TimestampedVector.h"
 #include "CHEllipseReconstructorQuery.h"
 
-#include <tbb/parallel_for.h>
-#include <tbb/enumerable_thread_specific.h>
-
 namespace karri {
 
     // Computes the set of vertices contained in the detour ellipse between a pair of consecutive stops in a vehicle
@@ -72,11 +69,9 @@ namespace karri {
                   traversalPermutation(chEnv.getCH().downwardGraph().numVertices()),
                   lowestNeighbor(inputGraph.numVertices()),
                   lowestNeighborInSubtree(inputGraph.numVertices()),
-                  query([&]() {
-                      return Query(ch, downGraph, upGraph, traversalPermutation, permutedToInputGraphId,
+                  query(ch, downGraph, upGraph, traversalPermutation, permutedToInputGraphId,
                                    nextIndependentSubtree, ellipticBucketsEnv, routeState, elimTreeParent,
-                                   lowestNeighbor, lowestNeighborInSubtree);
-                  }),
+                                   lowestNeighbor, lowestNeighborInSubtree),
                   logger(LogManager<LoggerT>::getLogger("ch_ellipse_reconstruction.csv",
                                                         "num_ellipses,"
                                                         "init_time,"
@@ -204,39 +199,36 @@ namespace karri {
 
             std::vector<std::vector<VertexInEllipse>> ellipses;
             ellipses.resize(numEllipses);
-            tbb::parallel_for(0ul, numBatches, [&](size_t i) {
-                auto &localQuery = query.local();
-                auto &localStats = queryStats.local();
+            for (auto i = 0; i < numBatches; ++i) {
                 std::vector<int> batchStopIds;
                 for (int j = 0; j < K && i * K + j < numEllipses; ++j) {
                     batchStopIds.push_back(stopIds[order[i * K + j]]);
                 }
-                auto batchResult = localQuery.run(batchStopIds, localStats.numVerticesSettled,
-                                                  localStats.numEdgesRelaxed, localStats.numVerticesInAnyEllipse,
-                                                  localStats.initTime,
-                                                  localStats.topoSearchTime, localStats.postprocessTime);
+                auto batchResult = query.run(batchStopIds, queryStats.numVerticesSettled,
+                                             queryStats.numEdgesRelaxed, queryStats.numVerticesInAnyEllipse,
+                                             queryStats.initTime,
+                                             queryStats.topoSearchTime, queryStats.postprocessTime);
                 for (int j = 0; j < K && i * K + j < numEllipses; ++j) {
                     ellipses[order[i * K + j]].swap(batchResult[j]);
                 }
-            });
+            }
 
             int64_t totalInitTime = 0;
             int64_t totalTopoSearchTime = 0;
             int64_t totalPostprocessTime = 0;
-            for (auto &localStats: queryStats) {
-                totalNumVerticesSettled += localStats.numVerticesSettled;
-                totalNumEdgesRelaxed += localStats.numEdgesRelaxed;
-                totalNumVerticesInAnyEllipse += localStats.numVerticesInAnyEllipse;
-                totalInitTime += localStats.initTime;
-                totalTopoSearchTime += localStats.topoSearchTime;
-                totalPostprocessTime += localStats.postprocessTime;
-                localStats.numVerticesSettled = 0;
-                localStats.numEdgesRelaxed = 0;
-                localStats.numVerticesInAnyEllipse = 0;
-                localStats.initTime = 0;
-                localStats.topoSearchTime = 0;
-                localStats.postprocessTime = 0;
-            }
+            totalNumVerticesSettled += queryStats.numVerticesSettled;
+            totalNumEdgesRelaxed += queryStats.numEdgesRelaxed;
+            totalNumVerticesInAnyEllipse += queryStats.numVerticesInAnyEllipse;
+            totalInitTime += queryStats.initTime;
+            totalTopoSearchTime += queryStats.topoSearchTime;
+            totalPostprocessTime += queryStats.postprocessTime;
+            queryStats.numVerticesSettled = 0;
+            queryStats.numEdgesRelaxed = 0;
+            queryStats.numVerticesInAnyEllipse = 0;
+            queryStats.initTime = 0;
+            queryStats.topoSearchTime = 0;
+            queryStats.postprocessTime = 0;
+
 
             const auto totalTime = timer.elapsed<std::chrono::nanoseconds>();
 
@@ -403,8 +395,8 @@ namespace karri {
         std::vector<int> lowestNeighbor; // lowest (i.e. most important) neighbor in either graph
         std::vector<int> lowestNeighborInSubtree; // lowest (i.e. most important) neighbor in subtree of elimination tree rooted at vertex excluding itself
 
-        tbb::enumerable_thread_specific<QueryStats> queryStats;
-        tbb::enumerable_thread_specific<Query> query;
+        QueryStats queryStats;
+        Query query;
 
         LoggerT &logger;
     };
