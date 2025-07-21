@@ -202,8 +202,8 @@ batchDispatchPerfStats <- function(file_base, num_threads = 1) {
   )
   
   print(paste0("Max num iterations: ", max(stats$num_iterations)))
-  print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
-  print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
+  # print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
+  # print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
   print(paste0("Max num requests: ", max(stats$num_requests)))
   
   means <- apply(stats,2,mean)

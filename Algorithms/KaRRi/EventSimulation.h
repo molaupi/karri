@@ -325,8 +325,10 @@ namespace karri {
 
             // Find an assignment for each request in requestBatch. May require multiple rounds for some requests
             // if there are conflicting assignments.
+
             int iteration = 0;
-            while (!requestBatch.empty()) {
+            if (!requestBatch.empty()){
+//            while (!requestBatch.empty()) {
                 ++iteration;
                 const auto iterationNumRequests = requestBatch.size();
 
@@ -368,22 +370,24 @@ namespace karri {
                 }
 
                 // To avoid conflicts, we only accept one assignment per vehicle. If there are multiple assignments to
-                // the same vehicle, only one of them is accepted, while the others are postponed for a second run of
-                // assignments.
-                std::vector<int> orderOfVehicle(requestBatch.size());
-                std::iota(orderOfVehicle.begin(), orderOfVehicle.end(), 0);
-                std::sort(orderOfVehicle.begin(), orderOfVehicle.end(), [&](const auto &i1, const auto &i2) {
+                // the same vehicle, only one of them is accepted, while the others are postponed for the next request
+                // batch. Already postponed assignments have priority over new assignments to reduce maximum wait time.
+                std::vector<int> order(requestBatch.size());
+                std::iota(order.begin(), order.end(), 0);
+                std::sort(order.begin(), order.end(), [&](const auto &i1, const auto &i2) {
                     LIGHT_KASSERT(
                             responses[i1].getBestAssignment().vehicle && responses[i2].getBestAssignment().vehicle);
                     const auto &vehId1 = responses[i1].getBestAssignment().vehicle->vehicleId;
                     const auto &vehId2 = responses[i2].getBestAssignment().vehicle->vehicleId;
-                    return vehId1 < vehId2;
+                    const auto &time1 = responses[i1].originalRequest.requestTime;
+                    const auto &time2 = responses[i2].originalRequest.requestTime;
+                    return (vehId1 < vehId2) || (vehId1 == vehId2 && time1 < time2);
                 });
-                Permutation orderOfVehiclePerm(orderOfVehicle.begin(), orderOfVehicle.end());
-                orderOfVehiclePerm.invert();
-                orderOfVehiclePerm.applyTo(requestBatch);
-                orderOfVehiclePerm.applyTo(responses);
-                orderOfVehiclePerm.applyTo(stats);
+                Permutation orderPerm(order.begin(), order.end());
+                orderPerm.invert();
+                orderPerm.applyTo(requestBatch);
+                orderPerm.applyTo(responses);
+                orderPerm.applyTo(stats);
                 std::vector<int> accepted;
                 int lastAcceptedVehId = INVALID_ID;
                 for (int i = 0; i < requestBatch.size(); ++i) {
