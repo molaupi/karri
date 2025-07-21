@@ -97,6 +97,9 @@ public:
     // The transformation must be callable with a single entry of type BucketEntryT& as an argument and must return
     // bool stating whether an update was performed.
     // Returns true if any entry was updated and false otherwise.
+    // Only affects entries of vertex v. May update entries of v and change their order within the bucket but does
+    // not affect anything else. Thus, this is safe to call in parallel over multiple vertices (as long as calls to
+    // transform and comp are thread-safe).
     template<typename TransformationT>
     bool updateAllEntries(const int v, const TransformationT &transform, int64_t &numEntriesVisited) {
         KASSERT(v >= 0);

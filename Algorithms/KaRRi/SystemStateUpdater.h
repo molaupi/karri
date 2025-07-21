@@ -329,18 +329,25 @@ namespace karri {
             // Update leeway in elliptic bucket entries of stops in routes of affected vehicles.
             int64_t totalNumEntriesScannedForSourceUpdates = 0;
             int64_t totalNumEntriesScannedForTargetUpdates = 0;
-            for (auto respIt = asgnFinderResponses.begin(), statsIt = statss.begin();
-                 respIt != asgnFinderResponses.end(); ++respIt, ++statsIt) {
-                updateLeewaysInSourceBucketsForAllStopsOf(
-                        respIt->getBestAssignment().vehicle->vehicleId, statsIt->updateStats);
-                int64_t numEntriesScannedForSource = statsIt->updateStats.elliptic_update_numEntriesScanned;
-                updateLeewaysInTargetBucketsForAllStopsOf(
-                        respIt->getBestAssignment().vehicle->vehicleId, statsIt->updateStats);
-                int64_t numEntriesScannedForTarget =
-                        statsIt->updateStats.elliptic_update_numEntriesScanned - numEntriesScannedForSource;
-                totalNumEntriesScannedForSourceUpdates += numEntriesScannedForSource;
-                totalNumEntriesScannedForTargetUpdates += numEntriesScannedForTarget;
+            int64_t totelNumVerticesVisitedForSourceUpdates = 0;
+            int64_t totalNumVerticesVisitedForTargetUpdates = 0;
+            Subset affectedVehicles(fleet.size());
+            affectedVehicles.clear();
+            for (const auto &resp: asgnFinderResponses) {
+                affectedVehicles.insert(resp.getBestAssignment().vehicle->vehicleId);
             }
+            if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
+                ellipticBucketsEnv.addSourceBucketLeewayUpdates(affectedVehicles,
+                                                                totalNumEntriesScannedForSourceUpdates,
+                                                                totelNumVerticesVisitedForSourceUpdates);
+                ellipticBucketsEnv.addTargetBucketLeewayUpdates(affectedVehicles,
+                                                                totalNumEntriesScannedForTargetUpdates,
+                                                                totalNumVerticesVisitedForTargetUpdates);
+                ellipticBucketsEnv.commitSourceBucketLeewayUpdatesParallel(affectedVehicles);
+                ellipticBucketsEnv.commitTargetBucketLeewayUpdatesParallel(affectedVehicles);
+            }
+            totalNumEntriesScannedForSourceUpdates *= 2; // entries are scanned again for updates
+            totalNumEntriesScannedForTargetUpdates *= 2; // entries are scanned again for updates
             const auto updateLeewaysTime = timer.elapsed<std::chrono::nanoseconds>();
 
             for (auto respIt = asgnFinderResponses.begin(), statsIt = statss.begin();
