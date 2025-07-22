@@ -95,6 +95,8 @@ int main(int argc, char *argv[]) {
         }
         std::cout << "done.\n";
 
+        std::cout << "|V| = " << inputGraph.numVertices() << std::endl;
+        std::cout << "|E| = " << inputGraph.numEdges() << "\n" << std::endl;
 
         if (inputGraph.get<CapacityAttribute>(0) != CapacityAttribute::defaultValue())
             std::cout << "Has CapacityAttribute." << std::endl;
