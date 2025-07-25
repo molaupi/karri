@@ -103,6 +103,7 @@ using PsgVertexAttributes = VertexAttrs<
 using PsgEdgeAttributes = EdgeAttrs<
         PsgEdgeToCarEdgeAttribute,
         LengthAttribute,
+        TravelTimeAttribute,
         OsmRoadCategoryAttribute
 >;
 using PsgGraphT = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
