@@ -75,11 +75,12 @@ namespace karri {
                 KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
                 const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
                 const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
-                const int destOffset = psgInputGraph.travelTime(destInPsgGraph);
+                const int destOffset = psgInputGraph.length(destInPsgGraph);
 
                 psgChQuery.run(originHeadRank, destTailRank);
-                const auto totalDist = psgChQuery.getDistance() + destOffset;
-                requestState.tryNotUsingVehicleAssignment(totalDist, destOffset);
+                const auto totalWalkingDist = psgChQuery.getDistance() + destOffset;
+                const auto totalWalkingTime = static_cast<int>(std::round(10.0 * static_cast<double>(totalWalkingDist) / req.walkingSpeed));
+                requestState.tryNotUsingVehicleAssignment(totalWalkingTime);
 
                 const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
                 stats.notUsingVehicleTime = notUsingVehiclesTime;

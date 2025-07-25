@@ -36,5 +36,9 @@ namespace karri {
         int destination = INVALID_EDGE;
         int requestTime = INFTY;
         int numRiders = INFTY;
+
+        int maxPickupWalkingDist = 0; // Maximum walking distance in meters from the origin to the pickup location
+        int maxDropoffWalkingDist = 0; // Maximum walking distance in meters from the destination to the dropoff location
+        double walkingSpeed = 1.3889; // Walking speed in m/s (default: 5 km/h)
     };
 }

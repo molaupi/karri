@@ -106,8 +106,8 @@ namespace karri {
             return false;
         }
 
-        void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
-            const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this);
+        void tryNotUsingVehicleAssignment(const int notUsingVehDist) {
+            const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, *this);
             if (cost < bestCost) {
                 bestAssignment = Assignment();
                 bestCost = cost;

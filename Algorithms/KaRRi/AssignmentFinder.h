@@ -84,7 +84,7 @@ namespace karri {
 
             // Initialize finder for this request, find PD locations:
             RequestState rs = requestStateInitializer.initializeRequestState(req, now, stats.initializationStats);
-            PDLocs pdLocs = pdLocsFinder.findPDLocs(req.origin, req.destination, stats.initializationStats);
+            PDLocs pdLocs = pdLocsFinder.findPDLocs(req.origin, req.destination, req.maxPickupWalkingDist, req.maxDropoffWalkingDist, req.walkingSpeed, stats.initializationStats);
             stats.numPickups = pdLocs.numPickups();
             stats.numDropoffs = pdLocs.numDropoffs();
             initializeComponentsForRequest(rs, pdLocs, stats);

@@ -38,7 +38,6 @@
 #include "DataStructures/Graph/Attributes/LatLngAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
-#include "DataStructures/Graph/Attributes/FreeFlowSpeedAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
 #include "DataStructures/Graph/Attributes/TravelTimeAttribute.h"
 #include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
@@ -135,8 +134,9 @@ inline void printUsage() {
               "  -a <factor>            model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
               "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
               "  -i <seconds>           interval duration for batch of requests in seconds (dflt: 60)\n"
-              "  -p-radius <sec>        walking radius (in s) for pickup locations around origin. (dflt: 300s)\n"
-              "  -d-radius <sec>        walking radius (in s) for dropoff locations around destination. (dflt: 300s)\n"
+              "  -p-radius <m>          default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
+              "  -d-radius <m>          default walking radius (in m) for dropoff locations around destination if not specified by request (dflt: 417m = 5min at 5km/h)\n"
+              "  -walk-speed <m/s>      default walking speed (in m/s) if not specified by request (dflt: 1.3889m/s = 5km/h)\n"
               "  -max-num-p <int>       max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
               "  -max-num-d <int>       max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
               "  -always-veh            if set, the rider is not allowed to walk to their destination without a vehicle trip.\n"
@@ -174,8 +174,11 @@ int main(int argc, char *argv[]) {
         InputConfig &inputConfig = InputConfig::getInstance();
         inputConfig.stopTime = clp.getValue<int>("s", 60) * 10;
         inputConfig.maxWaitTime = clp.getValue<int>("w", 300) * 10;
-        inputConfig.pickupRadius = clp.getValue<int>("p-radius", inputConfig.maxWaitTime / 10) * 10;
-        inputConfig.dropoffRadius = clp.getValue<int>("d-radius", inputConfig.maxWaitTime / 10) * 10;
+        const int defaultPickupWalkRadius = clp.getValue<int>("p-radius", 417); // 417 m = 5 min at 5 km/h
+        const int defaultDropoffWalkRadius = clp.getValue<int>("d-radius", 417); // 417 m = 5 min at 5 km/h
+        const double defaultWalkingSpeed = clp.getValue<double>("walk-speed", 1.3889); // 5 km/h = 1.3889 m/s
+//        inputConfig.pickupRadius = clp.getValue<int>("p-radius", inputConfig.maxWaitTime / 10) * 10;
+//        inputConfig.dropoffRadius = clp.getValue<int>("d-radius", inputConfig.maxWaitTime / 10) * 10;
         inputConfig.maxNumPickups = clp.getValue<int>("max-num-p", INFTY);
         inputConfig.maxNumDropoffs = clp.getValue<int>("max-num-d", INFTY);
         inputConfig.alwaysUseVehicle = clp.isSet("always-veh");
@@ -204,7 +207,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Reading vehicle network from file... " << std::flush;
         using VehicleVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
         using VehicleEdgeAttributes = EdgeAttrs<
-                EdgeIdAttribute, EdgeTailAttribute, FreeFlowSpeedAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute>;
+                EdgeIdAttribute, EdgeTailAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute>;
         using VehicleInputGraph = StaticGraph<VehicleVertexAttributes, VehicleEdgeAttributes>;
         std::ifstream vehicleNetworkFile(vehicleNetworkFileName, std::ios::binary);
         if (!vehicleNetworkFile.good())
@@ -239,7 +242,7 @@ int main(int argc, char *argv[]) {
         // Read the passenger network from file.
         std::cout << "Reading passenger network from file... " << std::flush;
         using PsgVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
-        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, PsgEdgeToCarEdgeAttribute, TravelTimeAttribute>;
+        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, PsgEdgeToCarEdgeAttribute, LengthAttribute>;
         using PsgInputGraph = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
         std::ifstream psgNetworkFile(passengerNetworkFileName, std::ios::binary);
         if (!psgNetworkFile.good())
@@ -312,18 +315,22 @@ int main(int argc, char *argv[]) {
         // Read the request data from file.
         std::cout << "Reading request data from file... " << std::flush;
         std::vector<Request> requests;
-        int origin, destination, requestTime, numRiders;
-        io::CSVReader<4, io::trim_chars<' '>> reqFileReader(requestFileName);
+        int origin, destination, requestTime, numRiders, pickupWalkingRadiusInM, dropoffWalkingRadiusInM;
+        double walkingSpeedInMps;
+        io::CSVReader<7, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
             reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time",
-                                      "num_riders");
+                                      "num_riders", "pickup_walking_radius", "dropoff_walking_radius", "walking_speed");
         } else {
-            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders");
+            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders", "pickup_walking_radius", "dropoff_walking_radius", "walking_speed");
         }
 
-        numRiders = -1;
-        while (reqFileReader.read_row(origin, destination, requestTime, numRiders)) {
+        numRiders = 1; // If number of riders was not specified, assume one rider
+        pickupWalkingRadiusInM = defaultPickupWalkRadius;
+        dropoffWalkingRadiusInM = defaultDropoffWalkRadius;
+        walkingSpeedInMps = defaultWalkingSpeed;
+        while (reqFileReader.read_row(origin, destination, requestTime, numRiders, pickupWalkingRadiusInM, dropoffWalkingRadiusInM, walkingSpeedInMps)) {
             if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
             if (destination < 0 || destination >= vehGraphOrigIdToSeqId.size() ||
@@ -338,10 +345,12 @@ int main(int argc, char *argv[]) {
             const auto destSeqId = vehGraphOrigIdToSeqId[destination];
             assert(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const int requestId = static_cast<int>(requests.size());
-            if (numRiders == -1) // If number of riders was not specified, assume one rider
-                numRiders = 1;
-            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders});
-            numRiders = -1;
+            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders, pickupWalkingRadiusInM, dropoffWalkingRadiusInM, walkingSpeedInMps});
+            // Reset defaults in case next request does not specify all values
+            numRiders = 1;
+            pickupWalkingRadiusInM = defaultPickupWalkRadius;
+            dropoffWalkingRadiusInM = defaultDropoffWalkRadius;
+            walkingSpeedInMps = defaultWalkingSpeed;
         }
         std::cout << "done.\n";
 
@@ -368,7 +377,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Prepare passenger CH environment
-        using PsgCHEnv = CCHEnvironment<PsgInputGraph , TravelTimeAttribute>;
+        using PsgCHEnv = CCHEnvironment<PsgInputGraph , LengthAttribute>;
         std::unique_ptr<PsgCHEnv> psgChEnv;
         if (psgSepDecompFileName.empty()) {
             std::cout << "Building Separator Decomposition and CCH... " << std::flush;
@@ -408,7 +417,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Prepare passenger CH environment
-        using PsgCHEnv = CHEnvironment<PsgInputGraph, TravelTimeAttribute>;
+        using PsgCHEnv = CHEnvironment<PsgInputGraph, LengthAttribute>;
         std::unique_ptr<PsgCHEnv> psgChEnv;
         if (psgHierarchyFileName.empty()) {
             std::cout << "Building passenger CH... " << std::flush;

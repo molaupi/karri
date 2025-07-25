@@ -93,14 +93,14 @@ namespace karri {
             return cost;
         }
 
-        static constexpr inline int calcWalkingCost(const int walkingDist, const int) {
-            // Time is money => walking time is part of passengers trip time so do not count it again
+        // Walking cost based on time spent walking, i.e. given dist is a time, not distance.
+        static constexpr inline int calcWalkingCost(const int walkingDist) {
             return WALKING_COST_SCALE * walkingDist;
         }
 
+        // Walking cost based on time spent walking, i.e. given dist is a time, not distance.
         template<typename DistanceLabel>
-        static constexpr inline DistanceLabel calcKWalkingCosts(const DistanceLabel &walkingDist, const int) {
-            // Time is money => walking time is part of passengers trip time so do not count it again
+        static constexpr inline DistanceLabel calcKWalkingCosts(const DistanceLabel &walkingDist) {
             auto cost = walkingDist;
             cost.multiplyWithScalar(WALKING_COST_SCALE);
             return cost;
