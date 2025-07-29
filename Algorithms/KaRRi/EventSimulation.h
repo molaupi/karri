@@ -306,9 +306,13 @@ namespace karri {
 
         void dispatchRequestBatch() {
 
-            Timer timer;
-
             const int now = nextRequestBatchDeadline;
+            nextRequestBatchDeadline += InputConfig::getInstance().requestBatchInterval;
+
+            if (requestBatch.empty())
+                return;
+
+            Timer timer;
 
             std::vector<stats::DispatchingPerformanceStats> stats(requestBatch.size());
 
@@ -427,8 +431,6 @@ namespace karri {
                                          << iterationUpdateSystemStateTime << '\n';
                 numEllipticBucketEntryDeletions = 0; // Deletions are associated with first iteration.
             }
-
-            nextRequestBatchDeadline += InputConfig::getInstance().requestBatchInterval;
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << now << ",RequestBatchDispatch," << time << '\n';
