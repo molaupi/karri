@@ -125,29 +125,31 @@ inline void printUsage() {
               "Usage: karri -veh-g <vehicle network> -psg-g <passenger network> -r <requests> -v <vehicles> -o <file>\n"
               "Runs Karlsruhe Rapid Ridesharing (KaRRi) simulation with given vehicle and passenger road networks,\n"
               "requests, and vehicles. Writes output files to specified base path."
-              "  -veh-g <file>          vehicle road network in binary format.\n"
-              "  -psg-g <file>          passenger road (and path) network in binary format.\n"
-              "  -r <file>              requests in CSV format.\n"
-              "  -v <file>              vehicles in CSV format.\n"
-              "  -s <sec>               stop time (in s). (dflt: 60s)\n"
-              "  -w <sec>               maximum wait time (in s). (dflt: 300s)\n"
-              "  -a <factor>            model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
-              "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
-              "  -i <seconds>           interval duration for batch of requests in seconds (dflt: 60)\n"
-              "  -p-radius <m>          default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
-              "  -d-radius <m>          default walking radius (in m) for dropoff locations around destination if not specified by request (dflt: 417m = 5min at 5km/h)\n"
-              "  -walk-speed <m/s>      default walking speed (in m/s) if not specified by request (dflt: 1.3889m/s = 5km/h)\n"
-              "  -max-num-p <int>       max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
-              "  -max-num-d <int>       max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
-              "  -always-veh            if set, the rider is not allowed to walk to their destination without a vehicle trip.\n"
-              "  -veh-h <file>          contraction hierarchy for the vehicle network in binary format.\n"
-              "  -psg-h <file>          contraction hierarchy for the passenger network in binary format.\n"
-              "  -veh-d <file>          separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
-              "  -psg-d <file>          separator decomposition for the passenger network in binary format (needed for CCHs).\n"
-              "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
-              "  -max-num-threads <int> set the maximum number of threads to use (dflt: 1).\n"
-              "  -o <file>              generate output files at name <file> (specify name without file suffix).\n"
-              "  -help                  show usage help text.\n";
+              "  -veh-g <file>              vehicle road network in binary format.\n"
+              "  -psg-g <file>              passenger road (and path) network in binary format.\n"
+              "  -r <file>                  requests in CSV format.\n"
+              "  -v <file>                  vehicles in CSV format.\n"
+              "  -s <sec>                   stop time (in s). (dflt: 60s)\n"
+              "  -w <sec>                   maximum wait time (in s). (dflt: 300s)\n"
+              "  -a <factor>                model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
+              "  -b <seconds>               model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
+              "  -i <seconds>               interval duration for batch of requests in seconds (dflt: 60)\n"
+              "  -p-radius <m>              default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
+              "  -d-radius <m>              default walking radius (in m) for dropoff locations around destination if not specified by request (dflt: 417m = 5min at 5km/h)\n"
+              "  -force-default-radius      if set, forces the use of the default walking radius for all requests, even if they specify their own radius.\n"
+              "  -walk-speed <m/s>          default walking speed (in m/s) if not specified by request (dflt: 1.3889m/s = 5km/h)\n"
+              "  -force-default-walk-speed  if set, forces the use of the default walking speed for all requests, even if they specify their own speed.\n"
+              "  -max-num-p <int>           max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
+              "  -max-num-d <int>           max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
+              "  -always-veh                if set, the rider is not allowed to walk to their destination without a vehicle trip.\n"
+              "  -veh-h <file>              contraction hierarchy for the vehicle network in binary format.\n"
+              "  -psg-h <file>              contraction hierarchy for the passenger network in binary format.\n"
+              "  -veh-d <file>              separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
+              "  -psg-d <file>              separator decomposition for the passenger network in binary format (needed for CCHs).\n"
+              "  -csv-in-LOUD-format        if set, assumes that input files are in the format used by LOUD.\n"
+              "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1).\n"
+              "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
+              "  -help                      show usage help text.\n";
 }
 
 int main(int argc, char *argv[]) {
@@ -330,6 +332,8 @@ int main(int argc, char *argv[]) {
         pickupWalkingRadiusInM = defaultPickupWalkRadius;
         dropoffWalkingRadiusInM = defaultDropoffWalkRadius;
         walkingSpeedInMps = defaultWalkingSpeed;
+        const bool forceDefaultRadius = clp.isSet("force-default-radius");
+        const bool forceDefaultWalkingSpeed = clp.isSet("force-default-walk-speed");
         while (reqFileReader.read_row(origin, destination, requestTime, numRiders, pickupWalkingRadiusInM, dropoffWalkingRadiusInM, walkingSpeedInMps)) {
             if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
@@ -344,6 +348,14 @@ int main(int argc, char *argv[]) {
             assert(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const auto destSeqId = vehGraphOrigIdToSeqId[destination];
             assert(vehicleInputGraph.toPsgEdge(destSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
+            if (forceDefaultRadius) {
+                pickupWalkingRadiusInM = defaultPickupWalkRadius;
+                dropoffWalkingRadiusInM = defaultDropoffWalkRadius;
+            }
+            if (forceDefaultWalkingSpeed) {
+                walkingSpeedInMps = defaultWalkingSpeed;
+            }
+
             const int requestId = static_cast<int>(requests.size());
             requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders, pickupWalkingRadiusInM, dropoffWalkingRadiusInM, walkingSpeedInMps});
             // Reset defaults in case next request does not specify all values
