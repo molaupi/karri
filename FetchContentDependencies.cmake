@@ -27,12 +27,12 @@ FetchContent_Declare(
         OVERRIDE_FIND_PACKAGE # Set so find_package(nlohmann_json) call in proj can redirect to this
 )
 
-# Declare proj dependency
-FetchContent_Declare(
-        proj
-        URL https://download.osgeo.org/proj/proj-9.5.0.tar.gz
-        URL_MD5 ac46b4e31562890d012ea6b31e579cf6
-)
+## Declare proj dependency
+#FetchContent_Declare(
+#        proj
+#        URL https://download.osgeo.org/proj/proj-9.5.0.tar.gz
+#        URL_MD5 ac46b4e31562890d012ea6b31e579cf6
+#)
 
 # Fetch kassert
 message("Fetching kassert library...")
@@ -72,11 +72,13 @@ file(APPEND
         "\n# Manually added PACKAGE_VERSION variable\nset(PACKAGE_VERSION ${nlohmann_json_VERSION})"
 )
 
-# Fetch proj
-message("Fetching proj library...")
-set(BUILD_APPS OFF)
-set(BUILD_TESTING OFF)
-set(ENABLE_CURL OFF)
-set(ENABLE_TIFF OFF)
-set(TESTING_USE_NETWORK OFF)
-FetchContent_MakeAvailable(proj)
+## Fetch proj
+#message("Fetching proj library...")
+#set(BUILD_APPS OFF)
+#set(BUILD_TESTING OFF)
+#set(ENABLE_CURL OFF)
+#set(ENABLE_TIFF OFF)
+#set(TESTING_USE_NETWORK OFF)
+#FetchContent_MakeAvailable(proj)
+
+find_library(PROJ_LIBRARY proj)

@@ -23,6 +23,10 @@
 # SOFTWARE.
 # ******************************************************************************
 
+add_executable(FindRegioStaRClass FindRegioStaRClass.cc)
+target_compile_definitions(FindRegioStaRClass PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(FindRegioStaRClass PRIVATE ${FULL_WARNINGS})
+target_link_libraries(FindRegioStaRClass ${PROJ_LIBRARY} kassert fast_cpp_csv_parser nlohmann_json)
 
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
