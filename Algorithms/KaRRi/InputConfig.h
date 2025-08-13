@@ -50,8 +50,10 @@ namespace karri {
         int dropoffRadius = -1;
         int maxNumPickups = -1;
         int maxNumDropoffs = -1;
-        double alpha = -1;
+        double alpha = -1.0;
         int beta = -1;
+        double epsilon = -1.0;
+        int phi = -1;
         bool alwaysUseVehicle = false;
     };
 

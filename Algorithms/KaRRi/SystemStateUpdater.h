@@ -56,64 +56,65 @@ namespace karri {
                   ellipticBucketsEnv(ellipticBucketsEnv),
                   lastStopBucketsEnv(lastStopBucketsEnv),
                   bestAssignmentsLogger(LogManager<LoggerT>::getLogger("bestassignments.csv",
-                                                                       "request_id, "
-                                                                       "request_time, "
-                                                                       "direct_od_dist, "
-                                                                       "vehicle_id, "
-                                                                       "pickup_insertion_point, "
-                                                                       "dropoff_insertion_point, "
-                                                                       "dist_to_pickup, "
-                                                                       "dist_from_pickup, "
-                                                                       "dist_to_dropoff, "
-                                                                       "dist_from_dropoff, "
-                                                                       "pickup_id, "
-                                                                       "pickup_walking_dist, "
-                                                                       "dropoff_id, "
-                                                                       "dropoff_walking_dist, "
-                                                                       "num_stops, "
-                                                                       "veh_dep_time_at_stop_before_pickup, "
-                                                                       "veh_dep_time_at_stop_before_dropoff, "
-                                                                       "not_using_vehicle, "
+                                                                       "request_id,"
+                                                                       "request_time,"
+                                                                       "direct_od_dist,"
+                                                                       "vehicle_id,"
+                                                                       "pickup_insertion_point,"
+                                                                       "dropoff_insertion_point,"
+                                                                       "dist_to_pickup,"
+                                                                       "dist_from_pickup,"
+                                                                       "dist_to_dropoff,"
+                                                                       "dist_from_dropoff,"
+                                                                       "pickup_id,"
+                                                                       "pickup_walking_dist,"
+                                                                       "dropoff_id,"
+                                                                       "dropoff_walking_dist,"
+                                                                       "num_stops,"
+                                                                       "veh_dep_time_at_stop_before_pickup,"
+                                                                       "veh_dep_time_at_stop_before_dropoff,"
+                                                                       "not_using_vehicle,"
+                                                                       "accepted,"
                                                                        "cost\n")),
                   overallPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::DispatchingPerformanceStats::LOGGER_NAME,
-                                                         "request_id, " +
+                                                         "request_id," +
                                                          std::string(stats::DispatchingPerformanceStats::LOGGER_COLS))),
                   initializationPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::InitializationPerformanceStats::LOGGER_NAME,
-                                                         "request_id, " +
+                                                         "request_id," +
                                                          std::string(
                                                                  stats::InitializationPerformanceStats::LOGGER_COLS))),
                   ellipticBchPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::EllipticBCHPerformanceStats::LOGGER_NAME,
-                                                         "request_id, " +
+                                                         "request_id," +
                                                          std::string(stats::EllipticBCHPerformanceStats::LOGGER_COLS))),
                   pdDistancesPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::PDDistancesPerformanceStats::LOGGER_NAME,
-                                                         "request_id, " +
+                                                         "request_id," +
                                                          std::string(stats::PDDistancesPerformanceStats::LOGGER_COLS))),
                   ordPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::OrdAssignmentsPerformanceStats::LOGGER_NAME,
-                                                         "request_id, " +
+                                                         "request_id," +
                                                          std::string(
                                                                  stats::OrdAssignmentsPerformanceStats::LOGGER_COLS))),
                   pbnsPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::PbnsAssignmentsPerformanceStats::LOGGER_NAME,
-                                                         "request_id, " +
+                                                         "request_id," +
                                                          std::string(
                                                                  stats::PbnsAssignmentsPerformanceStats::LOGGER_COLS))),
                   palsPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::PalsAssignmentsPerformanceStats::LOGGER_NAME,
-                                                         "request_id, " +
+                                                         "request_id," +
                                                          std::string(
                                                                  stats::PalsAssignmentsPerformanceStats::LOGGER_COLS))),
                   dalsPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::DalsAssignmentsPerformanceStats::LOGGER_NAME,
-                                                         "request_id, " +
+                                                         "request_id," +
                                                          std::string(
                                                                  stats::DalsAssignmentsPerformanceStats::LOGGER_COLS))),
                   updatePerfLogger(LogManager<LoggerT>::getLogger(stats::UpdatePerformanceStats::LOGGER_NAME,
-                                                                  "request_id, " +
+                                                                  "request_id," +
                                                                   std::string(
                                                                           stats::UpdatePerformanceStats::LOGGER_COLS))) {}
 
@@ -188,19 +189,19 @@ namespace karri {
         }
 
 
-        void writeBestAssignmentToLogger() {
+        void writeBestAssignmentToLogger(const bool requestAccepted) {
             bestAssignmentsLogger
-                    << requestState.originalRequest.requestId << ", "
-                    << requestState.originalRequest.requestTime << ", "
-                    << requestState.originalReqDirectDist << ", ";
+                    << requestState.originalRequest.requestId << ","
+                    << requestState.originalRequest.requestTime << ","
+                    << requestState.originalReqDirectDist << ",";
 
             if (requestState.getBestCost() == INFTY) {
-                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,inf\n";
+                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,inf\n";
                 return;
             }
 
             if (requestState.isNotUsingVehicleBest()) {
-                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1, true, "
+                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,true," << requestAccepted << ","
                                       << requestState.getBestCost() << "\n";
                 return;
             }
@@ -215,42 +216,43 @@ namespace karri {
             const auto &vehDepTimeBeforeDropoff = getVehDepTimeAtStopForRequest(vehId, bestAsgn.dropoffStopIdx,
                                                                                 requestState, routeState);
             bestAssignmentsLogger
-                    << vehId << ", "
-                    << bestAsgn.pickupStopIdx << ", "
-                    << bestAsgn.dropoffStopIdx << ", "
-                    << bestAsgn.distToPickup << ", "
-                    << bestAsgn.distFromPickup << ", "
-                    << bestAsgn.distToDropoff << ", "
-                    << bestAsgn.distFromDropoff << ", "
-                    << bestAsgn.pickup->id << ", "
-                    << bestAsgn.pickup->walkingDist << ", "
-                    << bestAsgn.dropoff->id << ", "
-                    << bestAsgn.dropoff->walkingDist << ", "
-                    << numStops << ", "
-                    << vehDepTimeBeforePickup << ", "
-                    << vehDepTimeBeforeDropoff << ", "
-                    << "false, "
+                    << vehId << ","
+                    << bestAsgn.pickupStopIdx << ","
+                    << bestAsgn.dropoffStopIdx << ","
+                    << bestAsgn.distToPickup << ","
+                    << bestAsgn.distFromPickup << ","
+                    << bestAsgn.distToDropoff << ","
+                    << bestAsgn.distFromDropoff << ","
+                    << bestAsgn.pickup->id << ","
+                    << bestAsgn.pickup->walkingDist << ","
+                    << bestAsgn.dropoff->id << ","
+                    << bestAsgn.dropoff->walkingDist << ","
+                    << numStops << ","
+                    << vehDepTimeBeforePickup << ","
+                    << vehDepTimeBeforeDropoff << ","
+                    << "false,"
+                    << requestAccepted << ","
                     << requestState.getBestCost() << "\n";
         }
 
         void writePerformanceLogs() {
-            overallPerfLogger << requestState.originalRequest.requestId << ", "
+            overallPerfLogger << requestState.originalRequest.requestId << ","
                               << requestState.stats().getLoggerRow() << "\n";
-            initializationPerfLogger << requestState.originalRequest.requestId << ", "
+            initializationPerfLogger << requestState.originalRequest.requestId << ","
                                      << requestState.stats().initializationStats.getLoggerRow() << "\n";
-            ellipticBchPerfLogger << requestState.originalRequest.requestId << ", "
+            ellipticBchPerfLogger << requestState.originalRequest.requestId << ","
                                   << requestState.stats().ellipticBchStats.getLoggerRow() << "\n";
-            pdDistancesPerfLogger << requestState.originalRequest.requestId << ", "
+            pdDistancesPerfLogger << requestState.originalRequest.requestId << ","
                                   << requestState.stats().pdDistancesStats.getLoggerRow() << "\n";
-            ordPerfLogger << requestState.originalRequest.requestId << ", "
+            ordPerfLogger << requestState.originalRequest.requestId << ","
                           << requestState.stats().ordAssignmentsStats.getLoggerRow() << "\n";
-            pbnsPerfLogger << requestState.originalRequest.requestId << ", "
+            pbnsPerfLogger << requestState.originalRequest.requestId << ","
                            << requestState.stats().pbnsAssignmentsStats.getLoggerRow() << "\n";
-            palsPerfLogger << requestState.originalRequest.requestId << ", "
+            palsPerfLogger << requestState.originalRequest.requestId << ","
                            << requestState.stats().palsAssignmentsStats.getLoggerRow() << "\n";
-            dalsPerfLogger << requestState.originalRequest.requestId << ", "
+            dalsPerfLogger << requestState.originalRequest.requestId << ","
                            << requestState.stats().dalsAssignmentsStats.getLoggerRow() << "\n";
-            updatePerfLogger << requestState.originalRequest.requestId << ", "
+            updatePerfLogger << requestState.originalRequest.requestId << ","
                              << requestState.stats().updateStats.getLoggerRow() << "\n";
         }
 
