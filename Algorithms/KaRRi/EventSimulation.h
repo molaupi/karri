@@ -36,6 +36,7 @@ namespace karri {
 
 
     template<typename AssignmentFinderT,
+            typename AssignmentAcceptanceT,
             typename SystemStateUpdaterT,
             typename ScheduledStopsT>
     class EventSimulation {
@@ -69,12 +70,15 @@ namespace karri {
 
         EventSimulation(
                 const Fleet &fleet, const std::vector<Request> &requests,
-                AssignmentFinderT &assignmentFinder, SystemStateUpdaterT &systemStateUpdater,
+                AssignmentFinderT &assignmentFinder,
+                const AssignmentAcceptanceT &assignmentAcceptance,
+                SystemStateUpdaterT &systemStateUpdater,
                 const ScheduledStopsT &scheduledStops,
                 const bool verbose = false)
                 : fleet(fleet),
                   requests(requests),
                   assignmentFinder(assignmentFinder),
+                  assignmentAcceptance(assignmentAcceptance),
                   systemStateUpdater(systemStateUpdater),
                   scheduledStops(scheduledStops),
                   vehicleEvents(fleet.size()),
@@ -295,9 +299,9 @@ namespace karri {
             requestBatch.push_back(requests[reqId]);
             requestState[reqId] = WAITING_FOR_DISPATCH;
 
+            // event for walking arrival at dest inserted at dispatching time for walking-only or when vehicle reaches dropoff
             int id, key;
-            requestEvents.deleteMin(id,
-                                    key); // event for walking arrival at dest inserted at dispatching time for walking-only or when vehicle reaches dropoff
+            requestEvents.deleteMin(id, key);
             assert(id == reqId && key == occTime);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
@@ -345,18 +349,21 @@ namespace karri {
                 KASSERT(responses.size() == requestBatch.size() && stats.size() == requestBatch.size());
                 for (int i = requestBatch.size() - 1; i >= 0; --i) {
                     KASSERT(responses[i].originalRequest.requestId == requestBatch[i].requestId);
+
+                    const bool accepted = assignmentAcceptance.doesRiderAcceptAssignment(requestBatch[i], responses[i]);
+
                     // If response uses a vehicle, process later
-                    if (responses[i].getBestAssignment().vehicle) {
+                    if (accepted && responses[i].getBestAssignment().vehicle) {
                         continue;
                     }
 
-                    if (responses[i].isNotUsingVehicleBest()) {
+                    if (accepted && responses[i].isNotUsingVehicleBest()) {
                         KASSERT(responses[i].getBestCost() < INFTY);
-                        systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
+                        systemStateUpdater.writeBestAssignmentToLogger(responses[i], accepted);
                         processNotUsingVehicleAssignment(responses[i], stats[i], requestBatch[i].requestId, now);
                     } else {
-                        KASSERT(responses[i].getBestCost() == INFTY);
-                        systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
+                        KASSERT(!accepted || responses[i].getBestCost() == INFTY);
+                        systemStateUpdater.writeBestAssignmentToLogger(responses[i], accepted);
                         processRejectedRequest(responses[i], stats[i], requestBatch[i].requestId, now);
                     }
 
@@ -470,7 +477,8 @@ namespace karri {
 
         template<typename AssignmentFinderResponseT>
         void
-        applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, stats::DispatchingPerformanceStats& stats) {
+        applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse,
+                        stats::DispatchingPerformanceStats &stats) {
             const int reqId = asgnFinderResponse.originalRequest.requestId;
             KASSERT(!requestEvents.contains(reqId));
             KASSERT(!asgnFinderResponse.isNotUsingVehicleBest());
@@ -576,6 +584,7 @@ namespace karri {
         const Fleet &fleet;
         const std::vector<Request> &requests;
         AssignmentFinderT &assignmentFinder;
+        const AssignmentAcceptanceT &assignmentAcceptance;
         SystemStateUpdaterT &systemStateUpdater;
         const ScheduledStopsT &scheduledStops;
 

@@ -67,6 +67,7 @@
 #include "Algorithms/KaRRi/AssignmentFinder.h"
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
+#include "Algorithms/KaRRi/AssignmentAcceptance.h"
 
 #include "Parallel/hardware_topology.h"
 #include "Parallel/tbb_initializer.h"
@@ -133,6 +134,9 @@ inline void printUsage() {
               "  -w <sec>                   maximum wait time (in s). (dflt: 300s)\n"
               "  -a <factor>                model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
               "  -b <seconds>               model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
+              "  -e <factor>            model parameter epsilon for the trip time rejection threshold = e * OD-dist + f\n"
+              "                             set to 0 to reject no requests (default)\n"
+              "  -f <factor>            model parameter phi for the trip time rejection threshold = e * OD-dist + f (dflt: 120)\n"
               "  -i <seconds>               interval duration for batch of requests in seconds (dflt: 60)\n"
               "  -p-radius <m>              default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
               "  -d-radius <m>              default walking radius (in m) for dropoff locations around destination if not specified by request (dflt: 417m = 5min at 5km/h)\n"
@@ -189,6 +193,8 @@ int main(int argc, char *argv[]) {
         inputConfig.alpha = clp.getValue<double>("a", 1.7);
         inputConfig.beta = clp.getValue<int>("b", 120) * 10;
         inputConfig.requestBatchInterval = clp.getValue<int>("i", 60) * 10;
+        inputConfig.epsilon = clp.getValue<double>("e", 0.0);
+        inputConfig.phi = clp.getValue<int>("f", 120) * 10;
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");
@@ -514,9 +520,12 @@ int main(int argc, char *argv[]) {
         LastStopBucketUpdateStats stats;
         lastStopBucketsEnv.commitEntryInsertionsAndDeletions(stats);
 
+        // Acceptance mechanism for requests:
+        TripTimeThresholdAssignmentAcceptance acceptance(routeState);
+
         // Run simulation:
-        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, SystemStateUpdaterImpl, RouteState>;
-        EventSimulationImpl eventSimulation(fleet, requests, insertionFinder, systemStateUpdater,
+        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, TripTimeThresholdAssignmentAcceptance, SystemStateUpdaterImpl, RouteState>;
+        EventSimulationImpl eventSimulation(fleet, requests, insertionFinder, acceptance, systemStateUpdater,
                                             routeState, true);
         eventSimulation.run();
 
