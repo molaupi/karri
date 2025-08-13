@@ -23,19 +23,19 @@ convertToHHMM <- function(seconds) {
 # Given the path to the result files of a KaRRi run (e.g. 
 # "<output-dir>/Berlin-1pct_pedestrian/karri-col-simd_300_300"), 
 # this function returns an overview over the solution quality of the assignments.
-quality <- function(file_base) {
-
-  asgnstats <- read.csv(paste0(file_base, ".assignmentquality.csv"))
-  legstats <- read.csv(paste0(file_base, ".legstats.csv"))
-  bestasgns <- read.csv(paste0(file_base, ".bestassignments.csv"))
+quality <- function(file_base, accepted_column=TRUE) {
   asgnstats <- read.csv(paste0(file_base, ".assignmentquality.csv"))
   asgnstats <- asgnstats[order(asgnstats$request_id),]
   legstats <- read.csv(paste0(file_base, ".legstats.csv"))
   bestasgns <- read.csv(paste0(file_base, ".bestassignments.csv"))
   bestasgns <- bestasgns[order(bestasgns$request_id),]
-  numAccepted <- sum(bestasgns["accepted"] == 1)
-  numTotal <- nrow(bestasgns)
-  bestasgns <- bestasgns[bestasgns["accepted"] == 1,]
+  ratioAccepted <- 1
+  if (accepted_column) {
+    numAccepted <- sum(bestasgns["accepted"] == 1)
+    numTotal <- nrow(bestasgns)
+    ratioAccepted <- numAccepted / numTotal
+    bestasgns <- bestasgns[bestasgns["accepted"] == 1,]
+  }
   
   eventsimstats <- read.csv(paste0(file_base, ".eventsimulationstats.csv"))
   num.Vehicles <- sum(eventsimstats$type == "VehicleStartup")
@@ -75,7 +75,7 @@ quality <- function(file_base) {
   veh_time_cols <- c("stop_time_avg", "empty_time_avg", "occ_time_avg", "op_time_avg")
   df[, colnames(df) %in% veh_time_cols] <- convertToHHMM(df[, colnames(df) %in% veh_time_cols])
   
-  df["service_rate"] <- c(numAccepted / numTotal)
+  df["service_rate"] <- c(ratioAccepted)
   
   print(df)
 }
