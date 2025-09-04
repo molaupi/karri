@@ -1,4 +1,4 @@
-
+library(readr)
 
 # Converts number of seconds to MM:SS format.
 convertToMMSS <- function(seconds) {
@@ -24,10 +24,10 @@ convertToHHMM <- function(seconds) {
 # "<output-dir>/Berlin-1pct_pedestrian/karri-col-simd_300_300"), 
 # this function returns an overview over the solution quality of the assignments.
 quality <- function(file_base, accepted_column=TRUE) {
-  asgnstats <- read.csv(paste0(file_base, ".assignmentquality.csv"))
+  asgnstats <- read_csv(paste0(file_base, ".assignmentquality.csv"), progress = FALSE, show_col_types = FALSE)
   asgnstats <- asgnstats[order(asgnstats$request_id),]
-  legstats <- read.csv(paste0(file_base, ".legstats.csv"))
-  bestasgns <- read.csv(paste0(file_base, ".bestassignments.csv"))
+  legstats <- read_csv(paste0(file_base, ".legstats.csv"), progress = FALSE, show_col_types = FALSE)
+  bestasgns <- read_csv(paste0(file_base, ".bestassignments.csv"), progress = FALSE, show_col_types = FALSE)
   bestasgns <- bestasgns[order(bestasgns$request_id),]
   ratioAccepted <- 1
   if (accepted_column) {
@@ -37,7 +37,7 @@ quality <- function(file_base, accepted_column=TRUE) {
     bestasgns <- bestasgns[bestasgns["accepted"] == 1,]
   }
   
-  eventsimstats <- read.csv(paste0(file_base, ".eventsimulationstats.csv"))
+  eventsimstats <- read_csv(paste0(file_base, ".eventsimulationstats.csv"), progress = FALSE, show_col_types = FALSE)
   num.Vehicles <- sum(eventsimstats$type == "VehicleStartup")
   
   df <- data.frame(
