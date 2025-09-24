@@ -201,6 +201,11 @@ public:
         return numVerticesSettled;
     }
 
+    // Used by friend classes to update the pruning criterion for different runs of this search
+    PruningCriterionT &getPruningCriterion() {
+        return pruneSearch;
+    }
+
 private:
     // Initializes the labels for computing multiple shortest-path trees simultaneously.
     void init(const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
@@ -289,10 +294,6 @@ private:
         return v;
     }
 
-    // Used by friend classes to update the pruning criterion for different runs of this search
-    PruningCriterionT &getPruningCriterion() {
-        return pruneSearch;
-    }
 
     using DistanceLabelCont = SimpleDistanceLabelContainer<typename LabelSetT::DistanceLabel>;
     using ParentLabelCont = ParentLabelContainer<CH::SearchGraph, LabelSetT>;

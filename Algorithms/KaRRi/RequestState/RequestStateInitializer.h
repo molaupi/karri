@@ -64,8 +64,7 @@ namespace karri {
             stats.computeODDistanceTime = directSearchTime;
 
 
-            if (!InputConfig::getInstance().alwaysUseVehicle) {
-                // Try pseudo-assignment for passenger walking to destination without using vehicle
+            // Compute direct walking distance between origin and destination
                 timer.restart();
 
                 KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.origin)) == req.origin);
@@ -78,13 +77,12 @@ namespace karri {
                 const int destOffset = psgInputGraph.length(destInPsgGraph);
 
                 psgChQuery.run(originHeadRank, destTailRank);
-                const auto totalWalkingDist = psgChQuery.getDistance() + destOffset;
+                const auto totalWalkingDist = psgChQuery.getDistance() + destOffset; // Distance in m
                 const auto totalWalkingTime = static_cast<int>(std::round(10.0 * static_cast<double>(totalWalkingDist) / req.walkingSpeed));
-                requestState.tryNotUsingVehicleAssignment(totalWalkingTime);
+                requestState.odWalkingDist = totalWalkingTime; // "dist" means time in our model
 
                 const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
                 stats.notUsingVehicleTime = notUsingVehiclesTime;
-            }
 
             return requestState;
         }

@@ -30,6 +30,7 @@
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 #include "PathTracker.h"
 #include "Algorithms/KaRRi/Stats/LastStopBucketUpdateStats.h"
+#include "Algorithms/KaRRi/RiderModeChoice/TransportMode.h"
 
 namespace karri {
 
@@ -81,8 +82,7 @@ namespace karri {
                                                                        "stop_loc_before_dropoff,"
                                                                        "veh_dep_time_at_stop_before_pickup,"
                                                                        "veh_dep_time_at_stop_before_dropoff,"
-                                                                       "not_using_vehicle,"
-                                                                       "accepted,"
+                                                                       "mode,"
                                                                        "cost\n")),
                   overallPerfLogger(
                           LogManager<LoggerT>::getLogger(stats::DispatchingPerformanceStats::LOGGER_NAME,
@@ -145,7 +145,7 @@ namespace karri {
 
 
         void insertBestAssignment(const RequestState &requestState, stats::UpdatePerformanceStats &stats) {
-            KASSERT(!requestState.isNotUsingVehicleBest());
+//            KASSERT(!requestState.isNotUsingVehicleBest());
             Timer timer;
 
             const auto &asgn = requestState.getBestAssignment();
@@ -217,8 +217,6 @@ namespace karri {
                  respIt != asgnFinderResponses.end(); ++respIt, ++statsIt) {
                 const auto asgnFinderResponse = *respIt;
                 auto &stats = statsIt->updateStats;
-
-                KASSERT(!asgnFinderResponse.isNotUsingVehicleBest());
 
                 const auto &asgn = asgnFinderResponse.getBestAssignment();
                 KASSERT(asgn.vehicle != nullptr);
@@ -353,7 +351,7 @@ namespace karri {
 
             for (auto respIt = asgnFinderResponses.begin(), statsIt = statss.begin();
                  respIt != asgnFinderResponses.end(); ++respIt, ++statsIt) {
-                writeBestAssignmentToLogger(*respIt, true);
+                writeBestAssignmentToLogger(*respIt, mode_choice::TransportMode::Taxi);
                 writePerformanceLogs(*respIt, *statsIt);
             }
 
@@ -464,25 +462,26 @@ namespace karri {
             routeState.removeStartOfCurrentLeg(vehId);
         }
 
-        void writeBestAssignmentToLogger(const RequestState &requestState, const bool requestAccepted) {
+        void writeBestAssignmentToLogger(const RequestState &requestState, const mode_choice::TransportMode mode) {
             bestAssignmentsLogger
                     << requestState.originalRequest.requestId << ","
                     << requestState.originalRequest.requestTime << ","
                     << requestState.originalReqDirectDist << ","
                     << requestState.dispatchingTime << ",";
 
-            if (requestState.getBestCost() == INFTY) {
-                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,inf\n";
+            if (mode == mode_choice::TransportMode::Car) {
+                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,Car,inf\n";
                 return;
             }
 
-            if (requestState.isNotUsingVehicleBest()) {
-                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,true," << requestAccepted << ","
-                                      << requestState.getBestCost() << "\n";
+            if (mode == mode_choice::TransportMode::Ped) {
+                bestAssignmentsLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,Ped,"
+                                      <<  CostCalculator::calcCostForNotUsingVehicle(requestState.odWalkingDist, requestState) << "\n";
                 return;
             }
 
             const auto &bestAsgn = requestState.getBestAssignment();
+            KASSERT(bestAsgn.vehicle);
 
             const auto &vehId = bestAsgn.vehicle->vehicleId;
             const auto &numStops = routeState.numStopsOf(vehId);
@@ -510,8 +509,7 @@ namespace karri {
                     << routeState.stopLocationsFor(vehId)[bestAsgn.dropoffStopIdx] << ","
                     << vehDepTimeBeforePickup << ","
                     << vehDepTimeBeforeDropoff << ","
-                    << "false,"
-                    << requestAccepted << ","
+                    << "Taxi,"
                     << requestState.getBestCost() << "\n";
         }
 

@@ -27,45 +27,50 @@
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
+#include "TransportMode.h"
 
-namespace karri {
+namespace karri::mode_choice {
 
-    // Decides whether a rider accepts an assignment based on the request and the assignment finder response.
-    // Simple implementation that only checks whether the assignment trip time is below a threshold which is a linear
-    // function on the direct time from origin to destination.
-    class TripTimeThresholdAssignmentAcceptance {
+    // Models mode choice of a rider given a possible taxi-sharing assignment.
+    // Simple implementation based on trip times: Takes smaller trip time between walking and taxi sharing. If this
+    // trip time is larger than a threshold (relative to direct car distance), a direct car trip is chosen instead.
+    class TripTimeThresholdCriterion {
 
     public:
 
-        TripTimeThresholdAssignmentAcceptance(const RouteState& routeState) : routeState(routeState) {}
+        TripTimeThresholdCriterion(const RouteState& routeState) : routeState(routeState) {}
 
         template<typename AsgnFinderResponseT>
-        bool doesRiderAcceptAssignment(const Request &req, const AsgnFinderResponseT &resp) const {
+        TransportMode chooseMode(const Request &req, const AsgnFinderResponseT &resp) const {
             using namespace time_utils;
 
-            if (InputConfig::getInstance().epsilon == 0.0) {
-                return true; // no trip time threshold, accept all assignments
-            }
-
             const auto &bestAsgn = resp.getBestAssignment();
-            if (!resp.isNotUsingVehicleBest() && !bestAsgn.vehicle) {
-                return false; // no assignment found
-            }
-
-            int tripTime;
-            if (resp.isNotUsingVehicleBest()) {
-                tripTime = resp.getNotUsingVehicleDist();
-            } else {
+            int taxiTripTime = INFTY;
+            if (bestAsgn.vehicle) {
                 const auto depTimeAtPickup = getActualDepTimeAtPickup(bestAsgn, resp, routeState);
                 const auto initialPickupDetour = calcInitialPickupDetour(bestAsgn, depTimeAtPickup, resp, routeState);
                 const auto dropoffAtExistingStop = isDropoffAtExistingStop(bestAsgn, routeState);
-                const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, bestAsgn, initialPickupDetour, dropoffAtExistingStop, routeState);
-                tripTime = arrTimeAtDropoff + bestAsgn.dropoff.walkingDist - req.requestTime;
+                const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, bestAsgn, initialPickupDetour,
+                                                                  dropoffAtExistingStop, routeState);
+                taxiTripTime = arrTimeAtDropoff + bestAsgn.dropoff.walkingDist - req.requestTime;
             }
 
-            const auto directTime = resp.originalReqDirectDist;
-            const auto threshold = InputConfig::getInstance().epsilon * directTime + InputConfig::getInstance().phi;
-            return tripTime <= threshold;
+            const auto walkTripTime = resp.odWalkingDist;
+            KASSERT(walkTripTime < INFTY);
+
+            const auto pedTaxiMinTime = std::min(taxiTripTime, walkTripTime);
+            const auto directCarTime = resp.originalReqDirectDist;
+            const auto threshold = InputConfig::getInstance().epsilon * directCarTime + InputConfig::getInstance().phi;
+
+
+            // epsilon = 0 is a special value, indicating that there is no threshold, i.e. rider should only walk or take taxi.
+            if (InputConfig::getInstance().epsilon == 0.0 || pedTaxiMinTime <= threshold) {
+                if (taxiTripTime < walkTripTime)
+                    return TransportMode::Taxi;
+                return TransportMode::Ped;
+            }
+
+            return TransportMode::Car;
         }
 
     private:
@@ -74,5 +79,5 @@ namespace karri {
 
     };
 
-} // karri
+} // karri::rider_acceptance
 

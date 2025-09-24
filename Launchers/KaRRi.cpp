@@ -67,7 +67,7 @@
 #include "Algorithms/KaRRi/AssignmentFinder.h"
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
-#include "Algorithms/KaRRi/AssignmentAcceptance.h"
+#include "Algorithms/KaRRi/RiderModeChoice/TripTimeThresholdCriterion.h"
 
 #include "Parallel/hardware_topology.h"
 #include "Parallel/tbb_initializer.h"
@@ -109,6 +109,7 @@
 #include "Algorithms/KaRRi/RequestState/PDLocsFinder.h"
 #include "Algorithms/KaRRi/ThreadLocalAssignmentFinderFactory.h"
 #include "Algorithms/KaRRi/BatchAssignmentFinder.h"
+#include "Algorithms/KaRRi/RiderModeChoice/UtilityLogitCriterion.h"
 
 #elif KARRI_DALS_STRATEGY == KARRI_IND
 
@@ -520,12 +521,14 @@ int main(int argc, char *argv[]) {
         LastStopBucketUpdateStats stats;
         lastStopBucketsEnv.commitEntryInsertionsAndDeletions(stats);
 
-        // Acceptance mechanism for requests:
-        TripTimeThresholdAssignmentAcceptance acceptance(routeState);
+        // Rider mode choice mechanism for requests:
+//        using ModeChoice = mode_choice::TripTimeThresholdCriterion;
+        using ModeChoice = mode_choice::UtilityLogitCriterion;
+        ModeChoice modeChoice(routeState);
 
         // Run simulation:
-        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, TripTimeThresholdAssignmentAcceptance, SystemStateUpdaterImpl, RouteState>;
-        EventSimulationImpl eventSimulation(fleet, requests, insertionFinder, acceptance, systemStateUpdater,
+        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, ModeChoice, SystemStateUpdaterImpl, RouteState>;
+        EventSimulationImpl eventSimulation(fleet, requests, insertionFinder, modeChoice, systemStateUpdater,
                                             routeState, true);
         eventSimulation.run();
 

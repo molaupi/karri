@@ -31,12 +31,13 @@
 #include "Tools/Workarounds.h"
 #include "Tools/Logging/LogManager.h"
 #include "Tools/Timer.h"
+#include "RiderModeChoice/TransportMode.h"
 
 namespace karri {
 
 
     template<typename AssignmentFinderT,
-            typename AssignmentAcceptanceT,
+            typename RiderModeChoiceT,
             typename SystemStateUpdaterT,
             typename ScheduledStopsT>
     class EventSimulation {
@@ -53,6 +54,7 @@ namespace karri {
             WAITING_FOR_DISPATCH,
             ASSIGNED_TO_VEH,
             WALKING_TO_DEST,
+            IN_PRIVATE_CAR,
             FINISHED
         };
 
@@ -71,14 +73,14 @@ namespace karri {
         EventSimulation(
                 const Fleet &fleet, const std::vector<Request> &requests,
                 AssignmentFinderT &assignmentFinder,
-                const AssignmentAcceptanceT &assignmentAcceptance,
+                const RiderModeChoiceT &riderModeChoice,
                 SystemStateUpdaterT &systemStateUpdater,
                 const ScheduledStopsT &scheduledStops,
                 const bool verbose = false)
                 : fleet(fleet),
                   requests(requests),
                   assignmentFinder(assignmentFinder),
-                  assignmentAcceptance(assignmentAcceptance),
+                  riderModeChoice(riderModeChoice),
                   systemStateUpdater(systemStateUpdater),
                   scheduledStops(scheduledStops),
                   vehicleEvents(fleet.size()),
@@ -188,6 +190,9 @@ namespace karri {
                     break;
                 case WALKING_TO_DEST:
                     handleWalkingArrivalAtDest(reqId, occTime);
+                    break;
+                case IN_PRIVATE_CAR:
+                    handlePrivatCarArrivalAtDest(reqId, occTime);
                     break;
                 case FINISHED:
                     assert(false);
@@ -350,21 +355,20 @@ namespace karri {
                 for (int i = requestBatch.size() - 1; i >= 0; --i) {
                     KASSERT(responses[i].originalRequest.requestId == requestBatch[i].requestId);
 
-                    const bool accepted = assignmentAcceptance.doesRiderAcceptAssignment(requestBatch[i], responses[i]);
+                    using mode_choice::TransportMode;
+                    const TransportMode mode = riderModeChoice.chooseMode(requestBatch[i], responses[i]);
 
-                    // If response uses a vehicle, process later
-                    if (accepted && responses[i].getBestAssignment().vehicle) {
+                    // If response uses a taxi vehicle, process later
+                    if (mode == TransportMode::Taxi && responses[i].getBestAssignment().vehicle) {
                         continue;
                     }
 
-                    if (accepted && responses[i].isNotUsingVehicleBest()) {
-                        KASSERT(responses[i].getBestCost() < INFTY);
-                        systemStateUpdater.writeBestAssignmentToLogger(responses[i], accepted);
-                        processNotUsingVehicleAssignment(responses[i], stats[i], requestBatch[i].requestId, now);
+                    systemStateUpdater.writeBestAssignmentToLogger(responses[i], mode);
+
+                    if (mode == TransportMode::Ped) {
+                        processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
                     } else {
-                        KASSERT(!accepted || responses[i].getBestCost() == INFTY);
-                        systemStateUpdater.writeBestAssignmentToLogger(responses[i], accepted);
-                        processRejectedRequest(responses[i], stats[i], requestBatch[i].requestId, now);
+                        processChoicePrivateCar(responses[i], stats[i], requestBatch[i].requestId, now);
                     }
 
                     // Remove request from batch, responses and stats
@@ -445,33 +449,33 @@ namespace karri {
         }
 
         template<typename AssignmentFinderResponseT>
-        void processRejectedRequest(const AssignmentFinderResponseT &asgnFinderResponse,
-                                    stats::DispatchingPerformanceStats stats, const int reqId, const int) {
+        void processChoicePrivateCar(const AssignmentFinderResponseT &asgnFinderResponse,
+                                     stats::DispatchingPerformanceStats stats, const int reqId, const int occTime) {
             KASSERT(!requestEvents.contains(reqId));
-            KASSERT(asgnFinderResponse.getBestAssignment().vehicle == nullptr);
-            KASSERT(asgnFinderResponse.getBestAssignment().pickup.id == INVALID_ID);
-            KASSERT(asgnFinderResponse.getBestAssignment().dropoff.id == INVALID_ID);
-            KASSERT(asgnFinderResponse.getBestCost() == INFTY);
 
-            requestState[reqId] = FINISHED;
+            // Assign rider to take private car to their destination and insert event for their arrival.
+            requestState[reqId] = IN_PRIVATE_CAR;
+            requestData[reqId].assignmentCost = INFTY; // No meaningful cost can be assigned since this is not a possibility in local cost function
+            requestData[reqId].depTime = occTime;
+            requestData[reqId].walkingTimeToPickup = 0;
+            requestData[reqId].walkingTimeFromDropoff = 0;
+            requestEvents.insert(reqId, occTime + asgnFinderResponse.originalReqDirectDist);
             systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
         }
 
         template<typename AssignmentFinderResponseT>
-        void processNotUsingVehicleAssignment(const AssignmentFinderResponseT &asgnFinderResponse,
-                                              stats::DispatchingPerformanceStats stats, const int reqId,
-                                              const int occTime) {
+        void processChoiceOnlyWalking(const AssignmentFinderResponseT &asgnFinderResponse,
+                                      stats::DispatchingPerformanceStats stats, const int reqId,
+                                      const int occTime) {
             KASSERT(!requestEvents.contains(reqId));
-            KASSERT(asgnFinderResponse.getBestAssignment().vehicle == nullptr);
-            KASSERT(asgnFinderResponse.getBestCost() < INFTY);
 
             // Assign rider to walk to their destination and insert event for their arrival.
             requestState[reqId] = WALKING_TO_DEST;
-            requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
+            requestData[reqId].assignmentCost = CostCalculator::calcCostForNotUsingVehicle(asgnFinderResponse.odWalkingDist, asgnFinderResponse);
             requestData[reqId].depTime = occTime;
             requestData[reqId].walkingTimeToPickup = 0;
-            requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.getNotUsingVehicleDist();
-            requestEvents.insert(reqId, occTime + asgnFinderResponse.getNotUsingVehicleDist());
+            requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.odWalkingDist;
+            requestEvents.insert(reqId, occTime + asgnFinderResponse.odWalkingDist);
             systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
         }
 
@@ -523,7 +527,6 @@ namespace karri {
                 const int reqId = asgnFinderResponse.originalRequest.requestId;
                 KASSERT(requestState[reqId] == WAITING_FOR_DISPATCH);
                 KASSERT(!requestEvents.contains(reqId));
-                KASSERT(!asgnFinderResponse.isNotUsingVehicleBest());
 
                 const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
                 KASSERT(bestAsgn.vehicle && bestAsgn.pickup.id != INVALID_ID && bestAsgn.dropoff.id != INVALID_ID);
@@ -580,11 +583,39 @@ namespace karri {
             eventSimulationStatsLogger << occTime << ",RequestWalkingArrival," << time << '\n';
         }
 
+        void handlePrivatCarArrivalAtDest(const int reqId, const int occTime) {
+            KASSERT(requestState[reqId] == IN_PRIVATE_CAR);
+            Timer timer;
+
+            const auto &reqData = requestData[reqId];
+            requestState[reqId] = FINISHED;
+            int id, key;
+            requestEvents.deleteMin(id, key);
+            assert(id == reqId && key == occTime);
+
+            const auto waitTime = 0;
+            const auto arrTime = occTime;
+            const auto rideTime = 0;
+            const auto tripTime = arrTime - requests[reqId].requestTime;
+            assignmentQualityStats << reqId << ','
+                                   << arrTime << ','
+                                   << waitTime << ','
+                                   << rideTime << ','
+                                   << tripTime << ','
+                                   << reqData.walkingTimeToPickup << ','
+                                   << reqData.walkingTimeFromDropoff << ','
+                                   << reqData.assignmentCost << '\n';
+
+
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            eventSimulationStatsLogger << occTime << ",RequestPrivateCarArrival," << time << '\n';
+        }
+
 
         const Fleet &fleet;
         const std::vector<Request> &requests;
         AssignmentFinderT &assignmentFinder;
-        const AssignmentAcceptanceT &assignmentAcceptance;
+        const RiderModeChoiceT &riderModeChoice;
         SystemStateUpdaterT &systemStateUpdater;
         const ScheduledStopsT &scheduledStops;
 

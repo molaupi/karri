@@ -46,10 +46,9 @@ namespace karri {
                     dispatchingTime(INFTY),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
+                  odWalkingDist(INFTY),
                   bestAssignment(),
-                  bestCost(INFTY),
-                  notUsingVehicleIsBest(false),
-                  notUsingVehicleDist(INFTY) {}
+                  bestCost(INFTY) {}
 
 
         // Information about current request itself
@@ -57,6 +56,7 @@ namespace karri {
         int dispatchingTime; // time at which request is dispatched, i.e., assignment is decided upon. Must be >= originalRequest.requestTime.
         int originalReqDirectDist; // direct distance from origin to destination
         int minDirectPDDist; // smallest distance between any pickup and any dropoff
+        int odWalkingDist; // walking distance from origin to destination if rider walks the whole way
 
         int getOriginalReqMaxTripTime() const {
             assert(originalReqDirectDist >= 0);
@@ -85,35 +85,15 @@ namespace karri {
             return bestCost;
         }
 
-        bool isNotUsingVehicleBest() const {
-            return notUsingVehicleIsBest;
-        }
-
-        const int &getNotUsingVehicleDist() const {
-            return notUsingVehicleDist;
-        }
-
         bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
             if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
                                     breakCostTie(asgn, bestAssignment)))) {
 
                 bestAssignment = asgn;
                 bestCost = cost;
-                notUsingVehicleIsBest = false;
-                notUsingVehicleDist = INFTY;
                 return true;
             }
             return false;
-        }
-
-        void tryNotUsingVehicleAssignment(const int notUsingVehDist) {
-            const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, *this);
-            if (cost < bestCost) {
-                bestAssignment = Assignment();
-                bestCost = cost;
-                notUsingVehicleIsBest = true;
-                notUsingVehicleDist = notUsingVehDist;
-            }
         }
 
     private:
@@ -121,7 +101,5 @@ namespace karri {
         // Information about best known assignment for current request
         Assignment bestAssignment;
         int bestCost;
-        bool notUsingVehicleIsBest;
-        int notUsingVehicleDist;
     };
 }
