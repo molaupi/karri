@@ -146,7 +146,6 @@ inline void printUsage() {
               "  -force-default-walk-speed  if set, forces the use of the default walking speed for all requests, even if they specify their own speed.\n"
               "  -max-num-p <int>           max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
               "  -max-num-d <int>           max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
-              "  -always-veh                if set, the rider is not allowed to walk to their destination without a vehicle trip.\n"
               "  -veh-h <file>              contraction hierarchy for the vehicle network in binary format.\n"
               "  -psg-h <file>              contraction hierarchy for the passenger network in binary format.\n"
               "  -veh-d <file>              separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
@@ -188,7 +187,6 @@ int main(int argc, char *argv[]) {
 //        inputConfig.dropoffRadius = clp.getValue<int>("d-radius", inputConfig.maxWaitTime / 10) * 10;
         inputConfig.maxNumPickups = clp.getValue<int>("max-num-p", INFTY);
         inputConfig.maxNumDropoffs = clp.getValue<int>("max-num-d", INFTY);
-        inputConfig.alwaysUseVehicle = clp.isSet("always-veh");
         if (inputConfig.maxNumPickups == 0) inputConfig.maxNumPickups = INFTY;
         if (inputConfig.maxNumDropoffs == 0) inputConfig.maxNumDropoffs = INFTY;
         inputConfig.alpha = clp.getValue<double>("a", 1.7);

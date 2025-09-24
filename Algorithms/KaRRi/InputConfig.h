@@ -53,7 +53,6 @@ namespace karri {
         int requestBatchInterval = -1;
         double epsilon = -1.0;
         int phi = -1;
-        bool alwaysUseVehicle = false;
     };
 
 }
