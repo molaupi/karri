@@ -424,6 +424,9 @@ namespace karri {
 
                 iterationTimer.restart();
                 const auto acceptedResponses = IteratorRange(responses.begin() + firstAcc, responses.end());
+                for (const auto& resp: acceptedResponses) {
+                    systemStateUpdater.writeBestAssignmentToLogger(resp);
+                }
                 auto acceptedStats = IteratorRange(stats.begin() + firstAcc, stats.end());
                 systemStateUpdater.insertBatchOfBestAssignments(acceptedResponses, acceptedStats, now, iteration);
                 updateSimulationForAssignmentBatch(acceptedResponses);

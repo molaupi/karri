@@ -350,7 +350,6 @@ namespace karri {
 
             for (auto respIt = asgnFinderResponses.begin(), statsIt = statss.begin();
                  respIt != asgnFinderResponses.end(); ++respIt, ++statsIt) {
-                writeBestAssignmentToLogger(*respIt);
                 writePerformanceLogs(*respIt, *statsIt);
             }
 
