@@ -75,9 +75,11 @@ namespace karri {
                 const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
                 const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
                 const int destOffset = psgInputGraph.length(destInPsgGraph);
+                KASSERT(destOffset >= 0 && destOffset < INFTY);
 
                 psgChQuery.run(originHeadRank, destTailRank);
                 const auto totalWalkingDist = psgChQuery.getDistance() + destOffset; // Distance in m
+                KASSERT(totalWalkingDist >= 0 && totalWalkingDist < INFTY);
                 const auto totalWalkingTime = static_cast<int>(std::round(10.0 * static_cast<double>(totalWalkingDist) / req.walkingSpeed));
                 requestState.odWalkingDist = totalWalkingTime; // "dist" means time in our model
 

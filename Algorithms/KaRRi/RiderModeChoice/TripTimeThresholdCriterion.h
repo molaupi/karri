@@ -24,10 +24,8 @@
 
 #pragma once
 
-#include "Algorithms/KaRRi/BaseObjects/Request.h"
-#include "Algorithms/KaRRi/InputConfig.h"
-#include "Algorithms/KaRRi/TimeUtils.h"
 #include "TransportMode.h"
+#include "ModeChoiceInput.h"
 
 namespace karri::mode_choice {
 
@@ -38,34 +36,19 @@ namespace karri::mode_choice {
 
     public:
 
-        TripTimeThresholdCriterion(const RouteState& routeState) : routeState(routeState) {}
+        TripTimeThresholdCriterion() = default;
 
-        template<typename AsgnFinderResponseT>
-        TransportMode chooseMode(const Request &req, const AsgnFinderResponseT &resp) const {
+        TransportMode apply(ModeChoiceInput input) {
             using namespace time_utils;
 
-            const auto &bestAsgn = resp.getBestAssignment();
-            int taxiTripTime = INFTY;
-            if (bestAsgn.vehicle) {
-                const auto depTimeAtPickup = getActualDepTimeAtPickup(bestAsgn, resp, routeState);
-                const auto initialPickupDetour = calcInitialPickupDetour(bestAsgn, depTimeAtPickup, resp, routeState);
-                const auto dropoffAtExistingStop = isDropoffAtExistingStop(bestAsgn, routeState);
-                const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, bestAsgn, initialPickupDetour,
-                                                                  dropoffAtExistingStop, routeState);
-                taxiTripTime = arrTimeAtDropoff + bestAsgn.dropoff.walkingDist - req.requestTime;
-            }
-
-            const auto walkTripTime = resp.odWalkingDist;
-            KASSERT(walkTripTime < INFTY);
-
-            const auto pedTaxiMinTime = std::min(taxiTripTime, walkTripTime);
-            const auto directCarTime = resp.originalReqDirectDist;
-            const auto threshold = InputConfig::getInstance().epsilon * directCarTime + InputConfig::getInstance().phi;
+            const auto taxiTripTime = input.taxiTravelTime + input.taxiWaitTime + input.taxiAccEgrTime;
+            const auto pedTaxiMinTime = std::min(taxiTripTime, input.walkTravelTime);
+            const auto threshold = InputConfig::getInstance().epsilon * input.privateCarTravelTime + InputConfig::getInstance().phi;
 
 
             // epsilon = 0 is a special value, indicating that there is no threshold, i.e. rider should only walk or take taxi.
             if (InputConfig::getInstance().epsilon == 0.0 || pedTaxiMinTime <= threshold) {
-                if (taxiTripTime < walkTripTime)
+                if (taxiTripTime < input.walkTravelTime)
                     return TransportMode::Taxi;
                 return TransportMode::Ped;
             }
@@ -74,8 +57,6 @@ namespace karri::mode_choice {
         }
 
     private:
-
-        const RouteState &routeState;
 
     };
 
