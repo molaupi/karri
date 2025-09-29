@@ -363,7 +363,7 @@ namespace karri {
                         continue;
                     }
 
-                    systemStateUpdater.writeBestAssignmentToLogger(responses[i], mode);
+                    systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
 
                     if (mode == TransportMode::Ped) {
                         processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
