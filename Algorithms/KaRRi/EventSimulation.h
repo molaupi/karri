@@ -347,96 +347,141 @@ namespace karri {
                 auto responses = assignmentFinder.findBestAssignmentsForBatchParallel(requestBatch, now, stats);
                 const auto iterationFindAssignmentsTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 
-
-                // Requests for which no assignment could be found can be discarded. Requests for which the best
-                // assignment does not use a vehicle are conflict-free and can be applied right away.
+                // Requests for which no assignment could be found can immediately do modal choice for other modes,
+                // and be finished.
                 iterationTimer.restart();
                 KASSERT(responses.size() == requestBatch.size() && stats.size() == requestBatch.size());
                 for (int i = requestBatch.size() - 1; i >= 0; --i) {
                     KASSERT(responses[i].originalRequest.requestId == requestBatch[i].requestId);
 
-                    using mode_choice::TransportMode;
-                    const TransportMode mode = riderModeChoice.chooseMode(requestBatch[i], responses[i]);
+                    if (!responses[i].getBestAssignment().vehicle) {
+                        using mode_choice::TransportMode;
+                        const TransportMode mode = riderModeChoice.chooseMode(requestBatch[i], responses[i]);
+                        KASSERT(mode != TransportMode::Taxi);
 
-                    // If response uses a taxi vehicle, process later
-                    if (mode == TransportMode::Taxi && responses[i].getBestAssignment().vehicle) {
-                        continue;
+                        systemStateUpdater.writeBestAssignmentToLogger(responses[i], mode);
+
+                        if (mode == TransportMode::Ped) {
+                            processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
+                        } else {
+                            processChoicePrivateCar(responses[i], stats[i], requestBatch[i].requestId, now);
+                        }
+
+                        // Remove request from batch, responses and stats
+                        requestBatch[i] = requestBatch.back();
+                        requestBatch.pop_back();
+                        responses[i] = responses.back();
+                        responses.pop_back();
+                        stats[i] = stats.back();
+                        stats.pop_back();
+
+                        ++progressBar;
                     }
-
-                    systemStateUpdater.writeBestAssignmentToLogger(responses[i], mode);
-
-                    if (mode == TransportMode::Ped) {
-                        processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
-                    } else {
-                        processChoicePrivateCar(responses[i], stats[i], requestBatch[i].requestId, now);
-                    }
-
-                    // Remove request from batch, responses and stats
-                    requestBatch[i] = requestBatch.back();
-                    requestBatch.pop_back();
-                    responses[i] = responses.back();
-                    responses.pop_back();
-                    stats[i] = stats.back();
-                    stats.pop_back();
-
-                    ++progressBar;
                 }
 
                 // To avoid conflicts, we only accept one assignment per vehicle. If there are multiple assignments to
-                // the same vehicle, only one of them is accepted, while the others are postponed for a second run of
-                // assignments.
-                std::vector<int> orderOfVehicle(requestBatch.size());
-                std::iota(orderOfVehicle.begin(), orderOfVehicle.end(), 0);
-                std::sort(orderOfVehicle.begin(), orderOfVehicle.end(), [&](const auto &i1, const auto &i2) {
+                // the same vehicle, only one of them can be accepted, while the others are postponed for a second run
+                // of assignments.
+                std::vector<int> order(requestBatch.size());
+                std::iota(order.begin(), order.end(), 0);
+                std::sort(order.begin(), order.end(), [&](const auto &i1, const auto &i2) {
                     LIGHT_KASSERT(
                             responses[i1].getBestAssignment().vehicle && responses[i2].getBestAssignment().vehicle);
                     const auto &vehId1 = responses[i1].getBestAssignment().vehicle->vehicleId;
                     const auto &vehId2 = responses[i2].getBestAssignment().vehicle->vehicleId;
                     return vehId1 < vehId2;
                 });
-                Permutation orderOfVehiclePerm(orderOfVehicle.begin(), orderOfVehicle.end());
-                orderOfVehiclePerm.invert();
-                orderOfVehiclePerm.applyTo(requestBatch);
-                orderOfVehiclePerm.applyTo(responses);
-                orderOfVehiclePerm.applyTo(stats);
-                std::vector<int> accepted;
+                Permutation orderPerm(order.begin(), order.end());
+                orderPerm.invert();
+                orderPerm.applyTo(requestBatch);
+                orderPerm.applyTo(responses);
+                orderPerm.applyTo(stats);
+                using mode_choice::TransportMode;
+                std::vector<TransportMode> modes(requestBatch.size(), TransportMode::None);
                 int lastAcceptedVehId = INVALID_ID;
                 for (int i = 0; i < requestBatch.size(); ++i) {
                     LIGHT_KASSERT(responses[i].getBestAssignment().vehicle);
                     const auto &vehId = responses[i].getBestAssignment().vehicle->vehicleId;
+
+                    // If another request already accepted an assignment to this vehicle, this request cannot be
+                    // finished here but needs to be reassigned.
                     if (vehId == lastAcceptedVehId)
                         continue;
-                    accepted.push_back(i);
+
+                    // Check if this rider wants to accept the assignment. If so, no other riders can accept an
+                    // assignment to this vehicle. In either case, the request can be considered finished since it
+                    // had its chance to accept the taxi assignment.
+
+                    modes[i] = riderModeChoice.chooseMode(requestBatch[i], responses[i]);
+                    if (modes[i] != TransportMode::Taxi) {
+                        systemStateUpdater.writeBestAssignmentToLogger(responses[i], modes[i]);
+                        if (modes[i] == TransportMode::Ped) {
+                            processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
+                        } else {
+                            processChoicePrivateCar(responses[i], stats[i], requestBatch[i].requestId, now);
+                        }
+                        continue;
+                    }
+
+                    // Marker that an assignment to this vehicle has been accepted so no other requests can accept.
+                    // Accepted assignment will be processed in batch later.
                     lastAcceptedVehId = vehId;
                 }
 
-                // Move all accepted to the back.
-                int firstAcc = requestBatch.size();
-                for (int j = accepted.size() - 1; j >= 0; --j) {
-                    const auto &idxOfAcc = accepted[j];
-                    --firstAcc;
-                    std::swap(requestBatch[idxOfAcc], requestBatch[firstAcc]);
-                    std::swap(responses[idxOfAcc], responses[firstAcc]);
-                    std::swap(stats[idxOfAcc], stats[firstAcc]);
-                }
+                // Get permutation with non-finished requests first, then finished taxi requests,
+                // then finished non-taxi requests.
+                std::iota(order.begin(), order.end(), 0);
+                std::sort(order.begin(), order.end(), [&](const auto &i1, const auto &i2) {
+                    const bool i1Finished = modes[i1] != TransportMode::None;
+                    const bool i2Finished = modes[i2] != TransportMode::None;
+                    if (i1Finished != i2Finished)
+                        return i1Finished; // Finished requests go to the back.
+                    if (!i1Finished)
+                        return false; // Both not finished, keep original order.
+                    // Both finished, taxi requests go before non-taxi requests.
+                    if (modes[i1] != modes[i2])
+                        return modes[i1] == TransportMode::Taxi;
+                    return false; // Both same mode, keep original order.
+                });
+                orderPerm.assign(order.begin(), order.end());
+                orderPerm.invert();
+                orderPerm.applyTo(requestBatch);
+                orderPerm.applyTo(responses);
+                orderPerm.applyTo(stats);
+                orderPerm.applyTo(modes);
+
+                auto firstFinishedTaxiIt = std::find_if(modes.begin(), modes.end(), [](const TransportMode& m) {
+                    return m != TransportMode::None;
+                });
+                auto firstFinishedOtherIt = std::find_if(firstFinishedTaxiIt, modes.end(), [](const TransportMode& m) {
+                    return m != TransportMode::Taxi && m != TransportMode::None;
+                });
+                const int firstFinishedTaxi = static_cast<int>(std::distance(modes.begin(), firstFinishedTaxiIt));
+                const int firstFinishedOther = static_cast<int>(std::distance(modes.begin(), firstFinishedOtherIt));
+                const int numFinished = static_cast<int>(modes.size() - firstFinishedTaxi);
+
+                // Remove finished non-taxi assignments from batch.
+                requestBatch.erase(requestBatch.begin() + firstFinishedOther, requestBatch.end());
+                responses.erase(responses.begin() + firstFinishedOther, responses.end());
+                stats.erase(stats.begin() + firstFinishedOther, stats.end());
 
                 const auto iterationChooseAcceptedTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 
                 iterationTimer.restart();
-                const auto acceptedResponses = IteratorRange(responses.begin() + firstAcc, responses.end());
-                auto acceptedStats = IteratorRange(stats.begin() + firstAcc, stats.end());
+                const auto acceptedResponses = IteratorRange(responses.begin() + firstFinishedTaxi, responses.end());
+                auto acceptedStats = IteratorRange(stats.begin() + firstFinishedTaxi, stats.end());
                 systemStateUpdater.insertBatchOfBestAssignments(acceptedResponses, acceptedStats, now, iteration);
                 updateSimulationForAssignmentBatch(acceptedResponses);
-                progressBar += accepted.size();
+                progressBar += numFinished;
                 const auto iterationUpdateSystemStateTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 
 
-                // Remove all accepted requests from batch and retry rejected ones.
-                requestBatch.erase(requestBatch.begin() + firstAcc, requestBatch.end());
-                stats.erase(stats.begin() + firstAcc, stats.end());
+                // Remove all finished requests from batch and retry rejected ones.
+                requestBatch.erase(requestBatch.begin() + firstFinishedTaxi, requestBatch.end());
+                stats.erase(stats.begin() + firstFinishedTaxi, stats.end());
 
                 batchDispatchStatsLogger << now << "," << iteration << "," << iterationNumRequests << ","
-                                         << accepted.size() << "," << iterationFindAssignmentsTime << ","
+                                         << numFinished << "," << iterationFindAssignmentsTime << ","
                                          << iterationChooseAcceptedTime << ","
                                          << numEllipticBucketEntryDeletions << ","
                                          << iterationUpdateSystemStateTime << '\n';

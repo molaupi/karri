@@ -3,6 +3,6 @@
 namespace karri::mode_choice {
 
     enum class TransportMode {
-        Car, Ped, Taxi
+        Car, Ped, Taxi, None
     };
 }
