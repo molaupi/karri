@@ -64,10 +64,15 @@
 #include "Algorithms/KaRRi/LastStopSearches/UnsortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
+#include "Algorithms/KaRRi/RequestState/PDLocsFinder.h"
 #include "Algorithms/KaRRi/AssignmentFinder.h"
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
+#include "Algorithms/KaRRi/RiderModeChoice/ModeChoice.h"
 #include "Algorithms/KaRRi/RiderModeChoice/TripTimeThresholdCriterion.h"
+#include "Algorithms/KaRRi/RiderModeChoice/UtilityLogitCriterion.h"
+#include "Algorithms/KaRRi/ThreadLocalAssignmentFinderFactory.h"
+#include "Algorithms/KaRRi/BatchAssignmentFinder.h"
 
 #include "Parallel/hardware_topology.h"
 #include "Parallel/tbb_initializer.h"
@@ -106,10 +111,6 @@
 #if KARRI_DALS_STRATEGY == KARRI_COL
 
 #include "Algorithms/KaRRi/DalsAssignments/CollectiveBCHStrategy.h"
-#include "Algorithms/KaRRi/RequestState/PDLocsFinder.h"
-#include "Algorithms/KaRRi/ThreadLocalAssignmentFinderFactory.h"
-#include "Algorithms/KaRRi/BatchAssignmentFinder.h"
-#include "Algorithms/KaRRi/RiderModeChoice/UtilityLogitCriterion.h"
 
 #elif KARRI_DALS_STRATEGY == KARRI_IND
 
@@ -520,12 +521,13 @@ int main(int argc, char *argv[]) {
         lastStopBucketsEnv.commitEntryInsertionsAndDeletions(stats);
 
         // Rider mode choice mechanism for requests:
-//        using ModeChoice = mode_choice::TripTimeThresholdCriterion;
-        using ModeChoice = mode_choice::UtilityLogitCriterion;
-        ModeChoice modeChoice(routeState);
+//        using ModeChoiceCriterion = mode_choice::TripTimeThresholdCriterion;
+        using ModeChoiceCriterion = mode_choice::UtilityLogitCriterion;
+        using RiderModeChoice = mode_choice::ModeChoice<ModeChoiceCriterion, std::ofstream>;
+        RiderModeChoice modeChoice(routeState);
 
         // Run simulation:
-        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, ModeChoice, SystemStateUpdaterImpl, RouteState>;
+        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, RiderModeChoice , SystemStateUpdaterImpl, RouteState>;
         EventSimulationImpl eventSimulation(fleet, requests, insertionFinder, modeChoice, systemStateUpdater,
                                             routeState, true);
         eventSimulation.run();

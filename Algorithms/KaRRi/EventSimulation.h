@@ -359,7 +359,7 @@ namespace karri {
                         const TransportMode mode = riderModeChoice.chooseMode(requestBatch[i], responses[i]);
                         KASSERT(mode != TransportMode::Taxi);
 
-                        systemStateUpdater.writeBestAssignmentToLogger(responses[i], mode);
+                        systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
 
                         if (mode == TransportMode::Ped) {
                             processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
@@ -414,7 +414,7 @@ namespace karri {
 
                     modes[i] = riderModeChoice.chooseMode(requestBatch[i], responses[i]);
                     if (modes[i] != TransportMode::Taxi) {
-                        systemStateUpdater.writeBestAssignmentToLogger(responses[i], modes[i]);
+                        systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
                         if (modes[i] == TransportMode::Ped) {
                             processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
                         } else {
@@ -470,6 +470,10 @@ namespace karri {
                 iterationTimer.restart();
                 const auto acceptedResponses = IteratorRange(responses.begin() + firstFinishedTaxi, responses.end());
                 auto acceptedStats = IteratorRange(stats.begin() + firstFinishedTaxi, stats.end());
+                for (const auto& resp: acceptedResponses) {
+                    systemStateUpdater.writeBestAssignmentToLogger(resp);
+                }
+
                 systemStateUpdater.insertBatchOfBestAssignments(acceptedResponses, acceptedStats, now, iteration);
                 updateSimulationForAssignmentBatch(acceptedResponses);
                 progressBar += numFinished;
