@@ -341,6 +341,9 @@ namespace karri {
             int iteration = 0;
             while (!requestBatch.empty()) {
                 ++iteration;
+                if (iteration > 1) {
+                    std::cout << "";
+                }
                 const auto iterationNumRequests = requestBatch.size();
 
                 Timer iterationTimer;
@@ -435,7 +438,7 @@ namespace karri {
                     const bool i1Finished = modes[i1] != TransportMode::None;
                     const bool i2Finished = modes[i2] != TransportMode::None;
                     if (i1Finished != i2Finished)
-                        return i1Finished; // Finished requests go to the back.
+                        return !i1Finished; // Finished requests go to the back.
                     if (!i1Finished)
                         return false; // Both not finished, keep original order.
                     // Both finished, taxi requests go before non-taxi requests.
