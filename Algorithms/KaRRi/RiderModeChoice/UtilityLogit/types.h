@@ -36,6 +36,7 @@ namespace karri::mode_choice::utility_logit {
     struct Alternative {
         T option;
         Attributes data;
+        bool enabled;
     };
 
 /**
@@ -48,5 +49,16 @@ namespace karri::mode_choice::utility_logit {
             return values.at(key);
         }
     };
+
+
+    inline ModeParameters fromMap(const ParameterMap &params) {
+        return ModeParameters{
+                .coeffConstant = params["coeff_constant"],
+                .coeffTravelTime = params["coeff_travel_time"],
+                .coeffWaitingTime = params["coeff_waiting_time"],
+                .coeffAccessTime = params["coeff_access_time"],
+
+        };
+    }
 
 }

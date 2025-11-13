@@ -19,21 +19,4 @@ namespace karri::mode_choice::utility_logit {
                + attributes.waitingTimeMinutes * params.coeffWaitingTime
                + attributes.accessEgressTimeMinutes * params.coeffAccessTime;
     }
-
-    inline TransportMode stringToTransportMode(const std::string &str) {
-        if (str == "Car") return TransportMode::Car;
-        if (str == "Ped") return TransportMode::Ped;
-        if (str == "Taxi") return TransportMode::Taxi;
-        throw std::runtime_error("Unrecognized transport mode");
-    }
-
-    inline ModeParameters fromMap(const ParameterMap &params) {
-        return ModeParameters{
-                .coeffConstant = params["coeff_constant"],
-                .coeffTravelTime = params["coeff_travel_time"],
-                .coeffWaitingTime = params["coeff_waiting_time"],
-                .coeffAccessTime = params["coeff_access_time"],
-
-        };
-    }
 }

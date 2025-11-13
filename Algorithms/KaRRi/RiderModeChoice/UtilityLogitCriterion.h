@@ -29,9 +29,10 @@ public:
 
     TransportMode apply(ModeChoiceInput input) const {
         std::vector<Alternative<TransportMode>> entries = {
-                {TransportMode::Car,  Attributes{input.privateCarTravelTime, 0, 0}},
-                {TransportMode::Ped,  Attributes{input.walkTravelTime, 0, 0}},
-                {TransportMode::Taxi, Attributes{input.taxiTravelTime, input.taxiWaitTime, input.taxiAccEgrTime}}
+                {TransportMode::Car,  Attributes{input.privateCarTravelTime, 0, 0}, input.isPrivateCarValid()},
+                {TransportMode::Ped,  Attributes{input.walkTravelTime, 0, 0}, input.isWalkValid()},
+                {TransportMode::Taxi, Attributes{input.taxiTravelTime, input.taxiWaitTime, input.taxiAccEgrTime}, input.isTaxiValid()},
+                {TransportMode::PublicTransport, Attributes{input.ptTravelTime, input.ptWaitTime, input.ptAccEgrTime}, input.isPublicTransportValid()}
         };
         return logit.select(entries);
     }
@@ -43,8 +44,9 @@ private:
 
 };
 
-// out of line definition of static member
+// out of line definition of static members
 const std::vector<TransportMode> UtilityLogitCriterion::options = {TransportMode::Car, TransportMode::Ped,
-                                                                   TransportMode::Taxi};
+                                                                         TransportMode::Taxi,
+                                                                         TransportMode::PublicTransport};
 
 } // karri
