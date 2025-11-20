@@ -32,6 +32,7 @@ namespace karri::mode_choice {
     // Models mode choice of a rider given a possible taxi-sharing assignment.
     // Simple implementation based on trip times: Takes smaller trip time between walking and taxi sharing. If this
     // trip time is larger than a threshold (relative to direct car distance), a direct car trip is chosen instead.
+    // This criterion will never choose public transport.
     class TripTimeThresholdCriterion {
 
     public:

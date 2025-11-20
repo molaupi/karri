@@ -21,7 +21,7 @@ namespace karri::mode_choice::utility_logit {
         using UtilityFunction = std::function<double(const Attributes &, const P &)>;
 
     private:
-        std::vector<T> options;
+        const std::vector<T> &options;
         mutable std::vector<double> utilities;
         mutable std::vector<double> expUtilities;
         mutable std::vector<double> probabilities;
@@ -54,10 +54,15 @@ namespace karri::mode_choice::utility_logit {
         }
 
         T select(const std::vector<Alternative<T> > &elements) const {
+            KASSERT(elements.size() == options.size());
             flush();
 
             double sum = 0.0;
             for (size_t i = 0; i < elements.size(); ++i) {
+                if (!elements[i].enabled) {
+                    expUtilities[i] = 0.0;
+                    continue;
+                }
                 const double utility = utilityFunction(elements[i].data, paramsMap.at(elements[i].option));
                 utilities[i] = utility;
                 const double expUtility = exp(utility);

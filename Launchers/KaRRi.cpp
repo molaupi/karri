@@ -153,6 +153,7 @@ inline void printUsage() {
               "  -psg-d <file>              separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -csv-in-LOUD-format        if set, assumes that input files are in the format used by LOUD.\n"
               "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1).\n"
+              "  -pt-journeys <file>        public transport journey data in CSV format (needed for mode choice with PT).\n"
               "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
               "  -help                      show usage help text.\n";
 }
@@ -520,15 +521,41 @@ int main(int argc, char *argv[]) {
         LastStopBucketUpdateStats stats;
         lastStopBucketsEnv.commitEntryInsertionsAndDeletions(stats);
 
+        // Read public transport journey data if given
+        const bool allowPTMode = clp.isSet("pt-journeys");
+        std::vector<PTJourneyData> ptJourneyData(requests.size());
+        if (allowPTMode) {
+            const auto ptJourneysFileName = clp.getValue<std::string>("pt-journeys");
+            std::cout << "Reading public transport journey data from file... " << std::flush;
+            io::CSVReader<4, io::trim_chars<' '>> ptJourneysFileReader(ptJourneysFileName);
+            int requestId;
+            double travelTime, waitTime, accEgrTime;
+            ptJourneysFileReader.read_header(io::ignore_no_column, "request_id", "travel_time", "wait_time", "accegr_time");
+            while (ptJourneysFileReader.read_row(requestId, travelTime, waitTime, accEgrTime)) {
+                if (requestId < 0 || requestId >= requests.size())
+                    throw std::invalid_argument("invalid request id -- '" + std::to_string(requestId) + "'");
+                ptJourneyData[requestId] = {travelTime, waitTime, accEgrTime};
+            }
+            std::cout << "done.\n";
+            int numRequestsWithoutPTData = 0;
+            for (int i = 0; i < requests.size(); ++i) {
+                if (ptJourneyData[i].travelTimeMinutes == PTJourneyData::MAX_VAL)
+                    ++numRequestsWithoutPTData;
+            }
+            if (numRequestsWithoutPTData > 0) {
+                std::cout << "Warning: " << numRequestsWithoutPTData << " requests have no PT journey data and will not consider PT as a travel mode.\n";
+            }
+        }
+
         // Rider mode choice mechanism for requests:
 //        using ModeChoiceCriterion = mode_choice::TripTimeThresholdCriterion;
         using ModeChoiceCriterion = mode_choice::UtilityLogitCriterion;
         using RiderModeChoice = mode_choice::ModeChoice<ModeChoiceCriterion, std::ofstream>;
-        RiderModeChoice modeChoice(routeState);
+        RiderModeChoice modeChoice(routeState, allowPTMode);
 
         // Run simulation:
         using EventSimulationImpl = EventSimulation<InsertionFinderImpl, RiderModeChoice , SystemStateUpdaterImpl, RouteState>;
-        EventSimulationImpl eventSimulation(fleet, requests, insertionFinder, modeChoice, systemStateUpdater,
+        EventSimulationImpl eventSimulation(fleet, requests, ptJourneyData, insertionFinder, modeChoice, systemStateUpdater,
                                             routeState, true);
         eventSimulation.run();
 

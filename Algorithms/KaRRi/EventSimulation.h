@@ -32,6 +32,7 @@
 #include "Tools/Logging/LogManager.h"
 #include "Tools/Timer.h"
 #include "RiderModeChoice/TransportMode.h"
+#include "Algorithms/KaRRi/RiderModeChoice/PTJourneyData.h"
 
 namespace karri {
 
@@ -71,7 +72,7 @@ namespace karri {
 
 
         EventSimulation(
-                const Fleet &fleet, const std::vector<Request> &requests,
+                const Fleet &fleet, const std::vector<Request> &requests, const std::vector<PTJourneyData> &ptJourneyData,
                 AssignmentFinderT &assignmentFinder,
                 const RiderModeChoiceT &riderModeChoice,
                 SystemStateUpdaterT &systemStateUpdater,
@@ -79,6 +80,7 @@ namespace karri {
                 const bool verbose = false)
                 : fleet(fleet),
                   requests(requests),
+                  ptJourneyData(ptJourneyData),
                   assignmentFinder(assignmentFinder),
                   riderModeChoice(riderModeChoice),
                   systemStateUpdater(systemStateUpdater),
@@ -341,9 +343,6 @@ namespace karri {
             int iteration = 0;
             while (!requestBatch.empty()) {
                 ++iteration;
-                if (iteration > 1) {
-                    std::cout << "";
-                }
                 const auto iterationNumRequests = requestBatch.size();
 
                 Timer iterationTimer;
@@ -359,7 +358,7 @@ namespace karri {
 
                     if (!responses[i].getBestAssignment().vehicle) {
                         using mode_choice::TransportMode;
-                        const TransportMode mode = riderModeChoice.chooseMode(requestBatch[i], responses[i]);
+                        const TransportMode mode = riderModeChoice.chooseMode(requestBatch[i], responses[i], ptJourneyData[requestBatch[i].requestId]);
                         KASSERT(mode != TransportMode::Taxi);
 
                         systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
@@ -415,7 +414,7 @@ namespace karri {
                     // assignment to this vehicle. In either case, the request can be considered finished since it
                     // had its chance to accept the taxi assignment.
 
-                    modes[i] = riderModeChoice.chooseMode(requestBatch[i], responses[i]);
+                    modes[i] = riderModeChoice.chooseMode(requestBatch[i], responses[i], ptJourneyData[requestBatch[i].requestId]);
                     if (modes[i] != TransportMode::Taxi) {
                         systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
                         if (modes[i] == TransportMode::Ped) {
@@ -666,6 +665,7 @@ namespace karri {
 
         const Fleet &fleet;
         const std::vector<Request> &requests;
+        const std::vector<PTJourneyData> &ptJourneyData;
         AssignmentFinderT &assignmentFinder;
         const RiderModeChoiceT &riderModeChoice;
         SystemStateUpdaterT &systemStateUpdater;
