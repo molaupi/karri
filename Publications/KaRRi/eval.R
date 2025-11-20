@@ -208,6 +208,7 @@ batchDispatchPerfStats <- function(file_base, num_threads = 1) {
     find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
     choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
     update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
+    total_time = sum(find_assignments_running_time + choose_accepted_running_time + update_system_state_running_time, na.rm=TRUE),
     num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
   )
   
@@ -217,10 +218,8 @@ batchDispatchPerfStats <- function(file_base, num_threads = 1) {
   print(paste0("Max num requests: ", max(stats$num_requests)))
   
   means <- apply(stats,2,mean)
-  means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
-  print(means)
-
-  
+  # means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
+  return(means)
 }
 
 oldBatchDispatchPerfStats <- function(file_base) {
@@ -249,31 +248,31 @@ oldBatchDispatchPerfStats <- function(file_base) {
 }
 
 
-multiDispatchPerfStats <- function(file_base, num_runs=1) {
+multiBatchDispatchPerfStats <- function(file_base, thread_nums = c(1,4,8,32,64,96), num_runs=1) {
   
-  stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
+  df <- NULL
+  for (t in thread_nums) {
+    dft <- NULL
+    for (r in 1:num_runs) {
+      dft <- rbind(dft, batchDispatchPerfStats(paste0(file_base,"_t",t,"_run",r),t))
+    }
+    dft <- apply(dft,2,mean)
+    df <- rbind(df, dft)
+  }
   
-  print(paste0("Total time (batch dispatch): ", sum(stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
-  
-  stats <- stats %>% group_by(occurence_time) %>% summarise(
-    num_iterations = max(iteration),
-    num_requests = max(num_requests),
-    find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
-    choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
-    update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
-    num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
-  )
-  
-  print(paste0("Max num iterations: ", max(stats$num_iterations)))
-  print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
-  print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
-  print(paste0("Max num requests: ", max(stats$num_requests)))
-  
-  means <- apply(stats,2,mean)
-  means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
-  print(means)
-  
-  
+  df <- as.data.frame(df)
+  df[,"num_threads"]<-thread_nums
+  return(df)
+}
+
+makeInverseRelativeToFirstRow <- function(df) {
+  mat <- as.matrix(df)
+  first <- as.numeric(mat[1,])
+  mat_rel <- sweep(mat, 2, first, FUN = function(col, s) s / col)
+  dfrel <- as.data.frame(mat_rel)
+  colnames(dfrel) <- colnames(df)
+  rownames(dfrel) <- rownames(df)
+  return(dfrel)
 }
 
 
