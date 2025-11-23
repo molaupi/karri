@@ -40,7 +40,9 @@
 // Forward declarations for friend
 namespace karri {
     template<typename, typename, bool>
-    class EllipticBucketsEnvironment;
+    class BatchUpdatesEllipticBucketsEnvironment;
+    template<typename, typename, bool>
+    class SingleUpdatesEllipticBucketsEnvironment;
 }
 
 // Implementation of a shortest-path search on a directed acyclic graph. The vertices must be
@@ -57,7 +59,9 @@ template <
 class DagShortestPaths {
 
     template<typename, typename, bool>
-    friend class karri::EllipticBucketsEnvironment;
+    friend class karri::BatchUpdatesEllipticBucketsEnvironment;
+    template<typename, typename, bool>
+    friend class karri::SingleUpdatesEllipticBucketsEnvironment;
 
 
  public:

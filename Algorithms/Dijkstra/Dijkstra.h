@@ -72,7 +72,10 @@ namespace dij {
 // Forward declarations for friend
 namespace karri {
     template<typename, typename, bool>
-    class EllipticBucketsEnvironment;
+    class BatchUpdatesEllipticBucketsEnvironment;
+
+    template<typename, typename, bool>
+    class SingleUpdatesEllipticBucketsEnvironment;
 
     template<typename, typename>
     class FindPDLocsInRadiusQuery;
@@ -114,7 +117,11 @@ class Dijkstra {
 
     template<typename, typename, bool>
     friend
-    class karri::EllipticBucketsEnvironment;
+    class karri::BatchUpdatesEllipticBucketsEnvironment;
+
+    template<typename, typename, bool>
+    friend
+    class karri::SingleUpdatesEllipticBucketsEnvironment;
 
     template<typename, typename>
     friend

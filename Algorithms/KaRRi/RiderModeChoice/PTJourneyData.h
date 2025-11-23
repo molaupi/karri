@@ -11,4 +11,14 @@ struct PTJourneyData {
     bool isValid() const {
         return travelTimeMinutes != MAX_VAL && waitTimeMinutes != MAX_VAL && accessEgressTimeMinutes != MAX_VAL;
     }
+
+    int totalJourneyTimeMinutes() const {
+        if (!isValid()) return INFTY;
+        return static_cast<int>(travelTimeMinutes + waitTimeMinutes + accessEgressTimeMinutes);
+    }
+
+    int totalJourneyTimeTenthsOfSeconds() const {
+        if (!isValid()) return INFTY;
+        return static_cast<int>((travelTimeMinutes + waitTimeMinutes + accessEgressTimeMinutes) * 600.0);
+    }
 };

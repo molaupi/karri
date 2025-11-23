@@ -38,7 +38,7 @@
 namespace karri {
 
     template<typename InputGraphT, typename CHEnvT>
-    class SortedLastStopBucketsEnvironment {
+    class BatchUpdatesSortedLastStopBucketsEnvironment {
 
 
         // .targetId is vehicle ID
@@ -232,8 +232,8 @@ namespace karri {
 
     public:
 
-        SortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                                         const RouteState &routeState)
+        BatchUpdatesSortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
+                                                     const RouteState &routeState)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   searchGraph(ch.upwardGraph()),
