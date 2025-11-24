@@ -35,7 +35,7 @@
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
 #include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBucketsEnvironment.h"
+#include "Algorithms/KaRRi/EllipticBCH/BatchUpdatesEllipticBucketsEnvironment.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
 #include "Algorithms/KaRRi/EllipticBCH/PDLocsAtExistingStopsFinder.h"
 #include "Algorithms/KaRRi/CostCalculator.h"

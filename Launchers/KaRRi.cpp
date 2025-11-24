@@ -48,7 +48,8 @@
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
 #include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
-#include "Algorithms/KaRRi/EllipticBCH/EllipticBucketsEnvironment.h"
+#include "Algorithms/KaRRi/EllipticBCH/BatchUpdatesEllipticBucketsEnvironment.h"
+#include "Algorithms/KaRRi/EllipticBCH/SingleUpdatesEllipticBucketsEnvironment.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
 #include "Algorithms/KaRRi/EllipticBCH/PDLocsAtExistingStopsFinder.h"
 #include "Algorithms/KaRRi/CostCalculator.h"
@@ -60,7 +61,8 @@
 #include "Algorithms/KaRRi/PbnsAssignments/PBNSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/PalsAssignments/PALSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/DalsAssignments/DALSAssignmentsFinder.h"
-#include "Algorithms/KaRRi/LastStopSearches/SortedLastStopBucketsEnvironment.h"
+#include "Algorithms/KaRRi/LastStopSearches/BatchUpdatesSortedLastStopBucketsEnvironment.h"
+#include "Algorithms/KaRRi/LastStopSearches/SingleUpdatesSortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/LastStopSearches/UnsortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
@@ -139,7 +141,8 @@ inline void printUsage() {
               "  -e <factor>            model parameter epsilon for the trip time rejection threshold = e * OD-dist + f\n"
               "                             set to 0 to reject no requests (default)\n"
               "  -f <factor>            model parameter phi for the trip time rejection threshold = e * OD-dist + f (dflt: 120)\n"
-              "  -i <seconds>               interval duration for batch of requests in seconds (dflt: 60)\n"
+              "  -seq-and-non-batched       if set, dispatches requests one-by-one instead of batched and without multithreading (original KaRRi mode).\n"
+              "  -i <seconds>               interval duration for batch of requests in seconds (dflt: 60). No effect if -seq-and-non-batched is set.\n"
               "  -p-radius <m>              default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
               "  -d-radius <m>              default walking radius (in m) for dropoff locations around destination if not specified by request (dflt: 417m = 5min at 5km/h)\n"
               "  -force-default-radius      if set, forces the use of the default walking radius for all requests, even if they specify their own radius.\n"
@@ -152,11 +155,117 @@ inline void printUsage() {
               "  -veh-d <file>              separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
               "  -psg-d <file>              separator decomposition for the passenger network in binary format (needed for CCHs).\n"
               "  -csv-in-LOUD-format        if set, assumes that input files are in the format used by LOUD.\n"
-              "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1).\n"
+              "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1). No effect if -seq-and-non-batched is set.\n"
               "  -pt-journeys <file>        public transport journey data in CSV format (needed for mode choice with PT).\n"
               "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
               "  -help                      show usage help text.\n";
 }
+
+
+template<bool BATCHED_DISPATCHING,
+        typename VehicleInputGraph, typename PsgInputGraph,
+        typename VehCHEnv, typename PsgCHEnv>
+void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
+                                     const PsgInputGraph &psgInputGraph,
+                                     const VehCHEnv &vehChEnv,
+                                     const PsgCHEnv &psgChEnv,
+                                     const karri::Fleet &fleet,
+                                     const std::vector<karri::Request> &requests,
+                                     const std::vector<PTJourneyData> &ptJourneyData,
+                                     const bool allowPTMode) {
+    using namespace karri;
+    const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
+    const auto revPsgGraph = psgInputGraph.getReverseGraph();
+
+    // Create Route State for empty routes.
+    RouteState routeState(fleet);
+
+    // Construct Elliptic BCH bucket environment:
+    static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
+    using EllipticBucketsEnv = std::conditional_t<BATCHED_DISPATCHING,
+            BatchUpdatesEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>,
+            SingleUpdatesEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>>;
+    EllipticBucketsEnv ellipticBucketsEnv(vehicleInputGraph, vehChEnv, routeState);
+
+    // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
+    // Otherwise, we use a last stop buckets substitute that only stores which vehicles' last stops are at a vertex.
+#if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
+    KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
+
+    static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
+    static_assert(LAST_STOP_SORTED_BUCKETS, "Unsorted last stop buckets are not supported right now.");
+    using LastStopBucketsEnv = std::conditional_t<BATCHED_DISPATCHING,
+            BatchUpdatesSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
+            SingleUpdatesSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
+    >;
+    LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, vehChEnv, routeState);
+
+#else
+    using LastStopBucketsEnv = OnlyLastStopsAtVerticesBucketSubstitute<VehicleInputGraph >;
+        LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, routeState, fleet.size());
+#endif
+    // Last stop bucket environment (or substitute) also serves as a source of information on the last stops at vertices.
+    using LastStopAtVerticesInfo = LastStopBucketsEnv;
+
+
+    using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, typename EllipticBucketsEnv::BucketContainer, LastStopAtVerticesInfo>;
+    PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, vehChEnv,
+                                                          ellipticBucketsEnv.getSourceBuckets(), lastStopBucketsEnv,
+                                                          routeState);
+
+
+    using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, EllipticBucketsEnv, PDLocsAtExistingStopsFinderImpl, LastStopBucketsEnv>;
+    ThreadLocalAssignmentFinderFactoryImpl asgnFinderFactory(vehicleInputGraph, revVehicleGraph, psgInputGraph,
+                                                             revPsgGraph, vehChEnv, psgChEnv, ellipticBucketsEnv,
+                                                             pdLocsAtExistingStops, lastStopBucketsEnv, fleet,
+                                                             routeState);
+    using InsertionFinderImpl = BatchAssignmentFinder<ThreadLocalAssignmentFinderFactoryImpl>;
+    InsertionFinderImpl insertionFinder(asgnFinderFactory);
+
+
+#if KARRI_OUTPUT_VEHICLE_PATHS
+    using VehPathTracker = PathTracker<VehicleInputGraph, VehCHEnv, std::ofstream>;
+        VehPathTracker pathTracker(vehicleInputGraph, *vehChEnv, reqState, routeState, fleet);
+#else
+    using VehPathTracker = NoOpPathTracker;
+    VehPathTracker pathTracker;
+#endif
+
+    using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
+    VehicleLocatorImpl ssuLocator(vehicleInputGraph, vehChEnv, routeState);
+    using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, BATCHED_DISPATCHING, std::ofstream>;
+    SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, ssuLocator,
+                                              pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
+
+
+    // Initialize last stop state for initial locations of vehicles
+    if constexpr (BATCHED_DISPATCHING) {
+        for (const auto &veh: fleet) {
+            lastStopBucketsEnv.addIdleBucketEntryInsertions(veh.vehicleId);
+        }
+        LastStopBucketUpdateStats stats;
+        lastStopBucketsEnv.commitEntryInsertionsAndDeletions(stats);
+    } else {
+        stats::UpdatePerformanceStats stats;
+        for (const auto &veh: fleet) {
+            lastStopBucketsEnv.generateIdleBucketEntries(veh, stats);
+        }
+    }
+
+
+    // Rider mode choice mechanism for requests:
+//        using ModeChoiceCriterion = mode_choice::TripTimeThresholdCriterion;
+    using ModeChoiceCriterion = mode_choice::UtilityLogitCriterion;
+    using RiderModeChoice = mode_choice::ModeChoice<ModeChoiceCriterion, std::ofstream>;
+    RiderModeChoice modeChoice(routeState, allowPTMode);
+
+    // Run simulation:
+    using EventSimulationImpl = EventSimulation<InsertionFinderImpl, RiderModeChoice, SystemStateUpdaterImpl, RouteState, BATCHED_DISPATCHING>;
+    EventSimulationImpl eventSimulation(fleet, requests, ptJourneyData, insertionFinder, modeChoice, systemStateUpdater,
+                                        routeState, true);
+    eventSimulation.run();
+}
+
 
 int main(int argc, char *argv[]) {
     using namespace karri;
@@ -316,11 +425,6 @@ int main(int argc, char *argv[]) {
         }
         std::cout << "done.\n";
 
-        // Create Route State for empty routes.
-        RouteState routeState(fleet);
-
-
-
         // Read the request data from file.
         std::cout << "Reading request data from file... " << std::flush;
         std::vector<Request> requests;
@@ -332,7 +436,8 @@ int main(int argc, char *argv[]) {
             reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time",
                                       "num_riders", "pickup_walking_radius", "dropoff_walking_radius", "walking_speed");
         } else {
-            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders", "pickup_walking_radius", "dropoff_walking_radius", "walking_speed");
+            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders",
+                                      "pickup_walking_radius", "dropoff_walking_radius", "walking_speed");
         }
 
         numRiders = 1; // If number of riders was not specified, assume one rider
@@ -341,7 +446,8 @@ int main(int argc, char *argv[]) {
         walkingSpeedInMps = defaultWalkingSpeed;
         const bool forceDefaultRadius = clp.isSet("force-default-radius");
         const bool forceDefaultWalkingSpeed = clp.isSet("force-default-walk-speed");
-        while (reqFileReader.read_row(origin, destination, requestTime, numRiders, pickupWalkingRadiusInM, dropoffWalkingRadiusInM, walkingSpeedInMps)) {
+        while (reqFileReader.read_row(origin, destination, requestTime, numRiders, pickupWalkingRadiusInM,
+                                      dropoffWalkingRadiusInM, walkingSpeedInMps)) {
             if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
             if (destination < 0 || destination >= vehGraphOrigIdToSeqId.size() ||
@@ -364,7 +470,8 @@ int main(int argc, char *argv[]) {
             }
 
             const int requestId = static_cast<int>(requests.size());
-            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders, pickupWalkingRadiusInM, dropoffWalkingRadiusInM, walkingSpeedInMps});
+            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders, pickupWalkingRadiusInM,
+                                dropoffWalkingRadiusInM, walkingSpeedInMps});
             // Reset defaults in case next request does not specify all values
             numRiders = 1;
             pickupWalkingRadiusInM = defaultPickupWalkRadius;
@@ -455,72 +562,6 @@ int main(int argc, char *argv[]) {
         }
 #endif
 
-
-        const auto revVehicleGraph = vehicleInputGraph.getReverseGraph();
-        const auto revPsgGraph = psgInputGraph.getReverseGraph();
-
-        // Construct Elliptic BCH bucket environment:
-        static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
-        using EllipticBucketsEnv = EllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>;
-        EllipticBucketsEnv ellipticBucketsEnv(vehicleInputGraph, *vehChEnv, routeState);
-
-        // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
-        // Otherwise, we use a last stop buckets substitute that only stores which vehicles' last stops are at a vertex.
-#if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
-    KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
-
-        static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
-        using LastStopBucketsEnv = std::conditional_t<LAST_STOP_SORTED_BUCKETS,
-                SortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
-                UnsortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
-        >;
-        LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, *vehChEnv, routeState);
-
-#else
-        using LastStopBucketsEnv = OnlyLastStopsAtVerticesBucketSubstitute<VehicleInputGraph >;
-        LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, routeState, fleet.size());
-#endif
-        // Last stop bucket environment (or substitute) also serves as a source of information on the last stops at vertices.
-        using LastStopAtVerticesInfo = LastStopBucketsEnv;
-
-
-        using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, typename EllipticBucketsEnv::BucketContainer, LastStopAtVerticesInfo>;
-        PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, *vehChEnv,
-                                                              ellipticBucketsEnv.getSourceBuckets(), lastStopBucketsEnv,
-                                                              routeState);
-
-
-        using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, EllipticBucketsEnv, PDLocsAtExistingStopsFinderImpl, LastStopBucketsEnv>;
-        ThreadLocalAssignmentFinderFactoryImpl asgnFinderFactory(vehicleInputGraph, revVehicleGraph, psgInputGraph,
-                                                                 revPsgGraph, *vehChEnv, *psgChEnv, ellipticBucketsEnv,
-                                                                 pdLocsAtExistingStops, lastStopBucketsEnv, fleet,
-                                                                 routeState);
-        using InsertionFinderImpl = BatchAssignmentFinder<ThreadLocalAssignmentFinderFactoryImpl>;
-        InsertionFinderImpl insertionFinder(asgnFinderFactory);
-
-
-#if KARRI_OUTPUT_VEHICLE_PATHS
-        using VehPathTracker = PathTracker<VehicleInputGraph, VehCHEnv, std::ofstream>;
-        VehPathTracker pathTracker(vehicleInputGraph, *vehChEnv, reqState, routeState, fleet);
-#else
-        using VehPathTracker = NoOpPathTracker;
-        VehPathTracker pathTracker;
-#endif
-
-        using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
-        VehicleLocatorImpl ssUlocator(vehicleInputGraph, *vehChEnv, routeState);
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, std::ofstream>;
-        SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, ssUlocator,
-                                                  pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
-
-
-        // Initialize last stop state for initial locations of vehicles
-        for (const auto &veh: fleet) {
-            lastStopBucketsEnv.addIdleBucketEntryInsertions(veh.vehicleId);
-        }
-        LastStopBucketUpdateStats stats;
-        lastStopBucketsEnv.commitEntryInsertionsAndDeletions(stats);
-
         // Read public transport journey data if given
         const bool allowPTMode = clp.isSet("pt-journeys");
         std::vector<PTJourneyData> ptJourneyData(requests.size());
@@ -530,7 +571,8 @@ int main(int argc, char *argv[]) {
             io::CSVReader<4, io::trim_chars<' '>> ptJourneysFileReader(ptJourneysFileName);
             int requestId;
             double travelTime, waitTime, accEgrTime;
-            ptJourneysFileReader.read_header(io::ignore_no_column, "request_id", "travel_time", "wait_time", "accegr_time");
+            ptJourneysFileReader.read_header(io::ignore_no_column, "request_id", "travel_time", "wait_time",
+                                             "accegr_time");
             while (ptJourneysFileReader.read_row(requestId, travelTime, waitTime, accEgrTime)) {
                 if (requestId < 0 || requestId >= requests.size())
                     throw std::invalid_argument("invalid request id -- '" + std::to_string(requestId) + "'");
@@ -543,21 +585,18 @@ int main(int argc, char *argv[]) {
                     ++numRequestsWithoutPTData;
             }
             if (numRequestsWithoutPTData > 0) {
-                std::cout << "Warning: " << numRequestsWithoutPTData << " requests have no PT journey data and will not consider PT as a travel mode.\n";
+                std::cout << "Warning: " << numRequestsWithoutPTData
+                          << " requests have no PT journey data and will not consider PT as a travel mode.\n";
             }
         }
 
-        // Rider mode choice mechanism for requests:
-//        using ModeChoiceCriterion = mode_choice::TripTimeThresholdCriterion;
-        using ModeChoiceCriterion = mode_choice::UtilityLogitCriterion;
-        using RiderModeChoice = mode_choice::ModeChoice<ModeChoiceCriterion, std::ofstream>;
-        RiderModeChoice modeChoice(routeState, allowPTMode);
-
-        // Run simulation:
-        using EventSimulationImpl = EventSimulation<InsertionFinderImpl, RiderModeChoice , SystemStateUpdaterImpl, RouteState>;
-        EventSimulationImpl eventSimulation(fleet, requests, ptJourneyData, insertionFinder, modeChoice, systemStateUpdater,
-                                            routeState, true);
-        eventSimulation.run();
+        if (clp.isSet("seq-and-non-batched")) {
+            initializeStateAndRunSimulation<false>(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
+                                                   fleet, requests, ptJourneyData, allowPTMode);
+        } else {
+            initializeStateAndRunSimulation<true>(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
+                                                  fleet, requests, ptJourneyData, allowPTMode);
+        }
 
     } catch (std::exception &e) {
         std::cerr << argv[0] << ": " << e.what() << '\n';

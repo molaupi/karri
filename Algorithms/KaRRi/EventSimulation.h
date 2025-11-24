@@ -40,7 +40,8 @@ namespace karri {
     template<typename AssignmentFinderT,
             typename RiderModeChoiceT,
             typename SystemStateUpdaterT,
-            typename ScheduledStopsT>
+            typename ScheduledStopsT,
+            bool BATCHED_DISPATCHING>
     class EventSimulation {
 
         enum VehicleState {
@@ -55,7 +56,7 @@ namespace karri {
             WAITING_FOR_DISPATCH,
             ASSIGNED_TO_VEH,
             WALKING_TO_DEST,
-            IN_PRIVATE_CAR,
+            IN_OTHER_MODE, // rider is in mode other than taxi or walking with fixed arrival time
             FINISHED
         };
 
@@ -72,7 +73,8 @@ namespace karri {
 
 
         EventSimulation(
-                const Fleet &fleet, const std::vector<Request> &requests, const std::vector<PTJourneyData> &ptJourneyData,
+                const Fleet &fleet, const std::vector<Request> &requests,
+                const std::vector<PTJourneyData> &ptJourneyData,
                 AssignmentFinderT &assignmentFinder,
                 const RiderModeChoiceT &riderModeChoice,
                 SystemStateUpdaterT &systemStateUpdater,
@@ -145,11 +147,13 @@ namespace karri {
                 else
                     vehicleEvents.min(id, occTime);
 
-                // If the deadline for the next request batch has been reached, dispatch the batch of requests
-                // collected before continuing with the next request or vehicle events.
-                if (occTime > nextRequestBatchDeadline) {
-                    dispatchRequestBatch();
-                    continue;
+                if constexpr (BATCHED_DISPATCHING) {
+                    // If the deadline for the next request batch has been reached, dispatch the batch of requests
+                    // collected before continuing with the next request or vehicle events.
+                    if (occTime > nextRequestBatchDeadline) {
+                        dispatchRequestBatch();
+                        continue;
+                    }
                 }
 
                 if (nextEventIsRequest)
@@ -193,13 +197,14 @@ namespace karri {
                 case WALKING_TO_DEST:
                     handleWalkingArrivalAtDest(reqId, occTime);
                     break;
-                case IN_PRIVATE_CAR:
-                    handlePrivatCarArrivalAtDest(reqId, occTime);
+                case IN_OTHER_MODE:
+                    handleOtherModeArrivalAtDest(reqId, occTime);
                     break;
                 case FINISHED:
                     assert(false);
                     break;
                 default:
+                    assert(false);
                     break;
             }
         }
@@ -303,19 +308,73 @@ namespace karri {
             KASSERT(requests[reqId].requestTime == occTime);
 
             Timer timer;
-            requestBatch.push_back(requests[reqId]);
-            requestState[reqId] = WAITING_FOR_DISPATCH;
 
             // event for walking arrival at dest inserted at dispatching time for walking-only or when vehicle reaches dropoff
             int id, key;
             requestEvents.deleteMin(id, key);
             assert(id == reqId && key == occTime);
 
+            requestState[reqId] = WAITING_FOR_DISPATCH;
+            if constexpr (BATCHED_DISPATCHING) {
+                // Add to current request batch for later dispatching
+                requestBatch.push_back(requests[reqId]);
+            } else {
+                // Dispatch immediately
+                dispatchSingleRequest(requests[reqId]);
+            }
+
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",RequestReceipt," << time << '\n';
         }
 
-        void dispatchRequestBatch() {
+        void dispatchSingleRequest(const Request &request) requires (!BATCHED_DISPATCHING) {
+            using mode_choice::TransportMode;
+            const int now = request.requestTime;
+            stats::DispatchingPerformanceStats stats;
+            Timer overallTimer;
+            Timer componentTimer;
+
+            componentTimer.restart();
+            const auto asgnFinderResponse = assignmentFinder.findBestAssignment(request, now, stats);
+            const auto findAssignmentTime = componentTimer.elapsed<std::chrono::nanoseconds>();
+
+            componentTimer.restart();
+            const auto mode = riderModeChoice.chooseMode(request, asgnFinderResponse, ptJourneyData[request.requestId]);
+            const auto chooseAcceptedTime = componentTimer.elapsed<std::chrono::nanoseconds>();
+
+            componentTimer.restart();
+            systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse);
+            if (mode == TransportMode::Taxi) {
+                systemStateUpdater.insertSingleBestAssignment(asgnFinderResponse, stats);
+                updateSimulationForAssignment(asgnFinderResponse);
+            } else {
+                if (mode == TransportMode::Ped) {
+                    processChoiceOnlyWalking(asgnFinderResponse, stats, request.requestId, now);
+                } else if (mode == TransportMode::Car) {
+                    processChoiceOtherMode(asgnFinderResponse, stats, request.requestId, now,
+                                           now + asgnFinderResponse.originalReqDirectDist);
+                } else if (mode == TransportMode::PublicTransport) {
+                    processChoiceOtherMode(asgnFinderResponse, stats, request.requestId, now,
+                                           now + ptJourneyData[request.requestId].totalJourneyTimeTenthsOfSeconds());
+                } else {
+                    throw std::runtime_error("Unsupported transport mode chosen in event simulation.");
+                }
+            }
+            const auto updateSystemStateTime = componentTimer.elapsed<std::chrono::nanoseconds>();
+
+            ++progressBar;
+
+            batchDispatchStatsLogger << now << "," << 1 << "," << 1 << "," << 1 << ","
+                                     << findAssignmentTime << ","
+                                     << chooseAcceptedTime << ","
+                                     << 0 << ","
+                                     << updateSystemStateTime << '\n';
+
+            const auto time = overallTimer.elapsed<std::chrono::nanoseconds>();
+            eventSimulationStatsLogger << now << ",RequestBatchDispatch," << time << '\n';
+        }
+
+        void dispatchRequestBatch() requires BATCHED_DISPATCHING {
 
             const int now = nextRequestBatchDeadline;
             nextRequestBatchDeadline += InputConfig::getInstance().requestBatchInterval;
@@ -358,15 +417,22 @@ namespace karri {
 
                     if (!responses[i].getBestAssignment().vehicle) {
                         using mode_choice::TransportMode;
-                        const TransportMode mode = riderModeChoice.chooseMode(requestBatch[i], responses[i], ptJourneyData[requestBatch[i].requestId]);
+                        const TransportMode mode = riderModeChoice.chooseMode(requestBatch[i], responses[i],
+                                                                              ptJourneyData[requestBatch[i].requestId]);
                         KASSERT(mode != TransportMode::Taxi);
 
                         systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
 
                         if (mode == TransportMode::Ped) {
                             processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
+                        } else if (mode == TransportMode::Car) {
+                            processChoiceOtherMode(responses[i], stats[i], requestBatch[i].requestId, now,
+                                                   now + responses[i].originalReqDirectDist);
+                        } else if (mode == TransportMode::PublicTransport) {
+                            processChoiceOtherMode(responses[i], stats[i], requestBatch[i].requestId, now, now +
+                                                                                                           ptJourneyData[requestBatch[i].requestId].totalJourneyTimeTenthsOfSeconds());
                         } else {
-                            processChoicePrivateCar(responses[i], stats[i], requestBatch[i].requestId, now);
+                            throw std::runtime_error("Unsupported transport mode chosen in event simulation.");
                         }
 
                         // Remove request from batch, responses and stats
@@ -414,13 +480,20 @@ namespace karri {
                     // assignment to this vehicle. In either case, the request can be considered finished since it
                     // had its chance to accept the taxi assignment.
 
-                    modes[i] = riderModeChoice.chooseMode(requestBatch[i], responses[i], ptJourneyData[requestBatch[i].requestId]);
+                    modes[i] = riderModeChoice.chooseMode(requestBatch[i], responses[i],
+                                                          ptJourneyData[requestBatch[i].requestId]);
                     if (modes[i] != TransportMode::Taxi) {
                         systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
                         if (modes[i] == TransportMode::Ped) {
                             processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
+                        } else if (modes[i] == TransportMode::Car) {
+                            processChoiceOtherMode(responses[i], stats[i], requestBatch[i].requestId, now,
+                                                   now + responses[i].originalReqDirectDist);
+                        } else if (modes[i] == TransportMode::PublicTransport) {
+                            processChoiceOtherMode(responses[i], stats[i], requestBatch[i].requestId, now, now +
+                                                                                                           ptJourneyData[requestBatch[i].requestId].totalJourneyTimeTenthsOfSeconds());
                         } else {
-                            processChoicePrivateCar(responses[i], stats[i], requestBatch[i].requestId, now);
+                            throw std::runtime_error("Unsupported transport mode chosen in event simulation.");
                         }
                         continue;
                     }
@@ -452,10 +525,10 @@ namespace karri {
                 orderPerm.applyTo(stats);
                 orderPerm.applyTo(modes);
 
-                auto firstFinishedTaxiIt = std::find_if(modes.begin(), modes.end(), [](const TransportMode& m) {
+                auto firstFinishedTaxiIt = std::find_if(modes.begin(), modes.end(), [](const TransportMode &m) {
                     return m != TransportMode::None;
                 });
-                auto firstFinishedOtherIt = std::find_if(firstFinishedTaxiIt, modes.end(), [](const TransportMode& m) {
+                auto firstFinishedOtherIt = std::find_if(firstFinishedTaxiIt, modes.end(), [](const TransportMode &m) {
                     return m != TransportMode::Taxi && m != TransportMode::None;
                 });
                 const int firstFinishedTaxi = static_cast<int>(std::distance(modes.begin(), firstFinishedTaxiIt));
@@ -472,12 +545,14 @@ namespace karri {
                 iterationTimer.restart();
                 const auto acceptedResponses = IteratorRange(responses.begin() + firstFinishedTaxi, responses.end());
                 auto acceptedStats = IteratorRange(stats.begin() + firstFinishedTaxi, stats.end());
-                for (const auto& resp: acceptedResponses) {
+                for (const auto &resp: acceptedResponses) {
                     systemStateUpdater.writeBestAssignmentToLogger(resp);
                 }
 
                 systemStateUpdater.insertBatchOfBestAssignments(acceptedResponses, acceptedStats, now, iteration);
-                updateSimulationForAssignmentBatch(acceptedResponses);
+                for (const auto &acceptedResp: acceptedResponses) {
+                    updateSimulationForAssignment(acceptedResp);
+                }
                 progressBar += numFinished;
                 const auto iterationUpdateSystemStateTime = iterationTimer.elapsed<std::chrono::nanoseconds>();
 
@@ -500,21 +575,6 @@ namespace karri {
         }
 
         template<typename AssignmentFinderResponseT>
-        void processChoicePrivateCar(const AssignmentFinderResponseT &asgnFinderResponse,
-                                     stats::DispatchingPerformanceStats stats, const int reqId, const int occTime) {
-            KASSERT(!requestEvents.contains(reqId));
-
-            // Assign rider to take private car to their destination and insert event for their arrival.
-            requestState[reqId] = IN_PRIVATE_CAR;
-            requestData[reqId].assignmentCost = INFTY; // No meaningful cost can be assigned since this is not a possibility in local cost function
-            requestData[reqId].depTime = occTime;
-            requestData[reqId].walkingTimeToPickup = 0;
-            requestData[reqId].walkingTimeFromDropoff = 0;
-            requestEvents.insert(reqId, occTime + asgnFinderResponse.originalReqDirectDist);
-            systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
-        }
-
-        template<typename AssignmentFinderResponseT>
         void processChoiceOnlyWalking(const AssignmentFinderResponseT &asgnFinderResponse,
                                       stats::DispatchingPerformanceStats stats, const int reqId,
                                       const int occTime) {
@@ -522,7 +582,8 @@ namespace karri {
 
             // Assign rider to walk to their destination and insert event for their arrival.
             requestState[reqId] = WALKING_TO_DEST;
-            requestData[reqId].assignmentCost = CostCalculator::calcCostForNotUsingVehicle(asgnFinderResponse.odWalkingDist, asgnFinderResponse);
+            requestData[reqId].assignmentCost = CostCalculator::calcCostForNotUsingVehicle(
+                    asgnFinderResponse.odWalkingDist, asgnFinderResponse);
             requestData[reqId].depTime = occTime;
             requestData[reqId].walkingTimeToPickup = 0;
             requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.odWalkingDist;
@@ -531,12 +592,27 @@ namespace karri {
         }
 
         template<typename AssignmentFinderResponseT>
-        void
-        applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse,
-                        stats::DispatchingPerformanceStats &stats) {
-            const int reqId = asgnFinderResponse.originalRequest.requestId;
+        void processChoiceOtherMode(const AssignmentFinderResponseT &asgnFinderResponse,
+                                    stats::DispatchingPerformanceStats stats,
+                                    const int reqId, const int occTime, const int arrivalTime) {
             KASSERT(!requestEvents.contains(reqId));
-            KASSERT(!asgnFinderResponse.isNotUsingVehicleBest());
+
+            // Assign rider to take other mode to their destination and insert event for their arrival.
+            requestState[reqId] = IN_OTHER_MODE;
+            requestData[reqId].assignmentCost = INFTY; // No meaningful cost can be assigned since this is not a possibility in local cost function
+            requestData[reqId].depTime = occTime;
+            requestData[reqId].walkingTimeToPickup = 0;
+            requestData[reqId].walkingTimeFromDropoff = 0;
+            requestEvents.insert(reqId, arrivalTime);
+            systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
+        }
+
+        template<typename AssignmentFinderResponseT>
+        void
+        updateSimulationForAssignment(const AssignmentFinderResponseT &asgnFinderResponse) {
+            const int reqId = asgnFinderResponse.originalRequest.requestId;
+            KASSERT(requestState[reqId] == WAITING_FOR_DISPATCH);
+            KASSERT(!requestEvents.contains(reqId));
 
             const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
             KASSERT(bestAsgn.vehicle && bestAsgn.pickup.id != INVALID_ID && bestAsgn.dropoff.id != INVALID_ID);
@@ -546,10 +622,7 @@ namespace karri {
             requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff.walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
 
-            systemStateUpdater.insertBestAssignment(asgnFinderResponse, stats.updateStats);
-            systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
-
-            const auto vehId = bestAsgn.vehicle->vehicleId;
+            const auto vehId = asgnFinderResponse.getBestAssignment().vehicle->vehicleId;
             switch (vehicleState[vehId]) {
                 case STOPPING:
                     // Update event time to departure time at current stop since it may have changed
@@ -564,45 +637,6 @@ namespace karri {
                     [[fallthrough]];
                 default:
                     break;
-            }
-        }
-
-        template<typename AssignmentFinderResponsesT>
-        void
-        updateSimulationForAssignmentBatch(const AssignmentFinderResponsesT &asgnFinderResponses) {
-
-            // Write system state logs, update simulation for request and vehicles.
-            for (auto respIt = asgnFinderResponses.begin(); respIt != asgnFinderResponses.end(); ++respIt) {
-                const auto asgnFinderResponse = *respIt;
-
-                const int reqId = asgnFinderResponse.originalRequest.requestId;
-                KASSERT(requestState[reqId] == WAITING_FOR_DISPATCH);
-                KASSERT(!requestEvents.contains(reqId));
-
-                const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
-                KASSERT(bestAsgn.vehicle && bestAsgn.pickup.id != INVALID_ID && bestAsgn.dropoff.id != INVALID_ID);
-
-                requestState[reqId] = ASSIGNED_TO_VEH;
-                requestData[reqId].walkingTimeToPickup = bestAsgn.pickup.walkingDist;
-                requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff.walkingDist;
-                requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
-
-                const auto vehId = asgnFinderResponse.getBestAssignment().vehicle->vehicleId;
-                switch (vehicleState[vehId]) {
-                    case STOPPING:
-                        // Update event time to departure time at current stop since it may have changed
-                        vehicleEvents.updateKey(vehId, scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime);
-                        break;
-                    case IDLING:
-                        vehicleState[vehId] = VehicleState::DRIVING;
-                        [[fallthrough]];
-                    case DRIVING:
-                        // Update event time to arrival time at next stop since it may have changed (also for case of idling).
-                        vehicleEvents.updateKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
-                        [[fallthrough]];
-                    default:
-                        break;
-                }
             }
         }
 
@@ -634,8 +668,9 @@ namespace karri {
             eventSimulationStatsLogger << occTime << ",RequestWalkingArrival," << time << '\n';
         }
 
-        void handlePrivatCarArrivalAtDest(const int reqId, const int occTime) {
-            KASSERT(requestState[reqId] == IN_PRIVATE_CAR);
+        // For other modes than walking or taxi
+        void handleOtherModeArrivalAtDest(const int reqId, const int occTime) {
+            KASSERT(requestState[reqId] == IN_OTHER_MODE);
             Timer timer;
 
             const auto &reqData = requestData[reqId];
@@ -659,7 +694,7 @@ namespace karri {
 
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            eventSimulationStatsLogger << occTime << ",RequestPrivateCarArrival," << time << '\n';
+            eventSimulationStatsLogger << occTime << ",RequestOtherModeArrival," << time << '\n';
         }
 
 

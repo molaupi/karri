@@ -43,7 +43,7 @@
 namespace karri {
 
     template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
-    class EllipticBucketsEnvironment {
+    class BatchUpdatesEllipticBucketsEnvironment {
 
         using Entry = BucketEntryWithLeeway;
 
@@ -102,7 +102,7 @@ namespace karri {
         using EntryInsertion = typename BucketContainer::EntryInsertion;
         using EntryDeletion = typename BucketContainer::EntryDeletion;
 
-        EllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnvIn, const RouteState &routeState)
+        BatchUpdatesEllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnvIn, const RouteState &routeState)
                 : inputGraph(inputGraph), ch(chEnvIn.getCH()), routeState(routeState), chEnv(chEnvIn),
                   sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
                   descendentHasEntry([&]() { return BitVector(inputGraph.numVertices()); }),
@@ -177,10 +177,11 @@ namespace karri {
             const int nextStopRoot = ch.rank(inputGraph.edgeTail(nextStopLoc));
             const int nextStopOffset = inputGraph.travelTime(nextStopLoc);
 
-            generateBucketEntries(stopId, leeway,
-                                  newStopRoot, 0, forwardSearchFromNewStop.local(), ch.upwardGraph(),
-                                  nextStopRoot, nextStopOffset, reverseSearchFromNextStop.local(), ch.downwardGraph(),
-                                  sourceBuckets, sourceInsertions.local());
+            generateBucketEntryInsertions(stopId, leeway,
+                                          newStopRoot, 0, forwardSearchFromNewStop.local(), ch.upwardGraph(),
+                                          nextStopRoot, nextStopOffset, reverseSearchFromNextStop.local(),
+                                          ch.downwardGraph(),
+                                          sourceBuckets, sourceInsertions.local());
         }
 
         // Adds entry insertions to target buckets for the given stop index of the given vehicle.
@@ -205,10 +206,11 @@ namespace karri {
             const int prevStopLoc = routeState.stopLocationsFor(vehId)[stopIndex - 1];
             const int prevStopRoot = ch.rank(inputGraph.edgeHead(prevStopLoc));
 
-            generateBucketEntries(stopId, leeway,
-                                  newStopRoot, newStopOffset, reverseSearchFromNewStop.local(), ch.downwardGraph(),
-                                  prevStopRoot, 0, forwardSearchFromPrevStop.local(), ch.upwardGraph(),
-                                  targetBuckets, targetInsertions.local());
+            generateBucketEntryInsertions(stopId, leeway,
+                                          newStopRoot, newStopOffset, reverseSearchFromNewStop.local(),
+                                          ch.downwardGraph(),
+                                          prevStopRoot, 0, forwardSearchFromPrevStop.local(), ch.upwardGraph(),
+                                          targetBuckets, targetInsertions.local());
         }
 
         void updateLeewayInSourceBucketsForAllStopsOf(const int vehId, karri::stats::UpdatePerformanceStats &stats) {
@@ -392,14 +394,14 @@ namespace karri {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeHead(stopLoc));
-            deleteBucketEntries(stopId, root, ch.upwardGraph(), sourceBuckets, sourceDeletions);
+            generateBucketEntryDeletions(stopId, root, ch.upwardGraph(), sourceBuckets, sourceDeletions);
         }
 
         void addTargetBucketEntryDeletions(const Vehicle &veh, const int stopIndex) {
             const int stopId = routeState.stopIdsFor(veh.vehicleId)[stopIndex];
             const int stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];
             const int root = ch.rank(inputGraph.edgeTail(stopLoc));
-            deleteBucketEntries(stopId, root, ch.downwardGraph(), targetBuckets, targetDeletions);
+            generateBucketEntryDeletions(stopId, root, ch.downwardGraph(), targetBuckets, targetDeletions);
         }
 
         void commitEntryInsertions() {
@@ -456,14 +458,14 @@ namespace karri {
                 dij::NoCriterion, StopWhenLeewayExceeded>;
 
         template<typename EntryInsertionsVecT>
-        void generateBucketEntries(const int stopId, const int leeway,
-                                   const int newStopRoot, const int newStopOffSet, SearchFromNewStop &searchFromNewStop,
-                                   const CH::SearchGraph &newStopGraph,
-                                   const int neighborRoot, const int neighborOffset,
-                                   SearchFromNeighbor &searchFromNeighbor,
-                                   const CH::SearchGraph &neighborGraph,
-                                   const BucketContainer &buckets,
-                                   EntryInsertionsVecT &entryInsertions
+        void generateBucketEntryInsertions(const int stopId, const int leeway,
+                                           const int newStopRoot, const int newStopOffSet, SearchFromNewStop &searchFromNewStop,
+                                           const CH::SearchGraph &newStopGraph,
+                                           const int neighborRoot, const int neighborOffset,
+                                           SearchFromNeighbor &searchFromNeighbor,
+                                           const CH::SearchGraph &neighborGraph,
+                                           const BucketContainer &buckets,
+                                           EntryInsertionsVecT &entryInsertions
                 //,
 //                                   karri::stats::UpdatePerformanceStats &stats
         ) {
@@ -533,8 +535,8 @@ namespace karri {
         }
 
         void
-        deleteBucketEntries(const int stopId, const int root, const CH::SearchGraph &graph,
-                            const BucketContainer &buckets, std::vector<EntryDeletion> &entryDeletions) {
+        generateBucketEntryDeletions(const int stopId, const int root, const CH::SearchGraph &graph,
+                                     const BucketContainer &buckets, std::vector<EntryDeletion> &entryDeletions) {
 //            int64_t numVerticesVisited = 0, numEntriesScanned = 0;
             int64_t numEntriesScanned = 0;
 //            Timer timer;

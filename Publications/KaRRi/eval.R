@@ -23,18 +23,25 @@ convertToHHMM <- function(seconds) {
 # Given the path to the result files of a KaRRi run (e.g. 
 # "<output-dir>/Berlin-1pct_pedestrian/karri-col-simd_300_300"), 
 # this function returns an overview over the solution quality of the assignments.
-quality <- function(file_base, accepted_column=TRUE) {
+quality <- function(file_base, mode_choice=TRUE) {
   asgnstats <- read_csv(paste0(file_base, ".assignmentquality.csv"), progress = FALSE, show_col_types = FALSE)
   asgnstats <- asgnstats[order(asgnstats$request_id),]
   legstats <- read_csv(paste0(file_base, ".legstats.csv"), progress = FALSE, show_col_types = FALSE)
   bestasgns <- read_csv(paste0(file_base, ".bestassignments.csv"), progress = FALSE, show_col_types = FALSE)
   bestasgns <- bestasgns[order(bestasgns$request_id),]
-  ratioAccepted <- 1
-  if (accepted_column) {
-    numAccepted <- sum(bestasgns["accepted"] == 1)
-    numTotal <- nrow(bestasgns)
-    ratioAccepted <- numAccepted / numTotal
-    bestasgns <- bestasgns[bestasgns["accepted"] == 1,]
+  ratioTaxi <- 1
+  if (mode_choice) {
+    modes <- read_csv(paste0(file_base, ".modechoice.csv"), progress = FALSE, show_col_types = FALSE)
+    modes <- modes[order(modes$request_id),]
+    numTaxi <- sum(modes["mode"] == "Taxi")
+    numTotal <- nrow(modes)
+    ratioTaxi <- numTaxi / numTotal
+    stopifnot(numTotal == nrow(asgnstats))
+    stopifnot(sum(asgnstats$request_id != modes$request_id) == 0)
+    asgnstats <- asgnstats[modes["mode"] == "Taxi",]
+    stopifnot(numTotal == nrow(bestasgns))
+    stopifnot(sum(bestasgns$request_id != modes$request_id) == 0)
+    bestasgns <- bestasgns[modes["mode"] == "Taxi",]
   }
   
   eventsimstats <- read_csv(paste0(file_base, ".eventsimulationstats.csv"), progress = FALSE, show_col_types = FALSE)
@@ -75,7 +82,7 @@ quality <- function(file_base, accepted_column=TRUE) {
   veh_time_cols <- c("stop_time_avg", "empty_time_avg", "occ_time_avg", "op_time_avg")
   df[, colnames(df) %in% veh_time_cols] <- convertToHHMM(df[, colnames(df) %in% veh_time_cols])
   
-  df["service_rate"] <- c(ratioAccepted)
+  df["service_rate"] <- c(ratioTaxi)
   
   print(df)
 }
