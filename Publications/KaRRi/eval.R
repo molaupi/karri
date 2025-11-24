@@ -265,13 +265,15 @@ multiBatchDispatchPerfStats <- function(file_base, thread_nums = c(1,4,8,32,64,9
   return(df)
 }
 
-makeInverseRelativeToFirstRow <- function(df) {
+makeSpeedups <- function(df) {
+  num_threads <- df$num_threads
   mat <- as.matrix(df)
   first <- as.numeric(mat[1,])
   mat_rel <- sweep(mat, 2, first, FUN = function(col, s) s / col)
   dfrel <- as.data.frame(mat_rel)
   colnames(dfrel) <- colnames(df)
   rownames(dfrel) <- rownames(df)
+  dfrel$num_threads <- num_threads
   return(dfrel)
 }
 
