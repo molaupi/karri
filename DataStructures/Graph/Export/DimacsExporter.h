@@ -61,6 +61,10 @@ public:
 
 //        outgr << "c weight attribute: " << WeightAttrT::NAME << "\n";
 //        outco << "c coordinate attribute: " << CoordAttrT::NAME << "\n";
+        if constexpr (std::is_same_v<WeightAttrT, TravelTimeAttribute>)
+            outgr << "c Weights specify arc travel time in tenths of seconds.\n";
+        if constexpr (std::is_same_v<WeightAttrT, LengthAttribute>)
+            outgr << "c Weights specify arc length in meters.\n";
         if constexpr (std::is_same_v<CoordAttrT, LatLngAttribute>)
             outco << "c Coordinates (longitude, latitude) in WGS84 system stored as integers with unit 1/" << LatLng::PRECISION << " degrees\n";
     }
@@ -123,7 +127,7 @@ public:
 
     template<typename DUMMY>
     struct SetCurrentEdgeAttributeValue<WeightAttrT, DUMMY> {
-        static void set(DimacsExporter& exporter, const typename CoordAttrT::Type& value) {
+        static void set(DimacsExporter& exporter, const typename WeightAttrT::Type& value) {
             exporter.currentEdgeWeight = value;
         }
     };
@@ -132,7 +136,7 @@ public:
     // Default implementation does nothing.
     template<typename Attr>
     void setCurrentEdgeAttributeValue(const typename Attr::Type& value) {
-        SetCurrentVertexAttributeValue<Attr>::set(*this, value);
+        SetCurrentEdgeAttributeValue<Attr>::set(*this, value);
     }
 
 //    // Write the given attribute value for the given edge to file.
