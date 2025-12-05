@@ -51,7 +51,7 @@ nlohmann::json generateGeoJsonObjectForEdges(const InputGraphT &inputGraph, cons
     // Construct the needed path GeoJSON objects
     nlohmann::json topGeoJson;
     topGeoJson["type"] = "FeatureCollection";
-    static char color[] = "blue";
+    static char color[] = "black";
 
     int numEdgesOutput = 0;
     int numEdgesToOutput = inputGraph.numEdges() * ratio;
@@ -93,7 +93,7 @@ nlohmann::json generateGeoJsonObjectForVertices(const InputGraphT &inputGraph, c
     // Construct the needed path GeoJSON objects
     nlohmann::json topGeoJson;
     topGeoJson["type"] = "FeatureCollection";
-    static char color[] = "blue";
+    static char color[] = "black";
 
     int numVerticesOutput = 0;
     int numVerticesToOutput = inputGraph.numVertices() * ratio;
@@ -112,6 +112,7 @@ nlohmann::json generateGeoJsonObjectForVertices(const InputGraphT &inputGraph, c
         vertexGeometry["coordinates"] = coordinate;
 
         feature["geometry"] = vertexGeometry;
+        topGeoJson["features"].push_back(feature);
 
         if (++numVerticesOutput >= numVerticesToOutput)
             return topGeoJson;

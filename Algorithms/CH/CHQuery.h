@@ -148,5 +148,13 @@ class CHQuery {
       DistanceLabelContainerT, QueueT>;
   using UpwardSearch = std::conditional_t<USE_STALLING, UpwardSearchStall, UpwardSearchNoStall>;
 
-  BiDijkstra<UpwardSearch, StoppingCriterion> search; // The modified bidirectional search.
+  using BiDirSearch = BiDijkstra<UpwardSearch, StoppingCriterion>;
+  BiDirSearch search; // The modified bidirectional search.
+
+public:
+
+    BiDirSearch &getInternalSearch()  {
+        return search;
+    }
+
 };

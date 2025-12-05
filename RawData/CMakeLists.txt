@@ -81,6 +81,11 @@ target_compile_definitions(GenerateGeoJsonForRequests PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(GenerateGeoJsonForRequests PRIVATE ${FULL_WARNINGS})
 target_link_libraries(GenerateGeoJsonForRequests PRIVATE nlohmann_json kassert fast_cpp_csv_parser)
 
+add_executable(GenerateGeoJsonForSearchSpace GenerateGeoJsonForSearchSpace.cc)
+target_compile_definitions(GenerateGeoJsonForSearchSpace PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(GenerateGeoJsonForSearchSpace PRIVATE ${FULL_WARNINGS})
+target_link_libraries(GenerateGeoJsonForSearchSpace PRIVATE nlohmann_json kassert fast_cpp_csv_parser routingkit)
+
 add_executable(TransformRequestsToLatLng TransformRequestsToLatLng.cc)
 target_compile_definitions(TransformRequestsToLatLng PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(TransformRequestsToLatLng PRIVATE ${FULL_WARNINGS})

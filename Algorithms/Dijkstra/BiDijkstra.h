@@ -165,6 +165,14 @@ public:
         return reverseSearch.getReverseEdgePath(meetingVertices.vertex(i), i);
     }
 
+    DijkstraT &getForwardSearch() {
+        return forwardSearch;
+    }
+
+    DijkstraT &getReverseSearch() {
+        return reverseSearch;
+    }
+
 private:
     // Checks whether the path via v improves the tentative distance for any search.
     void updateTentativeDistances(const int v) {
