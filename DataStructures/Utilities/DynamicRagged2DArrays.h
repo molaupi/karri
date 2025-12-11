@@ -242,6 +242,36 @@ namespace dynamic_ragged2d {
         end -= i;
     }
 
+    // Removes entries given as a range of column indices, sorted in ascending order. Shrinks range of entries at front
+    // instead of back like stableRemovalOfSortedCols.
+    template<typename ColsRangeT, typename IndexArray, typename ValueArray, typename... ExtraValueArrays>
+    inline void stableRemovalOfSortedColsShrinkFront(
+        const int row, const ColsRangeT &cols,
+        IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
+        KASSERT(std::is_sorted(cols.begin(), cols.end()));
+        KASSERT(row >= 0);
+        KASSERT(row < indexArray.size());
+        auto &start = indexArray[row].start;
+
+        int i = 0;
+        for (auto it = cols.rbegin(); it != cols.rend();) {
+            auto col = *it;
+            KASSERT(col <= indexArray[row].end - 1 - i);
+            KASSERT(col < indexArray[row].end - start);
+
+            ++it;
+            const auto prevCol = it == cols.rend() ? -1 : *it;
+            std::copy_backward(valueArray.begin() + start + prevCol + 1, valueArray.begin() + start + col,
+                valueArray.begin() + start + col + i + 1);
+            (std::copy_backward(
+                extraValueArrays.begin() + start + prevCol + 1, extraValueArrays.begin() + start + col,
+                extraValueArrays.begin() + start + col + i + 1), ...);
+            ++i;
+        }
+        std::fill(valueArray.begin() + start, valueArray.begin() + start + i,
+                  std::numeric_limits<typename ValueArray::value_type>::max());
+        start += i;
+    }
 
     // template<typename IndexArray, typename ValueArray>
     // inline bool checkIfRowCanGrowBackwards(const int row, const IndexArray &indexArray, const ValueArray &valueArray,
@@ -258,16 +288,23 @@ namespace dynamic_ragged2d {
     //     return true;
     // }
 
-    template<typename IndexArray, typename ValueArray>
+    struct NoneBlocked {
+        inline bool operator[](const int) const {
+            return false;
+        }
+    };
+
+    template<typename IndexArray, typename ValueArray, typename IsBlockedT = NoneBlocked>
     inline int getStartOfNewRangeForInsertionsGrowingBackwards(const int row, const IndexArray &indexArray,
-                                                               ValueArray &valueArray, const int numInsertions) {
+                                                               ValueArray &valueArray, const int numInsertions,
+                                                               const IsBlockedT &isBlocked = {}) {
         assert(row >= 0);
         assert(row < indexArray.size());
         const auto &start = indexArray[row].start;
         static constexpr auto hole = std::numeric_limits<typename ValueArray::value_type>::max();
         bool needToMoveToBack = false;
         for (int i = 1; i <= numInsertions; ++i) {
-            if (start - i < 0 || valueArray[start - i] != hole) {
+            if (start - i < 0 || valueArray[start - i] != hole || isBlocked[start - i]) {
                 needToMoveToBack = true; break;
             }
         }
@@ -349,7 +386,7 @@ namespace dynamic_ragged2d {
     // At the end, cols[i] contains the index in the value array of the inserted vals[i].
     template<typename ColsRangeT, typename ValsRangeT, typename IndexArray, typename ValueArray, typename...
         ExtraValueArrays>
-    inline void stableInsertionOfSortedColsGrowingBackwardWithKnownStartOfNewRange(const int row,
+    inline void stableInsertionOfSortedColsGrowingBackward(const int row,
                                                             ColsRangeT &cols,
                                                            const ValsRangeT &vals,
                                                            IndexArray &indexArray, ValueArray &valueArray,
@@ -368,7 +405,7 @@ namespace dynamic_ragged2d {
         for (int row = 0; row < indexArray.size(); ++row) {
             const auto &start = indexArray[row].start;
             const auto &end = indexArray[row].end;
-            if (start < 0 || end <= start || end > valueArray.size()) {
+            if (start < 0 || end < start || end > valueArray.size()) {
                 KASSERT(false, "Broken index array!");
                 return false;
             }
