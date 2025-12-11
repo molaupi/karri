@@ -171,53 +171,53 @@ public:
     }
 
 
-    void batchedCommitInsertions(std::vector<EntryInsertion> &idleInsertions,
-                                 std::vector<EntryInsertion> &nonIdleInsertions) {
-
-        // Sort idle insertions using idleComp.
-        std::sort(idleInsertions.begin(), idleInsertions.end(),
-                  [&](const EntryInsertion &i1, const EntryInsertion &i2) {
-                      return idleComp(i1.value, i2.value);
-                  });
-
-        // Sort non-idle insertions using nonIdleComp.
-        std::sort(nonIdleInsertions.begin(), nonIdleInsertions.end(),
-                  [&](const EntryInsertion &i1, const EntryInsertion &i2) {
-                      return nonIdleComp(i1.value, i2.value);
-                  });
-
-        // Update number of idle entries for each idle insertion.
-        for (const auto &ins: idleInsertions) {
-            ++numIdleEntries[ins.row];
-        }
-
-        // Append non-idle insertions to idle insertions, then run batched update for all insertions. Stable
-        // batched update respects order by idleComp and nonIdleComp as well as the fact that idle entries have to
-        // come before non-idle ones.
-        idleInsertions.insert(idleInsertions.end(), nonIdleInsertions.begin(), nonIdleInsertions.end());
-
-        // Perform insertions. Respects previous sorting by comp.
-        compact_batch_ragged2d::stableBatchedInsertionsSequential(idleInsertions, offset, entries);
-
-        KASSERT(std::all_of(entries.begin(), entries.end(), [&](const auto &e) { return e != BucketEntryT(); }));
-        KASSERT(verifyAllBucketsSorted());
-    }
-
-
-    void
-    batchedCommitDeletions(std::vector<EntryDeletion> &idleDeletions, std::vector<EntryDeletion> &nonIdleDeletions) {
-        KASSERT(entries.size() >= idleDeletions.size() + nonIdleDeletions.size());
-
-        // Update number of idle entries for each idle deletion.
-        for (const auto &del: idleDeletions) {
-            --numIdleEntries[del.row];
-        }
-
-        // Append nonIdleDeletions to idleDeletions and perform batched update for all deletions
-        idleDeletions.insert(idleDeletions.end(), nonIdleDeletions.begin(), nonIdleDeletions.end());
-        compact_batch_ragged2d::stableBatchedDeletionsSequential(idleDeletions, offset, entries);
-        KASSERT(verifyAllBucketsSorted());
-    }
+    // void batchedCommitInsertions(std::vector<EntryInsertion> &idleInsertions,
+    //                              std::vector<EntryInsertion> &nonIdleInsertions) {
+    //
+    //     // Sort idle insertions using idleComp.
+    //     std::sort(idleInsertions.begin(), idleInsertions.end(),
+    //               [&](const EntryInsertion &i1, const EntryInsertion &i2) {
+    //                   return idleComp(i1.value, i2.value);
+    //               });
+    //
+    //     // Sort non-idle insertions using nonIdleComp.
+    //     std::sort(nonIdleInsertions.begin(), nonIdleInsertions.end(),
+    //               [&](const EntryInsertion &i1, const EntryInsertion &i2) {
+    //                   return nonIdleComp(i1.value, i2.value);
+    //               });
+    //
+    //     // Update number of idle entries for each idle insertion.
+    //     for (const auto &ins: idleInsertions) {
+    //         ++numIdleEntries[ins.row];
+    //     }
+    //
+    //     // Append non-idle insertions to idle insertions, then run batched update for all insertions. Stable
+    //     // batched update respects order by idleComp and nonIdleComp as well as the fact that idle entries have to
+    //     // come before non-idle ones.
+    //     idleInsertions.insert(idleInsertions.end(), nonIdleInsertions.begin(), nonIdleInsertions.end());
+    //
+    //     // Perform insertions. Respects previous sorting by comp.
+    //     compact_batch_ragged2d::stableBatchedInsertionsSequential(idleInsertions, offset, entries);
+    //
+    //     KASSERT(std::all_of(entries.begin(), entries.end(), [&](const auto &e) { return e != BucketEntryT(); }));
+    //     KASSERT(verifyAllBucketsSorted());
+    // }
+    //
+    //
+    // void
+    // batchedCommitDeletions(std::vector<EntryDeletion> &idleDeletions, std::vector<EntryDeletion> &nonIdleDeletions) {
+    //     KASSERT(entries.size() >= idleDeletions.size() + nonIdleDeletions.size());
+    //
+    //     // Update number of idle entries for each idle deletion.
+    //     for (const auto &del: idleDeletions) {
+    //         --numIdleEntries[del.row];
+    //     }
+    //
+    //     // Append nonIdleDeletions to idleDeletions and perform batched update for all deletions
+    //     idleDeletions.insert(idleDeletions.end(), nonIdleDeletions.begin(), nonIdleDeletions.end());
+    //     compact_batch_ragged2d::stableBatchedDeletionsSequential(idleDeletions, offset, entries);
+    //     KASSERT(verifyAllBucketsSorted());
+    // }
 
     template<typename EntryInsertionsVecT, typename EntryDeletionsVecT>
     void batchedCommitInsertionsAndDeletions(EntryInsertionsVecT &insertions,

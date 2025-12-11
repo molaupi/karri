@@ -186,14 +186,13 @@ namespace karri {
             }
             for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
                 const auto v = *iter;
-                if (sourceBuckets.updateAllEntries(v, updateSourceLeeway)) {
+                if (sourceBuckets.updateAllEntries(v, updateSourceLeeway, numEntriesScanned)) {
                     FORALL_INCIDENT_EDGES(ch.upwardGraph(), v, e) {
                         const auto w = ch.upwardGraph().edgeHead(e);
                         deleteSearchSpace.insert(w);
                     }
                 }
                 ++numVerticesVisited;
-                numEntriesScanned += sourceBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_update_time += time;
@@ -222,14 +221,13 @@ namespace karri {
             }
             for (auto iter = deleteSearchSpace.begin(); iter < deleteSearchSpace.end(); ++iter) {
                 const auto v = *iter;
-                if (targetBuckets.updateAllEntries(v, updateTargetLeeway)) {
+                if (targetBuckets.updateAllEntries(v, updateTargetLeeway, numEntriesScanned)) {
                     FORALL_INCIDENT_EDGES(ch.downwardGraph(), v, e) {
                         const auto w = ch.downwardGraph().edgeHead(e);
                         deleteSearchSpace.insert(w);
                     }
                 }
                 ++numVerticesVisited;
-                numEntriesScanned += targetBuckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_update_time += time;
@@ -329,14 +327,13 @@ namespace karri {
             deleteSearchSpace.insert(root);
             for (auto it = deleteSearchSpace.begin(); it < deleteSearchSpace.end(); ++it) {
                 const auto &v = *it;
-                if (buckets.remove(v, stopId)) {
+                if (buckets.remove(v, stopId, numEntriesScanned)) {
                     FORALL_INCIDENT_EDGES(graph, v, e) {
                         const auto w = graph.edgeHead(e);
                         deleteSearchSpace.insert(w);
                     }
                 }
                 ++numVerticesVisited;
-                numEntriesScanned += buckets.getNumEntriesVisitedInLastUpdateOrRemove();
             }
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             stats.elliptic_delete_time += time;

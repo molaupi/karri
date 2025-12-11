@@ -33,6 +33,7 @@
 #include "Algorithms/CH/CH.h"
 #include "Tools/Timer.h"
 #include "Algorithms/Buckets/CompactLastStopBucketContainer.h"
+#include "Algorithms/Buckets/LastStopBucketContainer.h"
 #include "Algorithms/KaRRi/Stats/LastStopBucketUpdateStats.h"
 
 namespace karri {
@@ -54,7 +55,8 @@ namespace karri {
     public:
         static constexpr bool SORTED = true;
 
-        using BucketContainer = CompactLastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
+        // using BucketContainer = CompactLastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
+        using BucketContainer = LastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
         using EntryInsertion = typename BucketContainer::EntryInsertion;
         using EntryDeletion = typename BucketContainer::EntryDeletion;
         using EntryInsertionVecT = parallel::scalable_vector<EntryInsertion>;

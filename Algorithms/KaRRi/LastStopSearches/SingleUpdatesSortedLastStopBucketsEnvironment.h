@@ -110,7 +110,7 @@ namespace karri {
         struct UpdateNewScheduleOfNonIdleVehicle {
             explicit UpdateNewScheduleOfNonIdleVehicle(BucketContainer &bucketContainer, int &curVehId,
                                                        int &depTimeAtLastStopOfCurVeh,
-                                                       int &verticesVisited, int &entriesVisited)
+                                                       int &verticesVisited, int64_t &entriesVisited)
                     : bucketContainer(bucketContainer), curVehId(curVehId),
                       depTimeAtLastStopOfCurVeh(depTimeAtLastStopOfCurVeh),
                       verticesVisited(verticesVisited), entriesVisited(entriesVisited) {}
@@ -118,8 +118,7 @@ namespace karri {
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
                 ++verticesVisited;
-                bool removed = bucketContainer.removeNonIdle(v, curVehId);
-                entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
+                bool removed = bucketContainer.removeNonIdle(v, curVehId, entriesVisited);
                 if (!removed)
                     return true; // Prune if no entry for the vehicle was found at this vertex
                 auto newEntry = BucketEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
@@ -131,13 +130,13 @@ namespace karri {
             int &curVehId;
             int &depTimeAtLastStopOfCurVeh;
             int &verticesVisited;
-            int &entriesVisited;
+            int64_t &entriesVisited;
         };
 
         struct UpdateForVehicleHasBecomeIdle {
             explicit UpdateForVehicleHasBecomeIdle(BucketContainer &bucketContainer, int &curVehId,
                                                    int &depTimeAtLastStopOfCurVeh,
-                                                   int &verticesVisited, int &entriesVisited)
+                                                   int &verticesVisited, int64_t &entriesVisited)
                     : bucketContainer(bucketContainer), curVehId(curVehId),
                       depTimeAtLastStopOfCurVeh(depTimeAtLastStopOfCurVeh),
                       verticesVisited(verticesVisited), entriesVisited(entriesVisited) {}
@@ -146,8 +145,7 @@ namespace karri {
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
                 ++verticesVisited;
                 auto oldEntry = BucketEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
-                bool removed = bucketContainer.removeNonIdle(v, oldEntry);
-                entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
+                bool removed = bucketContainer.removeNonIdle(v, oldEntry, entriesVisited);
                 if (!removed)
                     return true; // Prune if no entry for the vehicle was found at this vertex
                 auto newEntry = BucketEntry(curVehId, distToV[0]);
@@ -159,49 +157,47 @@ namespace karri {
             int &curVehId;
             int &depTimeAtLastStopOfCurVeh;
             int &verticesVisited;
-            int &entriesVisited;
+            int64_t &entriesVisited;
         };
 
         struct DeleteIdleEntry {
             explicit DeleteIdleEntry(BucketContainer &bucketContainer, int &curVehId, int &verticesVisited,
-                                     int &entriesVisited)
+                                     int64_t &entriesVisited)
                     : bucketContainer(bucketContainer), curVehId(curVehId), verticesVisited(verticesVisited),
                       entriesVisited(entriesVisited) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
                 auto entry = BucketEntry(curVehId, distToV[0]);
-                bool removed = bucketContainer.removeIdle(v, entry);
+                bool removed = bucketContainer.removeIdle(v, entry, entriesVisited);
                 ++verticesVisited;
-                entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
                 return !removed; // Prune if no entry for the vehicle was found at this vertex
             }
 
             BucketContainer &bucketContainer;
             int &curVehId;
             int &verticesVisited;
-            int &entriesVisited;
+            int64_t &entriesVisited;
         };
 
         struct DeleteNonIdleEntry {
             explicit DeleteNonIdleEntry(BucketContainer &bucketContainer, int &curVehId, int &verticesVisited,
-                                        int &entriesVisited)
+                                        int64_t &entriesVisited)
                     : bucketContainer(bucketContainer), curVehId(curVehId),
                       verticesVisited(verticesVisited), entriesVisited(entriesVisited) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &, const DistLabelContT &) {
                 // todo: it would be possible to use binary search here if we had the old dep time
-                bool removed = bucketContainer.removeNonIdle(v, curVehId);
+                bool removed = bucketContainer.removeNonIdle(v, curVehId, entriesVisited);
                 ++verticesVisited;
-                entriesVisited += bucketContainer.getNumEntriesVisitedInLastUpdateOrRemove();
                 return !removed; // Prune if no entry for the vehicle was found at this vertex
             }
 
             BucketContainer &bucketContainer;
             int &curVehId;
             int &verticesVisited;
-            int &entriesVisited;
+            int64_t &entriesVisited;
         };
 
     public:
@@ -373,7 +369,7 @@ namespace karri {
         int vehicleId;
         int depTimeOfVehAtLastStop;
         int maxDetourUntilEndOfServiceTime;
-        int entriesVisitedInSearch;
+        int64_t entriesVisitedInSearch;
         int verticesVisitedInSearch;
 
         GenerateIdleEntriesSearch idleEntryGenSearch;

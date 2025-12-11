@@ -94,8 +94,8 @@ namespace karri {
         static constexpr bool SORTED_BY_REM_LEEWAY = SORTED_BUCKETS;
 
         using BucketContainer = std::conditional_t<SORTED_BUCKETS,
-                CompactSortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
-//                SortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
+                // CompactSortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
+                SortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
                 DynamicBucketContainer<Entry>
         >;
 

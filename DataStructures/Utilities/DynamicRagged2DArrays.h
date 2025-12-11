@@ -61,18 +61,16 @@
 // the entire value block to the end of the value array).
 
 namespace dynamic_ragged2d {
-
     struct ValueBlockPosition {
-
         int32_t start;
         int32_t end;
     };
 
-// Returns the index in the value arrays of the newly inserted value.
+    // Returns the index in the value arrays of the newly inserted value.
     template<typename T, typename IndexArray, typename ValueArray, typename... ExtraValueArrays>
     inline int insertion(
-            const int row, const T &value,
-            IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
+        const int row, const T &value,
+        IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
         assert(row >= 0);
         assert(row < indexArray.size());
         auto &start = indexArray[row].start;
@@ -97,17 +95,17 @@ namespace dynamic_ragged2d {
             if (end == valueArray.size()) {
                 valueArray.insert(valueArray.end(), cap - blockSize, hole);
                 (extraValueArrays.insert(
-                        extraValueArrays.end(), cap - blockSize, typename ExtraValueArrays::value_type()), ...);
+                    extraValueArrays.end(), cap - blockSize, typename ExtraValueArrays::value_type()), ...);
                 ++end;
             } else {
                 valueArray.insert(valueArray.end(), cap, hole);
                 std::copy(valueArray.begin() + start, valueArray.begin() + end, valueArray.end() - cap);
                 std::fill(valueArray.begin() + start, valueArray.begin() + end, hole);
                 (extraValueArrays.insert(
-                        extraValueArrays.end(), cap, typename ExtraValueArrays::value_type()), ...);
+                    extraValueArrays.end(), cap, typename ExtraValueArrays::value_type()), ...);
                 (std::copy(
-                        extraValueArrays.begin() + start, extraValueArrays.begin() + end,
-                        extraValueArrays.end() - cap), ...);
+                    extraValueArrays.begin() + start, extraValueArrays.begin() + end,
+                    extraValueArrays.end() - cap), ...);
                 start = valueArray.size() - cap;
                 end = start + blockSize + 1;
             }
@@ -121,8 +119,8 @@ namespace dynamic_ragged2d {
 
     template<typename IndexArray, typename ValueArray, typename... ExtraValueArrays>
     inline void removal(
-            const int row, const int col,
-            IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
+        const int row, const int col,
+        IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
         assert(row >= 0);
         assert(row < indexArray.size());
         assert(col >= 0);
@@ -135,11 +133,11 @@ namespace dynamic_ragged2d {
         ((extraValueArrays[start + col] = extraValueArrays[end]), ...);
     }
 
-// Removes entries given as a range of column indices, sorted in ascending order.
+    // Removes entries given as a range of column indices, sorted in ascending order.
     template<typename ColsRangeT, typename IndexArray, typename ValueArray, typename... ExtraValueArrays>
     inline void removalOfSortedCols(
-            const int row, const ColsRangeT &cols,
-            IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
+        const int row, const ColsRangeT &cols,
+        IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
         assert(std::is_sorted(cols.begin(), cols.end()));
         // Iterate in reverse
         for (auto colIt = cols.rbegin(); colIt != cols.rend(); ++colIt) {
@@ -147,11 +145,11 @@ namespace dynamic_ragged2d {
         }
     }
 
-// Removes all columns at a given row. No need to explicitly change extra value arrays since the validity of values in
-// those is defined only via indexArray.
+    // Removes all columns at a given row. No need to explicitly change extra value arrays since the validity of values in
+    // those is defined only via indexArray.
     template<typename IndexArray, typename ValueArray>
     inline void removalOfAllCols(
-            const int row, IndexArray &indexArray, ValueArray &valueArray) {
+        const int row, IndexArray &indexArray, ValueArray &valueArray) {
         assert(row >= 0);
         assert(row < indexArray.size());
         const auto &start = indexArray[row].start;
@@ -162,11 +160,11 @@ namespace dynamic_ragged2d {
         }
     }
 
-// Returns the index in the value arrays of the newly inserted value.
+    // Returns the index in the value arrays of the newly inserted value.
     template<typename T, typename IndexArray, typename ValueArray, typename... ExtraValueArrays>
     inline int stableInsertion(
-            const int row, const int col, const T &value,
-            IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
+        const int row, const int col, const T &value,
+        IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
         assert(row >= 0);
         assert(row < indexArray.size());
         assert(col >= 0);
@@ -176,17 +174,17 @@ namespace dynamic_ragged2d {
         const auto end = indexArray[row].end;
         if (valIdx == start) {
             std::copy(
-                    valueArray.begin() + start + 1, valueArray.begin() + start + col + 1,
-                    valueArray.begin() + start);
+                valueArray.begin() + start + 1, valueArray.begin() + start + col + 1,
+                valueArray.begin() + start);
             (std::copy(
-                    extraValueArrays.begin() + start + 1, extraValueArrays.begin() + start + col + 1,
-                    extraValueArrays.begin() + start), ...);
+                extraValueArrays.begin() + start + 1, extraValueArrays.begin() + start + col + 1,
+                extraValueArrays.begin() + start), ...);
         } else {
             std::copy_backward(
-                    valueArray.begin() + start + col, valueArray.begin() + end - 1, valueArray.begin() + end);
+                valueArray.begin() + start + col, valueArray.begin() + end - 1, valueArray.begin() + end);
             (std::copy_backward(
-                    extraValueArrays.begin() + start + col, extraValueArrays.begin() + end - 1,
-                    extraValueArrays.begin() + end), ...);
+                extraValueArrays.begin() + start + col, extraValueArrays.begin() + end - 1,
+                extraValueArrays.begin() + end), ...);
         }
         valueArray[start + col] = value;
         return start + col;
@@ -194,8 +192,8 @@ namespace dynamic_ragged2d {
 
     template<typename IndexArray, typename ValueArray, typename... ExtraValueArrays>
     inline void stableRemoval(
-            const int row, const int col,
-            IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
+        const int row, const int col,
+        IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
         assert(row >= 0);
         assert(row < indexArray.size());
         assert(col >= 0);
@@ -203,20 +201,20 @@ namespace dynamic_ragged2d {
         auto &start = indexArray[row].start;
         auto &end = indexArray[row].end;
         std::copy(
-                valueArray.begin() + start + col + 1, valueArray.begin() + end,
-                valueArray.begin() + start + col);
+            valueArray.begin() + start + col + 1, valueArray.begin() + end,
+            valueArray.begin() + start + col);
         (std::copy(
-                extraValueArrays.begin() + start + col + 1, extraValueArrays.begin() + end,
-                extraValueArrays.begin() + start + col), ...);
+            extraValueArrays.begin() + start + col + 1, extraValueArrays.begin() + end,
+            extraValueArrays.begin() + start + col), ...);
         --end;
         valueArray[end] = std::numeric_limits<typename ValueArray::value_type>::max();
     }
 
-// Removes entries given as a range of column indices, sorted in ascending order.
+    // Removes entries given as a range of column indices, sorted in ascending order.
     template<typename ColsRangeT, typename IndexArray, typename ValueArray, typename... ExtraValueArrays>
     inline void stableRemovalOfSortedCols(
-            const int row, const ColsRangeT &cols,
-            IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
+        const int row, const ColsRangeT &cols,
+        IndexArray &indexArray, ValueArray &valueArray, ExtraValueArrays &... extraValueArrays) {
         assert(std::is_sorted(cols.begin(), cols.end()));
         assert(row >= 0);
         assert(row < indexArray.size());
@@ -235,13 +233,165 @@ namespace dynamic_ragged2d {
             std::copy(valueArray.begin() + start + col + 1, valueArray.begin() + start + nextCol,
                       valueArray.begin() + start + col - i);
             (std::copy(
-                    extraValueArrays.begin() + start + col + 1, extraValueArrays.begin() + start + nextCol,
-                    extraValueArrays.begin() + start + col - i), ...);
+                extraValueArrays.begin() + start + col + 1, extraValueArrays.begin() + start + nextCol,
+                extraValueArrays.begin() + start + col - i), ...);
             ++i;
         }
         std::fill(valueArray.begin() + end - i, valueArray.begin() + end,
                   std::numeric_limits<typename ValueArray::value_type>::max());
         end -= i;
+    }
+
+
+    // template<typename IndexArray, typename ValueArray>
+    // inline bool checkIfRowCanGrowBackwards(const int row, const IndexArray &indexArray, const ValueArray &valueArray,
+    //                                        const int n) {
+    //     assert(row >= 0);
+    //     assert(row < indexArray.size());
+    //     const auto &start = indexArray[row].start;
+    //     static constexpr auto hole = std::numeric_limits<typename ValueArray::value_type>::max();
+    //     for (int i = 1; i <= n; ++i) {
+    //         if (start - i < 0 || valueArray[start - i] != hole) {
+    //             return false;
+    //         }
+    //     }
+    //     return true;
+    // }
+
+    template<typename IndexArray, typename ValueArray>
+    inline int getStartOfNewRangeForInsertionsGrowingBackwards(const int row, const IndexArray &indexArray,
+                                                               ValueArray &valueArray, const int numInsertions) {
+        assert(row >= 0);
+        assert(row < indexArray.size());
+        const auto &start = indexArray[row].start;
+        static constexpr auto hole = std::numeric_limits<typename ValueArray::value_type>::max();
+        bool needToMoveToBack = false;
+        for (int i = 1; i <= numInsertions; ++i) {
+            if (start - i < 0 || valueArray[start - i] != hole) {
+                needToMoveToBack = true; break;
+            }
+        }
+
+        if (!needToMoveToBack)
+            return start - numInsertions;
+
+        static constexpr auto CAPACITY_GROWTH_FACTOR = 2;
+        const auto newBlockSize = indexArray[row].end - start + numInsertions;
+        valueArray.insert(valueArray.end(), CAPACITY_GROWTH_FACTOR * newBlockSize, hole);
+        return valueArray.size() - newBlockSize;
+    }
+
+    // Inserts multiple values into a row at the specified columns.
+    // Requires knowing the start index of the row's value range after the insertions which should be obtained using
+    // getStartOfNewRangeForInsertionsGrowingBackwards().
+    // The columns must be sorted in ascending order.
+    // At the end, cols[i] contains the index in the value array of the inserted vals[i].
+    template<typename ColsRangeT, typename ValsRangeT, typename IndexArray, typename ValueArray, typename...
+        ExtraValueArrays>
+    inline void stableInsertionOfSortedColsGrowingBackwardWithKnownStartOfNewRange(const int row,
+                                                            ColsRangeT &cols,
+                                                           const ValsRangeT &vals,
+                                                           const int startOfNewRange,
+                                                           IndexArray &indexArray, ValueArray &valueArray,
+                                                           ExtraValueArrays &... extraValueArrays) {
+        static constexpr auto hole = std::numeric_limits<typename ValueArray::value_type>::max();
+        KASSERT(row >= 0);
+        KASSERT(row < indexArray.size());
+        KASSERT(std::is_sorted(cols.begin(), cols.end()));
+        const int n = std::distance(cols.begin(), cols.end());
+        KASSERT(n == std::distance(vals.begin(), vals.end()));
+
+        // Update insertion columns to respect insertions at lower columns. After this, cols[i] indicates the final
+        // position of vals[i] in the row after all insertions.
+        for (int i = 0; i < cols.size(); ++i) {
+            cols[i] += i;
+        }
+
+        // Perform insertions by shifting existing values and inserting new values.
+        auto &start = indexArray[row].start;
+        auto &end = indexArray[row].end;
+        const auto newRowLength = end - start + n;
+
+        KASSERT(std::all_of(valueArray.begin() + startOfNewRange, valueArray.begin() + startOfNewRange + n,
+            [](const auto &v) { return v == hole; }));
+        KASSERT(startOfNewRange == start - n ||
+                std::all_of(valueArray.begin() + startOfNewRange + n, valueArray.begin() + startOfNewRange +
+                    newRowLength,
+                    [](const auto &v) {return v == hole;}),
+                "stableInsertionOfSortedColsGrowingBackwards overwrites values of other rows!");
+
+        int nextExisting = 0;
+        int nextInsertion = 0;
+        for (int i = 0; i < newRowLength; ++i) {
+            if (nextInsertion < n && i == cols[nextInsertion]) {
+                valueArray[startOfNewRange + i] = vals[nextInsertion];
+                ((extraValueArrays[startOfNewRange + i] = vals[nextInsertion]), ...);
+                cols[nextInsertion] = startOfNewRange + i; // Update to final position.
+                ++nextInsertion;
+            } else {
+                valueArray[startOfNewRange + i] = valueArray[start + nextExisting];
+                ((extraValueArrays[startOfNewRange + i] = extraValueArrays[start + nextExisting]), ...);
+                ++nextExisting;
+            }
+        }
+
+        if (startOfNewRange != start - n) {
+            // If range was moved, fill old positions with holes.
+            std::fill(valueArray.begin() + start, valueArray.begin() + end, hole);
+        }
+
+        start = startOfNewRange;
+        end = startOfNewRange + newRowLength;
+    }
+
+    // Inserts multiple values into a row at the specified columns.
+    // The columns must be sorted in ascending order.
+    // At the end, cols[i] contains the index in the value array of the inserted vals[i].
+    template<typename ColsRangeT, typename ValsRangeT, typename IndexArray, typename ValueArray, typename...
+        ExtraValueArrays>
+    inline void stableInsertionOfSortedColsGrowingBackwardWithKnownStartOfNewRange(const int row,
+                                                            ColsRangeT &cols,
+                                                           const ValsRangeT &vals,
+                                                           IndexArray &indexArray, ValueArray &valueArray,
+                                                           ExtraValueArrays &... extraValueArrays) {
+        const int startOfNewRange = getStartOfNewRangeForInsertionsGrowingBackwards(row, indexArray, valueArray,
+                                                                            cols.size());
+        stableInsertionOfSortedColsGrowingBackwardWithKnownStartOfNewRange(row, cols, vals, startOfNewRange,
+                                                                            indexArray, valueArray, extraValueArrays...);
+
+    }
+
+    template<typename IndexArray, typename ValueArray>
+    inline bool verifyConsistency(const IndexArray &indexArray, const ValueArray &valueArray) {
+        static constexpr auto hole = std::numeric_limits<typename ValueArray::value_type>::max();
+        BitVector partOfRow(valueArray.size(), false);
+        for (int row = 0; row < indexArray.size(); ++row) {
+            const auto &start = indexArray[row].start;
+            const auto &end = indexArray[row].end;
+            if (start < 0 || end <= start || end > valueArray.size()) {
+                KASSERT(false, "Broken index array!");
+                return false;
+            }
+            for (int i = start; i < end; ++i) {
+                if (valueArray[i] == hole) {
+                    KASSERT(false, "Hole found inside row!");
+                    return false;
+                }
+                if (partOfRow[i]) {
+                    KASSERT(false, "Overlapping rows!");
+                    return false;
+                }
+                partOfRow[i] = true;
+            }
+        }
+
+        for (int i = 0; i < valueArray.size(); ++i) {
+            if (!partOfRow[i] && valueArray[i] != hole) {
+                KASSERT(false, "Value outside of any row!");
+                return false;
+            }
+        }
+        return true;
     }
 
 } // namespace dynamic_ragged2d
