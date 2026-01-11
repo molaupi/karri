@@ -35,7 +35,7 @@ endif (KARRI_OUTPUT_VEHICLE_PATHS)
 set(KARRI_PSG_COST_SCALE 1 CACHE STRING "Importance of passenger trip times in cost function.")
 target_compile_definitions(karri PRIVATE KARRI_PSG_COST_SCALE=${KARRI_PSG_COST_SCALE})
 
-set(KARRI_WALKING_COST_SCALE 0 CACHE STRING "Importance of walking times in cost function")
+set(KARRI_WALKING_COST_SCALE 1 CACHE STRING "Importance of walking times in cost function")
 target_compile_definitions(karri PRIVATE KARRI_WALKING_COST_SCALE=${KARRI_WALKING_COST_SCALE})
 
 set(KARRI_VEH_COST_SCALE 1 CACHE STRING "Importance of vehicle travel times in cost function.")

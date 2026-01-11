@@ -135,12 +135,12 @@ inline void printUsage() {
               "  -r <file>                  requests in CSV format.\n"
               "  -v <file>                  vehicles in CSV format.\n"
               "  -s <sec>                   stop time (in s). (dflt: 60s)\n"
-              "  -w <sec>                   maximum wait time (in s). (dflt: 300s)\n"
-              "  -a <factor>                model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
-              "  -b <seconds>               model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
+              "  -w <sec>                   maximum wait time (in s). (dflt: 600s)\n"
+              "  -a <factor>                model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.4)\n"
+              "  -b <seconds>               model parameter beta for max trip time = a * OD-dist + b (dflt: 1200)\n"
               "  -e <factor>            model parameter epsilon for the trip time rejection threshold = e * OD-dist + f\n"
               "                             set to 0 to reject no requests (default)\n"
-              "  -f <factor>            model parameter phi for the trip time rejection threshold = e * OD-dist + f (dflt: 120)\n"
+              "  -f <factor>            model parameter phi for the trip time rejection threshold = e * OD-dist + f (dflt: 1200)\n"
               "  -seq-and-non-batched       if set, dispatches requests one-by-one instead of batched and without multithreading (original KaRRi mode).\n"
               "  -i <seconds>               interval duration for batch of requests in seconds (dflt: 60). No effect if -seq-and-non-batched is set.\n"
               "  -p-radius <m>              default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
@@ -290,7 +290,7 @@ int main(int argc, char *argv[]) {
         // Parse the command-line options.
         InputConfig &inputConfig = InputConfig::getInstance();
         inputConfig.stopTime = clp.getValue<int>("s", 60) * 10;
-        inputConfig.maxWaitTime = clp.getValue<int>("w", 300) * 10;
+        inputConfig.maxWaitTime = clp.getValue<int>("w", 600) * 10;
         const int defaultPickupWalkRadius = clp.getValue<int>("p-radius", 417); // 417 m = 5 min at 5 km/h
         const int defaultDropoffWalkRadius = clp.getValue<int>("d-radius", 417); // 417 m = 5 min at 5 km/h
         const double defaultWalkingSpeed = clp.getValue<double>("walk-speed", 1.3889); // 5 km/h = 1.3889 m/s
@@ -300,11 +300,11 @@ int main(int argc, char *argv[]) {
         inputConfig.maxNumDropoffs = clp.getValue<int>("max-num-d", INFTY);
         if (inputConfig.maxNumPickups == 0) inputConfig.maxNumPickups = INFTY;
         if (inputConfig.maxNumDropoffs == 0) inputConfig.maxNumDropoffs = INFTY;
-        inputConfig.alpha = clp.getValue<double>("a", 1.7);
-        inputConfig.beta = clp.getValue<int>("b", 120) * 10;
+        inputConfig.alpha = clp.getValue<double>("a", 1.4);
+        inputConfig.beta = clp.getValue<int>("b", 1200) * 10;
         inputConfig.requestBatchInterval = clp.getValue<int>("i", 60) * 10;
         inputConfig.epsilon = clp.getValue<double>("e", 0.0);
-        inputConfig.phi = clp.getValue<int>("f", 120) * 10;
+        inputConfig.phi = clp.getValue<int>("f", 1200) * 10;
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");
