@@ -137,7 +137,7 @@ class DimacsImporter {
         assert(currentVertex.id > 0); assert(currentVertex.id <= vertexCount);
       }
       const auto conversionFactor = static_cast<double>(LatLng::PRECISION) / coordinatePrecision;
-      currentVertex.latLng = {conversionFactor * lat, conversionFactor * lng};
+      currentVertex.latLng = {static_cast<int>(conversionFactor * lat), static_cast<int>(conversionFactor * lng)};
       return !coFile.eof();
     } else {
       return ++currentVertex.id <= vertexCount;
