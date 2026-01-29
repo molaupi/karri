@@ -45,6 +45,7 @@ inline void printUsage() {
               "  -r <file>              requests file in CSV format\n"
               "  -c <file>              RegioStaR classification in GeoJson format\n"
               "  -reverse-orientation   if set, reverse the orientation of polygons in the RegioStaR classification (default: false)\n"
+              "  -oob-rural             if a point lies outside of all RegioStaR areas, classify it as rural area (RegioStaR-2 class 2) (default: false)\n"
               "  -cs <code>             EPSG code of coordinates in RegioStaR classification (dflt: 25832).\n"
               "  -o <file>              place output in <file>\n"
               "  -help                  display this help and exit\n";
@@ -149,6 +150,8 @@ int main(int argc, char *argv[]) {
         std::cout << "done.\n";
 
         std::cout << "Classifying requests... " << std::flush;
+        bool treatOobAsRural = clp.isSet("oob-rural");
+        int numOob = 0;
         std::vector<std::pair<int, int>> rs2classification; // RegioStaR-2 classification for origin and destination
         rs2classification.reserve(pairs.size());
         ProgressBar progressBar(pairs.size(), true);
@@ -163,21 +166,32 @@ int main(int argc, char *argv[]) {
                 originClass = 1;
             else if (country.contains(originP))
                 originClass = 2;
-            else
+            else if (treatOobAsRural) {
+                originClass = 2;
+                ++numOob;
+            } else {
                 throw std::invalid_argument("Origin point " + latLngForCsv(originLatLng) + " not contained in any RegioStaR-2 area");
+            }
 
             if (city.contains(destinationP))
                 destinationClass = 1;
             else if (country.contains(destinationP))
                 destinationClass = 2;
-            else
+            else if (treatOobAsRural) {
+                destinationClass = 2;
+                ++numOob;
+            } else {
                 throw std::invalid_argument("Destination point " + latLngForCsv(destinationLatLng) + " not contained in any RegioStaR-2 area");
+            }
 
             rs2classification.emplace_back(originClass, destinationClass);
             ++progressBar;
         }
         progressBar.finish();
         std::cout << "done.\n";
+        if (treatOobAsRural) {
+            std::cout << numOob << " points were outside of all RegioStaR areas and classified as rural areas.\n";
+        }
 
         // Write classification to output
         std::cout << "Writing classification to output...";
