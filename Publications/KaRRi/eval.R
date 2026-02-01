@@ -108,10 +108,11 @@ compareBestAssignments <- function(file1, file2) {
   }
 }
 
+library(data.table)
 perfStats <- function(file_base, type_name) {
-  stats <- read.csv(paste0(file_base, ".perf_", type_name, ".csv"))
-  stats <- stats[, ! colnames(stats) %in% c("request_id")]
-  stats <- apply(stats, 2, mean)
+  stats <- fread(paste0(file_base, ".perf_", type_name, ".csv"))
+  stats <- stats[, request_id := NULL]
+  stats <- stats[, lapply(.SD, mean)]
   stats <- round(stats, 2)
   return(stats)
 }
