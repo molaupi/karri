@@ -1,6 +1,0 @@
-R"for_c++_include(
-mode,coeff_constant,coeff_travel_time,coeff_waiting_time,coeff_access_time
-Car,-2.79347301936,-0.05977355547,0.0,-0.0886209594184093
-Ped,-0.35,-0.148247995923713,0.0,0.0
-Taxi,-3.715213242,-0.03682707848,-0.16523032771,-0.187405202006469
-)for_c++_include"
