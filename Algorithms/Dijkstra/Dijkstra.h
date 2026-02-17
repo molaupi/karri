@@ -71,10 +71,10 @@ namespace dij {
 
 // Forward declarations for friend
 namespace karri {
-    template<typename, typename, bool>
+    template<typename, typename, typename>
     class BatchUpdatesEllipticBucketsEnvironment;
 
-    template<typename, typename, bool>
+    template<typename, typename, typename>
     class SingleUpdatesEllipticBucketsEnvironment;
 
     template<typename, typename>
@@ -115,11 +115,11 @@ class Dijkstra {
     class ODPairGenerator;
 
 
-    template<typename, typename, bool>
+    template<typename, typename, typename>
     friend
     class karri::BatchUpdatesEllipticBucketsEnvironment;
 
-    template<typename, typename, bool>
+    template<typename, typename, typename>
     friend
     class karri::SingleUpdatesEllipticBucketsEnvironment;
 

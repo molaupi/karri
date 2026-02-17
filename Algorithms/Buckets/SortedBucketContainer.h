@@ -34,6 +34,7 @@
 template<typename BucketEntryT, typename BucketEntryComparatorT>
 class SortedBucketContainer {
 public:
+    using Entry = BucketEntryT;
     using SortedBucket = ConstantVectorRange<BucketEntryT>;
 
     explicit SortedBucketContainer(const int numVertices)

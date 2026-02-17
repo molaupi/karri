@@ -24,6 +24,12 @@
 
 
 #pragma once
+
+#include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
+#include "Algorithms/KaRRi/RequestState/RequestState.h"
+#include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/Stats/PerformanceStats.h"
+
 namespace karri {
 
 // Wrapper around DALS strategy.

@@ -131,8 +131,15 @@ compareBestAssignments <- function(file1, file2) {
 }
 
 library(data.table)
-perfStats <- function(file_base, type_name) {
+perfStats <- function(file_base, type_name, single_dispatched_subset=FALSE) {
   stats <- fread(paste0(file_base, ".perf_", type_name, ".csv"))
+  setkey(stats, request_id)
+  if (single_dispatched_subset) {
+    dfsubset <- fread(paste0(file_base, ".requestsdispatchedsingle.csv"))
+    setkey(dfsubset, request_id)
+    stats <- stats[dfsubset, nomatch=0L]
+  }
+  
   stats <- stats[, request_id := NULL]
   stats <- stats[, lapply(.SD, mean)]
   stats <- round(stats, 2)
@@ -141,56 +148,56 @@ perfStats <- function(file_base, type_name) {
 
 # Given the path to the result files of a KaRRi run, this function returns an 
 # overview over the average runtime per request (in microseconds).
-overallPerfStats <- function(file_base) {
-  perfStats(file_base, "overall")
+overallPerfStats <- function(file_base, single_dispatched_subset = FALSE) {
+  perfStats(file_base, "overall", single_dispatched_subset)
 }
 
 # Given the path to the result files of a KaRRi run, this function returns 
 # performance statistics for the initialization phase.
-initreqPerfStats <- function(file_base) {
-  perfStats(file_base, "initreq")
+initreqPerfStats <- function(file_base, single_dispatched_subset = FALSE) {
+  perfStats(file_base, "initreq", single_dispatched_subset)
 }
 
 # Given the path to the result files of a KaRRi run, this function returns 
 # performance statistics for the elliptic BCH searches
-ellipticBchPerfStats <- function(file_base) {
-  perfStats(file_base, "ellipticbch")
+ellipticBchPerfStats <- function(file_base, single_dispatched_subset = FALSE) {
+  perfStats(file_base, "ellipticbch", single_dispatched_subset)
 }
 
 # Given the path to the result files of a KaRRi run, this function returns 
 # performance statistics for the computation of PD-distances.
-pdDistancesPerfStats <- function(file_base) {
-  perfStats(file_base, "pddistances")
+pdDistancesPerfStats <- function(file_base, single_dispatched_subset = FALSE) {
+  perfStats(file_base, "pddistances", single_dispatched_subset)
 }
 
 # Given the path to the result files of a KaRRi run, this function returns 
 # performance statistics for the ordinary insertions phase.
-ordPerfStats <- function(file_base) {
-  perfStats(file_base, "ord")
+ordPerfStats <- function(file_base, single_dispatched_subset = FALSE) {
+  perfStats(file_base, "ord", single_dispatched_subset)
 }
 
 # Given the path to the result files of a KaRRi run, this function returns 
 # performance statistics for the PBNS phase.
-pbnsPerfStats <- function(file_base) {
-  perfStats(file_base, "pbns")
+pbnsPerfStats <- function(file_base, single_dispatched_subset = FALSE) {
+  perfStats(file_base, "pbns", single_dispatched_subset)
 }
 
 # Given the path to the result files of a KaRRi run, this function returns 
 # performance statistics for the PALS phase.
-palsPerfStats <- function(file_base) {
-  perfStats(file_base, "pals")
+palsPerfStats <- function(file_base, single_dispatched_subset = FALSE) {
+  perfStats(file_base, "pals", single_dispatched_subset)
 }
 
 # Given the path to the result files of a KaRRi run, this function returns 
 # performance statistics for the DALS phase.
-dalsPerfStats <- function(file_base) {
-  perfStats(file_base, "dals")
+dalsPerfStats <- function(file_base, single_dispatched_subset = FALSE) {
+  perfStats(file_base, "dals", single_dispatched_subset)
 }
 
 # Given the path to the result files of a KaRRi run, this function returns 
 # performance statistics for updating the route state for each assignment.
 updatePerfStats <- function(file_base) {
-  perfStats(file_base, "update")
+  perfStats(file_base, "update", single_dispatched_subset)
 }
 
 
@@ -221,16 +228,20 @@ eventSimulationPerfStats <- function(file_base) {
 }
 
 
-library(dplyr)
-batchDispatchPerfStats <- function(file_base, num_threads = 1) {
+library(data.table)
+batchDispatchPerfStats <- function(file_base, num_threads = 1, single_dispatch_subset=FALSE) {
   
-  stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
+  stats <- fread(paste0(file_base, ".batchdispatchstats.csv"))
+  if (single_dispatch_subset) {
+    stats <- stats[is_single_request == "1"]
+  }
   
   print(paste0("Total time (batch dispatch): ", sum(stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
   
   stats$num_batches <- stats$num_requests / num_threads
   
-  stats <- stats %>% group_by(batch_id) %>% summarise(
+  stats <- stats[, .(
+    occurence_time = max(occurence_time), # always equal for every member of group
     num_iterations = max(iteration),
     assignments_work = sum(num_requests),
     assignments_span = sum(num_batches),
@@ -240,12 +251,13 @@ batchDispatchPerfStats <- function(file_base, num_threads = 1) {
     update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
     total_time = sum(find_assignments_running_time + choose_accepted_running_time + update_system_state_running_time, na.rm=TRUE),
     num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
-  )
+  ), by=.(batch_id)
+    ]
   
-  print(paste0("Max num iterations: ", max(stats$num_iterations)))
-  print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
-  print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
-  print(paste0("Max num requests: ", max(stats$num_requests)))
+  # print(paste0("Max num iterations: ", max(stats$num_iterations)))
+  # print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
+  # print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
+  # print(paste0("Max num requests: ", max(stats$num_requests)))
   
   means <- apply(stats,2,mean)
   # means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))

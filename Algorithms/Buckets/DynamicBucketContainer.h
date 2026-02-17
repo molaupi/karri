@@ -49,6 +49,7 @@ template<typename BucketEntryT>
 class DynamicBucketContainer {
 public:
 
+    using Entry = BucketEntryT;
     using Bucket = ConstantVectorRange<BucketEntryT>;
 
     // Constructs a container that can maintain buckets for the specified number of vertices.

@@ -75,6 +75,9 @@
 #include "Algorithms/KaRRi/RiderModeChoice/UtilityLogitCriterion.h"
 #include "Algorithms/KaRRi/ThreadLocalAssignmentFinderFactory.h"
 #include "Algorithms/KaRRi/BatchAssignmentFinder.h"
+#include "Algorithms/KaRRi/EllipticBCH/EllipticBucketEntry.h"
+#include "Algorithms/KaRRi/EllipticBCH/SingleAndBatchEllipticBucketsEnvironment.h"
+#include "Algorithms/KaRRi/LastStopSearches/SingleAndBatchedSortedLastStopBucketsEnvironment.h"
 
 #include "Parallel/hardware_topology.h"
 #include "Parallel/tbb_initializer.h"
@@ -157,6 +160,7 @@ inline void printUsage() {
               "  -csv-in-LOUD-format        if set, assumes that input files are in the format used by LOUD.\n"
               "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1). No effect if -seq-and-non-batched is set.\n"
               "  -pt-journeys <file>        public transport journey data in CSV format (needed for mode choice with PT).\n"
+              "  -sample-freq <int>         frequency (in number of requests) at which requests will be dispatched individually to sample single request dispatching time (set to 0 to disable (default)).\n"
               "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
               "  -help                      show usage help text.\n";
 }
@@ -191,27 +195,35 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
         return distanceCheckerChQuery.getDistance() + vehicleInputGraph.travelTime(nextStop);
     });
 
-    // Construct Elliptic BCH bucket environment:
+    // Construct Elliptic BCH buckets:
     static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
+    using EllipticBuckets = std::conditional_t<ELLIPTIC_SORTED_BUCKETS,
+            SortedBucketContainer<EllipticBucketEntry, DoesEntryHaveLargerRemainingLeeway>,
+            DynamicBucketContainer<EllipticBucketEntry>>;
+    EllipticBuckets ellipticSourceBuckets(vehicleInputGraph.numVertices());
+    EllipticBuckets ellipticTargetBuckets(vehicleInputGraph.numVertices());
     using EllipticBucketsEnv = std::conditional_t<BATCHED_DISPATCHING,
-            BatchUpdatesEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>,
-            SingleUpdatesEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, ELLIPTIC_SORTED_BUCKETS>>;
-    EllipticBucketsEnv ellipticBucketsEnv(vehicleInputGraph, vehChEnv, routeState);
+            SingleAndBatchEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, EllipticBuckets>,
+            SingleUpdatesEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, EllipticBuckets>>;
+    EllipticBucketsEnv ellipticBucketsEnv(vehicleInputGraph, vehChEnv, routeState, ellipticSourceBuckets, ellipticTargetBuckets);
 
     // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
     // Otherwise, we use a last stop buckets substitute that only stores which vehicles' last stops are at a vertex.
+    static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
 #if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
     KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
 
-    static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
     static_assert(LAST_STOP_SORTED_BUCKETS, "Unsorted last stop buckets are not supported right now.");
     using LastStopBucketsEnv = std::conditional_t<BATCHED_DISPATCHING,
-            BatchUpdatesSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
+            SingleAndBatchedSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
             SingleUpdatesSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
     >;
-    LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, vehChEnv, routeState);
+    using LastStopBuckets = LastStopBucketsEnv::BucketContainer;
+    LastStopBuckets lastStopBuckets(vehicleInputGraph.numVertices());
+    LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, vehChEnv, routeState, lastStopBuckets);
 
 #else
+    struct LastStopBuckets {} lastStopBuckets;
     using LastStopBucketsEnv = OnlyLastStopsAtVerticesBucketSubstitute<VehicleInputGraph >;
         LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, routeState, fleet.size());
 #endif
@@ -219,17 +231,17 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
     using LastStopAtVerticesInfo = LastStopBucketsEnv;
 
 
-    using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, typename EllipticBucketsEnv::BucketContainer, LastStopAtVerticesInfo>;
+    using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, EllipticBuckets, LastStopAtVerticesInfo>;
     PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, vehChEnv,
-                                                          ellipticBucketsEnv.getSourceBuckets(), lastStopBucketsEnv,
+                                                          ellipticSourceBuckets, lastStopBucketsEnv,
                                                           routeState);
 
 
-    using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, EllipticBucketsEnv, PDLocsAtExistingStopsFinderImpl, LastStopBucketsEnv>;
+    using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, EllipticBuckets, ELLIPTIC_SORTED_BUCKETS, PDLocsAtExistingStopsFinderImpl, LastStopBuckets, LAST_STOP_SORTED_BUCKETS, LastStopBucketsEnv>;
     ThreadLocalAssignmentFinderFactoryImpl asgnFinderFactory(vehicleInputGraph, revVehicleGraph, psgInputGraph,
-                                                             revPsgGraph, vehChEnv, psgChEnv, ellipticBucketsEnv,
-                                                             pdLocsAtExistingStops, lastStopBucketsEnv, fleet,
-                                                             routeState);
+                                                             revPsgGraph, vehChEnv, psgChEnv, ellipticSourceBuckets,
+                                                             ellipticTargetBuckets, pdLocsAtExistingStops,
+                                                             lastStopBuckets, lastStopBucketsEnv, fleet, routeState);
     using InsertionFinderImpl = BatchAssignmentFinder<ThreadLocalAssignmentFinderFactoryImpl>;
     InsertionFinderImpl insertionFinder(asgnFinderFactory);
 
@@ -244,24 +256,9 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
 
     using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
     VehicleLocatorImpl ssuLocator(vehicleInputGraph, vehChEnv, routeState);
-    using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, BATCHED_DISPATCHING, std::ofstream>;
+    using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, ELLIPTIC_SORTED_BUCKETS, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, BATCHED_DISPATCHING, std::ofstream>;
     SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, ssuLocator,
                                               pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
-
-
-    // Initialize last stop state for initial locations of vehicles
-    if constexpr (BATCHED_DISPATCHING) {
-        for (const auto &veh: fleet) {
-            lastStopBucketsEnv.addIdleBucketEntryInsertions(veh.vehicleId);
-        }
-        LastStopBucketUpdateStats stats;
-        lastStopBucketsEnv.commitEntryInsertionsAndDeletions(stats);
-    } else {
-        stats::UpdatePerformanceStats stats;
-        for (const auto &veh: fleet) {
-            lastStopBucketsEnv.generateIdleBucketEntries(veh, stats);
-        }
-    }
 
 
     // Rider mode choice mechanism for requests:
@@ -316,6 +313,7 @@ int main(int argc, char *argv[]) {
         inputConfig.requestBatchInterval = clp.getValue<int>("i", 60) * 10;
         inputConfig.epsilon = clp.getValue<double>("e", 0.0);
         inputConfig.phi = clp.getValue<int>("f", 1200) * 10;
+        inputConfig.sampleSingleFrequency = clp.getValue<int>("sample-freq", 0);
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");

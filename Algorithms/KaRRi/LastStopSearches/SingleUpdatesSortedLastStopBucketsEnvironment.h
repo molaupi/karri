@@ -26,6 +26,8 @@
 #pragma once
 
 #include <type_traits>
+
+#include "LastStopBucketEntry.h"
 #include "Algorithms/Buckets/DynamicBucketContainer.h"
 #include "Algorithms/Buckets/SortedBucketContainer.h"
 #include "Algorithms/Buckets/BucketEntry.h"
@@ -41,20 +43,18 @@ namespace karri {
     class SingleUpdatesSortedLastStopBucketsEnvironment {
 
 
-        // .targetId is vehicle ID
-        // .distToTarget is dist from last stop to vertex for idle vehicles or arrival time at vertex for non-idle vehicles
-        using LastStopEntry = BucketEntry;
-
-        struct CompareEntries {
-            bool operator()(const LastStopEntry &e1, const LastStopEntry &e2) const {
-                return e1.distToTarget < e2.distToTarget;
-            }
-        };
+        // // .targetId is vehicle ID
+        // // .distToTarget is dist from last stop to vertex for idle vehicles or arrival time at vertex for non-idle vehicles
+        // using LastStopEntry = BucketEntry;
+        //
+        // struct CompareEntries {
+        //     bool operator()(const LastStopEntry &e1, const LastStopEntry &e2) const {
+        //         return e1.distToTarget < e2.distToTarget;
+        //     }
+        // };
 
     public:
-        static constexpr bool SORTED = true;
-
-        using BucketContainer = LastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
+        using BucketContainer = LastStopBucketContainer<LastStopBucketEntry, CompareLastStopBucketEntries, CompareLastStopBucketEntries>;
 
     private:
 
@@ -76,7 +76,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
-                auto entry = LastStopEntry(curVehId, distToV[0]);
+                auto entry = LastStopBucketEntry(curVehId, distToV[0]);
                 bucketContainer.insertIdle(v, entry);
                 ++verticesVisited;
                 return false;
@@ -95,7 +95,7 @@ namespace karri {
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &distToV, const DistLabelContT &) {
-                auto entry = LastStopEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
+                auto entry = LastStopBucketEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
                 bucketContainer.insertNonIdle(v, entry);
                 ++verticesVisited;
                 return false;
@@ -203,12 +203,13 @@ namespace karri {
     public:
 
         SingleUpdatesSortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                                         const RouteState &routeState)
+                                         const RouteState &routeState,
+                                         BucketContainer &bucketContainer)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   searchGraph(ch.upwardGraph()),
                   routeState(routeState),
-                  bucketContainer(searchGraph.numVertices()),
+                  bucketContainer(bucketContainer),
                   idleEntryGenSearch(
                           chEnv.getForwardSearch(GenerateIdleEntry(bucketContainer, vehicleId, verticesVisitedInSearch),
                                                  StopWhenDistanceExceeded(maxDetourUntilEndOfServiceTime))),
@@ -228,11 +229,6 @@ namespace karri {
                   nonIdleEntryDelSearch(chEnv.getForwardSearch(
                           DeleteNonIdleEntry(bucketContainer, vehicleId,
                                              verticesVisitedInSearch, entriesVisitedInSearch))) {}
-
-
-        const BucketContainer &getBuckets() const {
-            return bucketContainer;
-        }
 
         void generateIdleBucketEntries(const Vehicle &veh, stats::UpdatePerformanceStats& stats) {
             generateBucketEntries<true>(veh, stats);
@@ -364,7 +360,7 @@ namespace karri {
         const CH::SearchGraph &searchGraph;
         const RouteState &routeState;
 
-        BucketContainer bucketContainer;
+        BucketContainer &bucketContainer;
 
         int vehicleId;
         int depTimeOfVehAtLastStop;

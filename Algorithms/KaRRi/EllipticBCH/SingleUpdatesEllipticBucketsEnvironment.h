@@ -39,16 +39,16 @@
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
+    template<typename InputGraphT, typename CHEnvT, typename EllipticBucketsT>
     class SingleUpdatesEllipticBucketsEnvironment {
 
-        using Entry = BucketEntryWithLeeway;
-
-        struct DoesEntryHaveLargerRemainingLeeway {
-            bool operator()(const Entry &e1, const Entry &e2) const {
-                return e1.leeway - e1.distToTarget > e2.leeway - e2.distToTarget;
-            }
-        };
+        // using Entry = BucketEntryWithLeeway;
+        //
+        // struct DoesEntryHaveLargerRemainingLeeway {
+        //     bool operator()(const Entry &e1, const Entry &e2) const {
+        //         return e1.leeway - e1.distToTarget > e2.leeway - e2.distToTarget;
+        //     }
+        // };
 
 
         struct StopWhenLeewayExceeded {
@@ -76,18 +76,18 @@ namespace karri {
 
     public:
 
-
-        static constexpr bool SORTED_BY_REM_LEEWAY = SORTED_BUCKETS;
-
-        using BucketContainer = std::conditional_t<SORTED_BUCKETS,
-                SortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
-                DynamicBucketContainer<Entry>
-        >;
+        // using BucketContainer = std::conditional_t<SORTED_BUCKETS,
+        //         SortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
+        //         DynamicBucketContainer<Entry>
+        // >;
+        using BucketContainer = EllipticBucketsT;
 
         SingleUpdatesEllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                                                const RouteState &routeState)
+                                                const RouteState &routeState,
+                                                BucketContainer &sourceBuckets,
+                                                BucketContainer &targetBuckets)
                 : inputGraph(inputGraph), ch(chEnv.getCH()), routeState(routeState),
-                  sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
+                  sourceBuckets(sourceBuckets), targetBuckets(targetBuckets),
                   forwardSearchFromNewStop(
                           chEnv.getForwardTopologicalSearch(StoreSearchSpace(searchSpace),
                                                             StopWhenLeewayExceeded(currentLeeway))),
@@ -100,15 +100,6 @@ namespace karri {
                   searchSpace(),
                   descendentHasEntry(inputGraph.numVertices()),
                   deleteSearchSpace(inputGraph.numVertices()) {}
-
-
-        const BucketContainer &getSourceBuckets() const {
-            return sourceBuckets;
-        }
-
-        const BucketContainer &getTargetBuckets() const {
-            return targetBuckets;
-        }
 
         void generateSourceBucketEntries(const Vehicle &veh, const int stopIndex,
                                          stats::UpdatePerformanceStats &stats) {
@@ -346,8 +337,8 @@ namespace karri {
         const CH &ch;
         const RouteState &routeState;
 
-        BucketContainer sourceBuckets;
-        BucketContainer targetBuckets;
+        BucketContainer &sourceBuckets;
+        BucketContainer &targetBuckets;
 
         SearchFromNewStop forwardSearchFromNewStop;
         SearchFromNewStop reverseSearchFromNewStop;

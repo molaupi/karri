@@ -41,3 +41,10 @@ using PackExpansion = int[];
 
 // An empty class, intended for implementing conditional inheritance.
 class EmptyClass {};
+
+// Checks whether the type T is an instance of the template U, i.e., whether T is of the form U<...>.
+template<class T, template<class...> class U>
+inline constexpr bool is_instance_of_v = std::false_type{};
+
+template<template<class...> class U, class... Vs>
+inline constexpr bool is_instance_of_v<U<Vs...>,U> = std::true_type{};

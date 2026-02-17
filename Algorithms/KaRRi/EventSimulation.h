@@ -35,15 +35,12 @@
 #include "Algorithms/KaRRi/RiderModeChoice/PTJourneyData.h"
 
 namespace karri {
-
-
     template<typename AssignmentFinderT,
-            typename RiderModeChoiceT,
-            typename SystemStateUpdaterT,
-            typename ScheduledStopsT,
-            bool BATCHED_DISPATCHING>
+        typename RiderModeChoiceT,
+        typename SystemStateUpdaterT,
+        typename ScheduledStopsT,
+        bool BATCHED_DISPATCHING>
     class EventSimulation {
-
         enum VehicleState {
             OUT_OF_SERVICE,
             IDLING,
@@ -73,65 +70,67 @@ namespace karri {
         struct EntityKey {
             int time = INFTY;
             int id = INVALID_ID;
-            auto operator<=>(const EntityKey&) const = default;
+
+            auto operator<=>(const EntityKey &) const = default;
         };
 
     public:
-
-
         EventSimulation(
-                const Fleet &fleet, const std::vector<Request> &requests,
-                const std::vector<PTJourneyData> &ptJourneyData,
-                AssignmentFinderT &assignmentFinder,
-                const RiderModeChoiceT &riderModeChoice,
-                SystemStateUpdaterT &systemStateUpdater,
-                const ScheduledStopsT &scheduledStops,
-                const bool verbose = false)
-                : fleet(fleet),
-                  requests(requests),
-                  ptJourneyData(ptJourneyData),
-                  assignmentFinder(assignmentFinder),
-                  riderModeChoice(riderModeChoice),
-                  systemStateUpdater(systemStateUpdater),
-                  scheduledStops(scheduledStops),
-                  vehicleEvents(fleet.size()),
-                  requestEvents(requests.size()),
-                  nextRequestBatchDeadline(InputConfig::getInstance().requestBatchInterval),
-                  requestBatch(),
-                  vehicleState(fleet.size(), OUT_OF_SERVICE),
-                  requestState(requests.size(), NOT_RECEIVED),
-                  requestData(requests.size(), RequestData()),
-                  eventSimulationStatsLogger(LogManager<std::ofstream>::getLogger("eventsimulationstats.csv",
-                                                                                  "occurrence_time,"
-                                                                                  "type,"
-                                                                                  "running_time\n")),
-                  batchDispatchStatsLogger(LogManager<std::ofstream>::getLogger("batchdispatchstats.csv",
-                                                                                "occurence_time,"
-                                                                                "batch_id,"
-                                                                                "iteration,"
-                                                                                "num_requests,"
-                                                                                "num_accepted,"
-                                                                                "find_assignments_running_time,"
-                                                                                "choose_accepted_running_time,"
-                                                                                "num_elliptic_bucket_entry_deletions,"
-                                                                                "update_system_state_running_time\n")),
-                  assignmentQualityStats(LogManager<std::ofstream>::getLogger("assignmentquality.csv",
-                                                                              "request_id,"
-                                                                              "arr_time,"
-                                                                              "wait_time,"
-                                                                              "ride_time,"
-                                                                              "trip_time,"
-                                                                              "walk_to_pickup_time,"
-                                                                              "walk_to_dropoff_time,"
-                                                                              "cost\n")),
-                  legStatsLogger(LogManager<std::ofstream>::getLogger("legstats.csv",
-                                                                      "vehicle_id,"
-                                                                      "stop_time,"
-                                                                      "dep_time,"
-                                                                      "arr_time,"
-                                                                      "drive_time,"
-                                                                      "occupancy\n")),
-                  progressBar(requests.size(), verbose) {
+            const Fleet &fleet, const std::vector<Request> &requests,
+            const std::vector<PTJourneyData> &ptJourneyData,
+            AssignmentFinderT &assignmentFinder,
+            const RiderModeChoiceT &riderModeChoice,
+            SystemStateUpdaterT &systemStateUpdater,
+            const ScheduledStopsT &scheduledStops,
+            const bool verbose = false)
+            : fleet(fleet),
+              requests(requests),
+              ptJourneyData(ptJourneyData),
+              assignmentFinder(assignmentFinder),
+              riderModeChoice(riderModeChoice),
+              systemStateUpdater(systemStateUpdater),
+              scheduledStops(scheduledStops),
+              vehicleEvents(fleet.size()),
+              requestEvents(requests.size()),
+              nextRequestBatchDeadline(InputConfig::getInstance().requestBatchInterval),
+              batchId(-1),
+              requestBatch(),
+              vehicleState(fleet.size(), OUT_OF_SERVICE),
+              requestState(requests.size(), NOT_RECEIVED),
+              requestData(requests.size(), RequestData()),
+              eventSimulationStatsLogger(LogManager<std::ofstream>::getLogger("eventsimulationstats.csv",
+                                                                              "occurrence_time,"
+                                                                              "type,"
+                                                                              "running_time\n")),
+              batchDispatchStatsLogger(LogManager<std::ofstream>::getLogger("batchdispatchstats.csv",
+                                                                            "occurence_time,"
+                                                                            "is_single_request,"
+                                                                            "batch_id,"
+                                                                            "iteration,"
+                                                                            "num_requests,"
+                                                                            "num_accepted,"
+                                                                            "find_assignments_running_time,"
+                                                                            "choose_accepted_running_time,"
+                                                                            "num_elliptic_bucket_entry_deletions,"
+                                                                            "update_system_state_running_time\n")),
+              assignmentQualityStats(LogManager<std::ofstream>::getLogger("assignmentquality.csv",
+                                                                          "request_id,"
+                                                                          "arr_time,"
+                                                                          "wait_time,"
+                                                                          "ride_time,"
+                                                                          "trip_time,"
+                                                                          "walk_to_pickup_time,"
+                                                                          "walk_to_dropoff_time,"
+                                                                          "cost\n")),
+              legStatsLogger(LogManager<std::ofstream>::getLogger("legstats.csv",
+                                                                  "vehicle_id,"
+                                                                  "stop_time,"
+                                                                  "dep_time,"
+                                                                  "arr_time,"
+                                                                  "drive_time,"
+                                                                  "occupancy\n")),
+        requestDispatchedSingleLogger(LogManager<std::ofstream>::getLogger("requestsdispatchedsingle.csv", "request_id\n")),
+              progressBar(requests.size(), verbose) {
             progressBar.setDotOutputInterval(1);
             progressBar.setPercentageOutputInterval(5);
             for (const auto &veh: fleet)
@@ -141,7 +140,6 @@ namespace karri {
         }
 
         void run() {
-
             static int prevReqTime = -1;
 
             while (!(vehicleEvents.empty() && requestEvents.empty())) {
@@ -163,10 +161,15 @@ namespace karri {
                 if constexpr (BATCHED_DISPATCHING) {
                     // If the deadline for the next request batch has been reached, dispatch the batch of requests
                     // collected before continuing with the next request or vehicle events.
-                    if ((InputConfig::getInstance().requestBatchInterval > 0 && occTime > nextRequestBatchDeadline) || (InputConfig::getInstance().requestBatchInterval == 0 && !requestBatch.empty())) {
+                    if ((InputConfig::getInstance().requestBatchInterval > 0 && occTime > nextRequestBatchDeadline) || (
+                            InputConfig::getInstance().requestBatchInterval == 0 && !requestBatch.empty())) {
                         KASSERT(InputConfig::getInstance().requestBatchInterval > 0 || requestBatch.size() == 1);
-                        KASSERT(InputConfig::getInstance().requestBatchInterval > 0 || requestBatch[0].requestTime == prevReqTime);
-                        dispatchRequestBatch(InputConfig::getInstance().requestBatchInterval == 0 ? prevReqTime : nextRequestBatchDeadline);
+                        KASSERT(
+                            InputConfig::getInstance().requestBatchInterval > 0 || requestBatch[0].requestTime ==
+                            prevReqTime);
+                        dispatchRequestBatch(InputConfig::getInstance().requestBatchInterval == 0
+                                                 ? prevReqTime
+                                                 : nextRequestBatchDeadline);
                         continue;
                     }
                 }
@@ -174,14 +177,12 @@ namespace karri {
                 if (nextEventIsRequest) {
                     handleRequestEvent(id, occTime);
                     prevReqTime = occTime;
-                }
-                else
+                } else
                     handleVehicleEvent(id, occTime);
             }
         }
 
     private:
-
         void handleVehicleEvent(const int vehId, const int occTime) {
             switch (vehicleState[vehId]) {
                 case OUT_OF_SERVICE:
@@ -283,11 +284,11 @@ namespace karri {
 
             const auto prevStop = scheduledStops.getCurrentOrPrevScheduledStop(vehId);
             legStatsLogger << vehId << ','
-                           << prevStop.depTime - prevStop.arrTime << ','
-                           << prevStop.depTime << ','
-                           << occTime << ','
-                           << occTime - prevStop.depTime << ','
-                           << prevStop.occupancyInFollowingLeg << '\n';
+                    << prevStop.depTime - prevStop.arrTime << ','
+                    << prevStop.depTime << ','
+                    << occTime << ','
+                    << occTime - prevStop.depTime << ','
+                    << prevStop.occupancyInFollowingLeg << '\n';
 
             vehicleState[vehId] = STOPPING;
             const auto reachedStop = scheduledStops.getNextScheduledStop(vehId);
@@ -347,8 +348,13 @@ namespace karri {
                 requestEvents.deleteMin(id, key);
                 assert(id == reqId && key.time == occTime);
 
-                // Add to current request batch for later dispatching
-                requestBatch.push_back(requests[reqId]);
+                // Every sampleSingleFrequency-th request is dispatched individually, all others are added to the current batch.;
+                if (InputConfig::getInstance().sampleSingleFrequency != 0 && reqId > 0 && reqId % InputConfig::getInstance().sampleSingleFrequency == 0) {
+                    dispatchSingleRequest(requests[reqId], occTime);
+                } else {
+                    // Add to current request batch for later dispatching
+                    requestBatch.push_back(requests[reqId]);
+                }
             } else {
                 // // Dispatch immediately
                 int id;
@@ -366,11 +372,23 @@ namespace karri {
             eventSimulationStatsLogger << occTime << ",RequestReceipt," << time << '\n';
         }
 
-        void dispatchSingleRequest(const Request &request, const int now) requires (!BATCHED_DISPATCHING) {
+        void dispatchSingleRequest(const Request &request, const int now) {
             using mode_choice::TransportMode;
             stats::DispatchingPerformanceStats stats;
             Timer overallTimer;
             Timer componentTimer;
+
+            int numEllipticBucketEntryDeletions = 0;
+            if constexpr (BATCHED_DISPATCHING) {
+                // If we are running batched dispatching and calling this method to sample sequential running times,
+                // we need to commit all pending updates before searching for the assignment. If we are running fully
+                // sequential, these updates are commited as soon as they occur, so there are no pending updates at this point.
+                // Commit all pending deletions to the elliptic buckets as well as insertions and deletions to the
+                // last stop buckets that were caused by vehicles progressing in their routes since the last batch.
+                numEllipticBucketEntryDeletions = systemStateUpdater.numPendingEllipticBucketEntryDeletions();
+                systemStateUpdater.commitPendingEllipticBucketEntryDeletions();
+                systemStateUpdater.commitPendingLastStopBucketEntryInsertionsAndDeletions();
+            }
 
             componentTimer.restart();
             const auto asgnFinderResponse = assignmentFinder.findBestAssignment(request, now, stats);
@@ -402,25 +420,27 @@ namespace karri {
 
             ++progressBar;
 
-            batchDispatchStatsLogger << now << "," << 1 << "," << 1 << "," << 1 << ","
-                                     << findAssignmentTime << ","
-                                     << chooseAcceptedTime << ","
-                                     << 0 << ","
-                                     << updateSystemStateTime << '\n';
+            ++batchId;
+            batchDispatchStatsLogger << now << "," << "1" << "," << batchId << "," << 1 << "," << 1 << "," << 1 << ","
+                    << findAssignmentTime << ","
+                    << chooseAcceptedTime << ","
+                    << numEllipticBucketEntryDeletions << ","
+                    << updateSystemStateTime << '\n';
+
+            requestDispatchedSingleLogger << request.requestId << '\n';
 
             const auto time = overallTimer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << now << ",RequestBatchDispatch," << time << '\n';
         }
 
         void dispatchRequestBatch(const int now) requires BATCHED_DISPATCHING {
-
             nextRequestBatchDeadline += InputConfig::getInstance().requestBatchInterval;
 
             if (requestBatch.empty())
                 return;
 
-            static int batchId = -1;
             ++batchId;
+
             Timer timer;
 
             std::vector<stats::DispatchingPerformanceStats> stats(requestBatch.size());
@@ -469,7 +489,8 @@ namespace karri {
                                                    now + responses[i].originalReqDirectDist);
                         } else if (mode == TransportMode::PublicTransport) {
                             processChoiceOtherMode(responses[i], stats[i], requestBatch[i].requestId, now, now +
-                                                                                                           ptJourneyData[requestBatch[i].requestId].totalJourneyTimeTenthsOfSeconds());
+                                                       ptJourneyData[requestBatch[i].requestId].
+                                                       totalJourneyTimeTenthsOfSeconds());
                         } else {
                             throw std::runtime_error("Unsupported transport mode chosen in event simulation.");
                         }
@@ -493,7 +514,7 @@ namespace karri {
                 std::iota(order.begin(), order.end(), 0);
                 std::sort(order.begin(), order.end(), [&](const auto &i1, const auto &i2) {
                     LIGHT_KASSERT(
-                            responses[i1].getBestAssignment().vehicle && responses[i2].getBestAssignment().vehicle);
+                        responses[i1].getBestAssignment().vehicle && responses[i2].getBestAssignment().vehicle);
                     const auto &vehId1 = responses[i1].getBestAssignment().vehicle->vehicleId;
                     const auto &vehId2 = responses[i2].getBestAssignment().vehicle->vehicleId;
                     return vehId1 < vehId2;
@@ -530,7 +551,8 @@ namespace karri {
                                                    now + responses[i].originalReqDirectDist);
                         } else if (modes[i] == TransportMode::PublicTransport) {
                             processChoiceOtherMode(responses[i], stats[i], requestBatch[i].requestId, now, now +
-                                                                                                           ptJourneyData[requestBatch[i].requestId].totalJourneyTimeTenthsOfSeconds());
+                                                       ptJourneyData[requestBatch[i].requestId].
+                                                       totalJourneyTimeTenthsOfSeconds());
                         } else {
                             throw std::runtime_error("Unsupported transport mode chosen in event simulation.");
                         }
@@ -600,17 +622,16 @@ namespace karri {
                 requestBatch.erase(requestBatch.begin() + firstFinishedTaxi, requestBatch.end());
                 stats.erase(stats.begin() + firstFinishedTaxi, stats.end());
 
-                batchDispatchStatsLogger << now  << "," << batchId << "," << iteration << "," << iterationNumRequests << ","
-                                         << numFinished << "," << iterationFindAssignmentsTime << ","
-                                         << iterationChooseAcceptedTime << ","
-                                         << numEllipticBucketEntryDeletions << ","
-                                         << iterationUpdateSystemStateTime << '\n';
+                batchDispatchStatsLogger << now << "," << "0" << "," << batchId << "," << iteration << ","
+                        << iterationNumRequests << "," << numFinished << "," << iterationFindAssignmentsTime << ","
+                        << iterationChooseAcceptedTime << ","
+                        << numEllipticBucketEntryDeletions << ","
+                        << iterationUpdateSystemStateTime << '\n';
                 numEllipticBucketEntryDeletions = 0; // Deletions are associated with first iteration.
             }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << now << ",RequestBatchDispatch," << time << '\n';
-
         }
 
         template<typename AssignmentFinderResponseT>
@@ -622,7 +643,7 @@ namespace karri {
             // Assign rider to walk to their destination and insert event for their arrival.
             requestState[reqId] = WALKING_TO_DEST;
             requestData[reqId].assignmentCost = CostCalculator::calcCostForNotUsingVehicle(
-                    asgnFinderResponse.odWalkingDist, asgnFinderResponse);
+                asgnFinderResponse.odWalkingDist, asgnFinderResponse);
             requestData[reqId].depTime = occTime;
             requestData[reqId].walkingTimeToPickup = 0;
             requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.odWalkingDist;
@@ -638,7 +659,8 @@ namespace karri {
 
             // Assign rider to take other mode to their destination and insert event for their arrival.
             requestState[reqId] = IN_OTHER_MODE;
-            requestData[reqId].assignmentCost = INFTY; // No meaningful cost can be assigned since this is not a possibility in local cost function
+            requestData[reqId].assignmentCost = INFTY;
+            // No meaningful cost can be assigned since this is not a possibility in local cost function
             requestData[reqId].depTime = occTime;
             requestData[reqId].walkingTimeToPickup = 0;
             requestData[reqId].walkingTimeFromDropoff = 0;
@@ -665,7 +687,9 @@ namespace karri {
             switch (vehicleState[vehId]) {
                 case STOPPING:
                     // Update event time to departure time at current stop since it may have changed
-                    vehicleEvents.updateKey(vehId, {scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime, vehId});
+                    vehicleEvents.updateKey(vehId, {
+                                                scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime, vehId
+                                            });
                     break;
                 case IDLING:
                     vehicleState[vehId] = VehicleState::DRIVING;
@@ -695,13 +719,13 @@ namespace karri {
             const auto rideTime = occTime - reqData.walkingTimeFromDropoff - reqData.depTime;
             const auto tripTime = arrTime - requests[reqId].requestTime;
             assignmentQualityStats << reqId << ','
-                                   << arrTime << ','
-                                   << waitTime << ','
-                                   << rideTime << ','
-                                   << tripTime << ','
-                                   << reqData.walkingTimeToPickup << ','
-                                   << reqData.walkingTimeFromDropoff << ','
-                                   << reqData.assignmentCost << '\n';
+                    << arrTime << ','
+                    << waitTime << ','
+                    << rideTime << ','
+                    << tripTime << ','
+                    << reqData.walkingTimeToPickup << ','
+                    << reqData.walkingTimeFromDropoff << ','
+                    << reqData.assignmentCost << '\n';
 
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
@@ -725,13 +749,13 @@ namespace karri {
             const auto rideTime = 0;
             const auto tripTime = arrTime - requests[reqId].requestTime;
             assignmentQualityStats << reqId << ','
-                                   << arrTime << ','
-                                   << waitTime << ','
-                                   << rideTime << ','
-                                   << tripTime << ','
-                                   << reqData.walkingTimeToPickup << ','
-                                   << reqData.walkingTimeFromDropoff << ','
-                                   << reqData.assignmentCost << '\n';
+                    << arrTime << ','
+                    << waitTime << ','
+                    << rideTime << ','
+                    << tripTime << ','
+                    << reqData.walkingTimeToPickup << ','
+                    << reqData.walkingTimeFromDropoff << ','
+                    << reqData.assignmentCost << '\n';
 
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
@@ -751,6 +775,7 @@ namespace karri {
         AddressableKHeapAnyKeyType<4, EntityKey> requestEvents;
 
         int nextRequestBatchDeadline;
+        int batchId;
         std::vector<Request> requestBatch;
 
         std::vector<VehicleState> vehicleState;
@@ -762,7 +787,7 @@ namespace karri {
         std::ofstream &batchDispatchStatsLogger;
         std::ofstream &assignmentQualityStats;
         std::ofstream &legStatsLogger;
+        std::ofstream &requestDispatchedSingleLogger;
         ProgressBar progressBar;
-
     };
 }

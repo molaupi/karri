@@ -42,16 +42,19 @@
 
 namespace karri {
 
-    template<typename InputGraphT, typename CHEnvT, bool SORTED_BUCKETS>
+    template<typename InputGraphT, typename CHEnvT, typename EllipticBucketsT>
     class BatchUpdatesEllipticBucketsEnvironment {
 
-        using Entry = BucketEntryWithLeeway;
+        static_assert(is_instance_of_v<EllipticBucketsT, SortedBucketContainer>,
+            "BatchUpdatesEllipticBucketsEnvironment currently only supports SortedBucketContainer as bucket container.");
 
-        struct DoesEntryHaveLargerRemainingLeeway {
-            bool operator()(const Entry &e1, const Entry &e2) const {
-                return e1.leeway - e1.distToTarget > e2.leeway - e2.distToTarget;
-            }
-        };
+        // using Entry = BucketEntryWithLeeway;
+        //
+        // struct DoesEntryHaveLargerRemainingLeeway {
+        //     bool operator()(const Entry &e1, const Entry &e2) const {
+        //         return e1.leeway - e1.distToTarget > e2.leeway - e2.distToTarget;
+        //     }
+        // };
 
 
         struct StopWhenLeewayExceeded {
@@ -90,21 +93,23 @@ namespace karri {
 
     public:
 
+        // using BucketContainer = std::conditional_t<SORTED_BUCKETS,
+        //         // CompactSortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
+        //         SortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
+        //         DynamicBucketContainer<Entry>
+        // >;
 
-        static constexpr bool SORTED_BY_REM_LEEWAY = SORTED_BUCKETS;
-
-        using BucketContainer = std::conditional_t<SORTED_BUCKETS,
-                // CompactSortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
-                SortedBucketContainer<Entry, DoesEntryHaveLargerRemainingLeeway>,
-                DynamicBucketContainer<Entry>
-        >;
-
+        using BucketContainer = EllipticBucketsT;
         using EntryInsertion = typename BucketContainer::EntryInsertion;
         using EntryDeletion = typename BucketContainer::EntryDeletion;
 
-        BatchUpdatesEllipticBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnvIn, const RouteState &routeState)
+        BatchUpdatesEllipticBucketsEnvironment(const InputGraphT &inputGraph,
+            const CHEnvT &chEnvIn,
+            const RouteState &routeState,
+            BucketContainer &sourceBuckets,
+            BucketContainer &targetBuckets)
                 : inputGraph(inputGraph), ch(chEnvIn.getCH()), routeState(routeState), chEnv(chEnvIn),
-                  sourceBuckets(inputGraph.numVertices()), targetBuckets(inputGraph.numVertices()),
+                  sourceBuckets(sourceBuckets), targetBuckets(targetBuckets),
                   descendentHasEntry([&]() { return BitVector(inputGraph.numVertices()); }),
                   forwardSearchFromNewStop([&]() {
                       return chEnv.getForwardTopologicalSearch(StoreSearchSpace(), StopWhenLeewayExceeded());
@@ -117,15 +122,6 @@ namespace karri {
                   deleteSearchSpace(inputGraph.numVertices()),
                   verticesWithSourceBucketLeewayUpdates(inputGraph.numVertices()),
                   verticesWithTargetBucketLeewayUpdates(inputGraph.numVertices()) {}
-
-
-        const BucketContainer &getSourceBuckets() const {
-            return sourceBuckets;
-        }
-
-        const BucketContainer &getTargetBuckets() const {
-            return targetBuckets;
-        }
 
         size_t totalNumSourceEntries() const {
             return sourceBuckets.totalNumEntries();
@@ -573,8 +569,8 @@ namespace karri {
         const RouteState &routeState;
         const CHEnvT &chEnv;
 
-        BucketContainer sourceBuckets;
-        BucketContainer targetBuckets;
+        BucketContainer& sourceBuckets;
+        BucketContainer& targetBuckets;
 
         tbb::enumerable_thread_specific<BitVector> descendentHasEntry;
 

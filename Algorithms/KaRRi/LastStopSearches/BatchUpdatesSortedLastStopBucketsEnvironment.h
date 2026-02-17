@@ -26,6 +26,8 @@
 #pragma once
 
 #include <type_traits>
+
+#include "LastStopBucketEntry.h"
 #include "Algorithms/Buckets/DynamicBucketContainer.h"
 #include "Algorithms/Buckets/SortedBucketContainer.h"
 #include "Algorithms/Buckets/BucketEntry.h"
@@ -41,22 +43,10 @@ namespace karri {
     template<typename InputGraphT, typename CHEnvT>
     class BatchUpdatesSortedLastStopBucketsEnvironment {
 
-
-        // .targetId is vehicle ID
-        // .distToTarget is dist from last stop to vertex for idle vehicles or arrival time at vertex for non-idle vehicles
-        using LastStopEntry = BucketEntry;
-
-        struct CompareEntries {
-            bool operator()(const LastStopEntry &e1, const LastStopEntry &e2) const {
-                return e1.distToTarget < e2.distToTarget;
-            }
-        };
-
     public:
-        static constexpr bool SORTED = true;
 
         // using BucketContainer = CompactLastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
-        using BucketContainer = LastStopBucketContainer<LastStopEntry, CompareEntries, CompareEntries>;
+        using BucketContainer = LastStopBucketContainer<LastStopBucketEntry, CompareLastStopBucketEntries, CompareLastStopBucketEntries>;
         using EntryInsertion = typename BucketContainer::EntryInsertion;
         using EntryDeletion = typename BucketContainer::EntryDeletion;
         using EntryInsertionVecT = parallel::scalable_vector<EntryInsertion>;
@@ -85,7 +75,7 @@ namespace karri {
                 KASSERT(curVehId != INVALID_ID && curInsertions);
                 KASSERT(curInsertions->size() > 0 && curInsertions->back() == EntryInsertion(),
                         "Invalid element to be populated at end of insertions is missing.");
-                auto entry = LastStopEntry(curVehId, distToV[0]);
+                auto entry = LastStopBucketEntry(curVehId, distToV[0]);
                 bucketContainer.getIdleEntryInsertion(v, entry, curInsertions->back());
                 curInsertions->emplace_back(); // Invalid last element to write to.
 //                bucketContainer.insertIdle(v, entry);
@@ -107,7 +97,7 @@ namespace karri {
                 KASSERT(curVehId != INVALID_ID && curInsertions);
                 KASSERT(curInsertions->size() > 0 && curInsertions->back() == EntryInsertion(),
                         "Invalid element to be populated at end of insertions is missing.");
-                auto entry = LastStopEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
+                auto entry = LastStopBucketEntry(curVehId, depTimeAtLastStopOfCurVeh + distToV[0]);
                 bucketContainer.getNonIdleEntryInsertion(v, entry, curInsertions->back());
                 curInsertions->emplace_back(); // Invalid last element to write to.
 //                bucketContainer.insertNonIdle(v, entry);
@@ -235,12 +225,13 @@ namespace karri {
     public:
 
         BatchUpdatesSortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                                                     const RouteState &routeState)
+                                                     const RouteState &routeState,
+                                                     BucketContainer &bucketContainer)
                 : inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   searchGraph(ch.upwardGraph()),
                   routeState(routeState),
-                  bucketContainer(searchGraph.numVertices()),
+                  bucketContainer(bucketContainer),
                   addIdleEntryInsertionsSearch(chEnv.getForwardSearch(AddIdleEntryInsertion(bucketContainer))),
                   addNonIdleEntryInsertionsSearch(
                           [&]() { return chEnv.getForwardSearch(AddNonIdleEntryInsertion(bucketContainer)); }),
@@ -258,11 +249,6 @@ namespace karri {
                           [&]() { return chEnv.getForwardSearch(AddIdleEntryDeletion(bucketContainer)); }),
                   addNonIdleEntryDeletionsSearch(
                           [&]() { return chEnv.getForwardSearch(AddNonIdleEntryDeletion(bucketContainer)); }) {}
-
-
-        const BucketContainer &getBuckets() const {
-            return bucketContainer;
-        }
 
 
         void addIdleBucketEntryInsertions(const int vehId) {
@@ -530,7 +516,7 @@ namespace karri {
         const CH::SearchGraph &searchGraph;
         const RouteState &routeState;
 
-        BucketContainer bucketContainer;
+        BucketContainer &bucketContainer;
 
 //        int vehicleId;
 //        int depTimeOfVehAtLastStop;

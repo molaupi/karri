@@ -43,7 +43,8 @@ namespace karri {
     template<typename InputGraphT,
             typename CHEnvT,
             typename CostFunctionT,
-            typename EllipticBucketsEnvT,
+            typename EllipticBucketsT,
+            bool AreEllipticBucketsSortedByRemainingLeeway,
             typename FeasibleEllipticDistancesT,
             typename LabelSetT>
     class EllipticBCHSearches {
@@ -56,7 +57,7 @@ namespace karri {
         using LabelMask = typename LabelSetT::LabelMask;
 
 
-        using Buckets = typename EllipticBucketsEnvT::BucketContainer;
+        using Buckets = EllipticBucketsT;
 
         struct StopBCHQuery {
 
@@ -96,7 +97,7 @@ namespace karri {
                     ++numEntriesVisited;
                     const auto distViaV = distToV + entry.distToTarget;
 
-                    if constexpr (EllipticBucketsEnvT::SORTED_BY_REM_LEEWAY) {
+                    if constexpr (AreEllipticBucketsSortedByRemainingLeeway) {
                         // Entries in a bucket are ordered by the remaining leeway, i.e. the leeway minus the distance from/to
                         // the stop to/from this vertex.
                         // If all distances break the remaining leeway for this entry, then they also break the remaining leeway
@@ -149,7 +150,8 @@ namespace karri {
 
         EllipticBCHSearches(const InputGraphT &inputGraph,
                             const Fleet &fleet,
-                            const EllipticBucketsEnvT &ellipticBucketsEnv,
+                            const EllipticBucketsT &sourceBuckets,
+                            const EllipticBucketsT &targetBuckets,
                             const CHEnvT &chEnv,
                             const RouteState &routeState)
                 : inputGraph(inputGraph),
@@ -158,11 +160,11 @@ namespace karri {
                   routeState(routeState),
                   distUpperBound(INFTY),
                   toQuery(chEnv.template getReverseSearch<ScanSourceBuckets, StopBCHQuery, LabelSetT>(
-                          ScanSourceBuckets(ellipticBucketsEnv.getSourceBuckets(), routeState,
+                          ScanSourceBuckets(sourceBuckets, routeState,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
                           StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))),
                   fromQuery(chEnv.template getForwardSearch<ScanTargetBuckets, StopBCHQuery, LabelSetT>(
-                          ScanTargetBuckets(ellipticBucketsEnv.getTargetBuckets(), routeState,
+                          ScanTargetBuckets(targetBuckets, routeState,
                                             totalNumEntriesScanned, totalNumEntriesScannedWithDistSmallerLeeway),
                           StopBCHQuery(distUpperBound, numTimesStoppingCriterionMet))) {}
 

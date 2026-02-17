@@ -26,17 +26,16 @@
 #pragma once
 
 namespace karri::DropoffAfterLastStopStrategies {
-
     // For each vehicle veh, this query finds the dropoff with the minimal cost when inserting the dropoff after the last
     // stop of the vehicle. Ignores the service time constraint.
     template<typename InputGraphT,
-            typename CHEnvT,
-            typename LastStopBucketsEnvT,
-            typename IsVehEligibleForDropoffAfterLastStop,
-            bool STALL_LABELS = true,
-            typename QueueT = AddressableQuadHeap>
+        typename CHEnvT,
+        typename LastStopBucketsT,
+        bool AreLastStopBucketsSorted,
+        typename IsVehEligibleForDropoffAfterLastStop,
+        bool STALL_LABELS = true,
+        typename QueueT = AddressableQuadHeap>
     class MinCostDropoffAfterLastStopQuery {
-
         struct DropoffLabel {
             int dropoffId = INVALID_ID;
             int distToDropoff = std::numeric_limits<int>::max();
@@ -50,28 +49,29 @@ namespace karri::DropoffAfterLastStopStrategies {
         using VehicleBucketContainer = DynamicBucketContainer<DropoffLabel>;
 
     public:
-
         MinCostDropoffAfterLastStopQuery(const InputGraphT &inputGraph,
                                          const Fleet &fleet,
                                          const CHEnvT &chEnv,
-                                         const LastStopBucketsEnvT &lastStopBucketsEnv,
-                                         const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop,
+                                         const LastStopBucketsT &lastStopBuckets,
+                                         const IsVehEligibleForDropoffAfterLastStop &
+                                         isVehEligibleForDropoffAfterLastStop,
                                          const RouteState &routeState)
-                : inputGraph(inputGraph),
-                  fleet(fleet),
-                  ch(chEnv.getCH()),
-                  searchGraph(ch.downwardGraph()),
-                  oppositeGraph(ch.upwardGraph()),
-                  calculator(routeState),
-                  lastStopBuckets(lastStopBucketsEnv.getBuckets()),
-                  isVehEligibleForDropoffAfterLastStop(isVehEligibleForDropoffAfterLastStop),
-                  routeState(routeState),
-                  vertexLabelBuckets(searchGraph.numVertices()),
-                  reverseQueue(searchGraph.numVertices()),
-                  vehicleLabelBuckets(fleet.size()),
-                  vehiclesSeen(fleet.size()) {}
+            : inputGraph(inputGraph),
+              fleet(fleet),
+              ch(chEnv.getCH()),
+              searchGraph(ch.downwardGraph()),
+              oppositeGraph(ch.upwardGraph()),
+              calculator(routeState),
+              lastStopBuckets(lastStopBuckets),
+              isVehEligibleForDropoffAfterLastStop(isVehEligibleForDropoffAfterLastStop),
+              routeState(routeState),
+              vertexLabelBuckets(searchGraph.numVertices()),
+              reverseQueue(searchGraph.numVertices()),
+              vehicleLabelBuckets(fleet.size()),
+              vehiclesSeen(fleet.size()) {
+        }
 
-        void run(const RequestState& requestState, const PDLocs& pdLocs) {
+        void run(const RequestState &requestState, const PDLocs &pdLocs) {
             Timer timer;
 
             init(requestState, pdLocs);
@@ -125,9 +125,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
     private:
-
-        inline bool stopSearch(const RequestState& requestState) const {
-
+        inline bool stopSearch(const RequestState &requestState) const {
             if (reverseQueue.empty()) return true;
 
             int v, minCostLowerBound;
@@ -135,7 +133,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             return minCostLowerBound > requestState.getBestCost();
         }
 
-        void init(const RequestState& requestState, const PDLocs& pdLocs) {
+        void init(const RequestState &requestState, const PDLocs &pdLocs) {
             numEdgeRelaxations = 0;
             numLabelsRelaxed = 0;
             numEntriesScanned = 0;
@@ -171,13 +169,13 @@ namespace karri::DropoffAfterLastStopStrategies {
             }
         }
 
-        int costOf(const DropoffLabel &label, const RequestState& requestState, const PDLocs& pdLocs) const {
+        int costOf(const DropoffLabel &label, const RequestState &requestState, const PDLocs &pdLocs) const {
             if (label.distToDropoff >= INFTY) return INFTY;
             return calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
-                    label.distToDropoff, pdLocs.dropoffs[label.dropoffId], requestState);
+                label.distToDropoff, pdLocs.dropoffs[label.dropoffId], requestState);
         }
 
-        bool dominates(const DropoffLabel &label1, const DropoffLabel &label2, const PDLocs& pdLocs) {
+        bool dominates(const DropoffLabel &label1, const DropoffLabel &label2, const PDLocs &pdLocs) {
             ++numDominationRelationTests;
 
             const auto &dropoff1 = pdLocs.dropoffs[label1.dropoffId];
@@ -198,7 +196,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         // Settles the next label with the globally minimal cost. Sets labelAtV to the settled label and v to the vertex
         // at which the label was settled. Returns true if the label was propagated to the neighbors of v or false if the
         // label was pruned.
-        bool settleNextLabel(int &v, DropoffLabel &labelAtV, const RequestState& requestState, const PDLocs& pdLocs) {
+        bool settleNextLabel(int &v, DropoffLabel &labelAtV, const RequestState &requestState, const PDLocs &pdLocs) {
             assert(!reverseQueue.empty());
             int cost;
             reverseQueue.min(v, cost);
@@ -249,7 +247,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         // Checks if a label l can be pruned at vertex v via a stall-on-demand like criterion: Consider all outgoing edges
         // (v,w) from v in the upward search graph. For each label l' at w, we simulate propagating that label to v backwards
         // via (v,w) to attain a label l'' at v. If l'' dominates l at v, then we can prune l at v.
-        bool pruneLabel(const int v, const DropoffLabel &label, const PDLocs& pdLocs) {
+        bool pruneLabel(const int v, const DropoffLabel &label, const PDLocs &pdLocs) {
             FORALL_INCIDENT_EDGES(oppositeGraph, v, e) {
                 const auto w = oppositeGraph.edgeHead(e);
                 if (w == v) continue;
@@ -281,8 +279,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         // newLabel is inserted into the bucket, other open labels that are dominated by newLabel are removed and true is
         // returned. If newLabel is dominated by existing labels, no change to the bucket is made and false is returned.
         bool insertLabelAtVertexAndClean(const int vertex, VertexBucketContainer &bucketContainer,
-                                         const DropoffLabel &newLabel, const RequestState& requestState, const PDLocs& pdLocs) {
-
+                                         const DropoffLabel &newLabel, const RequestState &requestState,
+                                         const PDLocs &pdLocs) {
             // Check if labelViaV is dominated by any closed labels at vertex.
             // Min cost of closed label at vertex <= max cost of closed label at vertex <= max cost of new label at vertex
             // => new label cannot dominate closed label.
@@ -333,14 +331,15 @@ namespace karri::DropoffAfterLastStopStrategies {
             return true;
         }
 
-        void scanVehicleBucket(const int v, const DropoffLabel &label, const RequestState& requestState, const PDLocs& pdLocs) {
+        void scanVehicleBucket(const int v, const DropoffLabel &label, const RequestState &requestState,
+                               const PDLocs &pdLocs) {
             using namespace time_utils;
 
             const auto &dropoff = pdLocs.dropoffs[label.dropoffId];
 
             int numEntriesScannedHere = 0;
 
-            if constexpr (!LastStopBucketsEnvT::SORTED) {
+            if constexpr (!AreLastStopBucketsSorted) {
                 auto bucket = lastStopBuckets.getUnsortedBucketOf(v);
                 for (const auto &entry: bucket) {
                     ++numEntriesScannedHere;
@@ -348,8 +347,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                     const int &vehId = entry.targetId;
                     const int fullDistToDropoff = entry.distToTarget + label.distToDropoff;
 
-                    const auto costFromLastStop = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
-                            fullDistToDropoff, dropoff, requestState);
+                    const auto costFromLastStop = calculator.
+                            calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
+                                fullDistToDropoff, dropoff, requestState);
 
                     if (costFromLastStop > requestState.getBestCost())
                         continue;
@@ -361,16 +361,16 @@ namespace karri::DropoffAfterLastStopStrategies {
                     // If full distance to dropoff leads to violation of service time constraint, an assignment with this
                     // vehicle and dropoff does not need to be regarded.
                     const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId,
-                                                                                   routeState.numStopsOf(vehId) - 1,
-                                                                                   requestState, routeState);
-                    if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff + InputConfig::getInstance().stopTime)
+                        routeState.numStopsOf(vehId) - 1,
+                        requestState, routeState);
+                    if (fleet[vehId].endOfServiceTime < vehDepTimeAtLastStop + fullDistToDropoff +
+                        InputConfig::getInstance().stopTime)
                         continue;
 
                     const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
                     insertLabelAtVehicleAndClean(vehId, labelAtVeh, requestState, pdLocs);
                 }
             } else {
-
                 // Idle vehicles cannot lead to dropoff after last stop queries, so only consider non-idle ones.
                 auto nonIdleBucket = lastStopBuckets.getNonIdleBucketOf(v);
 
@@ -380,8 +380,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                     const int &vehId = entry.targetId;
                     const int arrTimeAtDropoff = entry.distToTarget + label.distToDropoff;
 
-                    const auto costFromLastStop = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinArrTime(
-                            dropoff.walkingDist, label.distToDropoff, arrTimeAtDropoff, requestState);
+                    const auto costFromLastStop = calculator.
+                            calcVehicleIndependentCostLowerBoundForDALSWithKnownMinArrTime(
+                                dropoff.walkingDist, label.distToDropoff, arrTimeAtDropoff, requestState);
 
                     // Entries of idle bucket are sorted by arrival time at v. The vehicle-independent lower
                     // bound costFromLastStop increases monotonously with this arrival time. So once we find an entry
@@ -413,8 +414,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         // stop of the given vehicle. If newLabel is not dominated, newLabel is inserted into the bucket, other labels that
         // are dominated by newLabel are removed and true is returned. If newLabel is dominated by existing labels, no
         // change to the bucket is made and false is returned.
-        bool insertLabelAtVehicleAndClean(const int vehId, const DropoffLabel &newLabel, const RequestState& requestState, const PDLocs& pdLocs) {
-
+        bool insertLabelAtVehicleAndClean(const int vehId, const DropoffLabel &newLabel,
+                                          const RequestState &requestState, const PDLocs &pdLocs) {
             const auto costOfNew = costOf(newLabel, requestState, pdLocs);
             auto bucket = vehicleLabelBuckets.getBucketOf(vehId);
             int i = 0;
@@ -458,7 +459,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         const typename CH::SearchGraph &searchGraph;
         const typename CH::SearchGraph &oppositeGraph;
         CostCalculator calculator;
-        const typename LastStopBucketsEnvT::BucketContainer &lastStopBuckets;
+        const LastStopBucketsT &lastStopBuckets;
         const IsVehEligibleForDropoffAfterLastStop &isVehEligibleForDropoffAfterLastStop;
         const RouteState &routeState;
 
@@ -477,5 +478,4 @@ namespace karri::DropoffAfterLastStopStrategies {
         int64_t initializationTime;
         int64_t runTime;
     };
-
 }

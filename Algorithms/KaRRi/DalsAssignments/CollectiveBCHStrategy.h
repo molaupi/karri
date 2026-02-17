@@ -33,7 +33,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
     template<typename InputGraphT,
             typename CHEnvT,
-            typename LastStopBucketsEnvT,
+            typename LastStopBucketsT,
+    bool AreLastStopBucketsSorted,
             typename CurVehLocToPickupSearchesT,
             typename FallBackCHLabelSet = BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>>
     class CollectiveBCHStrategy {
@@ -56,8 +57,8 @@ namespace karri::DropoffAfterLastStopStrategies {
         };
 
 
-        using MinCostLabelSearch = MinCostDropoffAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, IsVehEligibleForDropoffAfterLastStop>;
-        using ClosestDropoffToLastStopQuery = ClosestPDLocToLastStopBCHQueryWithStallOnDemand<InputGraphT, CHEnvT, typename LastStopBucketsEnvT::BucketContainer>;
+        using MinCostLabelSearch = MinCostDropoffAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsT, AreLastStopBucketsSorted, IsVehEligibleForDropoffAfterLastStop>;
+        using ClosestDropoffToLastStopQuery = ClosestPDLocToLastStopBCHQueryWithStallOnDemand<InputGraphT, CHEnvT, LastStopBucketsT>;
 
     public:
 
@@ -65,18 +66,18 @@ namespace karri::DropoffAfterLastStopStrategies {
                               const Fleet &fleet,
                               const RouteState &routeState,
                               const CHEnvT &chEnv,
-                              const LastStopBucketsEnvT &lastStopBucketsEnv,
+                              const LastStopBucketsT &lastStopBuckets,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   routeState(routeState),
                   calculator(routeState),
                   curVehLocToPickupSearches(curVehLocToPickupSearches),
-                  closestDropoffSearch(inputGraph, fleet.size(), chEnv, lastStopBucketsEnv.getBuckets(),
+                  closestDropoffSearch(inputGraph, fleet.size(), chEnv, lastStopBuckets,
                                        {chEnv.getCH().upwardGraph()}),
                   ch(chEnv.getCH()),
                   isVehEligibleForDropoffAfterLastStop(*this),
-                  minCostSearch(inputGraph, fleet, chEnv, lastStopBucketsEnv,
+                  minCostSearch(inputGraph, fleet, chEnv, lastStopBuckets,
                                 isVehEligibleForDropoffAfterLastStop, routeState),
                   distsFromLastStopToDropoffs(0, INFTY),
                   checkPBNSForVehicle(fleet.size()),

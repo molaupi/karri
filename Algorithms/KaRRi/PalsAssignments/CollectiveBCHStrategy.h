@@ -40,15 +40,16 @@ namespace karri::PickupAfterLastStopStrategies {
 // vehicle.
     template<typename InputGraphT,
             typename CHEnvT,
-            typename LastStopBucketsEnvT,
+            typename LastStopBucketsT,
+            bool AreLastStopBucketsSorted,
             typename VehicleToPDLocQueryT,
             typename PDDistancesT,
             typename FallbackLabelSetT>
     class CollectiveBCHStrategy {
 
-        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT>;
+        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsT, AreLastStopBucketsSorted, PDDistancesT>;
 
-        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, FallbackLabelSetT>;
+        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsT, AreLastStopBucketsSorted, PDDistancesT, FallbackLabelSetT>;
 
     public:
 
@@ -56,16 +57,16 @@ namespace karri::PickupAfterLastStopStrategies {
                               const Fleet &fleet,
                               const CHEnvT &chEnv,
                               VehicleToPDLocQueryT &vehicleToPDLocQuery,
-                              const LastStopBucketsEnvT &lastStopBucketsEnv,
+                              const LastStopBucketsT &lastStopBuckets,
                               const RouteState &routeState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(routeState),
                   ch(chEnv.getCH()),
                   routeState(routeState),
-                  minCostSearch(inputGraph, fleet, chEnv, routeState, lastStopBucketsEnv),
+                  minCostSearch(inputGraph, fleet, chEnv, routeState, lastStopBuckets),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
-                  fallbackStrategy(inputGraph, fleet, chEnv, lastStopBucketsEnv, routeState) {}
+                  fallbackStrategy(inputGraph, fleet, chEnv, lastStopBuckets, routeState) {}
 
         void tryPickupAfterLastStop(RequestState& requestState, const PDDistancesT& pdDistances, const PDLocs& pdLocs, stats::PalsAssignmentsPerformanceStats& stats) {
 

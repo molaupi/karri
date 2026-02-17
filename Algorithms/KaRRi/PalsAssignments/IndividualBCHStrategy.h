@@ -32,7 +32,12 @@
 
 namespace karri::PickupAfterLastStopStrategies {
 
-    template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsEnvT, typename PDDistancesT, typename LabelSetT>
+    template<typename InputGraphT,
+    typename CHEnvT,
+    typename LastStopBucketsT,
+    bool AreLastStopBucketsSorted,
+    typename PDDistancesT,
+    typename LabelSetT>
     class IndividualBCHStrategy {
 
         static constexpr int K = LabelSetT::K;
@@ -149,14 +154,14 @@ namespace karri::PickupAfterLastStopStrategies {
             const CostCalculator &calc;
         };
 
-        using PickupBCHQuery = LastStopBCHQuery<CHEnvT, LastStopBucketsEnvT, PickupAfterLastStopPruner, LabelSetT>;
+        using PickupBCHQuery = LastStopBCHQuery<CHEnvT, LastStopBucketsT, AreLastStopBucketsSorted, PickupAfterLastStopPruner, LabelSetT>;
 
     public:
 
         IndividualBCHStrategy(const InputGraphT &inputGraph,
                               const Fleet &fleet,
                               const CHEnvT &chEnv,
-                              const LastStopBucketsEnvT &lastStopBucketsEnv,
+                              const LastStopBucketsT &lastStopBuckets,
                               const RouteState &routeState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
@@ -164,7 +169,7 @@ namespace karri::PickupAfterLastStopStrategies {
                   routeState(routeState),
                   externalUpperBoundCost(INFTY),
                   distances(fleet.size()),
-                  search(lastStopBucketsEnv, distances, chEnv, routeState, vehiclesSeenForPickups,
+                  search(lastStopBuckets, distances, chEnv, routeState, vehiclesSeenForPickups,
                          PickupAfterLastStopPruner(*this, calculator)),
                   vehiclesSeenForPickups(fleet.size()) {}
 
