@@ -47,6 +47,14 @@ target_compile_definitions(karri PRIVATE KARRI_WAIT_PENALTY_SCALE=${KARRI_WAIT_P
 set(KARRI_TRIP_PENALTY_SCALE 10 CACHE STRING "Weights penalties for violating trip time soft constraint.")
 target_compile_definitions(karri PRIVATE KARRI_TRIP_PENALTY_SCALE=${KARRI_TRIP_PENALTY_SCALE})
 
+# Logit settings
+
+# If set, use this value as fixed seed for RNG. Use for debugging.
+if (DEFINED KARRI_LOGIT_FIXED_SEED)
+    target_compile_definitions(karri PRIVATE KARRI_LOGIT_FIXED_SEED=${KARRI_LOGIT_FIXED_SEED})
+endif (DEFINED KARRI_LOGIT_FIXED_SEED)
+
+
 # Use CCHs?
 option(KARRI_USE_CCHS "Use CCHs instead of standard CHs." OFF)
 if (KARRI_USE_CCHS)

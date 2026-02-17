@@ -180,6 +180,17 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
     // Create Route State for empty routes.
     RouteState routeState(fleet);
 
+    // Set up the distance checker callback to verify shortest path distances.
+    // This captures the vehicle graph and CH environment for use in checkDirectDistance().
+    auto distanceCheckerChQuery = vehChEnv.template getFullCHQuery<>();
+    routeState.setDistanceChecker([&vehicleInputGraph, &vehChEnv, &distanceCheckerChQuery](int curStop, int nextStop) {
+        if (curStop == nextStop)
+            return 0;
+        const auto &ch = vehChEnv.getCH();
+        distanceCheckerChQuery.run(ch.rank(vehicleInputGraph.edgeHead(curStop)), ch.rank(vehicleInputGraph.edgeTail(nextStop)));
+        return distanceCheckerChQuery.getDistance() + vehicleInputGraph.travelTime(nextStop);
+    });
+
     // Construct Elliptic BCH bucket environment:
     static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
     using EllipticBucketsEnv = std::conditional_t<BATCHED_DISPATCHING,

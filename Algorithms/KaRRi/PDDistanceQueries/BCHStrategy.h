@@ -158,6 +158,15 @@ namespace karri::PDDistanceQueryStrategies {
             // Initialize distance from origin to dropoff
             pdDistances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
 
+            // Initialize distance to zero where pickup location == dropoff location.
+            for (const auto &pickup : pdLocs.pickups) {
+                for (const auto &dropoff : pdLocs.dropoffs) {
+                    if (pickup.loc == dropoff.loc) {
+                        pdDistances.updateDistanceIfSmaller(pickup.id, dropoff.id, 0);
+                    }
+                }
+            }
+
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             stats.initializationTime += time;
             timer.restart();

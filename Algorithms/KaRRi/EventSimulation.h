@@ -69,6 +69,13 @@ namespace karri {
             int assignmentCost;
         };
 
+        // Key for event queues.
+        struct EntityKey {
+            int time = INFTY;
+            int id = INVALID_ID;
+            auto operator<=>(const EntityKey&) const = default;
+        };
+
     public:
 
 
@@ -100,6 +107,7 @@ namespace karri {
                                                                                   "running_time\n")),
                   batchDispatchStatsLogger(LogManager<std::ofstream>::getLogger("batchdispatchstats.csv",
                                                                                 "occurence_time,"
+                                                                                "batch_id,"
                                                                                 "iteration,"
                                                                                 "num_requests,"
                                                                                 "num_accepted,"
@@ -127,37 +135,46 @@ namespace karri {
             progressBar.setDotOutputInterval(1);
             progressBar.setPercentageOutputInterval(5);
             for (const auto &veh: fleet)
-                vehicleEvents.insert(veh.vehicleId, veh.startOfServiceTime);
+                vehicleEvents.insert(veh.vehicleId, {veh.startOfServiceTime, veh.vehicleId});
             for (const auto &req: requests)
-                requestEvents.insert(req.requestId, req.requestTime);
+                requestEvents.insert(req.requestId, {req.requestTime, req.requestId});
         }
 
         void run() {
 
+            static int prevReqTime = -1;
+
             while (!(vehicleEvents.empty() && requestEvents.empty())) {
                 // Pop next event from either queue. Request event has precedence if at the same time as vehicle event.
-                int id, occTime;
+                int id;
+                EntityKey key;
 
                 const bool nextEventIsRequest =
                         !requestEvents.empty() &&
-                        (vehicleEvents.empty() || requestEvents.minKey() <= vehicleEvents.minKey());
+                        (vehicleEvents.empty() || requestEvents.minKey().time <= vehicleEvents.minKey().time);
 
                 if (nextEventIsRequest)
-                    requestEvents.min(id, occTime);
+                    requestEvents.min(id, key);
                 else
-                    vehicleEvents.min(id, occTime);
+                    vehicleEvents.min(id, key);
+
+                const int occTime = key.time;
 
                 if constexpr (BATCHED_DISPATCHING) {
                     // If the deadline for the next request batch has been reached, dispatch the batch of requests
                     // collected before continuing with the next request or vehicle events.
-                    if (occTime > nextRequestBatchDeadline) {
-                        dispatchRequestBatch();
+                    if ((InputConfig::getInstance().requestBatchInterval > 0 && occTime > nextRequestBatchDeadline) || (InputConfig::getInstance().requestBatchInterval == 0 && !requestBatch.empty())) {
+                        KASSERT(InputConfig::getInstance().requestBatchInterval > 0 || requestBatch.size() == 1);
+                        KASSERT(InputConfig::getInstance().requestBatchInterval > 0 || requestBatch[0].requestTime == prevReqTime);
+                        dispatchRequestBatch(InputConfig::getInstance().requestBatchInterval == 0 ? prevReqTime : nextRequestBatchDeadline);
                         continue;
                     }
                 }
 
-                if (nextEventIsRequest)
+                if (nextEventIsRequest) {
                     handleRequestEvent(id, occTime);
+                    prevReqTime = occTime;
+                }
                 else
                     handleVehicleEvent(id, occTime);
             }
@@ -189,6 +206,18 @@ namespace karri {
                 case NOT_RECEIVED:
                     handleRequestReceipt(reqId, occTime);
                     break;
+                case WAITING_FOR_DISPATCH:
+                    // // debug code for testing delayed requests in sequential dispatching
+                    // if constexpr (!BATCHED_DISPATCHING) {
+                    //     int id;
+                    //     EntityKey key;
+                    //     requestEvents.deleteMin(id, key);
+                    //     KASSERT(reqId == id && key.time == occTime);
+                    //     dispatchSingleRequest(requests[reqId], occTime);
+                    //     break;
+                    // }
+                    KASSERT(false);
+                    break;
                 case ASSIGNED_TO_VEH:
                     // When assigned to a vehicle, there should be no request event until the dropoff.
                     // At that point the request state becomes WALKING_TO_DEST.
@@ -218,10 +247,10 @@ namespace karri {
             // Vehicle may have already been assigned stops. In this case it will start driving right away:
             if (scheduledStops.hasNextScheduledStop(vehId)) {
                 vehicleState[vehId] = DRIVING;
-                vehicleEvents.increaseKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
+                vehicleEvents.increaseKey(vehId, {scheduledStops.getNextScheduledStop(vehId).arrTime, vehId});
             } else {
                 vehicleState[vehId] = IDLING;
-                vehicleEvents.increaseKey(vehId, fleet[vehId].endOfServiceTime);
+                vehicleEvents.increaseKey(vehId, {fleet[vehId].endOfServiceTime, vehId});
             }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
@@ -237,9 +266,10 @@ namespace karri {
 
             vehicleState[vehId] = OUT_OF_SERVICE;
 
-            int id, key;
+            int id;
+            EntityKey key;
             vehicleEvents.deleteMin(id, key);
-            assert(id == vehId && key == occTime);
+            assert(id == vehId && key.time == occTime);
             systemStateUpdater.notifyVehicleReachedEndOfServiceTime(fleet[vehId]);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
@@ -267,12 +297,12 @@ namespace karri {
             for (const auto &reqId: reachedStop.requestsDroppedOffHere) {
                 const auto &reqData = requestData[reqId];
                 requestState[reqId] = WALKING_TO_DEST;
-                requestEvents.insert(reqId, occTime + reqData.walkingTimeFromDropoff);
+                requestEvents.insert(reqId, {occTime + reqData.walkingTimeFromDropoff, reqId});
             }
 
 
             // Next event for this vehicle is the departure at this stop:
-            vehicleEvents.increaseKey(vehId, reachedStop.depTime);
+            vehicleEvents.increaseKey(vehId, {reachedStop.depTime, vehId});
             systemStateUpdater.notifyStopStarted(fleet[vehId]);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
@@ -286,7 +316,7 @@ namespace karri {
 
             if (!scheduledStops.hasNextScheduledStop(vehId)) {
                 vehicleState[vehId] = IDLING;
-                vehicleEvents.increaseKey(vehId, fleet[vehId].endOfServiceTime);
+                vehicleEvents.increaseKey(vehId, {fleet[vehId].endOfServiceTime, vehId});
             } else {
                 // Remember departure time for all requests picked up at this stop:
                 const auto curStop = scheduledStops.getCurrentOrPrevScheduledStop(vehId);
@@ -294,7 +324,7 @@ namespace karri {
                     requestData[reqId].depTime = occTime;
                 }
                 vehicleState[vehId] = DRIVING;
-                vehicleEvents.increaseKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
+                vehicleEvents.increaseKey(vehId, {scheduledStops.getNextScheduledStop(vehId).arrTime, vehId});
             }
 
             systemStateUpdater.notifyStopCompleted(fleet[vehId]);
@@ -309,27 +339,35 @@ namespace karri {
 
             Timer timer;
 
-            // event for walking arrival at dest inserted at dispatching time for walking-only or when vehicle reaches dropoff
-            int id, key;
-            requestEvents.deleteMin(id, key);
-            assert(id == reqId && key == occTime);
-
             requestState[reqId] = WAITING_FOR_DISPATCH;
             if constexpr (BATCHED_DISPATCHING) {
+                // event for walking arrival at dest inserted at dispatching time for walking-only or when vehicle reaches dropoff
+                int id;
+                EntityKey key;
+                requestEvents.deleteMin(id, key);
+                assert(id == reqId && key.time == occTime);
+
                 // Add to current request batch for later dispatching
                 requestBatch.push_back(requests[reqId]);
             } else {
-                // Dispatch immediately
-                dispatchSingleRequest(requests[reqId]);
+                // // Dispatch immediately
+                int id;
+                EntityKey key;
+                requestEvents.deleteMin(id, key);
+                assert(id == reqId && key.time == occTime);
+                dispatchSingleRequest(requests[reqId], occTime);
+
+                // // debug code for testing delayed requests in sequential dispatching
+                // requestEvents.increaseKey(reqId, {occTime + InputConfig::getInstance().requestBatchInterval, reqId});
+                // // requestEvents.increaseKey(reqId, {occTime + 10, reqId});
             }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",RequestReceipt," << time << '\n';
         }
 
-        void dispatchSingleRequest(const Request &request) requires (!BATCHED_DISPATCHING) {
+        void dispatchSingleRequest(const Request &request, const int now) requires (!BATCHED_DISPATCHING) {
             using mode_choice::TransportMode;
-            const int now = request.requestTime;
             stats::DispatchingPerformanceStats stats;
             Timer overallTimer;
             Timer componentTimer;
@@ -374,14 +412,15 @@ namespace karri {
             eventSimulationStatsLogger << now << ",RequestBatchDispatch," << time << '\n';
         }
 
-        void dispatchRequestBatch() requires BATCHED_DISPATCHING {
+        void dispatchRequestBatch(const int now) requires BATCHED_DISPATCHING {
 
-            const int now = nextRequestBatchDeadline;
             nextRequestBatchDeadline += InputConfig::getInstance().requestBatchInterval;
 
             if (requestBatch.empty())
                 return;
 
+            static int batchId = -1;
+            ++batchId;
             Timer timer;
 
             std::vector<stats::DispatchingPerformanceStats> stats(requestBatch.size());
@@ -561,7 +600,7 @@ namespace karri {
                 requestBatch.erase(requestBatch.begin() + firstFinishedTaxi, requestBatch.end());
                 stats.erase(stats.begin() + firstFinishedTaxi, stats.end());
 
-                batchDispatchStatsLogger << now << "," << iteration << "," << iterationNumRequests << ","
+                batchDispatchStatsLogger << now  << "," << batchId << "," << iteration << "," << iterationNumRequests << ","
                                          << numFinished << "," << iterationFindAssignmentsTime << ","
                                          << iterationChooseAcceptedTime << ","
                                          << numEllipticBucketEntryDeletions << ","
@@ -587,7 +626,7 @@ namespace karri {
             requestData[reqId].depTime = occTime;
             requestData[reqId].walkingTimeToPickup = 0;
             requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.odWalkingDist;
-            requestEvents.insert(reqId, occTime + asgnFinderResponse.odWalkingDist);
+            requestEvents.insert(reqId, {occTime + asgnFinderResponse.odWalkingDist, reqId});
             systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
         }
 
@@ -603,7 +642,7 @@ namespace karri {
             requestData[reqId].depTime = occTime;
             requestData[reqId].walkingTimeToPickup = 0;
             requestData[reqId].walkingTimeFromDropoff = 0;
-            requestEvents.insert(reqId, arrivalTime);
+            requestEvents.insert(reqId, {arrivalTime, reqId});
             systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
         }
 
@@ -626,14 +665,14 @@ namespace karri {
             switch (vehicleState[vehId]) {
                 case STOPPING:
                     // Update event time to departure time at current stop since it may have changed
-                    vehicleEvents.updateKey(vehId, scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime);
+                    vehicleEvents.updateKey(vehId, {scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime, vehId});
                     break;
                 case IDLING:
                     vehicleState[vehId] = VehicleState::DRIVING;
                     [[fallthrough]];
                 case DRIVING:
                     // Update event time to arrival time at next stop since it may have changed (also for case of idling).
-                    vehicleEvents.updateKey(vehId, scheduledStops.getNextScheduledStop(vehId).arrTime);
+                    vehicleEvents.updateKey(vehId, {scheduledStops.getNextScheduledStop(vehId).arrTime, vehId});
                     [[fallthrough]];
                 default:
                     break;
@@ -646,9 +685,10 @@ namespace karri {
 
             const auto &reqData = requestData[reqId];
             requestState[reqId] = FINISHED;
-            int id, key;
+            int id;
+            EntityKey key;
             requestEvents.deleteMin(id, key);
-            assert(id == reqId && key == occTime);
+            assert(id == reqId && key.time == occTime);
 
             const auto waitTime = reqData.depTime - requests[reqId].requestTime;
             const auto arrTime = occTime;
@@ -675,9 +715,10 @@ namespace karri {
 
             const auto &reqData = requestData[reqId];
             requestState[reqId] = FINISHED;
-            int id, key;
+            int id;
+            EntityKey key;
             requestEvents.deleteMin(id, key);
-            assert(id == reqId && key == occTime);
+            assert(id == reqId && key.time == occTime);
 
             const auto waitTime = 0;
             const auto arrTime = occTime;
@@ -706,8 +747,8 @@ namespace karri {
         SystemStateUpdaterT &systemStateUpdater;
         const ScheduledStopsT &scheduledStops;
 
-        AddressableQuadHeap vehicleEvents;
-        AddressableQuadHeap requestEvents;
+        AddressableKHeapAnyKeyType<4, EntityKey> vehicleEvents;
+        AddressableKHeapAnyKeyType<4, EntityKey> requestEvents;
 
         int nextRequestBatchDeadline;
         std::vector<Request> requestBatch;

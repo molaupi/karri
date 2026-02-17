@@ -42,6 +42,11 @@ namespace karri {
 
     public:
 
+        // Callback type for calculating direct distances between consecutive stops.
+        // Parameters: (curStopEdge, nextStopEdge)
+        // The callback should calculate the shortest path travel time between the given stops.
+        using DistanceChecker = std::function<int(int curStopEdge, int nextStopEdge)>;
+
         RouteState(const RouteState&) = delete;
         RouteState(RouteState&&) = delete;
 
@@ -217,9 +222,73 @@ namespace karri {
             return maxLegLength;
         }
 
+        // Set the distance checker callback. This should be called once after construction
+        // with a lambda that captures the input graph and CH environment.
+        void setDistanceChecker(DistanceChecker checker) {
+            distanceChecker = std::move(checker);
+        }
+
+        template<typename RequestStateT>
+        bool checkAssignmentDistances(const Assignment& asgn, const RequestStateT & requestState) {
+            unused(requestState);
+            const auto vehId = asgn.vehicle->vehicleId;
+            const auto &pickup = asgn.pickup;
+            const auto &dropoff = asgn.dropoff;
+            const auto &start = pos[vehId].start;
+            const auto &end = pos[vehId].end;
+            const auto numStops = end - start;
+            auto pickupIndex = asgn.pickupStopIdx;
+            auto dropoffIndex = asgn.dropoffStopIdx;
+
+            KASSERT(pickupIndex >= 0);
+            KASSERT(pickupIndex < numStops);
+            KASSERT(dropoffIndex >= 0);
+            KASSERT(dropoffIndex < numStops);
+
+
+            if (numStops > 1 && pickupIndex == 0) {
+                // TODO: Check from current vehicle location to pickup
+            } else if (pickup.loc == stopLocations[start + pickupIndex]) {
+                // Pickup at existing stop
+                KASSERT(asgn.distToPickup == 0, "Assignment = " << asgn << ", num stops = " << numStops);
+            } else if (pickupIndex > 0 || (numStops == 1 && pickupIndex == 0)) {
+                // New pickup stop
+                const int actualDist = distanceChecker(stopLocations[start + pickupIndex], pickup.loc);
+                KASSERT(asgn.distToPickup == actualDist, "Assignment = " << asgn << ", num stops = " << numStops);
+            }
+
+            if (dropoffIndex == pickupIndex) {
+                KASSERT(asgn.distFromPickup == 0, "Assignment = " << asgn << ", num stops = " << numStops);
+            } else {
+                const int actualDist = distanceChecker(pickup.loc, stopLocations[start + pickupIndex + 1]);
+                KASSERT(asgn.distFromPickup == actualDist, "Assignment = " << asgn << ", num stops = " << numStops);
+            }
+
+            if (dropoffIndex == pickupIndex) {
+                const int actualDist = distanceChecker(pickup.loc, dropoff.loc);
+                KASSERT(asgn.distToDropoff == actualDist, "Assignment = " << asgn << ", num stops = " << numStops);
+            } else if (dropoff.loc == stopLocations[start + dropoffIndex]) {
+                // Dropoff at existing stop
+                KASSERT(asgn.distToDropoff == 0, "Assignment = " << asgn << ", num stops = " << numStops);
+            } else {
+                const int actualDist = distanceChecker(stopLocations[start + dropoffIndex], dropoff.loc);
+                KASSERT(asgn.distToDropoff == actualDist, "Assignment = " << asgn << ", num stops = " << numStops);
+            }
+
+            if (dropoffIndex == numStops - 1) {
+                KASSERT(asgn.distFromDropoff == 0, "Assignment = " << asgn << ", num stops = " << numStops);
+            } else {
+                const int actualDist = distanceChecker(dropoff.loc, stopLocations[start + dropoffIndex + 1]);
+                KASSERT(asgn.distFromDropoff == actualDist, "Assignment = " << asgn << ", num stops = " << numStops);
+            }
+
+            return true;
+        }
+
         template<typename RequestStateT>
         std::pair<int, int>
         insert(const Assignment &asgn, const RequestStateT &requestState) {
+            KASSERT(checkAssignmentDistances(asgn, requestState));
             const auto vehId = asgn.vehicle->vehicleId;
             const auto &pickup = asgn.pickup;
             const auto &dropoff = asgn.dropoff;
@@ -736,5 +805,8 @@ namespace karri {
         std::stack<int, std::vector<int>> unusedStopIds;
         int nextUnusedStopId;
         int maxStopId;
+
+        // Optional callback for verifying direct distances
+        DistanceChecker distanceChecker;
     };
 }

@@ -211,6 +211,8 @@ namespace karri::PickupAfterLastStopStrategies {
                             continue;
 
                         const auto &dropoff = pdLocs.dropoffs[dropoffIdsForInitialLabels[i]];
+                        if (pickup.loc == dropoff.loc)
+                            continue;
                         PDPairAfterLastStopLabel initialLabel = {pickup.id, dropoff.id, directDist, pickupOffset};
                         ++numInitialLabelsGenerated;
 

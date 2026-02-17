@@ -118,6 +118,21 @@ namespace karri {
         if (asgn1.distFromPickup < asgn2.distFromPickup) return true;
         if (asgn1.distFromPickup > asgn2.distFromPickup) return false;
         return asgn1.distFromDropoff < asgn2.distFromDropoff;
+    }
 
+    // Print representation of Assignment to stream
+    inline std::ostream &operator<<(std::ostream &os, const Assignment &asgn) {
+        os << "Assignment("
+           << "\n\tvehicleId=" << (asgn.vehicle ? std::to_string(asgn.vehicle->vehicleId) : "null")
+           << ",\n\tpickupId=" << asgn.pickup.id
+           << ",\n\tdropoffId=" << asgn.dropoff.id
+           << ",\n\tpickupStopIdx=" << asgn.pickupStopIdx
+           << ",\n\tdropoffStopIdx=" << asgn.dropoffStopIdx
+           << ",\n\tdistToPickup=" << asgn.distToPickup
+           << ",\n\tdistFromPickup=" << asgn.distFromPickup
+           << ",\n\tdistToDropoff=" << asgn.distToDropoff
+           << ",\n\tdistFromDropoff=" << asgn.distFromDropoff
+           << "\n)";
+        return os;
     }
 }

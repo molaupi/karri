@@ -35,13 +35,13 @@
 // ID and key, under the standard priority queue operations. The elements are addressed by the IDs.
 // This class is implemented as a min-heap, but can be easily turned into a max-heap by multiplying
 // the keys by -1.
-template <int K>
-class AddressableKHeap {
+template <int K, typename KeyT>
+class AddressableKHeapAnyKeyType {
   static_assert(K > 0, "parameter k must be strictly positive");
 
  public:
   // Constructs an empty addressable k-heap that can maintain elements with IDs from 0 to n - 1.
-  explicit AddressableKHeap(const int n) {
+  explicit AddressableKHeapAnyKeyType(const int n) {
     resize(n);
   }
 
@@ -68,7 +68,7 @@ class AddressableKHeap {
   }
 
   // Returns the minimum key.
-  int minKey() const {
+  KeyT minKey() const {
     assert(!empty());
     return heap[0].key;
   }
@@ -88,20 +88,20 @@ class AddressableKHeap {
   }
 
   // Inserts an element with the specified ID and key into this heap.
-  void insert(const int id, const int key) {
+  void insert(const int id, const KeyT key) {
     assert(!contains(id));
     heap.emplace_back(id, key);
     siftUp(heap.size() - 1);
   }
 
   // Returns the ID and key of an element with minimum key.
-  void min(int& id, int& key) const {
+  void min(int& id, KeyT& key) const {
     id = minId();
     key = minKey();
   }
 
   // Extracts an element with minimum key from this heap.
-  void deleteMin(int& id, int& key) {
+  void deleteMin(int& id, KeyT& key) {
     assert(!empty());
     min(id, key);
     elementIdToHeapIndex[id] = INVALID_INDEX;
@@ -112,7 +112,7 @@ class AddressableKHeap {
   }
 
   // Decreases the key of the element with the specified ID to newKey.
-  void decreaseKey(const int id, const int newKey) {
+  void decreaseKey(const int id, const KeyT newKey) {
     assert(contains(id));
     const int idx = elementIdToHeapIndex[id];
     assert(newKey <= heap[idx].key);
@@ -121,7 +121,7 @@ class AddressableKHeap {
   }
 
   // Increases the key of the element with the specified ID to newKey.
-  void increaseKey(const int id, const int newKey) {
+  void increaseKey(const int id, const KeyT newKey) {
     assert(contains(id));
     const int idx = elementIdToHeapIndex[id];
     assert(newKey >= heap[idx].key);
@@ -130,21 +130,21 @@ class AddressableKHeap {
   }
 
   // Attempts to decrease the key of the element with the specified ID to newKey.
-  void decreaseKeyIfPossible(const int id, const int newKey) {
+  void decreaseKeyIfPossible(const int id, const KeyT newKey) {
     assert(contains(id));
     if (newKey < heap[elementIdToHeapIndex[id]].key)
       decreaseKey(id, newKey);
   }
 
   // Attempts to increase the key of the element with the specified ID to newKey.
-  void increaseKeyIfPossible(const int id, const int newKey) {
+  void increaseKeyIfPossible(const int id, const KeyT newKey) {
     assert(contains(id));
     if (newKey > heap[elementIdToHeapIndex[id]].key)
       increaseKey(id, newKey);
   }
 
   // Updates the key of the element with the specified ID to newKey.
-  void updateKey(const int id, const int newKey) {
+  void updateKey(const int id, const KeyT newKey) {
     assert(contains(id));
     const int idx = elementIdToHeapIndex[id];
     if (newKey <= heap[idx].key)
@@ -157,10 +157,10 @@ class AddressableKHeap {
   // An element in this heap, with an associated ID and key.
   struct HeapElement {
     // Constructs a heap element with the specified ID and key.
-    HeapElement(const int id, const int key) : id(id), key(key) {}
+    HeapElement(const int id, const KeyT key) : id(id), key(key) {}
 
     int id;
-    int key;
+    KeyT key;
   };
 
   // Moves the heap element stored in index idx toward the root until the heap property holds.
@@ -220,5 +220,8 @@ class AddressableKHeap {
 };
 
 // Aliases for several standard heaps.
+template<int K>
+using AddressableKHeap = AddressableKHeapAnyKeyType<K, int>;
+
 using AddressableBinaryHeap = AddressableKHeap<2>;
 using AddressableQuadHeap = AddressableKHeap<4>;

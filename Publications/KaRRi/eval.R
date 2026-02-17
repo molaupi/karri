@@ -96,8 +96,30 @@ compareBestAssignments <- function(file1, file2) {
   bestins1 <- bestins1[order(bestins1$request_id),]
   bestins2 <- bestins2[order(bestins2$request_id),]
   
+  relcols <- c("request_id", 
+               "request_time", 
+               "direct_od_dist", 
+               "vehicle_id",
+               "pickup_insertion_point",
+               "dropoff_insertion_point",
+               "dist_to_pickup",
+               "dist_from_pickup",
+               "dist_to_dropoff",
+               "dist_from_dropoff",
+               "pickup_id",
+               "pickup_walking_dist",
+               "dropoff_id",
+               "dropoff_walking_dist",
+               "num_stops",
+               "pickup_location",
+               "dropoff_location",
+               "stop_loc_before_pickup",
+               "stop_loc_before_dropoff")
+  rel1 <- bestins1[, relcols]
+  rel2 <- bestins2[, relcols]
+  
   # Get smallest row index where at least one value differs
-  idx <- match(TRUE, rowSums(bestins1 != bestins2) > 0)
+  idx <- match(TRUE, rowSums(rel1 != rel2) > 0)
   if (is.na(idx)) {
     print("All best insertions are equal.")
   } else {
@@ -208,7 +230,7 @@ batchDispatchPerfStats <- function(file_base, num_threads = 1) {
   
   stats$num_batches <- stats$num_requests / num_threads
   
-  stats <- stats %>% group_by(occurence_time) %>% summarise(
+  stats <- stats %>% group_by(batch_id) %>% summarise(
     num_iterations = max(iteration),
     assignments_work = sum(num_requests),
     assignments_span = sum(num_batches),
@@ -318,7 +340,16 @@ batchUpdatePerfStats <- function(file_base) {
 }
 
 countBestAssignmentTypes <- function(file_base) {
-  asgns <- read.csv(paste0(file_base, ".bestassignments.csv"))
+  asgns <- fread(paste0(file_base, ".bestassignments.csv"))
+  modes <- fread(paste0(file_base, ".modechoice.csv"))
+  
+    # --- taxi-only subsets
+    taximodes     <- modes[mode == "Taxi"]
+    setkey(taximodes, request_id)
+
+    # restrict assignments to taxi request_ids (semi-join style)
+    setkey(asgns, request_id)
+    taxiasgns <- asgns[taximodes, nomatch = 0]
   
   # Let k = number of stops of vehicle before insertion, 
   #     i = index where pickup is to be inserted 
@@ -334,36 +365,23 @@ countBestAssignmentTypes <- function(file_base) {
   # DALS if               0 <= i < j = k - 1,
     # Ord-DALS if           0 < i < j = k - 1,
     # PBNS-DALS if          0 = i < j = k - 1
-  getType <- function(i, j, k) {
-    i <- as.integer(i)
-    j <- as.integer(j)
-    k <- as.integer(k)
-    if (0 < i && i <= j && i < k - 1)
-      return("ord")
-    if (0 == i && i <= j && j < k - 1)
-      return("pbns")
-    if (i == j && j == k - 1)
-      return("pals")
-    if (0 <= i && i < j && j == k - 1)
-      return("dals")
-    exit("wtf")
-    return("error")
-  }
   
-  getTypeRow <- function(row) {
-    return(getType(row[["pickup_insertion_point"]], row[["dropoff_insertion_point"]], row["num_stops"]))
-  }
-  
-  types <- apply(asgns, 1, getTypeRow)
-  
-  num_asgns <- nrow(asgns)
-  num_ord <- sum(types == "ord")
+  # types <- apply(taxiasgns, 1, getTypeRow)
+  indices <- taxiasgns[, .(i = pickup_insertion_point,
+                           j = dropoff_insertion_point,
+                           k = num_stops)]
+  types <- indices[, .(ord = ((0 < i) & (i <= j) & (i < k - 1) & (j < k - 1)),
+                       pbns = ((0 == i) & (i <= j) & (j < k - 1)),
+                       pals = ((i == k - 1) & (j == k - 1)),
+                       dals = ((0 <= i) & (i < j) & (j == k - 1)))]
+  num_asgns <- nrow(taxiasgns)
+  num_ord <- sum(types$ord)
   pct_ord <- format(num_ord / num_asgns * 100, nsmall=2)
-  num_pbns <- sum(types == "pbns")
+  num_pbns <- sum(types$pbns)
   pct_pbns <- format(num_pbns / num_asgns * 100, nsmall=2)
-  num_pals <- sum(types == "pals")
+  num_pals <- sum(types$pals)
   pct_pals <- format(num_pals / num_asgns * 100, nsmall=2)
-  num_dals <- sum(types == "dals")
+  num_dals <- sum(types$dals)
   pct_dals <- format(num_dals / num_asgns * 100, nsmall=2)
 
   print(paste0("Total: ", num_asgns, ", ",

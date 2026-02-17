@@ -20,6 +20,18 @@ namespace karri::mode_choice::utility_logit {
     class Logit {
         using UtilityFunction = std::function<double(const Attributes &, const P &)>;
 
+#ifdef KARRI_LOGIT_FIXED_SEED
+        static constexpr uint32_t FIXED_SEED = KARRI_LOGIT_FIXED_SEED;
+        static uint32_t getSeed() {
+            return FIXED_SEED;
+        }
+#else
+        static uint32_t getSeed() {
+            return std::random_device{}();
+        }
+
+#endif
+
     private:
         const std::vector<T> &options;
         mutable std::vector<double> utilities;
@@ -37,7 +49,7 @@ namespace karri::mode_choice::utility_logit {
         }
 
         static double randomNumber() {
-            thread_local std::mt19937 generator{std::random_device{}()};
+            thread_local std::mt19937 generator{getSeed()};
             std::uniform_real_distribution distribution{0.0, 1.0};
             return distribution(generator);
         }

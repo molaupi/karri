@@ -36,11 +36,14 @@ FetchContent_Declare(
 
 # Fetch kassert
 message("Fetching kassert library...")
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(KASSERT_ASSERTION_LEVEL 40)
-else ()
-    set(KASSERT_ASSERTION_LEVEL 20)
-endif ()
+if (NOT DEFINED KASSERT_ASSERTION_LEVEL)
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(KASSERT_ASSERTION_LEVEL 40)
+    else ()
+        set(KASSERT_ASSERTION_LEVEL 20)
+    endif ()
+endif()
+message("Using kassert assertion level ${KASSERT_ASSERTION_LEVEL}")
 FetchContent_MakeAvailable(kassert)
 
 # Fetch fast-cpp-csv-parser (header only library, create interface target)
