@@ -229,7 +229,10 @@ eventSimulationPerfStats <- function(file_base) {
 
 
 library(data.table)
-batchDispatchPerfStats <- function(file_base, num_threads = 1, single_dispatch_subset=FALSE) {
+batchDispatchPerfStats <- function(file_base, 
+                                   num_threads = 1, 
+                                   single_dispatch_subset=FALSE,
+                                   group_by_occurrence_time=FALSE) {
   
   stats <- fread(paste0(file_base, ".batchdispatchstats.csv"))
   if (single_dispatch_subset) {
@@ -238,8 +241,22 @@ batchDispatchPerfStats <- function(file_base, num_threads = 1, single_dispatch_s
   
   print(paste0("Total time (batch dispatch): ", sum(stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
   
-  stats$num_batches <- stats$num_requests / num_threads
+  stats$num_batches <- as.integer(ceiling(stats$num_requests / num_threads))
   
+  if (group_by_occurrence_time) {
+    stats <- stats[, .(
+      num_iterations = max(iteration),
+      assignments_work = sum(num_requests),
+      assignments_span = sum(num_batches),
+      num_requests = max(num_requests),
+      find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
+      choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
+      update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
+      total_time = sum(find_assignments_running_time + choose_accepted_running_time + update_system_state_running_time, na.rm=TRUE),
+      num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
+    ), by=.(occurence_time)
+    ]  
+  } else {
   stats <- stats[, .(
     occurence_time = max(occurence_time), # always equal for every member of group
     num_iterations = max(iteration),
@@ -253,6 +270,7 @@ batchDispatchPerfStats <- function(file_base, num_threads = 1, single_dispatch_s
     num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
   ), by=.(batch_id)
     ]
+  }
   
   # print(paste0("Max num iterations: ", max(stats$num_iterations)))
   # print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))

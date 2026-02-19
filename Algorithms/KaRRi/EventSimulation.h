@@ -124,6 +124,8 @@ namespace karri {
                                                                           "cost\n")),
               legStatsLogger(LogManager<std::ofstream>::getLogger("legstats.csv",
                                                                   "vehicle_id,"
+                                                                  "from_edge,"
+                                                                  "to_edge,"
                                                                   "stop_time,"
                                                                   "dep_time,"
                                                                   "arr_time,"
@@ -283,15 +285,15 @@ namespace karri {
             Timer timer;
 
             const auto prevStop = scheduledStops.getCurrentOrPrevScheduledStop(vehId);
-            legStatsLogger << vehId << ','
+            const auto reachedStop = scheduledStops.getNextScheduledStop(vehId);
+            legStatsLogger << vehId << ',' << prevStop.stopLocation << ',' << reachedStop.stopLocation << ','
                     << prevStop.depTime - prevStop.arrTime << ','
                     << prevStop.depTime << ','
-                    << occTime << ','
-                    << occTime - prevStop.depTime << ','
+                    << reachedStop.arrTime << ','
+                    << reachedStop.arrTime - prevStop.depTime << ','
                     << prevStop.occupancyInFollowingLeg << '\n';
 
             vehicleState[vehId] = STOPPING;
-            const auto reachedStop = scheduledStops.getNextScheduledStop(vehId);
 
             // Handle dropoffs at reached stop: Insert walking arrival event at the time when passenger will arrive at
             // destination. Thus, all requests are logged in the order of the arrival at their destination.
