@@ -2,6 +2,7 @@
 
 #include "Tools/Logging/NullLogger.h"
 #include "Tools/Logging/LogManager.h"
+#include "Tools/ThreadSafeRandom.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Algorithms/KaRRi/RouteState.h"
@@ -13,6 +14,10 @@ namespace karri::mode_choice {
 
     template<typename CriterionT, typename LoggerT = NullLogger>
     class ModeChoice {
+
+        static bool isCarAllowed(const Request &req) {
+            return req.allowPrivateCarProbability > 0.0 && ThreadSafeRandom::randomNumber() < req.allowPrivateCarProbability;
+        }
 
     public:
 
@@ -38,13 +43,20 @@ namespace karri::mode_choice {
             using namespace time_utils;
 
             ModeChoiceInput input;
-
             input.walkTravelTime = tenthsOfSecondsToMinutes(resp.odWalkingDist);
-            input.privateCarTravelTime = tenthsOfSecondsToMinutes(resp.originalReqDirectDist);
+
+            if (isCarAllowed(req)) {
+                input.privateCarTravelTime = tenthsOfSecondsToMinutes(resp.originalReqDirectDist);
+            } else {
+                input.disablePrivateCar();
+            }
+
             if (allowPublicTransport && ptJourneyData.isValid()) {
                 input.ptTravelTime = ptJourneyData.travelTimeMinutes;
                 input.ptWaitTime = ptJourneyData.waitTimeMinutes;
                 input.ptAccEgrTime = ptJourneyData.accessEgressTimeMinutes;
+            } else {
+                input.disablePublicTransport();
             }
 
             const auto &bestAsgn = resp.getBestAssignment();

@@ -48,12 +48,6 @@ namespace karri::mode_choice::utility_logit {
             }
         }
 
-        static double randomNumber() {
-            thread_local std::mt19937 generator{getSeed()};
-            std::uniform_real_distribution distribution{0.0, 1.0};
-            return distribution(generator);
-        }
-
     public:
         explicit Logit(UtilityFunction utility, const std::vector<T> &options,
                        std::unordered_map<T, P> params) : options(options), utilities(options.size(),
@@ -82,7 +76,7 @@ namespace karri::mode_choice::utility_logit {
                 sum += expUtility;
             }
             double cumulativeSum = 0.0;
-            const double rnd = randomNumber();
+            const double rnd = ThreadSafeRandom::randomNumber();
             T selectedElement = elements[0].option;
 
             for (size_t i = 0; i < elements.size(); ++i) {

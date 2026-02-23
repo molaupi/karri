@@ -227,147 +227,147 @@ eventSimulationPerfStats <- function(file_base) {
   
 }
 
-
-library(data.table)
-batchDispatchPerfStats <- function(file_base, 
-                                   num_threads = 1, 
-                                   single_dispatch_subset=FALSE,
-                                   group_by_occurrence_time=FALSE) {
-  
-  stats <- fread(paste0(file_base, ".batchdispatchstats.csv"))
-  if (single_dispatch_subset) {
-    stats <- stats[is_single_request == "1"]
-  }
-  
-  print(paste0("Total time (batch dispatch): ", sum(stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
-  
-  stats$num_batches <- as.integer(ceiling(stats$num_requests / num_threads))
-  
-  if (group_by_occurrence_time) {
-    stats <- stats[, .(
-      num_iterations = max(iteration),
-      assignments_work = sum(num_requests),
-      assignments_span = sum(num_batches),
-      num_requests = max(num_requests),
-      find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
-      choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
-      update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
-      total_time = sum(find_assignments_running_time + choose_accepted_running_time + update_system_state_running_time, na.rm=TRUE),
-      num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
-    ), by=.(occurence_time)
-    ]  
-  } else {
-  stats <- stats[, .(
-    occurence_time = max(occurence_time), # always equal for every member of group
-    num_iterations = max(iteration),
-    assignments_work = sum(num_requests),
-    assignments_span = sum(num_batches),
-    num_requests = max(num_requests),
-    find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
-    choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
-    update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
-    total_time = sum(find_assignments_running_time + choose_accepted_running_time + update_system_state_running_time, na.rm=TRUE),
-    num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
-  ), by=.(batch_id)
-    ]
-  }
-  
-  # print(paste0("Max num iterations: ", max(stats$num_iterations)))
-  # print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
-  # print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
-  # print(paste0("Max num requests: ", max(stats$num_requests)))
-  
-  means <- apply(stats,2,mean)
-  # means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
-  return(means)
-}
-
-oldBatchDispatchPerfStats <- function(file_base) {
-  
-  stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
-  
-  stats <- stats %>% group_by(occurence_time) %>% summarise(
-    num_iterations = max(iteration),
-    num_requests = max(num_requests),
-    find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
-    choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
-    update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
-    # num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
-  )
-  
-  print(paste0("Max num iterations: ", max(stats$num_iterations)))
-  print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
-  print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
-  print(paste0("Max num requests: ", max(stats$num_requests)))
-  
-  means <- apply(stats,2,mean)
-  means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
-  print(means)
-  
-  
-}
-
-
-multiBatchDispatchPerfStats <- function(file_base, thread_nums = c(1,4,8,32,64,96), num_runs=1) {
-  
-  df <- NULL
-  for (t in thread_nums) {
-    dft <- NULL
-    for (r in 1:num_runs) {
-      dft <- rbind(dft, batchDispatchPerfStats(paste0(file_base,"_t",t,"_run",r),t))
-    }
-    dft <- apply(dft,2,mean)
-    df <- rbind(df, dft)
-  }
-  
-  df <- as.data.frame(df)
-  df[,"num_threads"]<-thread_nums
-  return(df)
-}
-
-makeSpeedups <- function(df) {
-  num_threads <- df$num_threads
-  mat <- as.matrix(df)
-  first <- as.numeric(mat[1,])
-  mat_rel <- sweep(mat, 2, first, FUN = function(col, s) s / col)
-  dfrel <- as.data.frame(mat_rel)
-  colnames(dfrel) <- colnames(df)
-  rownames(dfrel) <- rownames(df)
-  dfrel$num_threads <- num_threads
-  return(dfrel)
-}
-
-
-batchUpdatePerfStats <- function(file_base) {
-  
-  stats <- read.csv(paste0(file_base, ".batch_insert_stats.csv"))
-  
-  print(paste0("Total time (batch update): ", sum(stats$total_time) / 1000000000, "s"))
-  
-  stats <- stats %>% group_by(occurence_time) %>% summarise(
-    num_iterations = max(iteration),
-    num_requests = max(num_requests),
-    update_route_state_time = sum(update_route_state_time, na.rm = TRUE),
-    ell_entry_insertions_find_insertions_time = sum(ell_entry_insertions_find_insertions_time, na.rm = TRUE),
-    ell_entry_insertions_num_insertions = sum(ell_entry_insertions_num_insertions, na.rm = TRUE),
-    ell_entry_insertions_perform_insertions_time = sum(ell_entry_insertions_perform_insertions_time, na.rm = TRUE),
-    last_stop_find_insertions_and_deletions_time = sum(last_stop_find_insertions_and_deletions_time, na.rm = TRUE),
-    last_stop_num_insertions_and_deletions = sum(last_stop_num_insertions_and_deletions, na.rm = TRUE),
-    last_stop_perform_insertions_and_deletions_time = sum(last_stop_perform_insertions_and_deletions_time, na.rm = TRUE),
-    # last_stop_update_prefix_sum_time = sum(last_stop_update_prefix_sum_time, na.rm = TRUE),
-    num_ell_source_entries_after_insertions = sum(num_ell_source_entries_after_insertions, na.rm = TRUE),
-    num_ell_target_entries_after_insertions = sum(num_ell_target_entries_after_insertions, na.rm = TRUE),
-    update_leeways_num_entries_scanned_source = sum(update_leeways_num_entries_scanned_source, na.rm = TRUE),
-    update_leeways_num_entries_scanned_target = sum(update_leeways_num_entries_scanned_target, na.rm = TRUE),
-    update_leeways_time = sum(update_leeways_time, na.rm = TRUE),
-    total_time = sum(total_time, na.rm = TRUE)
-  )
-  
-  means <- apply(stats,2,mean)
-  means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
-  print(means)
-  
-}
+# 
+# library(data.table)
+# batchDispatchPerfStats <- function(file_base, 
+#                                    num_threads = 1, 
+#                                    single_dispatch_subset=FALSE,
+#                                    group_by_occurrence_time=FALSE) {
+#   
+#   stats <- fread(paste0(file_base, ".batchdispatchstats.csv"))
+#   if (single_dispatch_subset) {
+#     stats <- stats[is_single_request == "1"]
+#   }
+#   
+#   print(paste0("Total time (batch dispatch): ", sum(stats$find_assignments_running_time + stats$choose_accepted_running_time + stats$update_system_state_running_time) / 1000000000, "s"))
+#   
+#   stats$num_batches <- as.integer(ceiling(stats$num_requests / num_threads))
+#   
+#   if (group_by_occurrence_time) {
+#     stats <- stats[, .(
+#       num_iterations = max(iteration),
+#       assignments_work = sum(num_requests),
+#       assignments_span = sum(num_batches),
+#       num_requests = max(num_requests),
+#       find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
+#       choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
+#       update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
+#       total_time = sum(find_assignments_running_time + choose_accepted_running_time + update_system_state_running_time, na.rm=TRUE),
+#       num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
+#     ), by=.(occurence_time)
+#     ]  
+#   } else {
+#   stats <- stats[, .(
+#     occurence_time = max(occurence_time), # always equal for every member of group
+#     num_iterations = max(iteration),
+#     assignments_work = sum(num_requests),
+#     assignments_span = sum(num_batches),
+#     num_requests = max(num_requests),
+#     find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
+#     choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
+#     update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
+#     total_time = sum(find_assignments_running_time + choose_accepted_running_time + update_system_state_running_time, na.rm=TRUE),
+#     num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
+#   ), by=.(batch_id)
+#     ]
+#   }
+#   
+#   # print(paste0("Max num iterations: ", max(stats$num_iterations)))
+#   # print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
+#   # print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
+#   # print(paste0("Max num requests: ", max(stats$num_requests)))
+#   
+#   means <- apply(stats,2,mean)
+#   # means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
+#   return(means)
+# }
+# 
+# oldBatchDispatchPerfStats <- function(file_base) {
+#   
+#   stats <- read.csv(paste0(file_base, ".batchdispatchstats.csv"))
+#   
+#   stats <- stats %>% group_by(occurence_time) %>% summarise(
+#     num_iterations = max(iteration),
+#     num_requests = max(num_requests),
+#     find_assignments_running_time = sum(find_assignments_running_time, na.rm=TRUE),
+#     choose_accepted_running_time = sum(choose_accepted_running_time, na.rm=TRUE),
+#     update_system_state_running_time = sum(update_system_state_running_time, na.rm=TRUE),
+#     # num_elliptic_bucket_entry_deletions = sum(num_elliptic_bucket_entry_deletions, na.rm=TRUE)
+#   )
+#   
+#   print(paste0("Max num iterations: ", max(stats$num_iterations)))
+#   print(paste0("Max num iterations, occurence time: ", stats[stats$num_iterations == max(stats$num_iterations), ]$occurence_time))
+#   print(paste0("Max num iterations, num requests: ", stats[stats$num_iterations == max(stats$num_iterations), ]$num_requests))
+#   print(paste0("Max num requests: ", max(stats$num_requests)))
+#   
+#   means <- apply(stats,2,mean)
+#   means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
+#   print(means)
+#   
+#   
+# }
+# 
+# 
+# multiBatchDispatchPerfStats <- function(file_base, thread_nums = c(1,4,8,32,64,96), num_runs=1) {
+#   
+#   df <- NULL
+#   for (t in thread_nums) {
+#     dft <- NULL
+#     for (r in 1:num_runs) {
+#       dft <- rbind(dft, batchDispatchPerfStats(paste0(file_base,"_t",t,"_run",r),t))
+#     }
+#     dft <- apply(dft,2,mean)
+#     df <- rbind(df, dft)
+#   }
+#   
+#   df <- as.data.frame(df)
+#   df[,"num_threads"]<-thread_nums
+#   return(df)
+# }
+# 
+# makeSpeedups <- function(df) {
+#   num_threads <- df$num_threads
+#   mat <- as.matrix(df)
+#   first <- as.numeric(mat[1,])
+#   mat_rel <- sweep(mat, 2, first, FUN = function(col, s) s / col)
+#   dfrel <- as.data.frame(mat_rel)
+#   colnames(dfrel) <- colnames(df)
+#   rownames(dfrel) <- rownames(df)
+#   dfrel$num_threads <- num_threads
+#   return(dfrel)
+# }
+# 
+# 
+# batchUpdatePerfStats <- function(file_base) {
+#   
+#   stats <- read.csv(paste0(file_base, ".batch_insert_stats.csv"))
+#   
+#   print(paste0("Total time (batch update): ", sum(stats$total_time) / 1000000000, "s"))
+#   
+#   stats <- stats %>% group_by(occurence_time) %>% summarise(
+#     num_iterations = max(iteration),
+#     num_requests = max(num_requests),
+#     update_route_state_time = sum(update_route_state_time, na.rm = TRUE),
+#     ell_entry_insertions_find_insertions_time = sum(ell_entry_insertions_find_insertions_time, na.rm = TRUE),
+#     ell_entry_insertions_num_insertions = sum(ell_entry_insertions_num_insertions, na.rm = TRUE),
+#     ell_entry_insertions_perform_insertions_time = sum(ell_entry_insertions_perform_insertions_time, na.rm = TRUE),
+#     last_stop_find_insertions_and_deletions_time = sum(last_stop_find_insertions_and_deletions_time, na.rm = TRUE),
+#     last_stop_num_insertions_and_deletions = sum(last_stop_num_insertions_and_deletions, na.rm = TRUE),
+#     last_stop_perform_insertions_and_deletions_time = sum(last_stop_perform_insertions_and_deletions_time, na.rm = TRUE),
+#     # last_stop_update_prefix_sum_time = sum(last_stop_update_prefix_sum_time, na.rm = TRUE),
+#     num_ell_source_entries_after_insertions = sum(num_ell_source_entries_after_insertions, na.rm = TRUE),
+#     num_ell_target_entries_after_insertions = sum(num_ell_target_entries_after_insertions, na.rm = TRUE),
+#     update_leeways_num_entries_scanned_source = sum(update_leeways_num_entries_scanned_source, na.rm = TRUE),
+#     update_leeways_num_entries_scanned_target = sum(update_leeways_num_entries_scanned_target, na.rm = TRUE),
+#     update_leeways_time = sum(update_leeways_time, na.rm = TRUE),
+#     total_time = sum(total_time, na.rm = TRUE)
+#   )
+#   
+#   means <- apply(stats,2,mean)
+#   means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
+#   print(means)
+#   
+# }
 
 countBestAssignmentTypes <- function(file_base) {
   asgns <- fread(paste0(file_base, ".bestassignments.csv"))

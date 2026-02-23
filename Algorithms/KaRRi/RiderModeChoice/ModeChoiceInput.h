@@ -28,4 +28,24 @@ struct ModeChoiceInput {
     bool isPublicTransportValid() const {
         return ptTravelTime != MAX_VAL && ptWaitTime != MAX_VAL && ptAccEgrTime != MAX_VAL;
     }
+
+    void disableWalk() {
+        walkTravelTime = MAX_VAL;
+    }
+
+    void disablePrivateCar() {
+        privateCarTravelTime = MAX_VAL;
+    }
+
+    void disableTaxi() {
+        taxiTravelTime = MAX_VAL;
+        taxiWaitTime = MAX_VAL;
+        taxiAccEgrTime = MAX_VAL;
+    }
+
+    void disablePublicTransport() {
+        ptTravelTime = MAX_VAL;
+        ptWaitTime = MAX_VAL;
+        ptAccEgrTime = MAX_VAL;
+    }
 };

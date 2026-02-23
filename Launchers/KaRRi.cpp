@@ -31,6 +31,7 @@
 #include <iostream>
 
 #include <csv.h>
+#include <ranges>
 
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "Tools/Logging/LogManager.h"
@@ -438,25 +439,26 @@ int main(int argc, char *argv[]) {
         std::cout << "Reading request data from file... " << std::flush;
         std::vector<Request> requests;
         int origin, destination, requestTime, numRiders, pickupWalkingRadiusInM, dropoffWalkingRadiusInM;
-        double walkingSpeedInMps;
-        io::CSVReader<7, io::trim_chars<' '>> reqFileReader(requestFileName);
+        double walkingSpeedInMps, allowPrivateCarProbability;
+        io::CSVReader<8, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
             reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time",
-                                      "num_riders", "pickup_walking_radius", "dropoff_walking_radius", "walking_speed");
+                                      "num_riders", "pickup_walking_radius", "dropoff_walking_radius", "walking_speed", "allow_private_car_probability");
         } else {
             reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders",
-                                      "pickup_walking_radius", "dropoff_walking_radius", "walking_speed");
+                                      "pickup_walking_radius", "dropoff_walking_radius", "walking_speed", "allow_private_car_probability");
         }
 
         numRiders = 1; // If number of riders was not specified, assume one rider
         pickupWalkingRadiusInM = defaultPickupWalkRadius;
         dropoffWalkingRadiusInM = defaultDropoffWalkRadius;
         walkingSpeedInMps = defaultWalkingSpeed;
+        allowPrivateCarProbability = 1.0; // If not specified, assume that all riders can use private car
         const bool forceDefaultRadius = clp.isSet("force-default-radius");
         const bool forceDefaultWalkingSpeed = clp.isSet("force-default-walk-speed");
         while (reqFileReader.read_row(origin, destination, requestTime, numRiders, pickupWalkingRadiusInM,
-                                      dropoffWalkingRadiusInM, walkingSpeedInMps)) {
+                                      dropoffWalkingRadiusInM, walkingSpeedInMps, allowPrivateCarProbability)) {
             if (origin < 0 || origin >= vehGraphOrigIdToSeqId.size() || vehGraphOrigIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
             if (destination < 0 || destination >= vehGraphOrigIdToSeqId.size() ||
@@ -480,12 +482,13 @@ int main(int argc, char *argv[]) {
 
             const int requestId = static_cast<int>(requests.size());
             requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders, pickupWalkingRadiusInM,
-                                dropoffWalkingRadiusInM, walkingSpeedInMps});
+                                dropoffWalkingRadiusInM, walkingSpeedInMps, allowPrivateCarProbability});
             // Reset defaults in case next request does not specify all values
             numRiders = 1;
             pickupWalkingRadiusInM = defaultPickupWalkRadius;
             dropoffWalkingRadiusInM = defaultDropoffWalkRadius;
             walkingSpeedInMps = defaultWalkingSpeed;
+            allowPrivateCarProbability = 1.0;
         }
         std::cout << "done.\n";
 
