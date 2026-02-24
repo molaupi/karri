@@ -55,7 +55,11 @@ namespace karri {
         int phi = -1;
 
         int sampleSingleFrequency = 0;
-        bool relaxConstraintsForNewRiders = true;
+
+        bool usePostAsgnConstraints = false;
+        int postAsgnMaxAddedWaitTime = -1;
+        double postAsgnAlpha = -1.0;
+        int postAsgnBeta = -1;
     };
 
 }

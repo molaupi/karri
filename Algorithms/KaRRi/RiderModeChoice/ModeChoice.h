@@ -11,31 +11,29 @@
 #include "PTJourneyData.h"
 
 namespace karri::mode_choice {
-
     template<typename CriterionT, typename LoggerT = NullLogger>
     class ModeChoice {
-
         static bool isCarAllowed(const Request &req) {
-            return req.allowPrivateCarProbability > 0.0 && ThreadSafeRandom::randomNumber() < req.allowPrivateCarProbability;
+            return req.allowPrivateCarProbability > 0.0 && ThreadSafeRandom::randomNumber() < req.
+                   allowPrivateCarProbability;
         }
 
     public:
-
-        ModeChoice(const RouteState &routeState, const bool allowPublicTransport) :
-                criterion(),
-                routeState(routeState),
-                allowPublicTransport(allowPublicTransport),
-                logger(LogManager<LoggerT>::getLogger("modechoice.csv",
-                                                      "request_id,"
-                                                      "walk_travel_time,"
-                                                      "car_travel_time,"
-                                                      "taxi_travel_time,"
-                                                      "taxi_wait_time,"
-                                                      "taxi_accegr_time,"
-                                                      "pt_travel_time,"
-                                                      "pt_wait_time,"
-                                                      "pt_accegr_time,"
-                                                      "mode\n")) {}
+        ModeChoice(const RouteState &routeState, const bool allowPublicTransport) : criterion(),
+            routeState(routeState),
+            allowPublicTransport(allowPublicTransport),
+            logger(LogManager<LoggerT>::getLogger("modechoice.csv",
+                                                  "request_id,"
+                                                  "walk_travel_time,"
+                                                  "car_travel_time,"
+                                                  "taxi_travel_time,"
+                                                  "taxi_wait_time,"
+                                                  "taxi_accegr_time,"
+                                                  "pt_travel_time,"
+                                                  "pt_wait_time,"
+                                                  "pt_accegr_time,"
+                                                  "mode\n")) {
+        }
 
         template<typename AsgnFinderResponseT>
         TransportMode
@@ -66,15 +64,11 @@ namespace karri::mode_choice {
                 const auto dropoffAtExistingStop = isDropoffAtExistingStop(bestAsgn, routeState);
                 const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, bestAsgn, initialPickupDetour,
                                                                   dropoffAtExistingStop, routeState);
-                if (!resp.isBestAssignmentValid(depTimeAtPickup, arrTimeAtDropoff)) {
-                    input.disableTaxi();
-                } else {
-                    input.taxiTravelTime = tenthsOfSecondsToMinutes(arrTimeAtDropoff - depTimeAtPickup);
-                    input.taxiWaitTime = tenthsOfSecondsToMinutes(
-                        depTimeAtPickup - req.requestTime - bestAsgn.pickup.walkingDist);
-                    input.taxiAccEgrTime = tenthsOfSecondsToMinutes(
-                        bestAsgn.pickup.walkingDist + bestAsgn.dropoff.walkingDist);
-                }
+                input.taxiTravelTime = tenthsOfSecondsToMinutes(arrTimeAtDropoff - depTimeAtPickup);
+                input.taxiWaitTime = tenthsOfSecondsToMinutes(
+                    depTimeAtPickup - req.requestTime - bestAsgn.pickup.walkingDist);
+                input.taxiAccEgrTime = tenthsOfSecondsToMinutes(
+                    bestAsgn.pickup.walkingDist + bestAsgn.dropoff.walkingDist);
             } else {
                 input.disableTaxi();
             }
@@ -89,25 +83,27 @@ namespace karri::mode_choice {
             }
 
             logger << req.requestId << ","
-                   << input.walkTravelTime << ","
-                   << input.privateCarTravelTime << ","
-                   << input.taxiTravelTime << ","
-                   << input.taxiWaitTime << ","
-                   << input.taxiAccEgrTime << ","
-                   << input.ptTravelTime << ","
-                   << input.ptWaitTime << ","
-                   << input.ptAccEgrTime << ","
-                   << (choice == TransportMode::Car ? "Car" :
-                       choice == TransportMode::Ped ? "Ped" :
-                       choice == TransportMode::PublicTransport ? "PublicTransport" :
-                       "Taxi")
-                   << "\n";
+                    << input.walkTravelTime << ","
+                    << input.privateCarTravelTime << ","
+                    << input.taxiTravelTime << ","
+                    << input.taxiWaitTime << ","
+                    << input.taxiAccEgrTime << ","
+                    << input.ptTravelTime << ","
+                    << input.ptWaitTime << ","
+                    << input.ptAccEgrTime << ","
+                    << (choice == TransportMode::Car
+                            ? "Car"
+                            : choice == TransportMode::Ped
+                                  ? "Ped"
+                                  : choice == TransportMode::PublicTransport
+                                        ? "PublicTransport"
+                                        : "Taxi")
+                    << "\n";
 
             return choice;
         }
 
     private:
-
         static constexpr double tenthsOfSecondsToMinutes(const int timeInTenthsOfSeconds) {
             return static_cast<double>(timeInTenthsOfSeconds) / 600.0;
         }
@@ -117,5 +113,4 @@ namespace karri::mode_choice {
         const bool allowPublicTransport;
         LoggerT &logger;
     };
-
 } // namespace karri::mode_choice

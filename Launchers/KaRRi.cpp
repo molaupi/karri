@@ -142,6 +142,10 @@ inline void printUsage() {
               "  -w <sec>                   maximum wait time (in s). (dflt: 600s)\n"
               "  -a <factor>                model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.4)\n"
               "  -b <seconds>               model parameter beta for max trip time = a * OD-dist + b (dflt: 1200)\n"
+              "  -use-post-asgn-constraints if set, wait and trip constraints are based on best assignment instead of direct car trip.\n"
+              "  -pw <sec>                  maximum added wait time after being assigned (dflt: 600s).\n"
+              "  -pa <factor>               model parameter alpha' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1.4)\n"
+              "  -pb <seconds>              model parameter beta' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1200)\n"
               "  -e <factor>            model parameter epsilon for the trip time rejection threshold = e * OD-dist + f\n"
               "                             set to 0 to reject no requests (default)\n"
               "  -f <factor>            model parameter phi for the trip time rejection threshold = e * OD-dist + f (dflt: 1200)\n"
@@ -162,7 +166,6 @@ inline void printUsage() {
               "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1). No effect if -seq-and-non-batched is set.\n"
               "  -pt-journeys <file>        public transport journey data in CSV format (needed for mode choice with PT).\n"
               "  -sample-freq <int>         frequency (in number of requests) at which requests will be dispatched individually to sample single request dispatching time (set to 0 to disable (default)).\n"
-              "  -no-relax-constraints-for-new-riders      if set, assignments for new riders have to adhere to maximum wait time and maximum trip time constraints.\n"
               "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
               "  -help                      show usage help text.\n";
 }
@@ -312,11 +315,14 @@ int main(int argc, char *argv[]) {
         if (inputConfig.maxNumDropoffs == 0) inputConfig.maxNumDropoffs = INFTY;
         inputConfig.alpha = clp.getValue<double>("a", 1.4);
         inputConfig.beta = clp.getValue<int>("b", 1200) * 10;
+        inputConfig.usePostAsgnConstraints = clp.isSet("use-post-asgn-constraints");
+        inputConfig.postAsgnMaxAddedWaitTime = clp.getValue<int>("pw", 600) * 10;
+        inputConfig.postAsgnAlpha = clp.getValue<double>("pa", 1.4);
+        inputConfig.postAsgnBeta = clp.getValue<int>("pb", 1200) * 10;
         inputConfig.requestBatchInterval = clp.getValue<int>("i", 60) * 10;
         inputConfig.epsilon = clp.getValue<double>("e", 0.0);
         inputConfig.phi = clp.getValue<int>("f", 1200) * 10;
         inputConfig.sampleSingleFrequency = clp.getValue<int>("sample-freq", 0);
-        inputConfig.relaxConstraintsForNewRiders = !clp.isSet("no-relax-constraints-for-new-riders");
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");

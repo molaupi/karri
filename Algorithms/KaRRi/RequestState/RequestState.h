@@ -58,13 +58,13 @@ namespace karri {
         int minDirectPDDist; // smallest distance between any pickup and any dropoff
         int odWalkingDist; // walking distance from origin to destination if rider walks the whole way
 
+        int getPassengerArrAtPickup(const PDLoc& pickup) const {
+            return dispatchingTime + pickup.walkingDist;
+        }
+
         int getOriginalReqMaxTripTime() const {
             assert(originalReqDirectDist >= 0);
             return static_cast<int>(InputConfig::getInstance().alpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().beta;
-        }
-
-        int getPassengerArrAtPickup(const PDLoc& pickup) const {
-            return dispatchingTime + pickup.walkingDist;
         }
 
         int getMaxArrTimeAtDropoff(const PDLoc& dropoff) const {
@@ -75,6 +75,25 @@ namespace karri {
             return originalRequest.requestTime + InputConfig::getInstance().maxWaitTime;
         }
 
+        int getPostAssignmentMaxTripTime(const int asgnTripTime) const {
+            if (!InputConfig::getInstance().usePostAsgnConstraints)
+                return getOriginalReqMaxTripTime();
+            return static_cast<int>(InputConfig::getInstance().postAsgnAlpha * static_cast<double>(asgnTripTime)) + InputConfig::getInstance().postAsgnBeta;
+        }
+
+        int getPostAssignmentMaxArrTimeAtDropoff(const PDLoc& dropoff, const int asgnTripTime) const {
+            if (!InputConfig::getInstance().usePostAsgnConstraints)
+                return getMaxArrTimeAtDropoff(dropoff);
+            return originalRequest.requestTime + getPostAssignmentMaxTripTime(asgnTripTime) - dropoff.walkingDist;
+        }
+
+        int getPostAssignmentMaxDepTimeAtPickup(const int asgnDepTimeAtPickup) const {
+            KASSERT(asgnDepTimeAtPickup >= originalRequest.requestTime);
+            if (!InputConfig::getInstance().usePostAsgnConstraints)
+                return getMaxDepTimeAtPickup();
+            return std::max(getMaxDepTimeAtPickup(), asgnDepTimeAtPickup + InputConfig::getInstance().postAsgnMaxAddedWaitTime);
+        }
+
         // Information about best known assignment for current request
 
         const Assignment &getBestAssignment() const {
@@ -83,17 +102,6 @@ namespace karri {
 
         const int &getBestCost() const {
             return bestCost;
-        }
-
-        bool isBestAssignmentValid(const int actualDepTime, const int arrTimeAtDropoff) const {
-            if (bestCost >= INFTY)
-                return false;
-            if (InputConfig::getInstance().relaxConstraintsForNewRiders)
-                return true;
-
-            // If we do not relax constraints for new riders, then the assignment is only valid if it does not
-            // violate the maximum wait time at pickup and the maximum trip time at dropoff.
-            return actualDepTime <= getMaxDepTimeAtPickup() && arrTimeAtDropoff <= getMaxArrTimeAtDropoff(bestAssignment.dropoff);
         }
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, int cost) {
