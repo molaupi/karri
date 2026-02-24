@@ -66,11 +66,17 @@ namespace karri::mode_choice {
                 const auto dropoffAtExistingStop = isDropoffAtExistingStop(bestAsgn, routeState);
                 const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, bestAsgn, initialPickupDetour,
                                                                   dropoffAtExistingStop, routeState);
-                input.taxiTravelTime = tenthsOfSecondsToMinutes(arrTimeAtDropoff - depTimeAtPickup);
-                input.taxiWaitTime = tenthsOfSecondsToMinutes(
+                if (!resp.isBestAssignmentValid(depTimeAtPickup, arrTimeAtDropoff)) {
+                    input.disableTaxi();
+                } else {
+                    input.taxiTravelTime = tenthsOfSecondsToMinutes(arrTimeAtDropoff - depTimeAtPickup);
+                    input.taxiWaitTime = tenthsOfSecondsToMinutes(
                         depTimeAtPickup - req.requestTime - bestAsgn.pickup.walkingDist);
-                input.taxiAccEgrTime = tenthsOfSecondsToMinutes(
+                    input.taxiAccEgrTime = tenthsOfSecondsToMinutes(
                         bestAsgn.pickup.walkingDist + bestAsgn.dropoff.walkingDist);
+                }
+            } else {
+                input.disableTaxi();
             }
 
             const auto choice = criterion.apply(input);

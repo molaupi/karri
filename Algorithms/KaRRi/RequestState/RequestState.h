@@ -85,10 +85,20 @@ namespace karri {
             return bestCost;
         }
 
-        bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
+        bool isBestAssignmentValid(const int actualDepTime, const int arrTimeAtDropoff) const {
+            if (bestCost >= INFTY)
+                return false;
+            if (InputConfig::getInstance().relaxConstraintsForNewRiders)
+                return true;
+
+            // If we do not relax constraints for new riders, then the assignment is only valid if it does not
+            // violate the maximum wait time at pickup and the maximum trip time at dropoff.
+            return actualDepTime <= getMaxDepTimeAtPickup() && arrTimeAtDropoff <= getMaxArrTimeAtDropoff(bestAssignment.dropoff);
+        }
+
+        bool tryAssignmentWithKnownCost(const Assignment &asgn, int cost) {
             if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
                                     breakCostTie(asgn, bestAssignment)))) {
-
                 bestAssignment = asgn;
                 bestCost = cost;
                 return true;

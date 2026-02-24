@@ -162,6 +162,7 @@ inline void printUsage() {
               "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1). No effect if -seq-and-non-batched is set.\n"
               "  -pt-journeys <file>        public transport journey data in CSV format (needed for mode choice with PT).\n"
               "  -sample-freq <int>         frequency (in number of requests) at which requests will be dispatched individually to sample single request dispatching time (set to 0 to disable (default)).\n"
+              "  -no-relax-constraints-for-new-riders      if set, assignments for new riders have to adhere to maximum wait time and maximum trip time constraints.\n"
               "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
               "  -help                      show usage help text.\n";
 }
@@ -315,6 +316,7 @@ int main(int argc, char *argv[]) {
         inputConfig.epsilon = clp.getValue<double>("e", 0.0);
         inputConfig.phi = clp.getValue<int>("f", 1200) * 10;
         inputConfig.sampleSingleFrequency = clp.getValue<int>("sample-freq", 0);
+        inputConfig.relaxConstraintsForNewRiders = !clp.isSet("no-relax-constraints-for-new-riders");
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");

@@ -38,37 +38,6 @@ namespace karri {
         static constexpr int TRIP_VIO_WEIGHT = TRIP_TIME_VIOLATION_WEIGHT;
 
         template<typename RequestContext>
-        static inline int calcUpperBoundTripCostDifference(const int tripTimeDifference, const RequestContext &) {
-            return (PASSENGER_COST_SCALE + TRIP_TIME_VIOLATION_WEIGHT) * tripTimeDifference;
-        }
-
-        template<typename DistanceLabel, typename RequestContext>
-        static inline DistanceLabel
-        calcKUpperBoundTripCostDifferences(const DistanceLabel &tripTimeDifference, const RequestContext &) {
-            auto diff = tripTimeDifference;
-            diff.multiplyWithScalar(PASSENGER_COST_SCALE + TRIP_TIME_VIOLATION_WEIGHT);
-            return diff;
-        }
-
-        static inline int calcUpperBoundTripViolationCostDifference(const int tripTimeDifference) {
-            assert(tripTimeDifference >= 0);
-            return TRIP_TIME_VIOLATION_WEIGHT * tripTimeDifference;
-        }
-
-        template<typename RequestContext>
-        static inline int calcLowerBoundTripCostDifference(const int tripTimeDifference, const RequestContext &) {
-            return PASSENGER_COST_SCALE * tripTimeDifference;
-        }
-
-        template<typename DistanceLabel, typename RequestContext>
-        static inline DistanceLabel
-        calcKLowerBoundTripCostDifferences(const DistanceLabel &tripTimeDifference, const RequestContext &) {
-            auto diff = tripTimeDifference;
-            diff.multiplyWithScalar(PASSENGER_COST_SCALE);
-            return diff;
-        }
-
-        template<typename RequestContext>
         static inline int calcTripCost(const int tripTime, const RequestContext &context) {
 
             const auto maxTripTime = context.getOriginalReqMaxTripTime();
@@ -120,21 +89,8 @@ namespace karri {
             return violationCost;
         }
 
-        static inline int calcUpperBoundWaitViolationCostDifference(const int diffInTimeTillDepAtPickup) {
-            assert(diffInTimeTillDepAtPickup >= 0);
-            return WAIT_TIME_VIOLATION_WEIGHT * diffInTimeTillDepAtPickup;
-        }
-
         static inline int calcChangeInTripCostsOfExistingPassengers(const int addedTripTimeForExistingPassengers) {
             return PASSENGER_COST_SCALE * addedTripTimeForExistingPassengers;
-        }
-
-        static inline int calcUpperBoundVehicleCostDifference(const int detourDiff) {
-            return calcVehicleCost(detourDiff);
-        }
-
-        static inline int calcLowerBoundVehicleCostDifference(const int detourDiff) {
-            return calcVehicleCost(detourDiff);
         }
 
         static inline int calcVehicleCost(const int residualDetourAtEnd) {
@@ -157,17 +113,6 @@ namespace karri {
                 return INFTY;
             else
                 return cost / VEHICLE_COST_SCALE + (cost % VEHICLE_COST_SCALE != 0) + maxLegLength;
-        }
-
-        // Returns the smallest distance from a pickup or to a dropoff (distance that is part of the detour and the trip
-        // time) s.t. the vehicle cost and trip cost lead to a greater cost than the one given. Uses the maximum length of
-        // any route leg to get a global lower bound on the detour.
-        static inline int
-        calcMinDistFromOrToPDLocSuchThatVehAndTripCostsReachMinCost(const int cost, const int maxLegLength) {
-            const auto c = cost + VEHICLE_COST_SCALE * maxLegLength;
-            const auto d = VEHICLE_COST_SCALE + PASSENGER_COST_SCALE;
-            assert(d != 0);
-            return c / d + (c % d != 0);
         }
 
     };

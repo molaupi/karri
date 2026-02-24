@@ -55,6 +55,7 @@ namespace karri {
         int phi = -1;
 
         int sampleSingleFrequency = 0;
+        bool relaxConstraintsForNewRiders = true;
     };
 
 }
