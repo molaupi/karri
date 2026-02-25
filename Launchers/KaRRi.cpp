@@ -316,6 +316,8 @@ int main(int argc, char *argv[]) {
         inputConfig.alpha = clp.getValue<double>("a", 1.4);
         inputConfig.beta = clp.getValue<int>("b", 1200) * 10;
         inputConfig.usePostAsgnConstraints = clp.isSet("use-post-asgn-constraints");
+        if (inputConfig.usePostAsgnConstraints)
+            std::cout << "Using rider constraints based on best assignment instead of direct car trip." << std::endl;
         inputConfig.postAsgnMaxAddedWaitTime = clp.getValue<int>("pw", 600) * 10;
         inputConfig.postAsgnAlpha = clp.getValue<double>("pa", 1.4);
         inputConfig.postAsgnBeta = clp.getValue<int>("pb", 1200) * 10;
