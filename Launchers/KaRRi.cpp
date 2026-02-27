@@ -142,7 +142,7 @@ inline void printUsage() {
               "  -w <sec>                   maximum wait time (in s). (dflt: 600s)\n"
               "  -a <factor>                model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.4)\n"
               "  -b <seconds>               model parameter beta for max trip time = a * OD-dist + b (dflt: 1200)\n"
-              "  -use-post-asgn-constraints if set, wait and trip constraints are based on best assignment instead of direct car trip.\n"
+              "  -use-direct-based-constraints if set, wait and trip constraints are based on direct car trip instead of best assignment.\n"
               "  -pw <sec>                  maximum added wait time after being assigned (dflt: 600s).\n"
               "  -pa <factor>               model parameter alpha' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1.4)\n"
               "  -pb <seconds>              model parameter beta' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1200)\n"
@@ -315,7 +315,7 @@ int main(int argc, char *argv[]) {
         if (inputConfig.maxNumDropoffs == 0) inputConfig.maxNumDropoffs = INFTY;
         inputConfig.alpha = clp.getValue<double>("a", 1.4);
         inputConfig.beta = clp.getValue<int>("b", 1200) * 10;
-        inputConfig.usePostAsgnConstraints = clp.isSet("use-post-asgn-constraints");
+        inputConfig.usePostAsgnConstraints = !clp.isSet("use-direct-based-constraints");
         if (inputConfig.usePostAsgnConstraints)
             std::cout << "Using rider constraints based on best assignment instead of direct car trip." << std::endl;
         inputConfig.postAsgnMaxAddedWaitTime = clp.getValue<int>("pw", 600) * 10;
