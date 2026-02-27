@@ -320,8 +320,8 @@ int main(int argc, char *argv[]) {
             std::cout << "Using rider constraints based on best assignment instead of direct car trip." << std::endl;
         inputConfig.postAsgnMaxAddedWaitTime = clp.getValue<int>("pw", 600) * 10;
         inputConfig.postAsgnAlpha = clp.getValue<double>("pa", 1.4);
-        inputConfig.postAsgnBeta = clp.getValue<int>("pb", 1200) * 10;
-        inputConfig.requestBatchInterval = clp.getValue<int>("i", 60) * 10;
+        inputConfig.postAsgnBeta = clp.getValue<int>("pb", 600) * 10;
+        inputConfig.requestBatchInterval = clp.getValue<int>("i", 5) * 10;
         inputConfig.epsilon = clp.getValue<double>("e", 0.0);
         inputConfig.phi = clp.getValue<int>("f", 1200) * 10;
         inputConfig.sampleSingleFrequency = clp.getValue<int>("sample-freq", 0);
