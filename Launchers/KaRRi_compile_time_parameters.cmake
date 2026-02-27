@@ -31,6 +31,14 @@ if (KARRI_OUTPUT_VEHICLE_PATHS)
     target_compile_definitions(karri PRIVATE KARRI_OUTPUT_VEHICLE_PATHS)
 endif (KARRI_OUTPUT_VEHICLE_PATHS)
 
+## Output detailed component performance stats?
+option(KARRI_OUTPUT_COMPONENT_PERFORMANCE_STATS "Output component performance stats." OFF)
+if (KARRI_OUTPUT_COMPONENT_PERFORMANCE_STATS)
+    target_compile_definitions(karri PRIVATE KARRI_OUTPUT_COMPONENT_PERFORMANCE_STATS=true)
+else(KARRI_OUTPUT_COMPONENT_PERFORMANCE_STATS)
+    target_compile_definitions(karri PRIVATE KARRI_OUTPUT_COMPONENT_PERFORMANCE_STATS=false)
+endif (KARRI_OUTPUT_COMPONENT_PERFORMANCE_STATS)
+
 ## Cost function tuning
 set(KARRI_PSG_COST_SCALE 1 CACHE STRING "Importance of passenger trip times in cost function.")
 target_compile_definitions(karri PRIVATE KARRI_PSG_COST_SCALE=${KARRI_PSG_COST_SCALE})

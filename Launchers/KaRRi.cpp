@@ -131,49 +131,49 @@
 
 inline void printUsage() {
     std::cout <<
-              "Usage: karri -veh-g <vehicle network> -psg-g <passenger network> -r <requests> -v <vehicles> -o <file>\n"
-              "Runs Karlsruhe Rapid Ridesharing (KaRRi) simulation with given vehicle and passenger road networks,\n"
-              "requests, and vehicles. Writes output files to specified base path."
-              "  -veh-g <file>              vehicle road network in binary format.\n"
-              "  -psg-g <file>              passenger road (and path) network in binary format.\n"
-              "  -r <file>                  requests in CSV format.\n"
-              "  -v <file>                  vehicles in CSV format.\n"
-              "  -s <sec>                   stop time (in s). (dflt: 60s)\n"
-              "  -w <sec>                   maximum wait time (in s). (dflt: 600s)\n"
-              "  -a <factor>                model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.4)\n"
-              "  -b <seconds>               model parameter beta for max trip time = a * OD-dist + b (dflt: 1200)\n"
-              "  -use-direct-based-constraints if set, wait and trip constraints are based on direct car trip instead of best assignment.\n"
-              "  -pw <sec>                  maximum added wait time after being assigned (dflt: 600s).\n"
-              "  -pa <factor>               model parameter alpha' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1.4)\n"
-              "  -pb <seconds>              model parameter beta' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1200)\n"
-              "  -e <factor>            model parameter epsilon for the trip time rejection threshold = e * OD-dist + f\n"
-              "                             set to 0 to reject no requests (default)\n"
-              "  -f <factor>            model parameter phi for the trip time rejection threshold = e * OD-dist + f (dflt: 1200)\n"
-              "  -seq-and-non-batched       if set, dispatches requests one-by-one instead of batched and without multithreading (original KaRRi mode).\n"
-              "  -i <seconds>               interval duration for batch of requests in seconds (dflt: 60). No effect if -seq-and-non-batched is set.\n"
-              "  -p-radius <m>              default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
-              "  -d-radius <m>              default walking radius (in m) for dropoff locations around destination if not specified by request (dflt: 417m = 5min at 5km/h)\n"
-              "  -force-default-radius      if set, forces the use of the default walking radius for all requests, even if they specify their own radius.\n"
-              "  -walk-speed <m/s>          default walking speed (in m/s) if not specified by request (dflt: 1.3889m/s = 5km/h)\n"
-              "  -force-default-walk-speed  if set, forces the use of the default walking speed for all requests, even if they specify their own speed.\n"
-              "  -max-num-p <int>           max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
-              "  -max-num-d <int>           max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
-              "  -veh-h <file>              contraction hierarchy for the vehicle network in binary format.\n"
-              "  -psg-h <file>              contraction hierarchy for the passenger network in binary format.\n"
-              "  -veh-d <file>              separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
-              "  -psg-d <file>              separator decomposition for the passenger network in binary format (needed for CCHs).\n"
-              "  -csv-in-LOUD-format        if set, assumes that input files are in the format used by LOUD.\n"
-              "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1). No effect if -seq-and-non-batched is set.\n"
-              "  -pt-journeys <file>        public transport journey data in CSV format (needed for mode choice with PT).\n"
-              "  -sample-freq <int>         frequency (in number of requests) at which requests will be dispatched individually to sample single request dispatching time (set to 0 to disable (default)).\n"
-              "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
-              "  -help                      show usage help text.\n";
+            "Usage: karri -veh-g <vehicle network> -psg-g <passenger network> -r <requests> -v <vehicles> -o <file>\n"
+            "Runs Karlsruhe Rapid Ridesharing (KaRRi) simulation with given vehicle and passenger road networks,\n"
+            "requests, and vehicles. Writes output files to specified base path."
+            "  -veh-g <file>              vehicle road network in binary format.\n"
+            "  -psg-g <file>              passenger road (and path) network in binary format.\n"
+            "  -r <file>                  requests in CSV format.\n"
+            "  -v <file>                  vehicles in CSV format.\n"
+            "  -s <sec>                   stop time (in s). (dflt: 60s)\n"
+            "  -w <sec>                   maximum wait time (in s). (dflt: 600s)\n"
+            "  -a <factor>                model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.4)\n"
+            "  -b <seconds>               model parameter beta for max trip time = a * OD-dist + b (dflt: 1200)\n"
+            "  -use-direct-based-constraints if set, wait and trip constraints are based on direct car trip instead of best assignment.\n"
+            "  -pw <sec>                  maximum added wait time after being assigned (dflt: 600s).\n"
+            "  -pa <factor>               model parameter alpha' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1.4)\n"
+            "  -pb <seconds>              model parameter beta' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1200)\n"
+            "  -e <factor>            model parameter epsilon for the trip time rejection threshold = e * OD-dist + f\n"
+            "                             set to 0 to reject no requests (default)\n"
+            "  -f <factor>            model parameter phi for the trip time rejection threshold = e * OD-dist + f (dflt: 1200)\n"
+            "  -seq-and-non-batched       if set, dispatches requests one-by-one instead of batched and without multithreading (original KaRRi mode).\n"
+            "  -i <seconds>               interval duration for batch of requests in seconds (dflt: 60). No effect if -seq-and-non-batched is set.\n"
+            "  -p-radius <m>              default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
+            "  -d-radius <m>              default walking radius (in m) for dropoff locations around destination if not specified by request (dflt: 417m = 5min at 5km/h)\n"
+            "  -force-default-radius      if set, forces the use of the default walking radius for all requests, even if they specify their own radius.\n"
+            "  -walk-speed <m/s>          default walking speed (in m/s) if not specified by request (dflt: 1.3889m/s = 5km/h)\n"
+            "  -force-default-walk-speed  if set, forces the use of the default walking speed for all requests, even if they specify their own speed.\n"
+            "  -max-num-p <int>           max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
+            "  -max-num-d <int>           max number of dropoff locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
+            "  -veh-h <file>              contraction hierarchy for the vehicle network in binary format.\n"
+            "  -psg-h <file>              contraction hierarchy for the passenger network in binary format.\n"
+            "  -veh-d <file>              separator decomposition for the vehicle network in binary format (needed for CCHs).\n"
+            "  -psg-d <file>              separator decomposition for the passenger network in binary format (needed for CCHs).\n"
+            "  -csv-in-LOUD-format        if set, assumes that input files are in the format used by LOUD.\n"
+            "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1). No effect if -seq-and-non-batched is set.\n"
+            "  -pt-journeys <file>        public transport journey data in CSV format (needed for mode choice with PT).\n"
+            "  -sample-freq <int>         frequency (in number of requests) at which requests will be dispatched individually to sample single request dispatching time (set to 0 to disable (default)).\n"
+            "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
+            "  -help                      show usage help text.\n";
 }
 
 
 template<bool BATCHED_DISPATCHING,
-        typename VehicleInputGraph, typename PsgInputGraph,
-        typename VehCHEnv, typename PsgCHEnv>
+    typename VehicleInputGraph, typename PsgInputGraph,
+    typename VehCHEnv, typename PsgCHEnv>
 void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
                                      const PsgInputGraph &psgInputGraph,
                                      const VehCHEnv &vehChEnv,
@@ -196,53 +196,59 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
         if (curStop == nextStop)
             return 0;
         const auto &ch = vehChEnv.getCH();
-        distanceCheckerChQuery.run(ch.rank(vehicleInputGraph.edgeHead(curStop)), ch.rank(vehicleInputGraph.edgeTail(nextStop)));
+        distanceCheckerChQuery.run(ch.rank(vehicleInputGraph.edgeHead(curStop)),
+                                   ch.rank(vehicleInputGraph.edgeTail(nextStop)));
         return distanceCheckerChQuery.getDistance() + vehicleInputGraph.travelTime(nextStop);
     });
 
     // Construct Elliptic BCH buckets:
     static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
     using EllipticBuckets = std::conditional_t<ELLIPTIC_SORTED_BUCKETS,
-            SortedBucketContainer<EllipticBucketEntry, DoesEntryHaveLargerRemainingLeeway>,
-            DynamicBucketContainer<EllipticBucketEntry>>;
+        SortedBucketContainer<EllipticBucketEntry, DoesEntryHaveLargerRemainingLeeway>,
+        DynamicBucketContainer<EllipticBucketEntry> >;
     EllipticBuckets ellipticSourceBuckets(vehicleInputGraph.numVertices());
     EllipticBuckets ellipticTargetBuckets(vehicleInputGraph.numVertices());
     using EllipticBucketsEnv = std::conditional_t<BATCHED_DISPATCHING,
-            SingleAndBatchEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, EllipticBuckets>,
-            SingleUpdatesEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, EllipticBuckets>>;
-    EllipticBucketsEnv ellipticBucketsEnv(vehicleInputGraph, vehChEnv, routeState, ellipticSourceBuckets, ellipticTargetBuckets);
+        SingleAndBatchEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, EllipticBuckets>,
+        SingleUpdatesEllipticBucketsEnvironment<VehicleInputGraph, VehCHEnv, EllipticBuckets> >;
+    EllipticBucketsEnv ellipticBucketsEnv(vehicleInputGraph, vehChEnv, routeState, ellipticSourceBuckets,
+                                          ellipticTargetBuckets);
 
     // If we use any BCH queries in the PALS or DALS strategies, we construct the according bucket data structure.
     // Otherwise, we use a last stop buckets substitute that only stores which vehicles' last stops are at a vertex.
     static constexpr bool LAST_STOP_SORTED_BUCKETS = KARRI_LAST_STOP_BCH_SORTED_BUCKETS;
 #if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
-    KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
+KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
 
     static_assert(LAST_STOP_SORTED_BUCKETS, "Unsorted last stop buckets are not supported right now.");
     using LastStopBucketsEnv = std::conditional_t<BATCHED_DISPATCHING,
-            SingleAndBatchedSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
-            SingleUpdatesSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
+        SingleAndBatchedSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
+        SingleUpdatesSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
     >;
     using LastStopBuckets = LastStopBucketsEnv::BucketContainer;
     LastStopBuckets lastStopBuckets(vehicleInputGraph.numVertices());
     LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, vehChEnv, routeState, lastStopBuckets);
 
 #else
-    struct LastStopBuckets {} lastStopBuckets;
-    using LastStopBucketsEnv = OnlyLastStopsAtVerticesBucketSubstitute<VehicleInputGraph >;
-        LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, routeState, fleet.size());
+    struct LastStopBuckets {
+    } lastStopBuckets;
+    using LastStopBucketsEnv = OnlyLastStopsAtVerticesBucketSubstitute<VehicleInputGraph>;
+    LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, routeState, fleet.size());
 #endif
     // Last stop bucket environment (or substitute) also serves as a source of information on the last stops at vertices.
     using LastStopAtVerticesInfo = LastStopBucketsEnv;
 
 
-    using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, EllipticBuckets, LastStopAtVerticesInfo>;
+    using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, EllipticBuckets,
+        LastStopAtVerticesInfo>;
     PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, vehChEnv,
                                                           ellipticSourceBuckets, lastStopBucketsEnv,
                                                           routeState);
 
 
-    using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, EllipticBuckets, ELLIPTIC_SORTED_BUCKETS, PDLocsAtExistingStopsFinderImpl, LastStopBuckets, LAST_STOP_SORTED_BUCKETS, LastStopBucketsEnv>;
+    using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph,
+        VehCHEnv, PsgCHEnv, EllipticBuckets, ELLIPTIC_SORTED_BUCKETS, PDLocsAtExistingStopsFinderImpl, LastStopBuckets,
+        LAST_STOP_SORTED_BUCKETS, LastStopBucketsEnv>;
     ThreadLocalAssignmentFinderFactoryImpl asgnFinderFactory(vehicleInputGraph, revVehicleGraph, psgInputGraph,
                                                              revPsgGraph, vehChEnv, psgChEnv, ellipticSourceBuckets,
                                                              ellipticTargetBuckets, pdLocsAtExistingStops,
@@ -253,27 +259,33 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
 
 #if KARRI_OUTPUT_VEHICLE_PATHS
     using VehPathTracker = PathTracker<VehicleInputGraph, VehCHEnv, std::ofstream>;
-        VehPathTracker pathTracker(vehicleInputGraph, *vehChEnv, reqState, routeState, fleet);
+    VehPathTracker pathTracker(vehicleInputGraph, *vehChEnv, reqState, routeState, fleet);
 #else
     using VehPathTracker = NoOpPathTracker;
     VehPathTracker pathTracker;
 #endif
 
+    using ComponentPerfLogger = std::conditional_t<KARRI_OUTPUT_COMPONENT_PERFORMANCE_STATS,
+        std::ofstream,
+        NullLogger>;
+
     using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
     VehicleLocatorImpl ssuLocator(vehicleInputGraph, vehChEnv, routeState);
-    using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, ELLIPTIC_SORTED_BUCKETS, LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, BATCHED_DISPATCHING, std::ofstream>;
+    using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, ELLIPTIC_SORTED_BUCKETS,
+        LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, BATCHED_DISPATCHING, std::ofstream, ComponentPerfLogger>;
     SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, ssuLocator,
                                               pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
 
 
     // Rider mode choice mechanism for requests:
-//        using ModeChoiceCriterion = mode_choice::TripTimeThresholdCriterion;
+    //        using ModeChoiceCriterion = mode_choice::TripTimeThresholdCriterion;
     using ModeChoiceCriterion = mode_choice::UtilityLogitCriterion;
     using RiderModeChoice = mode_choice::ModeChoice<ModeChoiceCriterion, std::ofstream>;
     RiderModeChoice modeChoice(routeState, allowPTMode);
 
     // Run simulation:
-    using EventSimulationImpl = EventSimulation<InsertionFinderImpl, RiderModeChoice, SystemStateUpdaterImpl, RouteState, BATCHED_DISPATCHING>;
+    using EventSimulationImpl = EventSimulation<InsertionFinderImpl, RiderModeChoice, SystemStateUpdaterImpl, RouteState
+        , BATCHED_DISPATCHING>;
     EventSimulationImpl eventSimulation(fleet, requests, ptJourneyData, insertionFinder, modeChoice, systemStateUpdater,
                                         routeState, true);
     eventSimulation.run();
@@ -294,10 +306,10 @@ int main(int argc, char *argv[]) {
         size_t numAvailableCpus = parallel::HardwareTopology<>::instance().num_cpus();
         if (numAvailableCpus < maxNumThreads) {
             std::cout << "There are currently only " << numAvailableCpus << " cpus available. "
-                      << "Setting number of threads from " << maxNumThreads << " to " << numAvailableCpus << std::endl;
+                    << "Setting number of threads from " << maxNumThreads << " to " << numAvailableCpus << std::endl;
             maxNumThreads = numAvailableCpus;
         }
-        parallel::TBBInitializer<parallel::HardwareTopology<>>::instance(maxNumThreads);
+        parallel::TBBInitializer<parallel::HardwareTopology<> >::instance(maxNumThreads);
 
 
         // Parse the command-line options.
@@ -307,8 +319,8 @@ int main(int argc, char *argv[]) {
         const int defaultPickupWalkRadius = clp.getValue<int>("p-radius", 417); // 417 m = 5 min at 5 km/h
         const int defaultDropoffWalkRadius = clp.getValue<int>("d-radius", 417); // 417 m = 5 min at 5 km/h
         const double defaultWalkingSpeed = clp.getValue<double>("walk-speed", 1.3889); // 5 km/h = 1.3889 m/s
-//        inputConfig.pickupRadius = clp.getValue<int>("p-radius", inputConfig.maxWaitTime / 10) * 10;
-//        inputConfig.dropoffRadius = clp.getValue<int>("d-radius", inputConfig.maxWaitTime / 10) * 10;
+        //        inputConfig.pickupRadius = clp.getValue<int>("p-radius", inputConfig.maxWaitTime / 10) * 10;
+        //        inputConfig.dropoffRadius = clp.getValue<int>("d-radius", inputConfig.maxWaitTime / 10) * 10;
         inputConfig.maxNumPickups = clp.getValue<int>("max-num-p", INFTY);
         inputConfig.maxNumDropoffs = clp.getValue<int>("max-num-d", INFTY);
         if (inputConfig.maxNumPickups == 0) inputConfig.maxNumPickups = INFTY;
@@ -345,7 +357,8 @@ int main(int argc, char *argv[]) {
         std::cout << "Reading vehicle network from file... " << std::flush;
         using VehicleVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
         using VehicleEdgeAttributes = EdgeAttrs<
-                EdgeIdAttribute, EdgeTailAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute, OsmRoadCategoryAttribute>;
+            EdgeIdAttribute, EdgeTailAttribute, TravelTimeAttribute, CarEdgeToPsgEdgeAttribute,
+            OsmRoadCategoryAttribute>;
         using VehicleInputGraph = StaticGraph<VehicleVertexAttributes, VehicleEdgeAttributes>;
         std::ifstream vehicleNetworkFile(vehicleNetworkFileName, std::ios::binary);
         if (!vehicleNetworkFile.good())
@@ -357,30 +370,31 @@ int main(int argc, char *argv[]) {
             vehGraphOrigIdToSeqId.assign(vehicleInputGraph.numEdges(), INVALID_ID);
             std::iota(vehGraphOrigIdToSeqId.begin(), vehGraphOrigIdToSeqId.end(), 0);
             FORALL_VALID_EDGES(vehicleInputGraph, v, e) {
-                    assert(vehicleInputGraph.edgeId(e) == INVALID_ID);
-                    vehicleInputGraph.edgeTail(e) = v;
-                    vehicleInputGraph.edgeId(e) = e;
-                }
+                assert(vehicleInputGraph.edgeId(e) == INVALID_ID);
+                vehicleInputGraph.edgeTail(e) = v;
+                vehicleInputGraph.edgeId(e) = e;
+            }
         } else {
             FORALL_VALID_EDGES(vehicleInputGraph, v, e) {
-                    assert(vehicleInputGraph.edgeId(e) != INVALID_ID);
-                    if (vehicleInputGraph.edgeId(e) >= vehGraphOrigIdToSeqId.size()) {
-                        const auto numElementsToBeInserted =
-                                vehicleInputGraph.edgeId(e) + 1 - vehGraphOrigIdToSeqId.size();
-                        vehGraphOrigIdToSeqId.insert(vehGraphOrigIdToSeqId.end(), numElementsToBeInserted, INVALID_ID);
-                    }
-                    assert(vehGraphOrigIdToSeqId[vehicleInputGraph.edgeId(e)] == INVALID_ID);
-                    vehGraphOrigIdToSeqId[vehicleInputGraph.edgeId(e)] = e;
-                    vehicleInputGraph.edgeTail(e) = v;
-                    vehicleInputGraph.edgeId(e) = e;
+                assert(vehicleInputGraph.edgeId(e) != INVALID_ID);
+                if (vehicleInputGraph.edgeId(e) >= vehGraphOrigIdToSeqId.size()) {
+                    const auto numElementsToBeInserted =
+                            vehicleInputGraph.edgeId(e) + 1 - vehGraphOrigIdToSeqId.size();
+                    vehGraphOrigIdToSeqId.insert(vehGraphOrigIdToSeqId.end(), numElementsToBeInserted, INVALID_ID);
                 }
+                assert(vehGraphOrigIdToSeqId[vehicleInputGraph.edgeId(e)] == INVALID_ID);
+                vehGraphOrigIdToSeqId[vehicleInputGraph.edgeId(e)] = e;
+                vehicleInputGraph.edgeTail(e) = v;
+                vehicleInputGraph.edgeId(e) = e;
+            }
         }
         std::cout << "done.\n";
 
         // Read the passenger network from file.
         std::cout << "Reading passenger network from file... " << std::flush;
         using PsgVertexAttributes = VertexAttrs<LatLngAttribute, OsmNodeIdAttribute>;
-        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, PsgEdgeToCarEdgeAttribute, LengthAttribute>;
+        using PsgEdgeAttributes = EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, PsgEdgeToCarEdgeAttribute,
+            LengthAttribute>;
         using PsgInputGraph = StaticGraph<PsgVertexAttributes, PsgEdgeAttributes>;
         std::ifstream psgNetworkFile(passengerNetworkFileName, std::ios::binary);
         if (!psgNetworkFile.good())
@@ -390,24 +404,24 @@ int main(int argc, char *argv[]) {
         assert(psgInputGraph.numEdges() > 0 && psgInputGraph.edgeId(0) == INVALID_ID);
         int numEdgesWithMappingToCar = 0;
         FORALL_VALID_EDGES(psgInputGraph, v, e) {
-                assert(psgInputGraph.edgeId(e) == INVALID_ID);
-                psgInputGraph.edgeTail(e) = v;
-                psgInputGraph.edgeId(e) = e;
+            assert(psgInputGraph.edgeId(e) == INVALID_ID);
+            psgInputGraph.edgeTail(e) = v;
+            psgInputGraph.edgeId(e) = e;
 
-                const int eInVehGraph = psgInputGraph.toCarEdge(e);
-                if (eInVehGraph != PsgEdgeToCarEdgeAttribute::defaultValue()) {
-                    ++numEdgesWithMappingToCar;
-                    assert(eInVehGraph < vehGraphOrigIdToSeqId.size());
-                    psgInputGraph.toCarEdge(e) = vehGraphOrigIdToSeqId[eInVehGraph];
-                    assert(psgInputGraph.toCarEdge(e) < vehicleInputGraph.numEdges());
-                    vehicleInputGraph.toPsgEdge(psgInputGraph.toCarEdge(e)) = e;
+            const int eInVehGraph = psgInputGraph.toCarEdge(e);
+            if (eInVehGraph != PsgEdgeToCarEdgeAttribute::defaultValue()) {
+                ++numEdgesWithMappingToCar;
+                assert(eInVehGraph < vehGraphOrigIdToSeqId.size());
+                psgInputGraph.toCarEdge(e) = vehGraphOrigIdToSeqId[eInVehGraph];
+                assert(psgInputGraph.toCarEdge(e) < vehicleInputGraph.numEdges());
+                vehicleInputGraph.toPsgEdge(psgInputGraph.toCarEdge(e)) = e;
 
-                    assert(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
-                           vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).latitude());
-                    assert(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
-                            vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).longitude());
-                }
+                assert(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).latitude() ==
+                    vehicleInputGraph.latLng(vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).latitude());
+                assert(psgInputGraph.latLng(psgInputGraph.edgeHead(e)).longitude() == vehicleInputGraph.latLng(
+                    vehicleInputGraph.edgeHead(psgInputGraph.toCarEdge(e))).longitude());
             }
+        }
         unused(numEdgesWithMappingToCar);
         assert(numEdgesWithMappingToCar > 0);
         std::cout << "done.\n";
@@ -417,7 +431,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Reading vehicle data from file... " << std::flush;
         Fleet fleet;
         int location, capacity, startOfServiceTime, endOfServiceTime;
-        io::CSVReader<4, io::trim_chars<' '>> vehiclesFileReader(vehicleFileName);
+        io::CSVReader<4, io::trim_chars<' '> > vehiclesFileReader(vehicleFileName);
 
         if (csvFilesInLoudFormat) {
             vehiclesFileReader.read_header(io::ignore_no_column, "initial_location", "seating_capacity",
@@ -439,8 +453,10 @@ int main(int argc, char *argv[]) {
             if (endOfServiceTime <= startOfServiceTime)
                 throw std::invalid_argument("start of service time needs to be before end of service time");
             const int vehicleId = static_cast<int>(fleet.size());
-            fleet.push_back({vehicleId, vehGraphOrigIdToSeqId[location], startOfServiceTime * 10,
-                             endOfServiceTime * 10, capacity});
+            fleet.push_back({
+                vehicleId, vehGraphOrigIdToSeqId[location], startOfServiceTime * 10,
+                endOfServiceTime * 10, capacity
+            });
             maxCapacity = std::max(maxCapacity, capacity);
         }
         std::cout << "done.\n";
@@ -450,14 +466,16 @@ int main(int argc, char *argv[]) {
         std::vector<Request> requests;
         int origin, destination, requestTime, numRiders, pickupWalkingRadiusInM, dropoffWalkingRadiusInM;
         double walkingSpeedInMps, allowPrivateCarProbability;
-        io::CSVReader<8, io::trim_chars<' '>> reqFileReader(requestFileName);
+        io::CSVReader<8, io::trim_chars<' '> > reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
             reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time",
-                                      "num_riders", "pickup_walking_radius", "dropoff_walking_radius", "walking_speed", "allow_private_car_probability");
+                                      "num_riders", "pickup_walking_radius", "dropoff_walking_radius", "walking_speed",
+                                      "allow_private_car_probability");
         } else {
             reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time", "num_riders",
-                                      "pickup_walking_radius", "dropoff_walking_radius", "walking_speed", "allow_private_car_probability");
+                                      "pickup_walking_radius", "dropoff_walking_radius", "walking_speed",
+                                      "allow_private_car_probability");
         }
 
         numRiders = 1; // If number of riders was not specified, assume one rider
@@ -476,8 +494,8 @@ int main(int argc, char *argv[]) {
                 throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
             if (numRiders > maxCapacity)
                 throw std::invalid_argument(
-                        "number of riders '" + std::to_string(numRiders) + "' is larger than max vehicle capacity (" +
-                        std::to_string(maxCapacity) + ")");
+                    "number of riders '" + std::to_string(numRiders) + "' is larger than max vehicle capacity (" +
+                    std::to_string(maxCapacity) + ")");
             const auto originSeqId = vehGraphOrigIdToSeqId[origin];
             assert(vehicleInputGraph.toPsgEdge(originSeqId) != CarEdgeToPsgEdgeAttribute::defaultValue());
             const auto destSeqId = vehGraphOrigIdToSeqId[destination];
@@ -491,8 +509,10 @@ int main(int argc, char *argv[]) {
             }
 
             const int requestId = static_cast<int>(requests.size());
-            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10, numRiders, pickupWalkingRadiusInM,
-                                dropoffWalkingRadiusInM, walkingSpeedInMps, allowPrivateCarProbability});
+            requests.push_back({
+                requestId, originSeqId, destSeqId, requestTime * 10, numRiders, pickupWalkingRadiusInM,
+                dropoffWalkingRadiusInM, walkingSpeedInMps, allowPrivateCarProbability
+            });
             // Reset defaults in case next request does not specify all values
             numRiders = 1;
             pickupWalkingRadiusInM = defaultPickupWalkRadius;
@@ -525,11 +545,11 @@ int main(int argc, char *argv[]) {
         }
 
         // Prepare passenger CH environment
-        using PsgCHEnv = CCHEnvironment<PsgInputGraph , LengthAttribute>;
+        using PsgCHEnv = CCHEnvironment<PsgInputGraph, LengthAttribute>;
         std::unique_ptr<PsgCHEnv> psgChEnv;
         if (psgSepDecompFileName.empty()) {
             std::cout << "Building Separator Decomposition and CCH... " << std::flush;
-            psgChEnv = std::make_unique<PsgCHEnv >(psgInputGraph);
+            psgChEnv = std::make_unique<PsgCHEnv>(psgInputGraph);
             std::cout << "done.\n";
         } else {
             // Read the separator decomposition from file, construct and customize CCH.
@@ -541,7 +561,7 @@ int main(int argc, char *argv[]) {
             psgSepDecomp.readFrom(psgSepDecompFile);
             psgSepDecompFile.close();
             std::cout << "done.\n";
-            psgChEnv = std::make_unique<PsgCHEnv >(psgInputGraph, psgSepDecomp);
+            psgChEnv = std::make_unique<PsgCHEnv>(psgInputGraph, psgSepDecomp);
         }
 
 #else
@@ -590,7 +610,7 @@ int main(int argc, char *argv[]) {
         if (allowPTMode) {
             const auto ptJourneysFileName = clp.getValue<std::string>("pt-journeys");
             std::cout << "Reading public transport journey data from file... " << std::flush;
-            io::CSVReader<4, io::trim_chars<' '>> ptJourneysFileReader(ptJourneysFileName);
+            io::CSVReader<4, io::trim_chars<' '> > ptJourneysFileReader(ptJourneysFileName);
             int requestId;
             double travelTime, waitTime, accEgrTime;
             ptJourneysFileReader.read_header(io::ignore_no_column, "request_id", "travel_time", "wait_time",
@@ -608,7 +628,7 @@ int main(int argc, char *argv[]) {
             }
             if (numRequestsWithoutPTData > 0) {
                 std::cout << "Warning: " << numRequestsWithoutPTData
-                          << " requests have no PT journey data and will not consider PT as a travel mode.\n";
+                        << " requests have no PT journey data and will not consider PT as a travel mode.\n";
             }
         }
 
@@ -619,7 +639,6 @@ int main(int argc, char *argv[]) {
             initializeStateAndRunSimulation<true>(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
                                                   fleet, requests, ptJourneyData, allowPTMode);
         }
-
     } catch (std::exception &e) {
         std::cerr << argv[0] << ": " << e.what() << '\n';
         std::cerr << "Try '" << argv[0] << " -help' for more information.\n";

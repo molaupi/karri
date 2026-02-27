@@ -42,7 +42,8 @@ namespace karri {
         typename VehicleLocatorT,
         typename PathTrackerT,
         bool BATCHED_DISPATCHING,
-        typename LoggerT = NullLogger>
+        typename LoggerT = NullLogger,
+        typename ComponentPerfLoggerT = NullLogger>
     class SystemStateUpdater {
     public:
         SystemStateUpdater(const InputGraphT &inputGraph,
@@ -89,46 +90,46 @@ namespace karri {
                                                  std::string(stats::DispatchingPerformanceStats::LOGGER_COLS) +
                                                  "\n")),
               initializationPerfLogger(
-                  LogManager<LoggerT>::getLogger(stats::InitializationPerformanceStats::LOGGER_NAME,
+                  LogManager<ComponentPerfLoggerT>::getLogger(stats::InitializationPerformanceStats::LOGGER_NAME,
                                                  "request_id," +
                                                  std::string(
                                                      stats::InitializationPerformanceStats::LOGGER_COLS) +
                                                  "\n")),
               ellipticBchPerfLogger(
-                  LogManager<LoggerT>::getLogger(stats::EllipticBCHPerformanceStats::LOGGER_NAME,
+                  LogManager<ComponentPerfLoggerT>::getLogger(stats::EllipticBCHPerformanceStats::LOGGER_NAME,
                                                  "request_id," +
                                                  std::string(stats::EllipticBCHPerformanceStats::LOGGER_COLS) +
                                                  "\n")),
               pdDistancesPerfLogger(
-                  LogManager<LoggerT>::getLogger(stats::PDDistancesPerformanceStats::LOGGER_NAME,
+                  LogManager<ComponentPerfLoggerT>::getLogger(stats::PDDistancesPerformanceStats::LOGGER_NAME,
                                                  "request_id," +
                                                  std::string(stats::PDDistancesPerformanceStats::LOGGER_COLS) +
                                                  "\n")),
               ordPerfLogger(
-                  LogManager<LoggerT>::getLogger(stats::OrdAssignmentsPerformanceStats::LOGGER_NAME,
+                  LogManager<ComponentPerfLoggerT>::getLogger(stats::OrdAssignmentsPerformanceStats::LOGGER_NAME,
                                                  "request_id," +
                                                  std::string(
                                                      stats::OrdAssignmentsPerformanceStats::LOGGER_COLS) +
                                                  "\n")),
               pbnsPerfLogger(
-                  LogManager<LoggerT>::getLogger(stats::PbnsAssignmentsPerformanceStats::LOGGER_NAME,
+                  LogManager<ComponentPerfLoggerT>::getLogger(stats::PbnsAssignmentsPerformanceStats::LOGGER_NAME,
                                                  "request_id," +
                                                  std::string(
                                                      stats::PbnsAssignmentsPerformanceStats::LOGGER_COLS) +
                                                  "\n")),
               palsPerfLogger(
-                  LogManager<LoggerT>::getLogger(stats::PalsAssignmentsPerformanceStats::LOGGER_NAME,
+                  LogManager<ComponentPerfLoggerT>::getLogger(stats::PalsAssignmentsPerformanceStats::LOGGER_NAME,
                                                  "request_id," +
                                                  std::string(
                                                      stats::PalsAssignmentsPerformanceStats::LOGGER_COLS) +
                                                  "\n")),
               dalsPerfLogger(
-                  LogManager<LoggerT>::getLogger(stats::DalsAssignmentsPerformanceStats::LOGGER_NAME,
+                  LogManager<ComponentPerfLoggerT>::getLogger(stats::DalsAssignmentsPerformanceStats::LOGGER_NAME,
                                                  "request_id," +
                                                  std::string(
                                                      stats::DalsAssignmentsPerformanceStats::LOGGER_COLS) +
                                                  "\n")),
-              updatePerfLogger(LogManager<LoggerT>::getLogger(stats::UpdatePerformanceStats::LOGGER_NAME,
+              updatePerfLogger(LogManager<ComponentPerfLoggerT>::getLogger(stats::UpdatePerformanceStats::LOGGER_NAME,
                                                               "request_id," +
                                                               std::string(
                                                                   stats::UpdatePerformanceStats::LOGGER_COLS) +
@@ -725,14 +726,14 @@ namespace karri {
         // Performance Loggers
         LoggerT &bestAssignmentsLogger;
         LoggerT &overallPerfLogger;
-        LoggerT &initializationPerfLogger;
-        LoggerT &ellipticBchPerfLogger;
-        LoggerT &pdDistancesPerfLogger;
-        LoggerT &ordPerfLogger;
-        LoggerT &pbnsPerfLogger;
-        LoggerT &palsPerfLogger;
-        LoggerT &dalsPerfLogger;
-        LoggerT &updatePerfLogger;
+        ComponentPerfLoggerT &initializationPerfLogger;
+        ComponentPerfLoggerT &ellipticBchPerfLogger;
+        ComponentPerfLoggerT &pdDistancesPerfLogger;
+        ComponentPerfLoggerT &ordPerfLogger;
+        ComponentPerfLoggerT &pbnsPerfLogger;
+        ComponentPerfLoggerT &palsPerfLogger;
+        ComponentPerfLoggerT &dalsPerfLogger;
+        ComponentPerfLoggerT &updatePerfLogger;
 
         LoggerT &batchInsertLogger;
 
