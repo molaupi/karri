@@ -49,11 +49,11 @@ target_compile_definitions(karri PRIVATE KARRI_WALKING_COST_SCALE=${KARRI_WALKIN
 set(KARRI_VEH_COST_SCALE 1 CACHE STRING "Importance of vehicle travel times in cost function.")
 target_compile_definitions(karri PRIVATE KARRI_VEH_COST_SCALE=${KARRI_VEH_COST_SCALE})
 
-set(KARRI_WAIT_PENALTY_SCALE 1 CACHE STRING "Weights penalties for violating wait time soft constraint.")
-target_compile_definitions(karri PRIVATE KARRI_WAIT_PENALTY_SCALE=${KARRI_WAIT_PENALTY_SCALE})
+set(KARRI_SOFT_CONSTRAINTS_WAIT_PENALTY_SCALE 0 CACHE STRING "Weights penalties for violating wait time soft constraint.")
+target_compile_definitions(karri PRIVATE KARRI_SOFT_CONSTRAINTS_WAIT_PENALTY_SCALE=${KARRI_SOFT_CONSTRAINTS_WAIT_PENALTY_SCALE})
 
-set(KARRI_TRIP_PENALTY_SCALE 10 CACHE STRING "Weights penalties for violating trip time soft constraint.")
-target_compile_definitions(karri PRIVATE KARRI_TRIP_PENALTY_SCALE=${KARRI_TRIP_PENALTY_SCALE})
+set(KARRI_SOFT_CONSTRAINTS_TRIP_PENALTY_SCALE 0 CACHE STRING "Weights penalties for violating trip time soft constraint.")
+target_compile_definitions(karri PRIVATE KARRI_SOFT_CONSTRAINTS_TRIP_PENALTY_SCALE=${KARRI_SOFT_CONSTRAINTS_TRIP_PENALTY_SCALE})
 
 # Logit settings
 

@@ -28,7 +28,7 @@
 namespace karri {
 
 
-    template<int PASSENGER_COST_SCALE = 1, int WALKING_COST_SCALE = 0, int VEHICLE_COST_SCALE = 1, int WAIT_TIME_VIOLATION_WEIGHT = 1, int TRIP_TIME_VIOLATION_WEIGHT = 10>
+    template<int PASSENGER_COST_SCALE = 1, int WALKING_COST_SCALE = 0, int VEHICLE_COST_SCALE = 1, int WAIT_TIME_VIOLATION_WEIGHT = 0, int TRIP_TIME_VIOLATION_WEIGHT = 0>
     struct TimeIsMoneyCostFunction {
 
         static constexpr int PSG_WEIGHT = PASSENGER_COST_SCALE;
@@ -40,7 +40,7 @@ namespace karri {
         template<typename RequestContext>
         static inline int calcTripCost(const int tripTime, const RequestContext &context) {
 
-            const auto maxTripTime = context.getOriginalReqMaxTripTime();
+            const auto maxTripTime = context.getSoftConstraintOriginalReqMaxTripTime();
             const auto regularCost = PASSENGER_COST_SCALE * tripTime;
             const auto violationPenalty = TRIP_TIME_VIOLATION_WEIGHT * std::max(tripTime - maxTripTime, 0);
 
@@ -53,7 +53,7 @@ namespace karri {
             DistanceLabel regularCost = tripTime;
             regularCost.multiplyWithScalar(PASSENGER_COST_SCALE);
 
-            const DistanceLabel maxTripTime = DistanceLabel(context.getOriginalReqMaxTripTime());
+            const DistanceLabel maxTripTime = DistanceLabel(context.getSoftConstraintOriginalReqMaxTripTime());
             DistanceLabel violationCost = tripTime - maxTripTime;
             violationCost.max(0);
             violationCost.multiplyWithScalar(TRIP_TIME_VIOLATION_WEIGHT);
@@ -77,13 +77,13 @@ namespace karri {
 
         template<typename RequestContext>
         static inline int calcWaitViolationCost(const int actualDepTimeAtPickup, const RequestContext &context) {
-            return WAIT_TIME_VIOLATION_WEIGHT * std::max(actualDepTimeAtPickup - context.getMaxDepTimeAtPickup(), 0);
+            return WAIT_TIME_VIOLATION_WEIGHT * std::max(actualDepTimeAtPickup - context.getSoftConstraintMaxDepTimeAtPickup(), 0);
         }
 
         template<typename DistanceLabel, typename RequestContext>
         static inline DistanceLabel calcKWaitViolationCosts(const DistanceLabel &actualDepTimeAtPickup,
                                                             const RequestContext &context) {
-            DistanceLabel violationCost = actualDepTimeAtPickup - DistanceLabel(context.getMaxDepTimeAtPickup());
+            DistanceLabel violationCost = actualDepTimeAtPickup - DistanceLabel(context.getSoftConstraintMaxDepTimeAtPickup());
             violationCost.max(0);
             violationCost.multiplyWithScalar(WAIT_TIME_VIOLATION_WEIGHT);
             return violationCost;

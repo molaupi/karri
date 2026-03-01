@@ -203,9 +203,9 @@ namespace karri {
             const auto asgnDropoffAtExistingStop = isDropoffAtExistingStop(asgn, routeState);
             const auto asgnArrTimeAtDropoff = getArrTimeAtDropoff(asgnDepTimeAtPickup, asgn, asgnInitialPickupDetour,
                                                               asgnDropoffAtExistingStop, routeState);
-            const auto latestVehDepTimeAtPickup = asgnFinderResponse.getPostAssignmentMaxDepTimeAtPickup(asgnDepTimeAtPickup);
+            const auto latestVehDepTimeAtPickup = asgnFinderResponse.getHardConstraintMaxDepTimeAtPickup(asgnDepTimeAtPickup);
             const auto asgnTripTime = asgnArrTimeAtDropoff + asgn.dropoff.walkingDist - asgnFinderResponse.originalRequest.requestTime;
-            const auto latestVehArrTimeAtDropoff = asgnFinderResponse.getPostAssignmentMaxArrTimeAtDropoff(asgn.dropoff, asgnTripTime);
+            const auto latestVehArrTimeAtDropoff = asgnFinderResponse.getHardConstraintMaxArrTimeAtDropoff(asgn.dropoff, asgnTripTime);
 
             auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, asgnFinderResponse, latestVehDepTimeAtPickup, latestVehArrTimeAtDropoff);
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -291,9 +291,9 @@ namespace karri {
                 const auto asgnDropoffAtExistingStop = isDropoffAtExistingStop(asgn, routeState);
                 const auto asgnArrTimeAtDropoff = getArrTimeAtDropoff(asgnDepTimeAtPickup, asgn, asgnInitialPickupDetour,
                                                                   asgnDropoffAtExistingStop, routeState);
-                const auto latestVehDepTimeAtPickup = asgnFinderResponse.getPostAssignmentMaxDepTimeAtPickup(asgnDepTimeAtPickup);
+                const auto latestVehDepTimeAtPickup = asgnFinderResponse.getHardConstraintMaxDepTimeAtPickup(asgnDepTimeAtPickup);
                 const auto asgnTripTime = asgnArrTimeAtDropoff + asgn.dropoff.walkingDist - asgnFinderResponse.originalRequest.requestTime;
-                const auto latestVehArrTimeAtDropoff = asgnFinderResponse.getPostAssignmentMaxArrTimeAtDropoff(asgn.dropoff, asgnTripTime);
+                const auto latestVehArrTimeAtDropoff = asgnFinderResponse.getHardConstraintMaxArrTimeAtDropoff(asgn.dropoff, asgnTripTime);
 
                 auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, asgnFinderResponse, latestVehDepTimeAtPickup, latestVehArrTimeAtDropoff);
                 const auto routeUpdateTime = internalRouteStateUpdateTimer.elapsed<std::chrono::nanoseconds>();

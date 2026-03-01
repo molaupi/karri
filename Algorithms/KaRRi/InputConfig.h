@@ -44,22 +44,21 @@ namespace karri {
         InputConfig(InputConfig const&) = delete;
         void operator=(InputConfig const&) = delete;
 
-        int maxWaitTime = -1;
+        int softConstraintMaxWaitTime = -1;
         int stopTime = -1;
         int maxNumPickups = -1;
         int maxNumDropoffs = -1;
-        double alpha = -1.0;
-        int beta = -1;
+        double softConstraintAlpha = -1.0;
+        int softConstraintBeta = -1;
         int requestBatchInterval = -1;
         double epsilon = -1.0;
         int phi = -1;
 
         int sampleSingleFrequency = 0;
 
-        bool usePostAsgnConstraints = false;
-        int postAsgnMaxAddedWaitTime = -1;
-        double postAsgnAlpha = -1.0;
-        int postAsgnBeta = -1;
+        int hardConstraintMaxAddedWaitTime = -1;
+        double hardConstraintAlpha = -1.0;
+        int hardConstraintBeta = -1;
     };
 
 }

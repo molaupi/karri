@@ -62,36 +62,26 @@ namespace karri {
             return dispatchingTime + pickup.walkingDist;
         }
 
-        int getOriginalReqMaxTripTime() const {
+        int getSoftConstraintOriginalReqMaxTripTime() const {
             assert(originalReqDirectDist >= 0);
-            return static_cast<int>(InputConfig::getInstance().alpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().beta;
+            return static_cast<int>(InputConfig::getInstance().softConstraintAlpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().softConstraintBeta;
         }
 
-        int getMaxArrTimeAtDropoff(const PDLoc& dropoff) const {
-            return originalRequest.requestTime + getOriginalReqMaxTripTime() - dropoff.walkingDist;
+        int getSoftConstraintMaxDepTimeAtPickup() const {
+            return originalRequest.requestTime + InputConfig::getInstance().softConstraintMaxWaitTime;
         }
 
-        int getMaxDepTimeAtPickup() const {
-            return originalRequest.requestTime + InputConfig::getInstance().maxWaitTime;
+        int getHardConstrainttMaxTripTime(const int asgnTripTime) const {
+            return static_cast<int>(InputConfig::getInstance().hardConstraintAlpha * static_cast<double>(asgnTripTime)) + InputConfig::getInstance().hardConstraintBeta;
         }
 
-        int getPostAssignmentMaxTripTime(const int asgnTripTime) const {
-            if (!InputConfig::getInstance().usePostAsgnConstraints)
-                return getOriginalReqMaxTripTime();
-            return static_cast<int>(InputConfig::getInstance().postAsgnAlpha * static_cast<double>(asgnTripTime)) + InputConfig::getInstance().postAsgnBeta;
+        int getHardConstraintMaxArrTimeAtDropoff(const PDLoc& dropoff, const int asgnTripTime) const {
+            return originalRequest.requestTime + getHardConstrainttMaxTripTime(asgnTripTime) - dropoff.walkingDist;
         }
 
-        int getPostAssignmentMaxArrTimeAtDropoff(const PDLoc& dropoff, const int asgnTripTime) const {
-            if (!InputConfig::getInstance().usePostAsgnConstraints)
-                return getMaxArrTimeAtDropoff(dropoff);
-            return originalRequest.requestTime + getPostAssignmentMaxTripTime(asgnTripTime) - dropoff.walkingDist;
-        }
-
-        int getPostAssignmentMaxDepTimeAtPickup(const int asgnDepTimeAtPickup) const {
+        int getHardConstraintMaxDepTimeAtPickup(const int asgnDepTimeAtPickup) const {
             KASSERT(asgnDepTimeAtPickup >= originalRequest.requestTime);
-            if (!InputConfig::getInstance().usePostAsgnConstraints)
-                return getMaxDepTimeAtPickup();
-            return std::max(getMaxDepTimeAtPickup(), asgnDepTimeAtPickup + InputConfig::getInstance().postAsgnMaxAddedWaitTime);
+            return asgnDepTimeAtPickup + InputConfig::getInstance().hardConstraintMaxAddedWaitTime;
         }
 
         // Information about best known assignment for current request
