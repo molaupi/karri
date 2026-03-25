@@ -131,7 +131,7 @@ compareBestAssignments <- function(file1, file2) {
 }
 
 library(data.table)
-perfStats <- function(file_base, type_name, single_dispatched_subset=FALSE) {
+perfStats <- function(file_base, type_name, single_dispatched_subset=FALSE, n = NA) {
   stats <- fread(paste0(file_base, ".perf_", type_name, ".csv"))
   setkey(stats, request_id)
   if (single_dispatched_subset) {
@@ -140,10 +140,52 @@ perfStats <- function(file_base, type_name, single_dispatched_subset=FALSE) {
     stats <- stats[dfsubset, nomatch=0L]
   }
   
+  if (!is.na(n)) {
+    if (n > nrow(stats))
+      stop("n is greater than number of rows in stats file")
+    stats <- stats[1:n, ]
+  }
+  
   stats <- stats[, request_id := NULL]
   stats <- stats[, lapply(.SD, mean)]
   stats <- round(stats, 2)
   return(stats)
+}
+
+getFirstDiffInEllipticBchStats <- function(file1, file2) {
+  stats1 <- fread(paste0(file1, ".perf_ellipticbch.csv"))
+  stats2 <- fread(paste0(file2, ".perf_ellipticbch.csv"))
+  
+  if (nrow(stats1) < nrow(stats2))
+    stats2 <- stats2[1:nrow(stats1),]
+  if (nrow(stats2) < nrow(stats1))
+    stats1 <- stats1[1:nrow(stats2),]
+  
+  relcols <- c("request_id", 
+               "pickup_num_edge_relaxations", 
+               "pickup_num_vertices_settled", 
+               "pickup_num_entries_scanned",
+               "pickup_num_vehicles_seen",
+               "pickup_num_stops_seen",
+               "dropoff_num_edge_relaxations",
+               "dropoff_num_edge_relaxations", 
+               "dropoff_num_vertices_settled", 
+               "dropoff_num_entries_scanned",
+               "dropoff_num_vehicles_seen",
+               "dropoff_num_stops_seen")
+  rel1 <- stats1[, ..relcols]
+  rel2 <- stats2[, ..relcols]
+  
+  # Get smallest row index where at least one value differs
+  idx <- match(TRUE, rowSums(rel1 != rel2) > 0)
+  if (is.na(idx)) {
+    print("All non-time elliptic perf metrics match.")
+  } else {
+    print(stats1[idx, "request_id"])
+    row1 <- stats1[idx,]
+    row2 <- stats2[idx,]
+    View(rbind(row1, row2))
+  }
 }
 
 # Given the path to the result files of a KaRRi run, this function returns an 
