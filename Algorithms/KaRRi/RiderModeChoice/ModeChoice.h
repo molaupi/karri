@@ -7,7 +7,7 @@
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Algorithms/KaRRi/RouteState.h"
 #include "TransportMode.h"
-#include "ModeChoiceInput.h"
+#include "ModeChoiceInputStats.h"
 #include "PTJourneyData.h"
 
 namespace karri::mode_choice {
@@ -19,7 +19,8 @@ namespace karri::mode_choice {
         }
 
     public:
-        ModeChoice(const RouteState &routeState, const bool allowPublicTransport) : criterion(),
+        ModeChoice(const RouteState &routeState, const bool allowPublicTransport)
+        : criterion(routeState),
             routeState(routeState),
             allowPublicTransport(allowPublicTransport),
             logger(LogManager<LoggerT>::getLogger("modechoice.csv",
@@ -37,60 +38,39 @@ namespace karri::mode_choice {
 
         template<typename AsgnFinderResponseT>
         TransportMode
-        chooseMode(const Request &req, const AsgnFinderResponseT &resp, const PTJourneyData &ptJourneyData) const {
+        chooseMode(const Request &req, const AsgnFinderResponseT &resp, const PTJourneyData &ptJourneyData) {
             using namespace time_utils;
 
-            ModeChoiceInput input;
-            input.walkTravelTime = tenthsOfSecondsToMinutes(resp.odWalkingDist);
+            criterion.init();
+            criterion.registerPed(resp.odWalkingDist, resp);
 
             if (isCarAllowed(req)) {
-                input.privateCarTravelTime = tenthsOfSecondsToMinutes(resp.originalReqDirectDist);
-            } else {
-                input.disablePrivateCar();
+                criterion.registerCar(resp.originalReqDirectDist);
             }
 
             if (allowPublicTransport && ptJourneyData.isValid()) {
-                input.ptTravelTime = ptJourneyData.travelTimeMinutes;
-                input.ptWaitTime = ptJourneyData.waitTimeMinutes;
-                input.ptAccEgrTime = ptJourneyData.accessEgressTimeMinutes;
-            } else {
-                input.disablePublicTransport();
+                criterion.registerPublicTransport(ptJourneyData.travelTimeMinutes,
+                                                  ptJourneyData.waitTimeMinutes,
+                                                  ptJourneyData.accessEgressTimeMinutes);
             }
 
             const auto &bestAsgn = resp.getBestAssignment();
             if (bestAsgn.vehicle) {
-                const auto depTimeAtPickup = getActualDepTimeAtPickup(bestAsgn, resp, routeState);
-                const auto initialPickupDetour = calcInitialPickupDetour(bestAsgn, depTimeAtPickup, resp, routeState);
-                const auto dropoffAtExistingStop = isDropoffAtExistingStop(bestAsgn, routeState);
-                const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, bestAsgn, initialPickupDetour,
-                                                                  dropoffAtExistingStop, routeState);
-                input.taxiTravelTime = tenthsOfSecondsToMinutes(arrTimeAtDropoff - depTimeAtPickup);
-                input.taxiWaitTime = tenthsOfSecondsToMinutes(
-                    depTimeAtPickup - req.requestTime - bestAsgn.pickup.walkingDist);
-                input.taxiAccEgrTime = tenthsOfSecondsToMinutes(
-                    bestAsgn.pickup.walkingDist + bestAsgn.dropoff.walkingDist);
-            } else {
-                input.disableTaxi();
+                criterion.registerTaxi(bestAsgn, resp);
             }
 
-            const auto choice = criterion.apply(input);
+            const auto choice = criterion.apply();
 
-            if (!allowPublicTransport || !ptJourneyData.isValid()) {
-                KASSERT(choice != TransportMode::PublicTransport);
-                input.ptTravelTime = -1.0;
-                input.ptWaitTime = -1.0;
-                input.ptAccEgrTime = -1.0;
-            }
-
+            const auto &stats = criterion.getStats();
             logger << req.requestId << ","
-                    << input.walkTravelTime << ","
-                    << input.privateCarTravelTime << ","
-                    << input.taxiTravelTime << ","
-                    << input.taxiWaitTime << ","
-                    << input.taxiAccEgrTime << ","
-                    << input.ptTravelTime << ","
-                    << input.ptWaitTime << ","
-                    << input.ptAccEgrTime << ","
+                    << stats.walkTravelTime << ","
+                    << stats.privateCarTravelTime << ","
+                    << stats.taxiTravelTime << ","
+                    << stats.taxiWaitTime << ","
+                    << stats.taxiAccEgrTime << ","
+                    << stats.ptTravelTime << ","
+                    << stats.ptWaitTime << ","
+                    << stats.ptAccEgrTime << ","
                     << (choice == TransportMode::Car
                             ? "Car"
                             : choice == TransportMode::Ped
@@ -104,10 +84,6 @@ namespace karri::mode_choice {
         }
 
     private:
-        static constexpr double tenthsOfSecondsToMinutes(const int timeInTenthsOfSeconds) {
-            return static_cast<double>(timeInTenthsOfSeconds) / 600.0;
-        }
-
         CriterionT criterion;
         const RouteState &routeState;
         const bool allowPublicTransport;

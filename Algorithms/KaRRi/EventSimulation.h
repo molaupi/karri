@@ -79,7 +79,7 @@ namespace karri {
             const Fleet &fleet, const std::vector<Request> &requests,
             const std::vector<PTJourneyData> &ptJourneyData,
             AssignmentFinderT &assignmentFinder,
-            const RiderModeChoiceT &riderModeChoice,
+            RiderModeChoiceT &riderModeChoice,
             SystemStateUpdaterT &systemStateUpdater,
             const ScheduledStopsT &scheduledStops,
             const bool verbose = false)
@@ -769,7 +769,7 @@ namespace karri {
         const std::vector<Request> &requests;
         const std::vector<PTJourneyData> &ptJourneyData;
         AssignmentFinderT &assignmentFinder;
-        const RiderModeChoiceT &riderModeChoice;
+        RiderModeChoiceT &riderModeChoice;
         SystemStateUpdaterT &systemStateUpdater;
         const ScheduledStopsT &scheduledStops;
 

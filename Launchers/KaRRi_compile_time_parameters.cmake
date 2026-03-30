@@ -55,9 +55,29 @@ target_compile_definitions(karri PRIVATE KARRI_SOFT_CONSTRAINTS_WAIT_PENALTY_SCA
 set(KARRI_SOFT_CONSTRAINTS_TRIP_PENALTY_SCALE 0 CACHE STRING "Weights penalties for violating trip time soft constraint.")
 target_compile_definitions(karri PRIVATE KARRI_SOFT_CONSTRAINTS_TRIP_PENALTY_SCALE=${KARRI_SOFT_CONSTRAINTS_TRIP_PENALTY_SCALE})
 
-# Logit settings
+# Mode choice settings
 
-# If set, use this value as fixed seed for RNG. Use for debugging.
+## Mode choice method
+set(MODE_CHOICE_LOGIT_CODE 1)
+set(MODE_CHOICE_COST_CODE 2)
+target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_LOGIT=${MODE_CHOICE_LOGIT_CODE})
+target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_COST=${MODE_CHOICE_COST_CODE})
+set(KARRI_MODE_CHOICE_METHOD_VALUES Logit Cost)
+
+set(KARRI_MODE_CHOICE_METHOD Logit CACHE STRING "PD-Distance query strategy to use. Possible values: Logit (dflt), Cost")
+set_property(CACHE KARRI_MODE_CHOICE_METHOD PROPERTY STRINGS ${KARRI_MODE_CHOICE_METHOD_VALUES})
+list(FIND KARRI_MODE_CHOICE_METHOD_VALUES ${KARRI_MODE_CHOICE_METHOD} index)
+if (index EQUAL -1)
+    message(FATAL_ERROR "KARRI_PD_STRATEGY must be one of ${KARRI_MODE_CHOICE_METHOD_VALUES}")
+endif ()
+
+if (${KARRI_MODE_CHOICE_METHOD} STREQUAL Logit)
+    target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_METHOD=${MODE_CHOICE_LOGIT_CODE}) # Logit
+else()
+    target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_METHOD=${MODE_CHOICE_COST_CODE}) # Cost
+endif()
+
+## If set, use this value as fixed seed for RNG in UtilityLogit. Use for debugging.
 if (DEFINED KARRI_LOGIT_FIXED_SEED)
     target_compile_definitions(karri PRIVATE KARRI_LOGIT_FIXED_SEED=${KARRI_LOGIT_FIXED_SEED})
 endif (DEFINED KARRI_LOGIT_FIXED_SEED)

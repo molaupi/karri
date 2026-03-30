@@ -1,0 +1,63 @@
+#pragma once
+
+#include "Tools/Constants.h"
+
+struct ModeChoiceInputStats {
+    static constexpr double MAX_VAL = static_cast<double>(INFTY);
+    double walkTravelTime = MAX_VAL;        // in minutes
+    double privateCarTravelTime = MAX_VAL;  // in minutes
+    double taxiTravelTime = MAX_VAL;        // in minutes
+    double taxiWaitTime = MAX_VAL;          // in minutes
+    double taxiAccEgrTime = MAX_VAL;        // in minutes
+    double ptTravelTime = MAX_VAL;          // in minutes
+    double ptWaitTime = MAX_VAL;            // in minutes
+    double ptAccEgrTime = MAX_VAL;          // in minutes
+
+    // Set all values back to default
+    void reset() {
+        walkTravelTime = MAX_VAL;
+        privateCarTravelTime = MAX_VAL;
+        taxiTravelTime = MAX_VAL;
+        taxiWaitTime = MAX_VAL;
+        taxiAccEgrTime = MAX_VAL;
+        ptTravelTime = MAX_VAL;
+        ptWaitTime = MAX_VAL;
+        ptAccEgrTime = MAX_VAL;
+    }
+
+    // bool isWalkValid() const {
+    //     return walkTravelTime != MAX_VAL;
+    // }
+    //
+    // bool isPrivateCarValid() const {
+    //     return privateCarTravelTime != MAX_VAL;
+    // }
+    //
+    // bool isTaxiValid() const {
+    //     return taxiTravelTime != MAX_VAL && taxiWaitTime != MAX_VAL && taxiAccEgrTime != MAX_VAL;
+    // }
+    //
+    // bool isPublicTransportValid() const {
+    //     return ptTravelTime != MAX_VAL && ptWaitTime != MAX_VAL && ptAccEgrTime != MAX_VAL;
+    // }
+    //
+    // void disableWalk() {
+    //     walkTravelTime = MAX_VAL;
+    // }
+    //
+    // void disablePrivateCar() {
+    //     privateCarTravelTime = MAX_VAL;
+    // }
+    //
+    // void disableTaxi() {
+    //     taxiTravelTime = MAX_VAL;
+    //     taxiWaitTime = MAX_VAL;
+    //     taxiAccEgrTime = MAX_VAL;
+    // }
+    //
+    // void disablePublicTransport() {
+    //     ptTravelTime = MAX_VAL;
+    //     ptWaitTime = MAX_VAL;
+    //     ptAccEgrTime = MAX_VAL;
+    // }
+};

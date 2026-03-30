@@ -72,13 +72,13 @@
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
 #include "Algorithms/KaRRi/RiderModeChoice/ModeChoice.h"
-#include "Algorithms/KaRRi/RiderModeChoice/TripTimeThresholdCriterion.h"
 #include "Algorithms/KaRRi/RiderModeChoice/UtilityLogitCriterion.h"
 #include "Algorithms/KaRRi/ThreadLocalAssignmentFinderFactory.h"
 #include "Algorithms/KaRRi/BatchAssignmentFinder.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBucketEntry.h"
 #include "Algorithms/KaRRi/EllipticBCH/SingleAndBatchEllipticBucketsEnvironment.h"
 #include "Algorithms/KaRRi/LastStopSearches/SingleAndBatchedSortedLastStopBucketsEnvironment.h"
+#include "Algorithms/KaRRi/RiderModeChoice/KaRRiCostCriterion.h"
 
 #include "Parallel/hardware_topology.h"
 #include "Parallel/tbb_initializer.h"
@@ -145,9 +145,6 @@ inline void printUsage() {
             "  -soft-w <sec>              if soft constraints (CMake parameter), penalty for wait times greater than soft-w (dflt: 600s).\n"
             "  -soft-a <factor>           if soft constraints (CMake parameter), penalty for trip times greater than soft-a * OD-dist + soft-b (dflt: 1.4)\n"
             "  -soft-b <seconds>          if soft constraints (CMake parameter), penalty for trip times greater than soft-a * OD-dist + soft-b  (dflt: 1200)\n"
-            "  -e <factor>            model parameter epsilon for the trip time rejection threshold = e * OD-dist + f\n"
-            "                             set to 0 to reject no requests (default)\n"
-            "  -f <factor>            model parameter phi for the trip time rejection threshold = e * OD-dist + f (dflt: 1200)\n"
             "  -seq-and-non-batched       if set, dispatches requests one-by-one instead of batched and without multithreading (original KaRRi mode).\n"
             "  -i <seconds>               interval duration for batch of requests in seconds (dflt: 60). No effect if -seq-and-non-batched is set.\n"
             "  -p-radius <m>              default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
@@ -271,14 +268,17 @@ KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
     using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
     VehicleLocatorImpl ssuLocator(vehicleInputGraph, vehChEnv, routeState);
     using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, ELLIPTIC_SORTED_BUCKETS,
-        LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, BATCHED_DISPATCHING, std::ofstream, ComponentPerfLogger>;
+        LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, BATCHED_DISPATCHING, std::ofstream,
+        ComponentPerfLogger>;
     SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, ssuLocator,
                                               pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
 
 
     // Rider mode choice mechanism for requests:
     //        using ModeChoiceCriterion = mode_choice::TripTimeThresholdCriterion;
-    using ModeChoiceCriterion = mode_choice::UtilityLogitCriterion;
+    using ModeChoiceCriterion = std::conditional_t<KARRI_MODE_CHOICE_METHOD == KARRI_MODE_CHOICE_LOGIT,
+        mode_choice::UtilityLogitCriterion,
+        mode_choice::KaRRiCostCriterion>;
     using RiderModeChoice = mode_choice::ModeChoice<ModeChoiceCriterion, std::ofstream>;
     RiderModeChoice modeChoice(routeState, allowPTMode);
 
@@ -330,8 +330,6 @@ int main(int argc, char *argv[]) {
         inputConfig.softConstraintAlpha = clp.getValue<double>("soft-a", 1.4);
         inputConfig.softConstraintBeta = clp.getValue<int>("soft-b", 1200) * 10;
         inputConfig.requestBatchInterval = clp.getValue<int>("i", 5) * 10;
-        inputConfig.epsilon = clp.getValue<double>("e", 0.0);
-        inputConfig.phi = clp.getValue<int>("f", 1200) * 10;
         inputConfig.sampleSingleFrequency = clp.getValue<int>("sample-freq", 0);
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
@@ -629,6 +627,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (clp.isSet("seq-and-non-batched")) {
+            std::cout << "Running simulation with sequential and non-batched dispatching (original KaRRi mode)." << std::endl;
             initializeStateAndRunSimulation<false>(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
                                                    fleet, requests, ptJourneyData, allowPTMode);
         } else {

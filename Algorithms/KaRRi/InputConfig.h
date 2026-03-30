@@ -51,8 +51,6 @@ namespace karri {
         double softConstraintAlpha = -1.0;
         int softConstraintBeta = -1;
         int requestBatchInterval = -1;
-        double epsilon = -1.0;
-        int phi = -1;
 
         int sampleSingleFrequency = 0;
 
