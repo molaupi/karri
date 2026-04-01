@@ -31,6 +31,7 @@
 #include <cassert>
 #include <type_traits>
 
+#include "ParentInfo.h"
 #include "DataStructures/Labels/ParentInfo.h"
 #include "Tools/TemplateProgramming.h"
 
@@ -338,3 +339,216 @@ public:
         std::array<int, K> vertices; // The k parent vertices, one for each simultaneous source.
     };
 };
+
+
+
+// Specialization brings no benefit, compiler probably handles it well
+//
+// // A set of consistent distance and parent labels for Dijkstra's algorithm. The template arguments
+// // specify the number of shortest paths computed simultaneously and the kind of parent information
+// // that should be collected.
+// //
+// // Specialization for the common case of logSearches = 0 and ParentInfo = ParentInfo::NO_PARENT_INFO.
+// template<>
+// struct BasicLabelSet<0, ParentInfo::NO_PARENT_INFO> {
+// public:
+//     // The number of simultaneous shortest-path computations.
+//     static constexpr int logK = 0;
+//     static constexpr int K = 1;
+//
+//     // Flags indicating whether parent vertices and/or parent edges should be collected.
+//     static constexpr bool KEEP_PARENT_VERTICES = false;
+//     static constexpr bool KEEP_PARENT_EDGES = false;
+//
+//     // A mask that marks a subset of components in a packed distance label. For example, the result
+//     // of a less-than comparison between two multiple-source distance labels a and b is a mask that
+//     // indicates for which components i it holds that a[i] < b[i].
+//     class LabelMask {
+//     public:
+//         // Constructs an uninitialized mask.
+//         LabelMask() = default;
+//
+//         // Constructs a mask with all k components set to val. Converting constructor.
+//         LabelMask(const bool val) {
+//             isMarked = val;
+//         }
+//
+//         // Takes the logical AND of this and the specified mask.
+//         LabelMask &operator&=(const LabelMask &rhs) {
+//             isMarked &= rhs.isMarked;
+//             return *this;
+//         }
+//
+//         friend LabelMask operator&(const LabelMask &mask1, const LabelMask &mask2) {
+//             return {mask1.isMarked && mask2.isMarked};
+//         }
+//
+//         // Takes the logical AND of this and the specified mask.
+//         LabelMask &operator|=(const LabelMask &rhs) {
+//             isMarked |= rhs.isMarked;
+//             return *this;
+//         }
+//
+//         friend LabelMask operator|(const LabelMask &mask1, const LabelMask& mask2) {
+//             return {mask1.isMarked || mask2.isMarked};
+//         }
+//
+//         // Returns the logical NOT of this mask.
+//         LabelMask operator~() const {
+//             return {!isMarked};
+//         }
+//
+//         // Returns the i-th value in this mask.
+//         bool operator[](const int i) const {
+//             KASSERT(i == 0);
+//             return isMarked;
+//         }
+//
+// //        // Returns true if this mask marks at least one component.
+// //        operator bool() const {
+// //            bool res = isMarked[0];
+// //            for (int i = 1; i < K; ++i)
+// //                res |= isMarked[i];
+// //            return res;
+// //        }
+//
+//         friend bool anySet(const LabelMask &mask) {
+//             return mask.isMarked;
+//         }
+//
+//         friend bool allSet(const LabelMask &mask) {
+//             return mask.isMarked;
+//         }
+//
+//         bool isMarked; // Flag indicating if it is marked.
+//     };
+//
+//     // A packed distance label for a vertex, storing k distance values. Each value maintains the
+//     // tentative distance from a different simultaneous source.
+//     class DistanceLabel {
+//     public:
+//
+//         static constexpr int K = BasicLabelSet::K;
+//
+//         // Constructs an uninitialized distance label.
+//         DistanceLabel() = default;
+//
+//         // Constructs a distance label with all k values set to val. Converting constructor.
+//         DistanceLabel(const int val) {
+//             value = val;
+//         }
+//
+//         // Returns a reference to the i-th distance value in this label.
+//         int &operator[](const int i) {
+//             KASSERT(i == 0);
+//             return value;
+//         }
+//
+//         // Returns the i-th distance value in this label.
+//         int operator[](const int i) const {
+//             KASSERT(i == 0);
+//             return value;
+//         }
+//
+//         // Returns the packed sum of lhs and rhs.
+//         friend DistanceLabel operator+(const DistanceLabel &lhs, const DistanceLabel &rhs) {
+//             return {lhs.value + rhs.value};
+//         }
+//
+//         // Packed minus.
+//         friend DistanceLabel operator-(const DistanceLabel &lhs, const DistanceLabel &rhs) {
+//             return {lhs.value - rhs.value};
+//         }
+//
+//         // Returns a mask that indicates for which components i it holds that lhs[i] < rhs[i].
+//         friend LabelMask operator<(const DistanceLabel &lhs, const DistanceLabel &rhs) {
+//             return {lhs.value < rhs.value};
+//         }
+//
+//         // Returns a mask that indicates for which components i it holds that lhs[i] <= rhs[i].
+//         friend LabelMask operator<=(const DistanceLabel &lhs, const DistanceLabel &rhs) {
+//             return ~(rhs < lhs);
+//         }
+//
+//         // Returns a mask that indicates for which components i it holds that lhs[i] > rhs[i].
+//         friend LabelMask operator>(const DistanceLabel &lhs, const DistanceLabel &rhs) {
+//             return rhs < lhs;
+//         }
+//
+//         // Returns a mask that indicates for which components i it holds that lhs[i] >= rhs[i].
+//         friend LabelMask operator>=(const DistanceLabel &lhs, const DistanceLabel &rhs) {
+//             return rhs <= lhs;
+//         }
+//
+//         // Returns a mask that indicates for which components i it holds that lhs[i] == rhs[i].
+//         friend LabelMask operator==(const DistanceLabel &lhs, const DistanceLabel &rhs) {
+//             return {lhs.value == rhs.value};
+//         }
+//
+//         // Given a label l and a mask m, this returns a label l' s.t. l'[i] = l[i] if mask[i] = true and l'[i] = 0 if mask[i] = false
+//         friend DistanceLabel operator&(const DistanceLabel &l, const LabelMask &m) {
+//             return {m.isMarked ? l.value : 0};
+//         }
+//
+//         // Returns the priority of this label.
+//         int getKey() const {
+//             return value;
+//         }
+//
+//         // Returns the horizontal minimum amongst the packed distance values in this label.
+//         int horizontalMin() const {
+//             return value;
+//         }
+//
+//         // Returns the horizontal maximum amongst the packed distance values in this label.
+//         int horizontalMax() const {
+//             return value;
+//         }
+//
+//         // Take the packed minimum of this and the specified label.
+//         void min(const DistanceLabel &other) {
+//             value = std::min(value, other.value);
+//         }
+//
+//         // Take the packed maximum of this and the specified label.
+//         void max(const DistanceLabel &other) {
+//             value = std::max(value, other.value);
+//         }
+//
+//         // Multiply all entries in this label with a scalar factor
+//         void multiplyWithScalar(const int s) {
+//             value = s * value;
+//         }
+//
+//         // Sets this label at all slots i where mask[i] = true.
+//         void setIf(const DistanceLabel &other, const LabelMask &mask) {
+//             if (mask.isMarked)
+//                 value = other.value;
+//         }
+//
+//         // Select between two operands. Corresponds to this pseudocode:
+//         // for (int i = 0; i < K; i++) result[i] = mask[i] ? l1[i] : l2[i];
+//         friend DistanceLabel select(const LabelMask &mask, const DistanceLabel &l1, const DistanceLabel &l2) {
+//             return {mask.isMarked ? l1.value : l2.value};
+//         }
+//
+//     private:
+//         int value; // The value
+//     };
+//
+//     // no op label
+//     class ParentLabel {
+//     public:
+//
+//         ParentLabel() = default;
+//
+//         ParentLabel(const int) {}
+//
+//         // Returns the parent vertex on the shortest path from the i-th source.
+//         int vertex(const int ) const {return INVALID_VERTEX;}
+//
+//         // Sets the parent vertex to u on all shortest paths specified by mask.
+//         void setVertex(const int &, const LabelMask &) {}
+//
+//     };
+// };

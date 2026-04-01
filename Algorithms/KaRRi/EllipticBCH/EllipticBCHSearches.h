@@ -186,7 +186,7 @@ namespace karri {
             stats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
             stats.pickupNumVerticesSettled += totalNumVerticesSettled;
             stats.pickupNumEntriesScanned += totalNumEntriesScanned;
-            stats.pickupNumVehiclesSeen += feasibleEllipticPickups.numVehiclesWithRelevantPDLocs();
+            // stats.pickupNumVehiclesSeen += feasibleEllipticPickups.numVehiclesWithRelevantPDLocs();
             stats.pickupNumStopsSeen += feasibleEllipticPickups.numStopsWithRelevantPDLocs();
 
             // Run for dropoffs:
@@ -199,7 +199,7 @@ namespace karri {
             stats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
             stats.dropoffNumVerticesSettled += totalNumVerticesSettled;
             stats.dropoffNumEntriesScanned += totalNumEntriesScanned;
-            stats.dropoffNumVehiclesSeen += feasibleEllipticDropoffs.numVehiclesWithRelevantPDLocs();
+            // stats.dropoffNumVehiclesSeen += feasibleEllipticDropoffs.numVehiclesWithRelevantPDLocs();
             stats.dropoffNumStopsSeen += feasibleEllipticDropoffs.numStopsWithRelevantPDLocs();
         }
 
@@ -210,7 +210,7 @@ namespace karri {
     private:
 
         template<typename SpotContainerT>
-        void runBCHSearchesFromAndTo(const RequestState& requestState, SpotContainerT &pdLocs) {
+        void runBCHSearchesFromAndTo(const RequestState& requestState, const SpotContainerT &pdLocs) {
 
             numSearchesRun = 0;
             numTimesStoppingCriterionMet = 0;

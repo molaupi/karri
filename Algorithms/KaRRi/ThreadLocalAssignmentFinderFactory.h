@@ -50,6 +50,7 @@
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
 #include "Algorithms/KaRRi/AssignmentFinder.h"
+#include "EllipticBCH/StaticFeasibleEllipticDistances.h"
 
 #if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
 
@@ -124,7 +125,7 @@ namespace karri {
             SimdLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>,
             BasicLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO> >;
 
-        using FeasibleEllipticDistancesImpl = FeasibleEllipticDistances<EllipticBCHLabelSet>;
+        using FeasibleEllipticDistancesImpl = StaticFeasibleEllipticDistances<EllipticBCHLabelSet>;
         tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticPickups;
         tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticDropoffs;
 
