@@ -45,7 +45,7 @@ namespace karri {
     template<typename InputGraphT, typename CHEnvT, typename EllipticBucketsT>
     class BatchUpdatesEllipticBucketsEnvironment {
 
-        static_assert(is_instance_of_v<EllipticBucketsT, SortedBucketContainer>,
+        static_assert(is_instance_of_v<EllipticBucketsT, SortedBucketContainer> || is_instance_of_v<EllipticBucketsT, CompactSortedBucketContainer>,
             "BatchUpdatesEllipticBucketsEnvironment currently only supports SortedBucketContainer as bucket container.");
 
         // using Entry = BucketEntryWithLeeway;

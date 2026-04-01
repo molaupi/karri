@@ -380,36 +380,36 @@ eventSimulationPerfStats <- function(file_base) {
 # }
 # 
 # 
-# batchUpdatePerfStats <- function(file_base) {
-#   
-#   stats <- read.csv(paste0(file_base, ".batch_insert_stats.csv"))
-#   
-#   print(paste0("Total time (batch update): ", sum(stats$total_time) / 1000000000, "s"))
-#   
-#   stats <- stats %>% group_by(occurence_time) %>% summarise(
-#     num_iterations = max(iteration),
-#     num_requests = max(num_requests),
-#     update_route_state_time = sum(update_route_state_time, na.rm = TRUE),
-#     ell_entry_insertions_find_insertions_time = sum(ell_entry_insertions_find_insertions_time, na.rm = TRUE),
-#     ell_entry_insertions_num_insertions = sum(ell_entry_insertions_num_insertions, na.rm = TRUE),
-#     ell_entry_insertions_perform_insertions_time = sum(ell_entry_insertions_perform_insertions_time, na.rm = TRUE),
-#     last_stop_find_insertions_and_deletions_time = sum(last_stop_find_insertions_and_deletions_time, na.rm = TRUE),
-#     last_stop_num_insertions_and_deletions = sum(last_stop_num_insertions_and_deletions, na.rm = TRUE),
-#     last_stop_perform_insertions_and_deletions_time = sum(last_stop_perform_insertions_and_deletions_time, na.rm = TRUE),
-#     # last_stop_update_prefix_sum_time = sum(last_stop_update_prefix_sum_time, na.rm = TRUE),
-#     num_ell_source_entries_after_insertions = sum(num_ell_source_entries_after_insertions, na.rm = TRUE),
-#     num_ell_target_entries_after_insertions = sum(num_ell_target_entries_after_insertions, na.rm = TRUE),
-#     update_leeways_num_entries_scanned_source = sum(update_leeways_num_entries_scanned_source, na.rm = TRUE),
-#     update_leeways_num_entries_scanned_target = sum(update_leeways_num_entries_scanned_target, na.rm = TRUE),
-#     update_leeways_time = sum(update_leeways_time, na.rm = TRUE),
-#     total_time = sum(total_time, na.rm = TRUE)
-#   )
-#   
-#   means <- apply(stats,2,mean)
-#   means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
-#   print(means)
-#   
-# }
+batchUpdatePerfStats <- function(file_base) {
+
+  stats <- read.csv(paste0(file_base, ".batch_insert_stats.csv"))
+
+  print(paste0("Total time (batch update): ", sum(stats$total_time) / 1000000000, "s"))
+
+  stats <- stats %>% group_by(occurence_time) %>% summarise(
+    num_iterations = max(iteration),
+    num_requests = max(num_requests),
+    update_route_state_time = sum(update_route_state_time, na.rm = TRUE),
+    ell_entry_insertions_find_insertions_time = sum(ell_entry_insertions_find_insertions_time, na.rm = TRUE),
+    ell_entry_insertions_num_insertions = sum(ell_entry_insertions_num_insertions, na.rm = TRUE),
+    ell_entry_insertions_perform_insertions_time = sum(ell_entry_insertions_perform_insertions_time, na.rm = TRUE),
+    last_stop_find_insertions_and_deletions_time = sum(last_stop_find_insertions_and_deletions_time, na.rm = TRUE),
+    last_stop_num_insertions_and_deletions = sum(last_stop_num_insertions_and_deletions, na.rm = TRUE),
+    last_stop_perform_insertions_and_deletions_time = sum(last_stop_perform_insertions_and_deletions_time, na.rm = TRUE),
+    # last_stop_update_prefix_sum_time = sum(last_stop_update_prefix_sum_time, na.rm = TRUE),
+    num_ell_source_entries_after_insertions = sum(num_ell_source_entries_after_insertions, na.rm = TRUE),
+    num_ell_target_entries_after_insertions = sum(num_ell_target_entries_after_insertions, na.rm = TRUE),
+    update_leeways_num_entries_scanned_source = sum(update_leeways_num_entries_scanned_source, na.rm = TRUE),
+    update_leeways_num_entries_scanned_target = sum(update_leeways_num_entries_scanned_target, na.rm = TRUE),
+    update_leeways_time = sum(update_leeways_time, na.rm = TRUE),
+    total_time = sum(total_time, na.rm = TRUE)
+  )
+
+  means <- apply(stats,2,mean)
+  means <- data.frame(lapply(means, function(x) format(x, nsmall=2)))
+  print(means)
+
+}
 
 countBestAssignmentTypes <- function(file_base) {
   asgns <- fread(paste0(file_base, ".bestassignments.csv"))

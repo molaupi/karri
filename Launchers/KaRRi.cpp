@@ -199,8 +199,12 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
 
     // Construct Elliptic BCH buckets:
     static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
+    static_assert(!BATCHED_DISPATCHING || ELLIPTIC_SORTED_BUCKETS,
+                  "Unsorted buckets are currently not supported for batched dispatching.");
     using EllipticBuckets = std::conditional_t<ELLIPTIC_SORTED_BUCKETS,
-        SortedBucketContainer<EllipticBucketEntry, DoesEntryHaveLargerRemainingLeeway>,
+        std::conditional_t<BATCHED_DISPATCHING,
+            CompactSortedBucketContainer<EllipticBucketEntry, DoesEntryHaveLargerRemainingLeeway>,
+            SortedBucketContainer<EllipticBucketEntry, DoesEntryHaveLargerRemainingLeeway> >,
         DynamicBucketContainer<EllipticBucketEntry> >;
     EllipticBuckets ellipticSourceBuckets(vehicleInputGraph.numVertices());
     EllipticBuckets ellipticTargetBuckets(vehicleInputGraph.numVertices());
@@ -249,7 +253,8 @@ KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
                                                              revPsgGraph, vehChEnv, psgChEnv, ellipticSourceBuckets,
                                                              ellipticTargetBuckets, pdLocsAtExistingStops,
                                                              lastStopBuckets, lastStopBucketsEnv, fleet, routeState);
-    using InsertionFinderImpl = BatchAssignmentFinder<VehicleInputGraph, VehCHEnv, ThreadLocalAssignmentFinderFactoryImpl>;
+    using InsertionFinderImpl = BatchAssignmentFinder<VehicleInputGraph, VehCHEnv,
+        ThreadLocalAssignmentFinderFactoryImpl>;
     InsertionFinderImpl insertionFinder(vehicleInputGraph, vehChEnv, asgnFinderFactory);
 
 
@@ -627,7 +632,8 @@ int main(int argc, char *argv[]) {
         }
 
         if (clp.isSet("seq-and-non-batched")) {
-            std::cout << "Running simulation with sequential and non-batched dispatching (original KaRRi mode)." << std::endl;
+            std::cout << "Running simulation with sequential and non-batched dispatching (original KaRRi mode)." <<
+                    std::endl;
             initializeStateAndRunSimulation<false>(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
                                                    fleet, requests, ptJourneyData, allowPTMode);
         } else {

@@ -75,17 +75,17 @@ public:
         return SortedBucket(entries.begin() + start, entries.begin() + end);
     }
 
-//    // Inserts the given entry into the bucket of the specified vertex.
-//    bool insert(const int v, const BucketEntryT &entry) {
-//        const auto pos = findInsertionPosForEntry(v, entry);
-//
-//        // Insert with linear time
-//        entries.insert(entries.begin() + pos, entry);
-//        for (int i = v + 1; i < offset.size(); ++i)
-//            ++offset[i];
-//
-//        return true;
-//    }
+    // Inserts the given entry into the bucket of the specified vertex.
+    bool insert(const int v, const BucketEntryT &entry) {
+        const auto pos = findInsertionPosForEntry(v, entry);
+
+        // Insert with linear time
+        entries.insert(entries.begin() + pos, entry);
+        for (int i = v + 1; i < offset.size(); ++i)
+            ++offset[i];
+
+        return true;
+    }
 
     bool getEntryInsertion(const int v, const BucketEntryT &entry, EntryInsertion &ins) const {
         const auto pos = findInsertionPosForEntry(v, entry);
@@ -126,24 +126,24 @@ public:
         return true;
     }
 
-//    // Removes the entry for targetId from the bucket of the specified vertex.
-//    // Linear search for the targetId in the bucket.
-//    bool remove(const int v, const int targetId, int64_t &numEntriesVisited) {
-//        KASSERT(v >= 0);
-//        KASSERT(v < offset.size() - 1);
-//
-//        int pos = -1;
-//        const bool found = findPosOfExistingEntryLinear(v, targetId, pos, numEntriesVisited);
-//        if (!found)
-//            return false;
-//
-//        // Remove with linear time
-//        entries.erase(entries.begin() + pos);
-//        for (int j = v + 1; j < offset.size(); ++j)
-//            --offset[j];
-//
-//        return true;
-//    }
+    // Removes the entry for targetId from the bucket of the specified vertex.
+    // Linear search for the targetId in the bucket.
+    bool remove(const int v, const int targetId, int64_t &numEntriesVisited) {
+        KASSERT(v >= 0);
+        KASSERT(v < offset.size() - 1);
+
+        int pos = -1;
+        const bool found = findPosOfExistingEntryLinear(v, targetId, pos, numEntriesVisited);
+        if (!found)
+            return false;
+
+        // Remove with linear time
+        entries.erase(entries.begin() + pos);
+        for (int j = v + 1; j < offset.size(); ++j)
+            --offset[j];
+
+        return true;
+    }
 
     bool getEntryDeletion(const int v, const int targetId, EntryDeletion &del, int64_t &numEntriesVisited) const {
         int pos = -1;
@@ -155,24 +155,24 @@ public:
         return true;
     }
 
-//    // Removes the given entry from the bucket of the specified vertex.
-//    // Since buckets are sorted, binary search can be used.
-//    bool remove(const int v, const BucketEntryT &entry, int64_t &numEntriesVisited) {
-//        KASSERT(v >= 0);
-//        KASSERT(v < offset.size() - 1);
-//
-//        int pos = -1;
-//        const bool found = findPosOfExistingEntryBinary(v, entry, pos, numEntriesVisited);
-//        if (!found)
-//            return false;
-//
-//        // Remove with linear time
-//        entries.erase(entries.begin() + pos);
-//        for (int j = v + 1; j < offset.size(); ++j)
-//            --offset[j];
-//
-//        return true;
-//    }
+    // Removes the given entry from the bucket of the specified vertex.
+    // Since buckets are sorted, binary search can be used.
+    bool remove(const int v, const BucketEntryT &entry, int64_t &numEntriesVisited) {
+        KASSERT(v >= 0);
+        KASSERT(v < offset.size() - 1);
+
+        int pos = -1;
+        const bool found = findPosOfExistingEntryBinary(v, entry, pos, numEntriesVisited);
+        if (!found)
+            return false;
+
+        // Remove with linear time
+        entries.erase(entries.begin() + pos);
+        for (int j = v + 1; j < offset.size(); ++j)
+            --offset[j];
+
+        return true;
+    }
 
     bool
     getEntryDeletion(const int v, const BucketEntryT &entry, EntryDeletion &del, int64_t &numEntriesVisited) const {
