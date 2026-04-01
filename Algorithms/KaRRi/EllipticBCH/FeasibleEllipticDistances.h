@@ -70,6 +70,16 @@ namespace karri {
                 minDistFromPDLocToNextStop.resize(maxStopId + 1);
             }
 
+            const auto totalNumLabels = static_cast<size_t>(maxStopId + 1) * numLabelsPerStop;
+            if (totalNumLabels > distToRelevantPDLocs.capacity()) {
+                distToRelevantPDLocs.reserve(totalNumLabels);
+                distFromRelevantPDLocsToNextStop.reserve(totalNumLabels);
+                if constexpr (StoreMeetingVertices) {
+                    meetingVerticesToRelevantPDLocs.reserve(totalNumLabels);
+                    meetingVerticesFromRelevantPDLocsToNextStop.reserve(totalNumLabels);
+                }
+            }
+
             // Reset startOfRangeInValueArray using stopIdsWithRelevantPDLocs from previous run,
             // then clear stopIdsWithRelevantPDLocs
             for (const auto& stopId : stopIdsWithRelevantPDLocs)
@@ -78,10 +88,10 @@ namespace karri {
                                 [](const auto idx) { return idx == INVALID_INDEX; }));
             stopIdsWithRelevantPDLocs.clear();
 
-            distToRelevantPDLocs.clear();
-            distFromRelevantPDLocsToNextStop.clear();
-            meetingVerticesToRelevantPDLocs.clear();
-            meetingVerticesFromRelevantPDLocsToNextStop.clear();
+            distToRelevantPDLocs.resize(0);
+            distFromRelevantPDLocsToNextStop.resize(0);
+            meetingVerticesToRelevantPDLocs.resize(0);
+            meetingVerticesFromRelevantPDLocsToNextStop.resize(0);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             stats.initializationTime += time;
@@ -278,15 +288,19 @@ namespace karri {
             const auto curNumLabels = distToRelevantPDLocs.size();
             startOfRangeInValueArray[stopId] = curNumLabels;
             stopIdsWithRelevantPDLocs.push_back(stopId);
-            distToRelevantPDLocs.insert(distToRelevantPDLocs.end(), numLabelsPerStop, DistanceLabel(INFTY));
-            distFromRelevantPDLocsToNextStop.insert(distFromRelevantPDLocsToNextStop.end(), numLabelsPerStop,
-                                                    DistanceLabel(INFTY));
+            distToRelevantPDLocs.resize(curNumLabels + numLabelsPerStop, DistanceLabel(INFTY));
+            distFromRelevantPDLocsToNextStop.resize(curNumLabels + numLabelsPerStop, DistanceLabel(INFTY));
+            // distToRelevantPDLocs.insert(distToRelevantPDLocs.end(), numLabelsPerStop, DistanceLabel(INFTY));
+            // distFromRelevantPDLocsToNextStop.insert(distFromRelevantPDLocsToNextStop.end(), numLabelsPerStop,
+            //                                         DistanceLabel(INFTY));
             // If we store meeting vertices also allocate entries in meeting vertices value arrays.
             if constexpr (StoreMeetingVertices) {
-                meetingVerticesToRelevantPDLocs.insert(meetingVerticesToRelevantPDLocs.end(), numLabelsPerStop,
-                                                       DistanceLabel(INVALID_VERTEX));
-                meetingVerticesFromRelevantPDLocsToNextStop.insert(meetingVerticesFromRelevantPDLocsToNextStop.end(),
-                                                                   numLabelsPerStop, DistanceLabel(INVALID_VERTEX));
+                meetingVerticesToRelevantPDLocs.resize(curNumLabels + numLabelsPerStop, DistanceLabel(INVALID_VERTEX));
+                meetingVerticesFromRelevantPDLocsToNextStop.resize(curNumLabels + numLabelsPerStop, DistanceLabel(INVALID_VERTEX));
+                // meetingVerticesToRelevantPDLocs.insert(meetingVerticesToRelevantPDLocs.end(), numLabelsPerStop,
+                //                                        DistanceLabel(INVALID_VERTEX));
+                // meetingVerticesFromRelevantPDLocsToNextStop.insert(meetingVerticesFromRelevantPDLocsToNextStop.end(),
+                //                                                    numLabelsPerStop, DistanceLabel(INVALID_VERTEX));
             }
 
             minDistToPDLoc[stopId] = INFTY;
