@@ -249,8 +249,8 @@ KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
                                                              revPsgGraph, vehChEnv, psgChEnv, ellipticSourceBuckets,
                                                              ellipticTargetBuckets, pdLocsAtExistingStops,
                                                              lastStopBuckets, lastStopBucketsEnv, fleet, routeState);
-    using InsertionFinderImpl = BatchAssignmentFinder<ThreadLocalAssignmentFinderFactoryImpl>;
-    InsertionFinderImpl insertionFinder(asgnFinderFactory);
+    using InsertionFinderImpl = BatchAssignmentFinder<VehicleInputGraph, VehCHEnv, ThreadLocalAssignmentFinderFactoryImpl>;
+    InsertionFinderImpl insertionFinder(vehicleInputGraph, vehChEnv, asgnFinderFactory);
 
 
 #if KARRI_OUTPUT_VEHICLE_PATHS

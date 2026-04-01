@@ -37,14 +37,25 @@ namespace karri {
 
 
 
-    template<typename AssignmentFinderFactoryT>
+    template<typename VehicleInputGraphT, typename VehCHEnvT, typename AssignmentFinderFactoryT>
     class BatchAssignmentFinder {
 
     public:
 
-        BatchAssignmentFinder(AssignmentFinderFactoryT& assignmentFinderFactory) : asgnFinderFactory(assignmentFinderFactory) {}
+        BatchAssignmentFinder(const VehicleInputGraphT& vehicleInputGraph,
+            const VehCHEnvT &chEnv,
+            AssignmentFinderFactoryT& assignmentFinderFactory)
+        : graph(vehicleInputGraph), ch(chEnv.getCH()), asgnFinderFactory(assignmentFinderFactory) {}
 
-        std::vector<RequestState> findBestAssignmentsForBatchParallel(const std::vector<Request>& requestBatch, const int now, std::vector<stats::DispatchingPerformanceStats>& stats) {
+        std::vector<RequestState> findBestAssignmentsForBatchParallel(std::vector<Request>& requestBatch, const int now, std::vector<stats::DispatchingPerformanceStats>& stats) {
+
+            std::sort(requestBatch.begin(), requestBatch.end(), [this](const Request& a, const Request& b) {
+                const auto& aRankSrc = ch.rank(graph.edgeHead(a.origin));
+                const auto& aRankDst = ch.rank(graph.edgeTail(a.destination));
+                const auto& bRankSrc = ch.rank(graph.edgeHead(b.origin));
+                const auto& bRankDst = ch.rank(graph.edgeTail(b.destination));
+                return aRankSrc < bRankSrc || (aRankSrc == bRankSrc && aRankDst < bRankDst);
+            });
 
             std::vector<RequestState> responses(requestBatch.size());
 
@@ -77,6 +88,8 @@ namespace karri {
 
     private:
 
+        const VehicleInputGraphT &graph;
+        const CH& ch;
         AssignmentFinderFactoryT& asgnFinderFactory;
     };
 
