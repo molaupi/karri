@@ -44,3 +44,13 @@ endif()
 
 # include KaRRi compile time parameters
 include(KaRRi_compile_time_parameters.cmake)
+
+
+# Executable for P2P Algorithms
+add_executable(RunPHASTQueries RunPHASTQueries.cc)
+target_compile_definitions(RunPHASTQueries PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(RunPHASTQueries PRIVATE ${FULL_WARNINGS})
+target_link_libraries(RunPHASTQueries routingkit kassert fast_cpp_csv_parser vectorclass)
+if(OpenMP_FOUND)
+    target_link_libraries(RunPHASTQueries OpenMP::OpenMP_CXX)
+endif()

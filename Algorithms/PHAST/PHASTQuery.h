@@ -29,6 +29,7 @@
 #include <vector>
 #include "Algorithms/Dijkstra/DagShortestPaths.h"
 #include "DataStructures/Labels/Containers/StampedDistanceLabelContainer.h"
+#include "DataStructures/Containers/FastResetFlagArray.h"
 #include "RPHASTSelectionPhase.h"
 
 template<typename SourceGraphT, typename WeightT, typename LabelSetT,
