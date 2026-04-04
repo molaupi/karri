@@ -60,7 +60,6 @@ namespace karri::mode_choice::utility_logit {
         }
 
         T select(const std::vector<Alternative<T> > &elements) const {
-            KASSERT(elements.size() == options.size());
             flush();
 
             double sum = 0.0;

@@ -1,4 +1,3 @@
-library(readr)
 
 # Converts number of seconds to MM:SS format.
 convertToMMSS <- function(seconds) {
@@ -24,27 +23,32 @@ convertToHHMM <- function(seconds) {
 # "<output-dir>/Berlin-1pct_pedestrian/karri-col-simd_300_300"), 
 # this function returns an overview over the solution quality of the assignments.
 quality <- function(file_base, mode_choice=TRUE) {
-  asgnstats <- read_csv(paste0(file_base, ".assignmentquality.csv"), progress = FALSE, show_col_types = FALSE)
-  asgnstats <- asgnstats[order(asgnstats$request_id),]
-  legstats <- read_csv(paste0(file_base, ".legstats.csv"), progress = FALSE, show_col_types = FALSE)
-  bestasgns <- read_csv(paste0(file_base, ".bestassignments.csv"), progress = FALSE, show_col_types = FALSE)
-  bestasgns <- bestasgns[order(bestasgns$request_id),]
+  asgnstats <- fread(paste0(file_base, ".assignmentquality.csv"))
+  setkey(asgnstats, request_id)
+  # asgnstats <- asgnstats[order(asgnstats$request_id)]
+  legstats <- fread(paste0(file_base, ".legstats.csv"))
+  bestasgns <- fread(paste0(file_base, ".bestassignments.csv"))
+  setkey(bestasgns, request_id)
+  # bestasgns <- bestasgns[order(bestasgns$request_id)]
   ratioTaxi <- 1
   if (mode_choice) {
-    modes <- read_csv(paste0(file_base, ".modechoice.csv"), progress = FALSE, show_col_types = FALSE)
-    modes <- modes[order(modes$request_id),]
-    numTaxi <- sum(modes["mode"] == "Taxi")
+    modes <- fread(paste0(file_base, ".modechoice.csv"))
+    setkey(modes, request_id)
+    # modes <- modes[order(modes$request_id)]
+    numTaxi <- sum(modes[["mode"]] == "Taxi")
     numTotal <- nrow(modes)
     ratioTaxi <- numTaxi / numTotal
     stopifnot(numTotal == nrow(asgnstats))
-    stopifnot(sum(asgnstats$request_id != modes$request_id) == 0)
-    asgnstats <- asgnstats[modes["mode"] == "Taxi",]
     stopifnot(numTotal == nrow(bestasgns))
+    stopifnot(sum(asgnstats$request_id != modes$request_id) == 0)
     stopifnot(sum(bestasgns$request_id != modes$request_id) == 0)
-    bestasgns <- bestasgns[modes["mode"] == "Taxi",]
+    modes <- modes[mode == "Taxi"]
+    setkey(modes, request_id)
+    asgnstats <- asgnstats[modes, nomatch=0]
+    bestasgns <- bestasgns[modes, nomatch=0]
   }
   
-  eventsimstats <- read_csv(paste0(file_base, ".eventsimulationstats.csv"), progress = FALSE, show_col_types = FALSE)
+  eventsimstats <- fread(paste0(file_base, ".eventsimulationstats.csv"))
   num.Vehicles <- sum(eventsimstats$type == "VehicleStartup")
   
   df <- data.frame(
