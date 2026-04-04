@@ -44,20 +44,16 @@ namespace karri::mode_choice {
             stats.privateCarTravelTime = drivingTimeMinutes;
         }
 
-        void registerPublicTransport(const int travelTimeTenthsOfSeconds, const int waitTimeTenthsOfSeconds,
-                                     const int accEgrTimeTenthsOfSeconds) {
-            KASSERT(travelTimeTenthsOfSeconds >= 0 && travelTimeTenthsOfSeconds < INFTY);
-            KASSERT(waitTimeTenthsOfSeconds >= 0 && waitTimeTenthsOfSeconds < INFTY);
-            KASSERT(accEgrTimeTenthsOfSeconds >= 0 && accEgrTimeTenthsOfSeconds < INFTY);
-            const auto travelTimeMinutes = tenthsOfSecondsToMinutes(travelTimeTenthsOfSeconds);
-            const auto waitTimeMinutes = tenthsOfSecondsToMinutes(waitTimeTenthsOfSeconds);
-            const auto accEgrTimeMinutes = tenthsOfSecondsToMinutes(accEgrTimeTenthsOfSeconds);
+        void registerPublicTransport(const PTJourneyData &ptJourneyData) {
+            KASSERT(ptJourneyData.travelTimeMinutes >= 0.0 && ptJourneyData.travelTimeMinutes < PTJourneyData::MAX_VAL);
+            KASSERT(ptJourneyData.waitTimeMinutes >= 0.0 && ptJourneyData.waitTimeMinutes < PTJourneyData::MAX_VAL);
+            KASSERT(ptJourneyData.accessEgressTimeMinutes >= 0.0 && ptJourneyData.accessEgressTimeMinutes < PTJourneyData::MAX_VAL);
             entries.push_back({
-                TransportMode::PublicTransport, Attributes{travelTimeMinutes, waitTimeMinutes, accEgrTimeMinutes}, true
+                TransportMode::PublicTransport, Attributes{ptJourneyData.travelTimeMinutes, ptJourneyData.waitTimeMinutes, ptJourneyData.accessEgressTimeMinutes}, true
             });
-            stats.ptTravelTime = travelTimeMinutes;
-            stats.ptWaitTime = waitTimeMinutes;
-            stats.ptAccEgrTime = accEgrTimeMinutes;
+            stats.ptTravelTime = ptJourneyData.travelTimeMinutes;
+            stats.ptWaitTime = ptJourneyData.waitTimeMinutes;
+            stats.ptAccEgrTime = ptJourneyData.accessEgressTimeMinutes;
         }
 
         void registerTaxi(const Assignment &assignment, const RequestState &requestState) {

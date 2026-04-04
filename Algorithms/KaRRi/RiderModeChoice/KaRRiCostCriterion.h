@@ -34,7 +34,7 @@ namespace karri::mode_choice {
             // no op
         }
 
-        void registerPublicTransport(const int, const int, const int) {
+        void registerPublicTransport(const PTJourneyData&) {
             // no op
         }
 

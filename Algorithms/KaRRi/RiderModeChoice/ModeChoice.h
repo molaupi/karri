@@ -49,9 +49,7 @@ namespace karri::mode_choice {
             }
 
             if (allowPublicTransport && ptJourneyData.isValid()) {
-                criterion.registerPublicTransport(ptJourneyData.travelTimeMinutes,
-                                                  ptJourneyData.waitTimeMinutes,
-                                                  ptJourneyData.accessEgressTimeMinutes);
+                criterion.registerPublicTransport(ptJourneyData);
             }
 
             const auto &bestAsgn = resp.getBestAssignment();
