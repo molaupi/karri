@@ -32,6 +32,7 @@
 #include "DataStructures/Utilities/IteratorRange.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/RouteState.h"
+#include "Algorithms/KaRRi/Stats/LastStopBucketUpdateStats.h"
 
 namespace karri {
 
@@ -46,10 +47,9 @@ namespace karri {
     public:
 
         OnlyLastStopsAtVerticesBucketSubstitute(const InputGraphT &inputGraph, const RouteState &routeState,
-                                                const int fleetSize)
-                : inputGraph(inputGraph), routeState(routeState), fleetSize(fleetSize),
+                                                const Fleet &fleet)
+                : inputGraph(inputGraph), routeState(routeState), fleetSize(static_cast<int>(fleet.size())), fleet(fleet),
                   firstLastStopAtVertex(inputGraph.numVertices()), vehiclesOrderedByLastStop() {
-            unused(this->fleetSize); // only used for sanity checks in asserts
         }
 
         int numLastStopsAtVertex(const int vertex) const {
@@ -58,30 +58,104 @@ namespace karri {
             return range.end - range.start;
         }
 
-        void generateIdleBucketEntries(const Vehicle &veh) {
+        void generateIdleBucketEntries(const Vehicle &veh, stats::UpdatePerformanceStats& stats) {
+            Timer timer;
             const int v = inputGraph.edgeHead(
                     routeState.stopLocationsFor(veh.vehicleId)[routeState.numStopsOf(veh.vehicleId) - 1]);
             insertLastStopAt(v, veh.vehicleId);
+            stats.lastStopBucketsGenerateEntriesTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
-        void generateNonIdleBucketEntries(const Vehicle &veh) {
+        void generateNonIdleBucketEntries(const Vehicle &veh, stats::UpdatePerformanceStats& stats) {
+            Timer timer;
             const int v = inputGraph.edgeHead(
                     routeState.stopLocationsFor(veh.vehicleId)[routeState.numStopsOf(veh.vehicleId) - 1]);
             insertLastStopAt(v, veh.vehicleId);
+            stats.lastStopBucketsGenerateEntriesTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
-        void updateBucketEntries(const Vehicle &, const int) {
+        void updateBucketEntries(const Vehicle &, const int, stats::UpdatePerformanceStats&) {
             // no op since last stop of vehicle does not change
         }
 
-        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
+        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx, stats::UpdatePerformanceStats& stats) {
+            Timer timer;
             const int v = inputGraph.edgeHead(routeState.stopLocationsFor(veh.vehicleId)[prevLastStopIdx]);
             removeLastStopAt(v, veh.vehicleId);
+            stats.lastStopBucketsDeleteEntriesTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
-        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx) {
+        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx, stats::UpdatePerformanceStats& stats) {
+            Timer timer;
             const int v = inputGraph.edgeHead(routeState.stopLocationsFor(veh.vehicleId)[prevLastStopIdx]);
             removeLastStopAt(v, veh.vehicleId);
+            stats.lastStopBucketsDeleteEntriesTime += timer.elapsed<std::chrono::nanoseconds>();
+        }
+
+        // Batched interface
+
+        void addIdleBucketEntryInsertions(const int vehId) {
+            vehiclesToGenerate.local().push_back(vehId);
+        }
+
+        void addNonIdleBucketEntryInsertions(const int vehId) {
+            vehiclesToGenerate.local().push_back(vehId);
+        }
+
+        void addIdleBucketEntryDeletions(const int vehId, const int stopIndex) {
+            vehiclesToDelete.local().push_back({vehId, stopIndex});
+        }
+
+        void addNonIdleBucketEntryDeletions(const int vehId, const int stopIndex) {
+            vehiclesToDelete.local().push_back({vehId, stopIndex});
+        }
+
+        void addBucketEntryInsertionsAndDeletionsForUpdatedSchedule(const int, const int) {
+            // No op as no entries to update
+        }
+
+
+        void addBucketEntryInsertionsAndDeletionsForVehicleHasBecomeIdle(const int ) {
+            // No op as no entries to update
+        }
+
+        int numPendingEntryInsertions() const {
+            int sum = 0;
+            for (const auto &local: vehiclesToGenerate)
+                sum += local.size();
+            return sum;
+        }
+
+        int numPendingEntryDeletions() const {
+            int sum = 0;
+            for (const auto &local: vehiclesToDelete)
+                sum += local.size();
+            return sum;
+        }
+
+        bool noPendingEntryInsertionsOrDeletions() const {
+            return numPendingEntryInsertions() == 0 && numPendingEntryDeletions() == 0;
+        }
+
+        void commitEntryInsertionsAndDeletions(LastStopBucketUpdateStats&) {
+            for (const auto &local: vehiclesToGenerate) {
+                for (const auto &vehId: local) {
+                    const int v = inputGraph.edgeHead(
+                            routeState.stopLocationsFor(vehId)[routeState.numStopsOf(vehId) - 1]);
+                    insertLastStopAt(v, vehId);
+                }
+            }
+
+            for (const auto &local: vehiclesToDelete) {
+                for (const auto &[vehId, stopIndex]: local) {
+                    const int v = inputGraph.edgeHead(routeState.stopLocationsFor(vehId)[stopIndex]);
+                    removeLastStopAt(v, vehId);
+                }
+            }
+        }
+
+        bool verifyIdleAndNonIdleBorders() const {
+            return true; // No borders in this substitute
         }
 
         ConstantVectorRange<int> vehiclesWithLastStopAt(const int vertex) const {
@@ -119,7 +193,18 @@ namespace karri {
         const InputGraphT &inputGraph;
         const RouteState &routeState;
         const int fleetSize;
+        const Fleet &fleet;
         std::vector<dynamic_ragged2d::ValueBlockPosition> firstLastStopAtVertex;
         std::vector<int> vehiclesOrderedByLastStop;
+
+        using EntryInsertionVecT = parallel::scalable_vector<int>;
+        struct Deletion {
+            int vehId = INVALID_ID;
+            int stopIndex = INVALID_INDEX;
+        };
+        using EntryDeletionVecT = parallel::scalable_vector<Deletion>;
+        tbb::enumerable_thread_specific<EntryInsertionVecT> vehiclesToGenerate;
+            tbb::enumerable_thread_specific<EntryDeletionVecT> vehiclesToDelete;
+
     };
 }

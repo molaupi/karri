@@ -229,7 +229,7 @@ KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
     struct LastStopBuckets {
     } lastStopBuckets;
     using LastStopBucketsEnv = OnlyLastStopsAtVerticesBucketSubstitute<VehicleInputGraph>;
-    LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, routeState, fleet.size());
+    LastStopBucketsEnv lastStopBucketsEnv(vehicleInputGraph, routeState, fleet);
 #endif
     // Last stop bucket environment (or substitute) also serves as a source of information on the last stops at vertices.
     using LastStopAtVerticesInfo = LastStopBucketsEnv;
