@@ -27,30 +27,39 @@
 
 #include "SingleUpdatesSortedLastStopBucketsEnvironment.h"
 #include "BatchUpdatesSortedLastStopBucketsEnvironment.h"
+#include "BatchUpdatesUnsortedLastStopBucketsEnvironment.h"
 
 namespace karri {
-
-    // Facade around SingleUpdatesSortedLastStopBucketsEnvironment and BatchUpdatesSortedLastStopBucketsEnvironment to have one
-    // interface for both single and batched operations on sorted last stop buckets.
-    template<typename InputGraphT, typename CHEnvT>
-    class SingleAndBatchedSortedLastStopBucketsEnvironment {
-
+    // Facade around SingleUpdates(Unsorted|Sorted)LastStopBucketsEnvironment and BatchUpdates(Unsorted|Sorted)LastStopBucketsEnvironment to have one
+    // interface for both single and batched operations on last stop buckets.
+    template<typename InputGraphT, typename CHEnvT, bool SORTED>
+    class SingleAndBatchedLastStopBucketsEnvironment {
     public:
-        using BucketContainer = LastStopBucketContainer<LastStopBucketEntry, CompareLastStopBucketEntries, CompareLastStopBucketEntries>;
+        using BucketContainer = std::conditional_t<SORTED,
+            LastStopBucketContainer<LastStopBucketEntry, CompareLastStopBucketEntries, CompareLastStopBucketEntries>,
+            DynamicBucketContainer<LastStopBucketEntry> >;
 
-        SingleAndBatchedSortedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
-                                         const RouteState &routeState,
-                                         BucketContainer &bucketContainer)
-                : singleEnv(inputGraph, chEnv, routeState, bucketContainer),
-        batchEnv(inputGraph, chEnv, routeState, bucketContainer) {}
+        using SingleEnv = std::conditional_t<SORTED,
+            SingleUpdatesSortedLastStopBucketsEnvironment<InputGraphT, CHEnvT>,
+            SingleUpdatesUnsortedLastStopBucketsEnvironment<InputGraphT, CHEnvT> >;
+        using BatchEnv = std::conditional_t<SORTED,
+            BatchUpdatesSortedLastStopBucketsEnvironment<InputGraphT, CHEnvT>,
+            BatchUpdatesUnsortedLastStopBucketsEnvironment<InputGraphT, CHEnvT> >;
+
+        SingleAndBatchedLastStopBucketsEnvironment(const InputGraphT &inputGraph, const CHEnvT &chEnv,
+                                                   const RouteState &routeState,
+                                                   BucketContainer &bucketContainer)
+            : singleEnv(inputGraph, chEnv, routeState, bucketContainer),
+              batchEnv(inputGraph, chEnv, routeState, bucketContainer) {
+        }
 
         // Single interface
 
-        void generateIdleBucketEntries(const Vehicle &veh, stats::UpdatePerformanceStats& stats) {
+        void generateIdleBucketEntries(const Vehicle &veh, stats::UpdatePerformanceStats &stats) {
             singleEnv.generateIdleBucketEntries(veh, stats);
         }
 
-        void generateNonIdleBucketEntries(const Vehicle &veh, stats::UpdatePerformanceStats& stats) {
+        void generateNonIdleBucketEntries(const Vehicle &veh, stats::UpdatePerformanceStats &stats) {
             singleEnv.generateNonIdleBucketEntries(veh, stats);
         }
 
@@ -64,15 +73,17 @@ namespace karri {
         //      more precise bucket sorting and pruning.
         // When a vehicle becomes non-idle after being idle, it's last stop always changes, so the update is expressed
         // as a delete operation for the old location and a generate operation for the new location instead.
-        void updateBucketEntries(const Vehicle &veh, const int stopIndex, stats::UpdatePerformanceStats& stats) {
+        void updateBucketEntries(const Vehicle &veh, const int stopIndex, stats::UpdatePerformanceStats &stats) {
             singleEnv.updateBucketEntries(veh, stopIndex, stats);
         }
 
-        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx, stats::UpdatePerformanceStats& stats) {
+        void removeIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx,
+                                     stats::UpdatePerformanceStats &stats) {
             singleEnv.removeIdleBucketEntries(veh, prevLastStopIdx, stats);
         }
 
-        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx, stats::UpdatePerformanceStats& stats) {
+        void removeNonIdleBucketEntries(const Vehicle &veh, const int prevLastStopIdx,
+                                        stats::UpdatePerformanceStats &stats) {
             singleEnv.removeNonIdleBucketEntries(veh, prevLastStopIdx, stats);
         }
 
@@ -117,7 +128,7 @@ namespace karri {
             return batchEnv.noPendingEntryInsertionsOrDeletions();
         }
 
-        void commitEntryInsertionsAndDeletions(LastStopBucketUpdateStats& stats) {
+        void commitEntryInsertionsAndDeletions(LastStopBucketUpdateStats &stats) {
             batchEnv.commitEntryInsertionsAndDeletions(stats);
         }
 
@@ -131,9 +142,7 @@ namespace karri {
         }
 
     private:
-
-        SingleUpdatesSortedLastStopBucketsEnvironment<InputGraphT, CHEnvT> singleEnv;
-        BatchUpdatesSortedLastStopBucketsEnvironment<InputGraphT, CHEnvT> batchEnv;
-
+        SingleEnv singleEnv;
+        BatchEnv batchEnv;
     };
 }

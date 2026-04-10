@@ -48,7 +48,6 @@
 template<typename BucketEntryT>
 class DynamicBucketContainer {
 public:
-
     using Entry = BucketEntryT;
     using Bucket = ConstantVectorRange<BucketEntryT>;
 
@@ -85,10 +84,9 @@ public:
     // The transformation must be callable with a single entry of type BucketEntryT& as an argument.
     // Returns true if an entry is found and replaced and false if no entry with targetId can be found.
     template<typename TransformationT>
-    bool update(const int vertex, const int targetId, const TransformationT &transform) {
+    bool update(const int vertex, const int targetId, const TransformationT &transform, int64_t &numEntriesVisited) {
         assert(vertex >= 0);
         assert(vertex < bucketPositions.size());
-        numEntriesVisited = 0;
         const auto &pos = bucketPositions[vertex];
         for (auto i = pos.start; i < pos.end; ++i) {
             ++numEntriesVisited;
@@ -101,10 +99,9 @@ public:
     }
 
     // Removes the entry for targetId from the bucket of the specified vertex.
-    bool remove(const int vertex, const int targetId) {
+    bool remove(const int vertex, const int targetId, int64_t& numEntriesVisited) {
         assert(vertex >= 0);
         assert(vertex < bucketPositions.size());
-        numEntriesVisited = 0;
         const auto &pos = bucketPositions[vertex];
         for (auto i = pos.start; i < pos.end; ++i) {
             ++numEntriesVisited;
@@ -117,8 +114,8 @@ public:
     }
 
     // Removes the given entry from the bucket of the specified vertex.
-    bool remove(const int vertex, const BucketEntryT &entry) {
-        return remove(vertex, entry.targetId);
+    bool remove(const int vertex, const BucketEntryT &entry, int64_t &numEntriesVisited) {
+        return remove(vertex, entry.targetId, numEntriesVisited);
     }
 
 
@@ -128,7 +125,7 @@ public:
         assert(vertex >= 0);
         assert(vertex < bucketPositions.size());
         dynamic_ragged2d::removalOfSortedCols(vertex, indicesRange, bucketPositions, entries);
-//        numEntriesVisited = indicesRange.size();
+        //        numEntriesVisited = indicesRange.size();
     }
 
     // Removes multiple entries at given indices in the bucket while keeping the order of remaining elements.
@@ -138,7 +135,7 @@ public:
         assert(vertex >= 0);
         assert(vertex < bucketPositions.size());
         dynamic_ragged2d::stableRemovalOfSortedCols(vertex, indicesRange, bucketPositions, entries);
-//        numEntriesVisited = indicesRange.size();
+        //        numEntriesVisited = indicesRange.size();
     }
 
     void clearBucket(const int vertex) {
@@ -167,9 +164,95 @@ public:
         return std::all_of(entries.begin(), entries.end(), [hole](const BucketEntryT &entry) { return entry == hole; });
     }
 
-    // Returns the number of bucket entries visited during the last remove operation.
-    int getNumEntriesVisitedInLastUpdateOrRemove() const noexcept {
-        return numEntriesVisited;
+    size_t totalNumEntries() const {
+        size_t numEntries = 0;
+        for (const auto &pos: bucketPositions) {
+            numEntries += pos.end - pos.start;
+        }
+        return numEntries;
+    }
+
+
+    // Batch update interface:
+
+    struct EntryInsertion {
+        int row = INVALID_INDEX;
+        BucketEntryT value = BucketEntryT();
+
+        constexpr bool operator==(const EntryInsertion &) const noexcept = default;
+    };
+
+    struct EntryDeletion {
+        int row = INVALID_INDEX;
+        int col = INVALID_INDEX;
+
+        constexpr bool operator==(const EntryDeletion &) const noexcept = default;
+    };
+
+    bool getEntryInsertion(const int v, const BucketEntryT &entry, EntryInsertion &ins) const {
+        KASSERT(v >= 0);
+        KASSERT(v < bucketPositions.size());
+        ins = {v, entry};
+        return true;
+    }
+
+    bool getEntryDeletion(const int v, const int targetId, EntryDeletion &del, int64_t &pNumEntriesVisited) const {
+        KASSERT(v >= 0);
+        KASSERT(v < bucketPositions.size());
+        const auto start = bucketPositions[v].start;
+        const auto &pos = bucketPositions[v];
+        for (auto i = pos.start; i < pos.end; ++i) {
+            ++pNumEntriesVisited;
+            if (entries[i].targetId == targetId) {
+                del = {v, i - start};
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool
+    getEntryDeletion(const int v, const BucketEntryT &entry, EntryDeletion &del, int64_t &pNumEntriesVisited) const {
+        return getEntryDeletion(v, entry.targetId, del, pNumEntriesVisited);
+    }
+
+    template<typename EntryInsertionsVecT, typename EntryDeletionsVecT>
+    void batchedCommitInsertionsAndDeletions(EntryInsertionsVecT &insertions,
+                                             EntryDeletionsVecT &deletions) {
+        batchedCommitInsertions(insertions);
+        batchedCommitDeletions(deletions);
+    }
+
+    template<typename EntryInsertionsVecT>
+    void batchedCommitInsertions(EntryInsertionsVecT &insertions) {
+        for (const auto &ins: insertions) {
+            dynamic_ragged2d::insertion(ins.row, ins.value, bucketPositions, entries);
+        }
+    }
+
+    template<typename EntryDeletionsVecT>
+    void batchedCommitDeletions(EntryDeletionsVecT &deletions) {
+        KASSERT(entries.size() >= deletions.size());
+        if (deletions.empty())
+            return;
+
+        // Sort deletions by row and column.
+        std::sort(deletions.begin(), deletions.end(), [&](const auto &d1, const auto &d2) {
+            return d1.row < d2.row || (d1.row == d2.row && d1.col < d2.col);
+        });
+
+        // Iterate over deletions. Whenever next deletion is for a different row, perform deletions for current row.
+        int currentRow = deletions[0].row;
+        std::vector<int> colsToDelete;
+        for (const auto &del: deletions) {
+            if (del.row != currentRow) {
+                dynamic_ragged2d::removalOfSortedCols(currentRow, colsToDelete, bucketPositions, entries);
+                colsToDelete.clear();
+                currentRow = del.row;
+            }
+            colsToDelete.push_back(del.col);
+        }
+        dynamic_ragged2d::removalOfSortedCols(currentRow, colsToDelete, bucketPositions, entries);
     }
 
 private:
@@ -177,5 +260,4 @@ private:
 
     std::vector<BucketPosition> bucketPositions;
     std::vector<BucketEntryT> entries;
-    int numEntriesVisited;
 };

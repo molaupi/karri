@@ -64,7 +64,7 @@
 #include "Algorithms/KaRRi/DalsAssignments/DALSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/LastStopSearches/BatchUpdatesSortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/LastStopSearches/SingleUpdatesSortedLastStopBucketsEnvironment.h"
-#include "Algorithms/KaRRi/LastStopSearches/UnsortedLastStopBucketsEnvironment.h"
+#include "Algorithms/KaRRi/LastStopSearches/SingleUpdatesUnsortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
 #include "Algorithms/KaRRi/RequestState/PDLocsFinder.h"
@@ -77,7 +77,7 @@
 #include "Algorithms/KaRRi/BatchAssignmentFinder.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBucketEntry.h"
 #include "Algorithms/KaRRi/EllipticBCH/SingleAndBatchEllipticBucketsEnvironment.h"
-#include "Algorithms/KaRRi/LastStopSearches/SingleAndBatchedSortedLastStopBucketsEnvironment.h"
+#include "Algorithms/KaRRi/LastStopSearches/SingleAndBatchedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/RiderModeChoice/KaRRiCostCriterion.h"
 
 #include "Parallel/hardware_topology.h"
@@ -216,10 +216,11 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
 #if KARRI_PALS_STRATEGY == KARRI_COL || KARRI_PALS_STRATEGY == KARRI_IND || \
 KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
 
-    static_assert(LAST_STOP_SORTED_BUCKETS, "Unsorted last stop buckets are not supported right now.");
     using LastStopBucketsEnv = std::conditional_t<BATCHED_DISPATCHING,
-        SingleAndBatchedSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
-        SingleUpdatesSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>
+        SingleAndBatchedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv, LAST_STOP_SORTED_BUCKETS>,
+        std::conditional_t<LAST_STOP_SORTED_BUCKETS,
+            SingleUpdatesSortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv>,
+            SingleUpdatesUnsortedLastStopBucketsEnvironment<VehicleInputGraph, VehCHEnv> >
     >;
     using LastStopBuckets = LastStopBucketsEnv::BucketContainer;
     LastStopBuckets lastStopBuckets(vehicleInputGraph.numVertices());
@@ -249,7 +250,8 @@ KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
                                                              revPsgGraph, vehChEnv, psgChEnv, ellipticSourceBuckets,
                                                              ellipticTargetBuckets, pdLocsAtExistingStops,
                                                              lastStopBuckets, lastStopBucketsEnv, fleet, routeState);
-    using InsertionFinderImpl = BatchAssignmentFinder<VehicleInputGraph, VehCHEnv, ThreadLocalAssignmentFinderFactoryImpl>;
+    using InsertionFinderImpl = BatchAssignmentFinder<VehicleInputGraph, VehCHEnv,
+        ThreadLocalAssignmentFinderFactoryImpl>;
     InsertionFinderImpl insertionFinder(vehicleInputGraph, vehChEnv, asgnFinderFactory);
 
 
@@ -627,7 +629,8 @@ int main(int argc, char *argv[]) {
         }
 
         if (clp.isSet("seq-and-non-batched")) {
-            std::cout << "Running simulation with sequential and non-batched dispatching (original KaRRi mode)." << std::endl;
+            std::cout << "Running simulation with sequential and non-batched dispatching (original KaRRi mode)." <<
+                    std::endl;
             initializeStateAndRunSimulation<false>(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
                                                    fleet, requests, ptJourneyData, allowPTMode);
         } else {
