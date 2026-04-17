@@ -503,7 +503,7 @@ namespace karri::stats {
 
         int64_t getTotalTime() const {
             return elliptic_generate_time + elliptic_update_time +
-                   elliptic_delete_time + lastStopBucketsGenerateEntriesTime +
+                   elliptic_delete_time + lastStopBucketsGenerateEntriesTime + lastStopBucketsUpdateEntriesTime +
                    lastStopBucketsDeleteEntriesTime + lastStopsAtVerticesUpdateTime + updateRoutesTime;
         }
 
@@ -518,6 +518,7 @@ namespace karri::stats {
             elliptic_delete_numEntriesScanned = 0;
             elliptic_delete_time = 0;
             lastStopBucketsGenerateEntriesTime = 0;
+            lastStopBucketsUpdateEntriesTime = 0;
             lastStopBucketsDeleteEntriesTime = 0;
             lastStopsAtVerticesUpdateTime = 0;
             updateRoutesTime = 0;
@@ -535,6 +536,7 @@ namespace karri::stats {
                 "elliptic.delete.numEntriesScanned,"
                 "elliptic.delete.time,"
                 "last_stop_buckets_generate_entries_time,"
+                "last_stop_buckets_update_entries_time,"
                 "last_stop_buckets_delete_entries_time,"
                 "last_stop_at_vertices_update_time,"
                 "update_routes_time,"
@@ -553,6 +555,7 @@ namespace karri::stats {
                << elliptic_delete_numEntriesScanned << ", "
                << elliptic_delete_time << ", "
                << lastStopBucketsGenerateEntriesTime << ", "
+            << lastStopBucketsUpdateEntriesTime << ", "
                << lastStopBucketsDeleteEntriesTime << ", "
                << lastStopsAtVerticesUpdateTime << ", "
                << updateRoutesTime << ", "
