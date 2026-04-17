@@ -55,7 +55,7 @@ namespace karri {
 
 
         struct StopWhenLeewayExceeded {
-            explicit StopWhenLeewayExceeded() : currentLeeway(-1) {}
+            explicit StopWhenLeewayExceeded(const int &currentLeeway) : currentLeeway(currentLeeway) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int, const DistLabelT &distToV, const DistLabelContT &) const noexcept {
@@ -63,29 +63,28 @@ namespace karri {
                 return allSet(distToV > currentLeeway);
             }
 
-            void setCurrentLeeway(const int newLeeway) {
-                currentLeeway = newLeeway;
-            }
+            // void setCurrentLeeway(const int newLeeway) {
+            //     currentLeeway = newLeeway;
+            // }
 
-            int currentLeeway;
+            const int &currentLeeway;
         };
 
         struct StoreSearchSpace {
-            explicit StoreSearchSpace() : searchSpace(nullptr) {}
+            explicit StoreSearchSpace(parallel::scalable_vector<int> &searchSpace) : searchSpace(searchSpace) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, const DistLabelT &, const DistLabelContT &) const noexcept {
-                KASSERT(searchSpace);
-                searchSpace->push_back(v);
+                searchSpace.push_back(v);
                 return false;
             }
 
-            void setCurSearchSpace(parallel::scalable_vector<int> *newSearchSpace) {
-                KASSERT(newSearchSpace);
-                searchSpace = newSearchSpace;
-            }
+            // void setCurSearchSpace(parallel::scalable_vector<int> *newSearchSpace) {
+            //     KASSERT(newSearchSpace);
+            //     searchSpace = newSearchSpace;
+            // }
 
-            parallel::scalable_vector<int> *searchSpace;
+            parallel::scalable_vector<int> &searchSpace;
         };
 
     public:
@@ -109,13 +108,13 @@ namespace karri {
                   sourceBuckets(sourceBuckets), targetBuckets(targetBuckets),
                   descendentHasEntry([&]() { return BitVector(inputGraph.numVertices()); }),
                   forwardSearchFromNewStop([&]() {
-                      return chEnv.getForwardTopologicalSearch(StoreSearchSpace(), StopWhenLeewayExceeded());
+                      return chEnv.getForwardTopologicalSearch(StoreSearchSpace(generateSearchSpace.local()), StopWhenLeewayExceeded(currentLeeway.local()));
                   }),
                   reverseSearchFromNewStop([&]() {
-                      return chEnv.getReverseTopologicalSearch(StoreSearchSpace(), StopWhenLeewayExceeded());
+                      return chEnv.getReverseTopologicalSearch(StoreSearchSpace(generateSearchSpace.local()), StopWhenLeewayExceeded(currentLeeway.local()));
                   }),
-                  forwardSearchFromPrevStop([&]() { return chEnv.getForwardSearch({}, StopWhenLeewayExceeded()); }),
-                  reverseSearchFromNextStop([&]() { return chEnv.getReverseSearch({}, StopWhenLeewayExceeded()); }),
+                  forwardSearchFromPrevStop([&]() { return chEnv.getForwardSearch({}, StopWhenLeewayExceeded(currentLeeway.local())); }),
+                  reverseSearchFromNextStop([&]() { return chEnv.getReverseSearch({}, StopWhenLeewayExceeded(currentLeeway.local())); }),
                   deleteSearchSpace(inputGraph.numVertices()),
                   verticesWithSourceBucketLeewayUpdates(inputGraph.numVertices()),
                   verticesWithTargetBucketLeewayUpdates(inputGraph.numVertices()) {}
@@ -170,11 +169,17 @@ namespace karri {
             const int nextStopRoot = ch.rank(inputGraph.edgeTail(nextStopLoc));
             const int nextStopOffset = inputGraph.travelTime(nextStopLoc);
 
+
+            // initialize thread local variables used in search callbacks
+            auto &localSearchSpace = generateSearchSpace.local();
+            localSearchSpace.clear();
+            currentLeeway.local() = leeway;
+
             generateBucketEntryInsertions(stopId, leeway,
                                           newStopRoot, 0, forwardSearchFromNewStop.local(), ch.upwardGraph(),
                                           nextStopRoot, nextStopOffset, reverseSearchFromNextStop.local(),
                                           ch.downwardGraph(),
-                                          sourceBuckets, sourceInsertions.local());
+                                          sourceBuckets, localSearchSpace, sourceInsertions.local());
         }
 
         // Adds entry insertions to target buckets for the given stop index of the given vehicle.
@@ -199,11 +204,16 @@ namespace karri {
             const int prevStopLoc = routeState.stopLocationsFor(vehId)[stopIndex - 1];
             const int prevStopRoot = ch.rank(inputGraph.edgeHead(prevStopLoc));
 
+            // initialize thread local variables used in search callbacks
+            auto &localSearchSpace = generateSearchSpace.local();
+            localSearchSpace.clear();
+            currentLeeway.local() = leeway;
+
             generateBucketEntryInsertions(stopId, leeway,
                                           newStopRoot, newStopOffset, reverseSearchFromNewStop.local(),
                                           ch.downwardGraph(),
                                           prevStopRoot, 0, forwardSearchFromPrevStop.local(), ch.upwardGraph(),
-                                          targetBuckets, targetInsertions.local());
+                                          targetBuckets, localSearchSpace, targetInsertions.local());
         }
 
         void updateLeewayInSourceBucketsForAllStopsOf(const int vehId, karri::stats::UpdatePerformanceStats &stats) {
@@ -458,6 +468,7 @@ namespace karri {
                                            SearchFromNeighbor &searchFromNeighbor,
                                            const CH::SearchGraph &neighborGraph,
                                            const BucketContainer &buckets,
+                                           const parallel::scalable_vector<int> &searchSpace, // will be filled by search callbacks
                                            EntryInsertionsVecT &entryInsertions
                 //,
 //                                   karri::stats::UpdatePerformanceStats &stats
@@ -469,13 +480,13 @@ namespace karri {
             KASSERT(localDescHasEntry.cardinality() == 0);
 
             // Run topological search from new stop and memorize search space:
-            parallel::scalable_vector<int> searchSpace;
-            std::get<0>(searchFromNewStop.getPruningCriterion().criterions).setCurrentLeeway(leeway);
-            std::get<1>(searchFromNewStop.getPruningCriterion().criterions).setCurSearchSpace(&searchSpace);
+            // parallel::scalable_vector<int> searchSpace;
+            // std::get<0>(searchFromNewStop.getPruningCriterion().criterions).setCurrentLeeway(leeway);
+            // std::get<1>(searchFromNewStop.getPruningCriterion().criterions).setCurSearchSpace(&searchSpace);
             searchFromNewStop.runWithOffset(newStopRoot, newStopOffSet);
 
             // Run reverse CH query from next stop:
-            searchFromNeighbor.getStoppingCriterion().setCurrentLeeway(leeway);
+            // searchFromNeighbor.getStoppingCriterion().setCurrentLeeway(leeway);
             searchFromNeighbor.runWithOffset(neighborRoot, neighborOffset);
 
             entryInsertions.emplace_back(); // Invalid last element to write to.
@@ -571,6 +582,8 @@ namespace karri {
 
         tbb::enumerable_thread_specific<BitVector> descendentHasEntry;
 
+        tbb::enumerable_thread_specific<int> currentLeeway;
+        tbb::enumerable_thread_specific<parallel::scalable_vector<int>> generateSearchSpace;
         tbb::enumerable_thread_specific<SearchFromNewStop> forwardSearchFromNewStop;
         tbb::enumerable_thread_specific<SearchFromNewStop> reverseSearchFromNewStop;
         tbb::enumerable_thread_specific<SearchFromNeighbor> forwardSearchFromPrevStop;

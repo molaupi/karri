@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "Algorithms/CH/CH.h"
+#include "Algorithms/KaRRi/EllipticBCH/SingleUpdatesEllipticBucketsEnvironment.h"
 #include "DataStructures/Graph/Graph.h"
 #include "DataStructures/Labels/Containers/ParentLabelContainer.h"
 #include "DataStructures/Labels/Containers/SimpleDistanceLabelContainer.h"
@@ -55,7 +56,9 @@ namespace elimintree {
 
 // Forward declarations for friend
 namespace karri {
-    template<typename, typename, bool>
+    template<typename, typename, typename>
+    class SingleUpdatesEllipticBucketsEnvironment;
+    template<typename, typename, typename>
     class BatchUpdatesEllipticBucketsEnvironment;
 }
 
@@ -73,7 +76,11 @@ class UpwardEliminationTreeSearch {
     friend
     class EliminationTreeQuery;
 
-    template<typename, typename, bool>
+    template<typename, typename, typename>
+    friend
+    class karri::SingleUpdatesEllipticBucketsEnvironment;
+
+    template<typename, typename, typename>
     friend
     class karri::BatchUpdatesEllipticBucketsEnvironment;
 

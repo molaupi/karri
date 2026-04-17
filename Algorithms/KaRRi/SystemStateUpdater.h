@@ -214,7 +214,7 @@ namespace karri {
                 asgn.dropoff, asgnTripTime);
 
             auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, asgnFinderResponse, latestVehDepTimeAtPickup,
-                                                                 latestVehArrTimeAtDropoff);
+                                                                 latestVehArrTimeAtDropoff, loc);
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.updateStats.updateRoutesTime += routeUpdateTime;
 
@@ -309,7 +309,7 @@ namespace karri {
                     asgn.dropoff, asgnTripTime);
 
                 auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, asgnFinderResponse, latestVehDepTimeAtPickup,
-                                                                     latestVehArrTimeAtDropoff);
+                                                                     latestVehArrTimeAtDropoff, loc);
                 const auto routeUpdateTime = internalRouteStateUpdateTimer.elapsed<std::chrono::nanoseconds>();
                 stats.updateRoutesTime += routeUpdateTime;
 

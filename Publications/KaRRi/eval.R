@@ -134,6 +134,39 @@ compareBestAssignments <- function(file1, file2) {
   }
 }
 
+compareFiles <- function(file1, file2, ending, trim = TRUE, ignore_columns=c()) {
+  df1 <- fread(paste0(file1, ending))
+  df2 <- fread(paste0(file2, ending))
+  
+  for (col in ignore_columns) {
+    df1[, c(col) := NULL]
+    df2[, c(col) := NULL]
+  }
+  
+  df1 <- df1[order(df1$request_id)]
+  df2 <- df2[order(df2$request_id)]
+  
+  if (nrow(df1) > nrow(df2))
+    df1 <- df1[1:nrow(df2)]
+  if (nrow(df2) > nrow(df1))
+    df2 <- df2[1:nrow(df1)]
+  
+  # Get smallest row index where at least one value differs
+  idx <- match(TRUE, rowSums(df1 != df2) > 0)
+  if (is.na(idx)) {
+    print("All rows are equal in non-ignored columns.")
+  } else {
+    print(df1[idx, "request_id"])
+    row1 <- df1[idx]
+    row2 <- df2[idx]
+    View(rbind(row1, row2), paste0("diff-", ending))
+  }
+}
+
+compareModeChoice <- function(file1, file2, trim = TRUE) {
+  compareFiles(file1, file2, ".modechoice.csv", trim)
+}
+
 library(data.table)
 perfStats <- function(file_base, type_name, single_dispatched_subset=FALSE, n = NA) {
   stats <- fread(paste0(file_base, ".perf_", type_name, ".csv"))
@@ -242,7 +275,7 @@ dalsPerfStats <- function(file_base, single_dispatched_subset = FALSE) {
 
 # Given the path to the result files of a KaRRi run, this function returns 
 # performance statistics for updating the route state for each assignment.
-updatePerfStats <- function(file_base) {
+updatePerfStats <- function(file_base, single_dispatched_subset=FALSE) {
   perfStats(file_base, "update", single_dispatched_subset)
 }
 

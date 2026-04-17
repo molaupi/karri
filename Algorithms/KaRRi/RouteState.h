@@ -229,7 +229,9 @@ namespace karri {
         }
 
         template<typename RequestStateT>
-        bool checkAssignmentDistances(const Assignment& asgn, const RequestStateT & requestState) {
+        bool checkAssignmentDistances(const Assignment& asgn, const RequestStateT & requestState,
+            VehicleLocation loc = {} // pass for distance checking in case of re-routing for PBNS assignment
+            ) {
             unused(requestState);
             const auto vehId = asgn.vehicle->vehicleId;
             const auto &pickup = asgn.pickup;
@@ -245,9 +247,11 @@ namespace karri {
             KASSERT(dropoffIndex >= 0);
             KASSERT(dropoffIndex < numStops);
 
-
-            if (numStops > 1 && pickupIndex == 0) {
-                // TODO: Check from current vehicle location to pickup
+            if (numStops > 1 && pickupIndex == 0 && schedDepTimes[start] < requestState.dispatchingTime) {
+                // vehicle is re-routed, so correct distance goes via current vehicle location
+                KASSERT(loc.location != INVALID_EDGE);
+                const int actualDist = distanceChecker(stopLocations[start], loc.location) + distanceChecker(loc.location, asgn.pickup.loc);
+                KASSERT(asgn.distToPickup == actualDist, "Assignment = " << asgn << ", num stops = " << numStops << " has wrong distance with re-routing (current vehicle location = " << loc.location << ")");
             } else if (pickup.loc == stopLocations[start + pickupIndex]) {
                 // Pickup at existing stop
                 KASSERT(asgn.distToPickup == 0, "Assignment = " << asgn << ", num stops = " << numStops);
@@ -288,8 +292,10 @@ namespace karri {
         template<typename RequestStateT>
         std::pair<int, int>
         insert(const Assignment &asgn, const RequestStateT &requestState,
-            const int latestVehDepTimeAtPickup, const int latestVehArrTimeAtDropoff) {
-            KASSERT(checkAssignmentDistances(asgn, requestState));
+            const int latestVehDepTimeAtPickup, const int latestVehArrTimeAtDropoff,
+            VehicleLocation curVehLoc = {} // pass for distance checking in case of re-routing for PBNS assignment
+            ) {
+            KASSERT(checkAssignmentDistances(asgn, requestState, curVehLoc));
             const auto vehId = asgn.vehicle->vehicleId;
             const auto &pickup = asgn.pickup;
             const auto &dropoff = asgn.dropoff;

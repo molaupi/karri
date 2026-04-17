@@ -188,13 +188,13 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
     // Set up the distance checker callback to verify shortest path distances.
     // This captures the vehicle graph and CH environment for use in checkDirectDistance().
     auto distanceCheckerChQuery = vehChEnv.template getFullCHQuery<>();
-    routeState.setDistanceChecker([&vehicleInputGraph, &vehChEnv, &distanceCheckerChQuery](int curStop, int nextStop) {
-        if (curStop == nextStop)
+    routeState.setDistanceChecker([&vehicleInputGraph, &vehChEnv, &distanceCheckerChQuery](int sourceEdge, int targetEdge) {
+        if (sourceEdge == targetEdge)
             return 0;
         const auto &ch = vehChEnv.getCH();
-        distanceCheckerChQuery.run(ch.rank(vehicleInputGraph.edgeHead(curStop)),
-                                   ch.rank(vehicleInputGraph.edgeTail(nextStop)));
-        return distanceCheckerChQuery.getDistance() + vehicleInputGraph.travelTime(nextStop);
+        distanceCheckerChQuery.run(ch.rank(vehicleInputGraph.edgeHead(sourceEdge)),
+                                   ch.rank(vehicleInputGraph.edgeTail(targetEdge)));
+        return distanceCheckerChQuery.getDistance() + vehicleInputGraph.travelTime(targetEdge);
     });
 
     // Construct Elliptic BCH buckets:
