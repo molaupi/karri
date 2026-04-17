@@ -51,13 +51,9 @@
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
 #include "Algorithms/KaRRi/AssignmentFinder.h"
 
-#if KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT
 
 #include "Algorithms/KaRRi/PDDistanceQueries/BCHStrategy.h"
-
-#else // KARRI_PD_STRATEGY == KARRI_CH_PD_STRAT
 #include "Algorithms/KaRRi/PDDistanceQueries/CHStrategy.h"
-#endif
 
 
 #if KARRI_PALS_STRATEGY == KARRI_COL
@@ -147,7 +143,7 @@ namespace karri {
 
         using FFPDDistanceQueryImpl = std::conditional_t<KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT,
             PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>,
-            PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet> >;
+            PDDistanceQueryStrategies::CHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet> >;
         tbb::enumerable_thread_specific<FFPDDistanceQueryImpl> ffPDDistanceQuery;
 
         // todo: The OrdinaryAssignmentsFinder does not manage any large memory on its own, could be constructed
