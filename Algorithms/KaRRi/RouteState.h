@@ -32,6 +32,7 @@
 #include "DataStructures/Containers/BitVector.h"
 
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
+#include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
 #include "InputConfig.h"
 

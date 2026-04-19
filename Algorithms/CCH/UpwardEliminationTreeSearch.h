@@ -32,7 +32,6 @@
 #include <vector>
 
 #include "Algorithms/CH/CH.h"
-#include "Algorithms/KaRRi/EllipticBCH/SingleUpdatesEllipticBucketsEnvironment.h"
 #include "DataStructures/Graph/Graph.h"
 #include "DataStructures/Labels/Containers/ParentLabelContainer.h"
 #include "DataStructures/Labels/Containers/SimpleDistanceLabelContainer.h"
