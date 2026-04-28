@@ -64,6 +64,7 @@ namespace karri {
             int walkingTimeToPickup;
             int walkingTimeFromDropoff;
             int assignmentCost;
+            int directOdDist;
         };
 
         // Key for event queues.
@@ -646,6 +647,7 @@ namespace karri {
             requestState[reqId] = WALKING_TO_DEST;
             requestData[reqId].assignmentCost = CostCalculator::calcCostForNotUsingVehicle(
                 asgnFinderResponse.odWalkingDist, asgnFinderResponse);
+            requestData[reqId].directOdDist = asgnFinderResponse.originalReqDirectDist;
             requestData[reqId].depTime = occTime;
             requestData[reqId].walkingTimeToPickup = 0;
             requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.odWalkingDist;
@@ -662,6 +664,7 @@ namespace karri {
             // Assign rider to take other mode to their destination and insert event for their arrival.
             requestState[reqId] = IN_OTHER_MODE;
             requestData[reqId].assignmentCost = INFTY;
+            requestData[reqId].directOdDist = asgnFinderResponse.originalReqDirectDist;
             // No meaningful cost can be assigned since this is not a possibility in local cost function
             requestData[reqId].depTime = occTime;
             requestData[reqId].walkingTimeToPickup = 0;
@@ -684,6 +687,7 @@ namespace karri {
             requestData[reqId].walkingTimeToPickup = bestAsgn.pickup.walkingDist;
             requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff.walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
+            requestData[reqId].directOdDist = asgnFinderResponse.originalReqDirectDist;
 
             const auto vehId = asgnFinderResponse.getBestAssignment().vehicle->vehicleId;
             switch (vehicleState[vehId]) {
@@ -719,6 +723,7 @@ namespace karri {
             const auto waitTime = reqData.depTime - requests[reqId].requestTime;
             const auto arrTime = occTime;
             const auto rideTime = occTime - reqData.walkingTimeFromDropoff - reqData.depTime;
+            KASSERT(reqData.walkingTimeToPickup > 0 || reqData.walkingTimeFromDropoff > 0 || rideTime >= reqData.directOdDist);
             const auto tripTime = arrTime - requests[reqId].requestTime;
             assignmentQualityStats << reqId << ','
                     << arrTime << ','

@@ -97,18 +97,26 @@ namespace karri {
             pickups.clear();
             dropoffs.clear();
 
-            searchSpace.clear();
-            auto headOfOriginEdge = forwardGraph.edgeHead(origin);
-            curRadiusInMeters = pickupWalkRadiusInMeters;
-            pickupSearch.run(headOfOriginEdge);
-            turnSearchSpaceIntoPickupLocations(pickups, pickupWalkRadiusInMeters, walkingSpeedInMetersPerSecond);
+            if (pickupWalkRadiusInMeters == 0) {
+                pickups.push_back({0, forwardGraph.toCarEdge(origin), origin, 0, INFTY, INFTY});
+            } else {
+                searchSpace.clear();
+                auto headOfOriginEdge = forwardGraph.edgeHead(origin);
+                curRadiusInMeters = pickupWalkRadiusInMeters;
+                pickupSearch.run(headOfOriginEdge);
+                turnSearchSpaceIntoPickupLocations(pickups, pickupWalkRadiusInMeters, walkingSpeedInMetersPerSecond);
+            }
 
-            searchSpace.clear();
-            auto tailOfDestEdge = forwardGraph.edgeTail(destination);
-            auto destOffset = forwardGraph.template get<WeightT>(destination);
-            curRadiusInMeters = dropoffWalkRadiusInMeters;
-            dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
-            turnSearchSpaceIntoDropoffLocations(dropoffs, dropoffWalkRadiusInMeters, walkingSpeedInMetersPerSecond);
+            if (dropoffWalkRadiusInMeters == 0) {
+                dropoffs.push_back({0, forwardGraph.toCarEdge(destination), destination, 0, INFTY, INFTY});
+            } else {
+                searchSpace.clear();
+                auto tailOfDestEdge = forwardGraph.edgeTail(destination);
+                auto destOffset = forwardGraph.template get<WeightT>(destination);
+                curRadiusInMeters = dropoffWalkRadiusInMeters;
+                dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
+                turnSearchSpaceIntoDropoffLocations(dropoffs, dropoffWalkRadiusInMeters, walkingSpeedInMetersPerSecond);
+            }
 
             finalizePDLocs(origin, pickups, InputConfig::getInstance().maxNumPickups);
             finalizePDLocs(destination, dropoffs, InputConfig::getInstance().maxNumDropoffs);
