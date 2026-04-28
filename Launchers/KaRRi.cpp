@@ -188,14 +188,15 @@ void initializeStateAndRunSimulation(const VehicleInputGraph &vehicleInputGraph,
     // Set up the distance checker callback to verify shortest path distances.
     // This captures the vehicle graph and CH environment for use in checkDirectDistance().
     auto distanceCheckerChQuery = vehChEnv.template getFullCHQuery<>();
-    routeState.setDistanceChecker([&vehicleInputGraph, &vehChEnv, &distanceCheckerChQuery](int sourceEdge, int targetEdge) {
-        if (sourceEdge == targetEdge)
-            return 0;
-        const auto &ch = vehChEnv.getCH();
-        distanceCheckerChQuery.run(ch.rank(vehicleInputGraph.edgeHead(sourceEdge)),
-                                   ch.rank(vehicleInputGraph.edgeTail(targetEdge)));
-        return distanceCheckerChQuery.getDistance() + vehicleInputGraph.travelTime(targetEdge);
-    });
+    routeState.setDistanceChecker(
+        [&vehicleInputGraph, &vehChEnv, &distanceCheckerChQuery](int sourceEdge, int targetEdge) {
+            if (sourceEdge == targetEdge)
+                return 0;
+            const auto &ch = vehChEnv.getCH();
+            distanceCheckerChQuery.run(ch.rank(vehicleInputGraph.edgeHead(sourceEdge)),
+                                       ch.rank(vehicleInputGraph.edgeTail(targetEdge)));
+            return distanceCheckerChQuery.getDistance() + vehicleInputGraph.travelTime(targetEdge);
+        });
 
     // Construct Elliptic BCH buckets:
     static constexpr bool ELLIPTIC_SORTED_BUCKETS = KARRI_ELLIPTIC_BCH_SORTED_BUCKETS;
@@ -277,10 +278,10 @@ KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
 
 
     // Rider mode choice mechanism for requests:
-    //        using ModeChoiceCriterion = mode_choice::TripTimeThresholdCriterion;
     using ModeChoiceCriterion = std::conditional_t<KARRI_MODE_CHOICE_METHOD == KARRI_MODE_CHOICE_LOGIT,
         mode_choice::UtilityLogitCriterion,
-        mode_choice::KaRRiCostCriterion>;
+        std::conditional_t<KARRI_MODE_CHOICE_METHOD == KARRI_MODE_CHOICE_COST,
+            mode_choice::KaRRiCostCriterion<false>, mode_choice::KaRRiCostCriterion<true> > >;
     using RiderModeChoice = mode_choice::ModeChoice<ModeChoiceCriterion, std::ofstream>;
     RiderModeChoice modeChoice(routeState, allowPTMode);
 

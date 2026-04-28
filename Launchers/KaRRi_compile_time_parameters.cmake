@@ -60,21 +60,25 @@ target_compile_definitions(karri PRIVATE KARRI_SOFT_CONSTRAINTS_TRIP_PENALTY_SCA
 ## Mode choice method
 set(MODE_CHOICE_LOGIT_CODE 1)
 set(MODE_CHOICE_COST_CODE 2)
+set(MODE_CHOICE_COSTALWAYSVEH_CODE 3)
 target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_LOGIT=${MODE_CHOICE_LOGIT_CODE})
 target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_COST=${MODE_CHOICE_COST_CODE})
-set(KARRI_MODE_CHOICE_METHOD_VALUES Logit Cost)
+target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_COSTALWAYSVEH_CODE=${MODE_CHOICE_COSTALWAYSVEH_CODE})
+set(KARRI_MODE_CHOICE_METHOD_VALUES Logit Cost CostAlwaysVeh)
 
-set(KARRI_MODE_CHOICE_METHOD Logit CACHE STRING "PD-Distance query strategy to use. Possible values: Logit (dflt), Cost")
+set(KARRI_MODE_CHOICE_METHOD Logit CACHE STRING "Mode choice method to use. Possible values: Logit (dflt), Cost, CostAlwaysVeh")
 set_property(CACHE KARRI_MODE_CHOICE_METHOD PROPERTY STRINGS ${KARRI_MODE_CHOICE_METHOD_VALUES})
 list(FIND KARRI_MODE_CHOICE_METHOD_VALUES ${KARRI_MODE_CHOICE_METHOD} index)
 if (index EQUAL -1)
-    message(FATAL_ERROR "KARRI_PD_STRATEGY must be one of ${KARRI_MODE_CHOICE_METHOD_VALUES}")
+    message(FATAL_ERROR "KARRI_MODE_CHOICE_METHOD must be one of ${KARRI_MODE_CHOICE_METHOD_VALUES}")
 endif ()
 
 if (${KARRI_MODE_CHOICE_METHOD} STREQUAL Logit)
     target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_METHOD=${MODE_CHOICE_LOGIT_CODE}) # Logit
-else()
+elseif(${KARRI_MODE_CHOICE_METHOD} STREQUAL Cost)
     target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_METHOD=${MODE_CHOICE_COST_CODE}) # Cost
+else()
+    target_compile_definitions(karri PRIVATE KARRI_MODE_CHOICE_METHOD=${MODE_CHOICE_COSTALWAYSVEH_CODE}) # CostAlwaysVeh
 endif()
 
 ## If set, use this value as fixed seed for RNG in UtilityLogit. Use for debugging.

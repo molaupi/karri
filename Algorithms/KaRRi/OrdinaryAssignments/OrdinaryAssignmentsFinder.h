@@ -274,6 +274,8 @@ namespace karri {
                             for (auto pickupIt2 = beginOfStopInPickups; pickupIt2 < endOfStopInPickups; ++pickupIt2) {
                                 const auto &pickupEntry = *pickupIt2;
                                 asgn.pickup = pdLocs.pickups[pickupEntry.pdId];
+                                if (asgn.pickup.loc == asgn.dropoff.loc)
+                                    continue;
                                 asgn.distToPickup = pickupEntry.distToPDLoc;
 
                                 assert(asgn.distToPickup < INFTY && asgn.distFromDropoff < INFTY);

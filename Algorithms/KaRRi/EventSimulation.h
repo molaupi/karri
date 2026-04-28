@@ -415,6 +415,8 @@ namespace karri {
                 } else if (mode == TransportMode::PublicTransport) {
                     processChoiceOtherMode(asgnFinderResponse, stats, request.requestId, now,
                                            now + ptJourneyData[request.requestId].totalJourneyTimeTenthsOfSeconds());
+                } else if (mode == TransportMode::None) {
+                    processNoMode(asgnFinderResponse, stats, request.requestId);
                 } else {
                     throw std::runtime_error("Unsupported transport mode chosen in event simulation.");
                 }
@@ -494,6 +496,8 @@ namespace karri {
                             processChoiceOtherMode(responses[i], stats[i], requestBatch[i].requestId, now, now +
                                                        ptJourneyData[requestBatch[i].requestId].
                                                        totalJourneyTimeTenthsOfSeconds());
+                        } else if (mode == TransportMode::None) {
+                            processNoMode(responses[i], stats[i], requestBatch[i].requestId);
                         } else {
                             throw std::runtime_error("Unsupported transport mode chosen in event simulation.");
                         }
@@ -556,6 +560,8 @@ namespace karri {
                             processChoiceOtherMode(responses[i], stats[i], requestBatch[i].requestId, now, now +
                                                        ptJourneyData[requestBatch[i].requestId].
                                                        totalJourneyTimeTenthsOfSeconds());
+                        } else if (modes[i] == TransportMode::None) {
+                            processNoMode(responses[i], stats[i], requestBatch[i].requestId);
                         } else {
                             throw std::runtime_error("Unsupported transport mode chosen in event simulation.");
                         }
@@ -670,6 +676,20 @@ namespace karri {
             requestData[reqId].walkingTimeToPickup = 0;
             requestData[reqId].walkingTimeFromDropoff = 0;
             requestEvents.insert(reqId, {arrivalTime, reqId});
+            systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
+        }
+
+        template<typename AssignmentFinderResponseT>
+        void processNoMode(const AssignmentFinderResponseT &asgnFinderResponse,
+                                    stats::DispatchingPerformanceStats stats,
+                                    const int reqId) {
+            KASSERT(!requestEvents.contains(reqId));
+            requestState[reqId] = FINISHED;
+            requestData[reqId].assignmentCost = INFTY;
+            requestData[reqId].directOdDist = asgnFinderResponse.originalReqDirectDist;
+            requestData[reqId].depTime = -1;
+            requestData[reqId].walkingTimeToPickup = -1;
+            requestData[reqId].walkingTimeFromDropoff = -1;
             systemStateUpdater.writePerformanceLogs(asgnFinderResponse, stats);
         }
 

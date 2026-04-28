@@ -286,9 +286,6 @@ namespace karri {
                 VehicleLocation loc;
                 if (rerouteVehicle) {
                     loc = vehicleLocator.computeCurrentLocation(*asgn.vehicle, asgnFinderResponse.dispatchingTime);
-                    // If vehicle is currently already at edge that constitutes the next stop, we do not have to reroute
-                    // and create an intermediate stop (as the intermediate stop would be at the same location).
-                    rerouteVehicle = routeState.stopLocationsFor(vehId)[1] != loc.location;
                 }
 
                 internalRouteStateUpdateTimer.restart();
@@ -324,7 +321,7 @@ namespace karri {
                                                               vehIdsToGenerateNonIdleEntriesFor,
                                                               stopIdsToUpdateLastStopEntriesFor);
 
-                if (rerouteVehicle) {
+                if (rerouteVehicle && loc.location != routeState.stopLocationsFor(vehId)[1]) {
                     // If vehicle is rerouted from its current position to a newly inserted stop (PBNS assignment), create new
                     // intermediate stop at the vehicle's current position to maintain the invariant of the schedule for the
                     // first stop, i.e. dist(s[i], s[i+1]) = schedArrTime(s[i+1]) - schedDepTime(s[i]).

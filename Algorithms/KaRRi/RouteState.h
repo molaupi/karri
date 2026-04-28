@@ -62,6 +62,7 @@ namespace karri {
                   vehWaitTimesPrefixSum(fleet.size()),
                   vehWaitTimesUntilDropoffsPrefixSum(fleet.size()),
                   numDropoffsPrefixSum(fleet.size()),
+              isIntermediateStop(fleet.size()),
                   stopIdToIdOfPrevStop(fleet.size(), INVALID_ID),
                   stopIdToPosition(fleet.size(), 0),
                   stopIdToLeeway(fleet.size(), 0),
@@ -88,6 +89,7 @@ namespace karri {
                 vehWaitTimesPrefixSum[i] = 0;
                 occupancies[i] = 0;
                 numDropoffsPrefixSum[i] = 0;
+                isIntermediateStop[i] = static_cast<uint8_t>(false);
                 vehWaitTimesUntilDropoffsPrefixSum[i] = 0;
                 maxArrTimes[i] = INFTY;
             }
@@ -191,6 +193,14 @@ namespace karri {
             const auto end = pos[vehId].end;
             return {vehWaitTimesUntilDropoffsPrefixSum.begin() + start,
                     vehWaitTimesUntilDropoffsPrefixSum.begin() + end};
+        }
+
+        bool isIntermediateStopForReroute(const int vehId, const int stopIndex) const {
+            KASSERT(vehId >= 0);
+            KASSERT(vehId < pos.size());
+            KASSERT(stopIndex >= 0);
+            KASSERT(stopIndex < numStopsOf(vehId));
+            return static_cast<bool>(isIntermediateStop[pos[vehId].start + stopIndex]);
         }
 
         // Returns the id of the vehicle whose route the stop with the given ID is currently part of.
@@ -341,7 +351,7 @@ namespace karri {
                 ++dropoffIndex;
                 dynamic_ragged2d::stableInsertion(vehId, pickupIndex, getUnusedStopId(), pos, stopIds, stopLocations,
                                                   schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
-                                                  numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
+                                                  numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum, isIntermediateStop);
                 stopLocations[start + pickupIndex] = pickup.loc;
                 schedArrTimes[start + pickupIndex] = schedDepTimes[start + pickupIndex - 1] + asgn.distToPickup;
                 schedDepTimes[start + pickupIndex] = std::max(schedArrTimes[start + pickupIndex] + InputConfig::getInstance().stopTime,
@@ -349,12 +359,12 @@ namespace karri {
                 maxArrTimes[start + pickupIndex] = latestVehDepTimeAtPickup - InputConfig::getInstance().stopTime;
                 occupancies[start + pickupIndex] = occupancies[start + pickupIndex - 1];
                 numDropoffsPrefixSum[start + pickupIndex] = numDropoffsPrefixSum[start + pickupIndex - 1];
+                isIntermediateStop[start + pickupIndex] = static_cast<uint8_t>(false);
                 pickupInsertedAsNewStop = true;
             }
 
             if (pickupIndex != dropoffIndex) {
                 // Propagate changes to minArrTime/minDepTime forward from inserted pickup stop until dropoff stop
-                assert(asgn.distFromPickup > 0);
                 propagateSchedArrAndDepForward(start + pickupIndex + 1, start + dropoffIndex, asgn.distFromPickup);
             }
 
@@ -365,7 +375,8 @@ namespace karri {
                 ++dropoffIndex;
                 dynamic_ragged2d::stableInsertion(vehId, dropoffIndex, getUnusedStopId(),
                                                   pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
-                                                  maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
+                                                  maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum,
+                                isIntermediateStop);
                 stopLocations[start + dropoffIndex] = dropoff.loc;
                 schedArrTimes[start + dropoffIndex] =
                         schedDepTimes[start + dropoffIndex - 1] + asgn.distToDropoff;
@@ -374,6 +385,7 @@ namespace karri {
                 maxArrTimes[start + dropoffIndex] = latestVehArrTimeAtDropoff;
                 occupancies[start + dropoffIndex] = occupancies[start + dropoffIndex - 1];
                 numDropoffsPrefixSum[start + dropoffIndex] = numDropoffsPrefixSum[start + dropoffIndex - 1];
+                isIntermediateStop[start + dropoffIndex] = static_cast<uint8_t>(false);
                 dropoffInsertedAsNewStop = true;
             }
 
@@ -402,8 +414,7 @@ namespace karri {
             }
 
             const int lastUnchangedPrefixSum = pickupIndex > 0 ? vehWaitTimesPrefixSum[start + pickupIndex - 1] : 0;
-            const bool scheduleHasIntermediateStop = schedArrTimes[start + 1] == now;
-            recalculateVehWaitTimesPrefixSum(start + pickupIndex, end - 1, lastUnchangedPrefixSum, scheduleHasIntermediateStop);
+            recalculateVehWaitTimesPrefixSum(start + pickupIndex, end - 1, lastUnchangedPrefixSum);
             const int lastUnchangedAtDropoffsPrefixSum =
                     pickupIndex > 0 ? vehWaitTimesUntilDropoffsPrefixSum[start + pickupIndex - 1] : 0;
             recalculateVehWaitTimesAtDropoffsPrefixSum(start + pickupIndex, end - 1, lastUnchangedAtDropoffsPrefixSum);
@@ -473,7 +484,7 @@ namespace karri {
             const auto numDropoffsAtStart = numDropoffsPrefixSum[start];
             dynamic_ragged2d::stableRemoval(vehId, 0,
                                             pos, stopIds, stopLocations, schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum,
-                                            maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
+                                            maxArrTimes, occupancies, numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum, isIntermediateStop);
 
             const auto &startAfterRemoval = pos[vehId].start;
             const auto &endAfterRemoval = pos[vehId].end;
@@ -495,7 +506,7 @@ namespace karri {
             KASSERT(depTime >= now);
             dynamic_ragged2d::stableInsertion(vehId, 1, getUnusedStopId(), pos, stopIds, stopLocations,
                                               schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
-                                              numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum);
+                                              numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum, isIntermediateStop);
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
             stopLocations[start + 1] = location;
@@ -506,6 +517,7 @@ namespace karri {
             numDropoffsPrefixSum[start + 1] = numDropoffsPrefixSum[start];
             vehWaitTimesPrefixSum[start + 1] = vehWaitTimesPrefixSum[start];
             vehWaitTimesUntilDropoffsPrefixSum[start + 1] = vehWaitTimesUntilDropoffsPrefixSum[start];
+            isIntermediateStop[start + 1] = static_cast<uint8_t>(true);
 
             // Update mappings from the stop ids to ids of previous stop, to position in the route, to the leeway and
             // to the vehicle id.
@@ -556,6 +568,21 @@ namespace karri {
 
         ScheduledStop getCurrentOrPrevScheduledStop(const int vehId) const {
             return getScheduledStop(vehId, 0);
+        }
+
+        std::string printRouteOf(const int vehId) const {
+            std::stringstream ss;
+            ss << "Route of vehicle " << vehId << ":\n";
+            const auto start = pos[vehId].start;
+            const auto end = pos[vehId].end;
+            for (int i = start; i < end; ++i) {
+                ss << "  Stop " << stopIds[i] << " at location " << stopLocations[i] << ": arrTime = "
+                        << schedArrTimes[i] << ", depTime = " << schedDepTimes[i] << ", maxArrTime = "
+                        << maxArrTimes[i] << ", occupancy = " << occupancies[i] << (isIntermediateStop[i]
+                            ? " (intermediate)"
+                            : "") << "\n";
+            }
+            return ss.str();
         }
 
     private:
@@ -683,14 +710,15 @@ namespace karri {
 
         // Recalculate the prefix sum of vehicle wait times from fromIdx up to toIdx (both inclusive) based on current
         // minVehArrTime and minVehDepTime values. Takes a sum for the element before fromIdx as baseline.
-        void recalculateVehWaitTimesPrefixSum(const int fromIdx, const int toIdx, const int baseline, const bool scheduleHasIntermediateStop) {
-            unused(scheduleHasIntermediateStop);
+        void recalculateVehWaitTimesPrefixSum(const int fromIdx, const int toIdx, const int baseline) {
             int prevSum = baseline;
             for (int l = fromIdx; l <= toIdx; ++l) {
                 auto stopLength = schedDepTimes[l] - InputConfig::getInstance().stopTime - schedArrTimes[l];
                 // Stop is only allowed to be shorter than stopTime if it is an intermediate stop. Only the next stop
                 // can be an intermediate stop. If it is, set the vehicle wait time at the stop to 0.
-                KASSERT((l == fromIdx && scheduleHasIntermediateStop) || stopLength >= 0);
+                KASSERT(isIntermediateStop[l] || stopLength >= 0,
+                        "l = " << l << ", fromIdx = " << fromIdx << ", Route = " << printRouteOf(stopIdToVehicleId[
+                            stopIds[l]]));
                 stopLength = std::max(stopLength, 0);
                 vehWaitTimesPrefixSum[l] = prevSum + stopLength;
                 prevSum = vehWaitTimesPrefixSum[l];
@@ -778,6 +806,10 @@ namespace karri {
         // numDropoffsPrefixSum[pos[vehId].start + i] is the number of dropoffs before stop i plus the number of dropoffs
         // at stop i for the vehicle with ID vehId.
         std::vector<int> numDropoffsPrefixSum;
+
+        // Flag for whether a stop is an intermediate stop that has been created for a vehicle reroute.
+        // Boolean flags stored as uint8_t to avoid std::vector<bool> specialization.
+        std::vector<uint8_t> isIntermediateStop;
 
 
 

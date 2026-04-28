@@ -306,6 +306,12 @@ namespace karri::DropoffAfterLastStopStrategies {
                     continue;
                 }
 
+                // If vehicle is already on edge that represents next stop, skip it.
+                KASSERT(routeState.numStopsOf(vehId) > 1);
+                if (routeState.schedArrTimesFor(vehId)[1] - inputGraph.travelTime(routeState.stopLocationsFor(vehId)[1])
+                    <= requestState.dispatchingTime)
+                    continue;
+
                 leftToCheck.clear();
                 const auto &numStops = routeState.numStopsOf(vehId);
                 asgn.vehicle = &fleet[vehId];

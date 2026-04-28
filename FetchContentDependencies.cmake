@@ -14,7 +14,7 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/ben-strasser/fast-cpp-csv-parser
 )
 
-# Declare vectorlclass dependency
+# Declare vectorclass dependency
 FetchContent_Declare(
         vectorclass
         GIT_REPOSITORY https://github.com/vectorclass/version2.git

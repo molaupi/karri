@@ -30,23 +30,23 @@
 #include "Algorithms/CH/CH.h"
 
 namespace karri {
-
-// Initializes the request state for a new request.
+    // Initializes the request state for a new request.
     template<typename VehInputGraphT,
-            typename PsgInputGraphT,
-            typename VehCHEnvT,
-            typename PsgCHEnvT>
+        typename PsgInputGraphT,
+        typename VehCHEnvT,
+        typename PsgCHEnvT>
     class RequestStateInitializer {
-
     public:
         RequestStateInitializer(const VehInputGraphT &vehInputGraph, const PsgInputGraphT &psgInputGraph,
                                 const VehCHEnvT &vehChEnv, const PsgCHEnvT &psgChEnv)
-                : vehInputGraph(vehInputGraph), psgInputGraph(psgInputGraph),
-                  vehCh(vehChEnv.getCH()), psgCh(psgChEnv.getCH()),
-                  vehChQuery(vehChEnv.template getFullCHQuery<>()), psgChQuery(psgChEnv.template getFullCHQuery<>()) {}
+            : vehInputGraph(vehInputGraph), psgInputGraph(psgInputGraph),
+              vehCh(vehChEnv.getCH()), psgCh(psgChEnv.getCH()),
+              vehChQuery(vehChEnv.template getFullCHQuery<>()), psgChQuery(psgChEnv.template getFullCHQuery<>()) {
+        }
 
 
-        RequestState initializeRequestState(const Request &req, const int now, stats::InitializationPerformanceStats& stats) {
+        RequestState initializeRequestState(const Request &req, const int now,
+                                            stats::InitializationPerformanceStats &stats) {
             Timer timer;
 
             RequestState requestState;
@@ -55,43 +55,49 @@ namespace karri {
 
             // Calculate the direct distance between the requests origin and destination
             timer.restart();
-            const auto source = vehCh.rank(vehInputGraph.edgeHead(req.origin));
-            const auto target = vehCh.rank(vehInputGraph.edgeTail(req.destination));
-            vehChQuery.run(source, target);
-            requestState.originalReqDirectDist = vehChQuery.getDistance() + vehInputGraph.travelTime(req.destination);
+            if (req.origin == req.destination) {
+                requestState.originalReqDirectDist = 0;
+            } else {
+                const auto source = vehCh.rank(vehInputGraph.edgeHead(req.origin));
+                const auto target = vehCh.rank(vehInputGraph.edgeTail(req.destination));
+                vehChQuery.run(source, target);
+                requestState.originalReqDirectDist = vehChQuery.getDistance() + vehInputGraph.travelTime(
+                                                         req.destination);
+            }
 
             const auto directSearchTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.computeODDistanceTime = directSearchTime;
 
-
             // Compute direct walking distance between origin and destination
-                timer.restart();
+            timer.restart();
 
-                KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.origin)) == req.origin);
-                const auto originInPsgGraph = vehInputGraph.toPsgEdge(req.origin);
+            KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.origin)) == req.origin);
+            const auto originInPsgGraph = vehInputGraph.toPsgEdge(req.origin);
+
+            KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
+            const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
+
+            if (originInPsgGraph == destInPsgGraph) {
+                requestState.odWalkingDist = 0;
+            } else {
                 const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
-
-                KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
-                const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
                 const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
                 const int destOffset = psgInputGraph.length(destInPsgGraph);
                 KASSERT(destOffset >= 0 && destOffset < INFTY);
-
                 psgChQuery.run(originHeadRank, destTailRank);
                 const auto totalWalkingDist = psgChQuery.getDistance() + destOffset; // Distance in m
                 KASSERT(totalWalkingDist >= 0 && totalWalkingDist < INFTY);
-                const auto totalWalkingTime = static_cast<int>(std::round(10.0 * static_cast<double>(totalWalkingDist) / req.walkingSpeed));
+                const auto totalWalkingTime = static_cast<int>(std::round(
+                    10.0 * static_cast<double>(totalWalkingDist) / req.walkingSpeed));
                 requestState.odWalkingDist = totalWalkingTime; // "dist" means time in our model
-
-                const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
-                stats.notUsingVehicleTime = notUsingVehiclesTime;
+            }
+            const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
+            stats.notUsingVehicleTime = notUsingVehiclesTime;
 
             return requestState;
         }
 
-
     private:
-
         using VehCHQuery = typename VehCHEnvT::template FullCHQuery<>;
         using PsgCHQuery = typename PsgCHEnvT::template FullCHQuery<>;
 
@@ -101,6 +107,5 @@ namespace karri {
         const CH &psgCh;
         VehCHQuery vehChQuery;
         PsgCHQuery psgChQuery;
-
     };
 }

@@ -29,17 +29,14 @@
 #include "Algorithms/KaRRi/PbnsAssignments/CurVehLocToPickupSearches.h"
 
 namespace karri {
-
-
-// Finds pickup before next stop assignments, i.e. assignments where the pickup is inserted before the vehicle's next
-// stop, which means the vehicle is rerouted at its current location. Dropoff may be inserted before the next stop or
-// at ordinary locations, i.e. after the next stop but before the last stop.
-// (The case of pickup before next stop and dropoff after last stop is considered by the DALSAssignmentsFinder.)
-//
-// Works based on filtered relevant pickups and dropoffs before next stop as well as relevant ordinary dropoffs.
-    template<typename PDDistancesT, typename CurVehLocToPickupSearchesT>
+    // Finds pickup before next stop assignments, i.e. assignments where the pickup is inserted before the vehicle's next
+    // stop, which means the vehicle is rerouted at its current location. Dropoff may be inserted before the next stop or
+    // at ordinary locations, i.e. after the next stop but before the last stop.
+    // (The case of pickup before next stop and dropoff after last stop is considered by the DALSAssignmentsFinder.)
+    //
+    // Works based on filtered relevant pickups and dropoffs before next stop as well as relevant ordinary dropoffs.
+    template<typename VehicleInputGraphT, typename PDDistancesT, typename CurVehLocToPickupSearchesT>
     class PBNSAssignmentsFinder {
-
         // Algorithm iterates through combinations of pickups and dropoffs and filters based on lower bound cost.
         // If exact distance from vehicle's current location to a pickup is ever needed, we delay the computation of that
         // distance, so it can be bundled with other such computations. In this case, a continuation marks the combination
@@ -52,40 +49,49 @@ namespace karri {
         };
 
     public:
-
-        PBNSAssignmentsFinder(CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
+        PBNSAssignmentsFinder(const VehicleInputGraphT &inputGraph,
+                              CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
                               const Fleet &fleet, const RouteState &routeState)
-                : curVehLocToPickupSearches(curVehLocToPickupSearches),
-                  fleet(fleet),
-                  calculator(routeState),
-                  routeState(routeState) {}
+            : inputGraph(inputGraph), curVehLocToPickupSearches(curVehLocToPickupSearches),
+              fleet(fleet),
+              calculator(routeState),
+              routeState(routeState) {
+        }
 
         void findAssignments(const RelevantPDLocs &relPickupsBns, const RelevantPDLocs &relOrdinaryDropoffs,
                              const RelevantPDLocs &relDropoffsBns,
-                             RequestState& requestState,
-                             const PDDistancesT& pdDistances,
-                             const PDLocs& pdLocs, stats::PbnsAssignmentsPerformanceStats& stats) {
+                             RequestState &requestState,
+                             const PDDistancesT &pdDistances,
+                             const PDLocs &pdLocs, stats::PbnsAssignmentsPerformanceStats &stats) {
             numAssignmentsTriedWithPickupBeforeNextStop = 0;
             Timer timer;
 
             int numCandidateVehicles = 0;
             for (const auto &vehId: relPickupsBns.getVehiclesWithRelevantPDLocs()) {
-
                 if (!relOrdinaryDropoffs.hasRelevantSpotsFor(vehId) && !relDropoffsBns.hasRelevantSpotsFor(vehId))
                     continue;
-                ++numCandidateVehicles;
+                // If vehicle is already on edge that represents next stop, skip it.
+                KASSERT(routeState.numStopsOf(vehId) > 1);
+                if (routeState.schedArrTimesFor(vehId)[1] - inputGraph.travelTime(routeState.stopLocationsFor(vehId)[1])
+                    <= requestState.dispatchingTime)
+                    continue;
 
+                ++numCandidateVehicles;
 
                 ordinaryContinuations.clear();
                 pairedContinuations.clear();
 
-                assert(routeState.occupanciesFor(vehId)[0]  + requestState.originalRequest.numRiders <= fleet[vehId].capacity);
+                assert(
+                    routeState.occupanciesFor(vehId)[0] + requestState.originalRequest.numRiders <= fleet[vehId].
+                    capacity);
 
-                determineNecessaryExactDistances(fleet[vehId], relPickupsBns, relOrdinaryDropoffs, relDropoffsBns, requestState, pdDistances, pdLocs);
+                determineNecessaryExactDistances(fleet[vehId], relPickupsBns, relOrdinaryDropoffs, relDropoffsBns,
+                                                 requestState, pdDistances, pdLocs);
 
                 curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId], pdLocs);
 
-                finishContinuations(fleet[vehId], relOrdinaryDropoffs, relDropoffsBns, requestState, pdDistances, pdLocs);
+                finishContinuations(fleet[vehId], relOrdinaryDropoffs, relDropoffsBns, requestState, pdDistances,
+                                    pdLocs);
             }
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>() -
@@ -100,7 +106,8 @@ namespace karri {
         }
 
         // Initialize for new request.
-        void init(const RequestState& requestState, const PDLocs& pdLocs, stats::PbnsAssignmentsPerformanceStats& stats) {
+        void init(const RequestState &requestState, const PDLocs &pdLocs,
+                  stats::PbnsAssignmentsPerformanceStats &stats) {
             Timer timer;
             curVehLocToPickupSearches.initialize(requestState.dispatchingTime, pdLocs);
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
@@ -108,8 +115,6 @@ namespace karri {
         }
 
     private:
-
-
         // Filters combinations of pickups and dropoffs using a cost lower bound.
         // If a combination is found for a pickup that cannot be filtered, we need the exact distance from the vehicle
         // location to the pickup.
@@ -118,10 +123,9 @@ namespace karri {
         void determineNecessaryExactDistances(const Vehicle &veh, const RelevantPDLocs &relPickupsBns,
                                               const RelevantPDLocs &relOrdinaryDropoffs,
                                               const RelevantPDLocs &relDropoffsBns,
-                                              RequestState& requestState,
-                                              const PDDistancesT& pdDistances,
-                                              const PDLocs& pdLocs) {
-
+                                              RequestState &requestState,
+                                              const PDDistancesT &pdDistances,
+                                              const PDLocs &pdLocs) {
             const auto &relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(veh.vehicleId);
             const auto &relDropoffsBeforeNextStopForVeh = relDropoffsBns.relevantSpotsFor(veh.vehicleId);
 
@@ -136,11 +140,13 @@ namespace karri {
                 const int distFromPickup = entry.distFromPDLocToNextStop;
 
                 // For paired assignments before next stop, first try a lower bound with the smallest direct PD distance
-                const auto lowerBoundCostPairedAssignment = calculator.calcCostLowerBoundForPairedAssignmentBeforeNextStop(
-                        veh, asgn.pickup, asgn.distToPickup, requestState.minDirectPDDist,
-                        distFromPickup, requestState);
+                const auto lowerBoundCostPairedAssignment = calculator.
+                        calcCostLowerBoundForPairedAssignmentBeforeNextStop(
+                            veh, asgn.pickup, asgn.distToPickup, requestState.minDirectPDDist,
+                            distFromPickup, requestState);
                 if (lowerBoundCostPairedAssignment < requestState.getBestCost()) {
-                    const auto scannedUntil = tryLowerBoundsForPaired(asgn, relDropoffsBns, requestState, pdDistances, pdLocs);
+                    const auto scannedUntil = tryLowerBoundsForPaired(asgn, relDropoffsBns, requestState, pdDistances,
+                                                                      pdLocs);
                     if (scannedUntil < relDropoffsBeforeNextStopForVeh.end()) {
                         // In this case some paired assignment before the next stop needs the exact distance to pickup via
                         // the vehicle. Postpone computation of the yet unknown exact distance and the rest of the paired
@@ -150,8 +156,9 @@ namespace karri {
                         pairedContinuations.push_back({asgn.pickup.id, 0, scannedUntil});
                         ++numAssignmentsTriedWithPickupBeforeNextStop; // Count first ordinary continuation
                         ordinaryContinuations.push_back(
-                                {asgn.pickup.id, distFromPickup, relOrdinaryDropoffsForVeh.begin()});
-                        continue; // Continue with next pickup, rest of assignments for this pickup later with exact distance
+                            {asgn.pickup.id, distFromPickup, relOrdinaryDropoffsForVeh.begin()});
+                        continue;
+                        // Continue with next pickup, rest of assignments for this pickup later with exact distance
                     }
                 }
 
@@ -175,7 +182,9 @@ namespace karri {
         // Examines combinations of a given pickup and all dropoffs before the next stop of a given vehicle until a
         // paired assignment needs the exact distance to the pickup via the vehicle. Returns an iterator to the dropoff at
         // which the exact distance is first needed or one-past-end iterator if all combinations could be filtered.
-        RelevantPDLocs::It tryLowerBoundsForPaired(Assignment &asgn, const RelevantPDLocs &relDropoffsBns, RequestState& requestState, const PDDistancesT& pdDistances, const PDLocs& pdLocs) {
+        RelevantPDLocs::It tryLowerBoundsForPaired(Assignment &asgn, const RelevantPDLocs &relDropoffsBns,
+                                                   RequestState &requestState, const PDDistancesT &pdDistances,
+                                                   const PDLocs &pdLocs) {
             assert(asgn.vehicle && asgn.pickup.id != INVALID_ID);
             const auto vehId = asgn.vehicle->vehicleId;
 
@@ -214,7 +223,8 @@ namespace karri {
         // Examines combinations of a given pickup before the next stop and all relevant dropoffs after later stops of a given
         // vehicle until an assignment requires the exact distance to the pickup via the vehicle. Returns an iterator to the
         // dropoff at which the exact distance is first needed or one-past-end iterator if all combinations could be filtered.
-        RelevantPDLocs::It tryLowerBoundsForOrdinary(Assignment &asgn, const RelevantPDLocs& relOrdinaryDropoffs, RequestState& requestState, const PDLocs& pdLocs) {
+        RelevantPDLocs::It tryLowerBoundsForOrdinary(Assignment &asgn, const RelevantPDLocs &relOrdinaryDropoffs,
+                                                     RequestState &requestState, const PDLocs &pdLocs) {
             using namespace time_utils;
             assert(asgn.vehicle && asgn.pickup.id != INVALID_ID);
             const auto vehId = asgn.vehicle->vehicleId;
@@ -255,7 +265,9 @@ namespace karri {
             return relevantDropoffs.end();
         }
 
-        void finishContinuations(const Vehicle &veh, const RelevantPDLocs& relOrdinaryDropoffs, const RelevantPDLocs& relDropoffsBns, RequestState& requestState, const PDDistancesT& pdDistances, const PDLocs& pdLocs) {
+        void finishContinuations(const Vehicle &veh, const RelevantPDLocs &relOrdinaryDropoffs,
+                                 const RelevantPDLocs &relDropoffsBns, RequestState &requestState,
+                                 const PDDistancesT &pdDistances, const PDLocs &pdLocs) {
             const auto stopLocations = routeState.stopLocationsFor(veh.vehicleId);
             const auto numStops = routeState.numStopsOf(veh.vehicleId);
             Assignment asgn(&veh);
@@ -287,7 +299,8 @@ namespace karri {
                     asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                     requestState.tryAssignmentWithKnownCost(asgn, calculator.calc(asgn, requestState));
 
-                    if (dropoffIt > continuation.continueIt) { // Do not count assignment at continuation twice
+                    if (dropoffIt > continuation.continueIt) {
+                        // Do not count assignment at continuation twice
                         ++numAssignmentsTriedWithPickupBeforeNextStop;
                     }
                 }
@@ -314,7 +327,8 @@ namespace karri {
                     if (stopLocations[1] == asgn.dropoff.loc)
                         continue;
 
-                    if (dropoffIt > continuation.continueIt) { // Do not count assignment at continuation twice
+                    if (dropoffIt > continuation.continueIt) {
+                        // Do not count assignment at continuation twice
                         ++numAssignmentsTriedWithPickupBeforeNextStop;
                     }
 
@@ -328,6 +342,7 @@ namespace karri {
             }
         }
 
+        const VehicleInputGraphT &inputGraph;
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         const Fleet &fleet;
         CostCalculator calculator;
@@ -336,6 +351,5 @@ namespace karri {
         int numAssignmentsTriedWithPickupBeforeNextStop;
         std::vector<Continuation> ordinaryContinuations;
         std::vector<Continuation> pairedContinuations;
-
     };
 }

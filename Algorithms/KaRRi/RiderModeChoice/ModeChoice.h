@@ -20,20 +20,20 @@ namespace karri::mode_choice {
 
     public:
         ModeChoice(const RouteState &routeState, const bool allowPublicTransport)
-        : criterion(routeState),
-            routeState(routeState),
-            allowPublicTransport(allowPublicTransport),
-            logger(LogManager<LoggerT>::getLogger("modechoice.csv",
-                                                  "request_id,"
-                                                  "walk_travel_time,"
-                                                  "car_travel_time,"
-                                                  "taxi_travel_time,"
-                                                  "taxi_wait_time,"
-                                                  "taxi_accegr_time,"
-                                                  "pt_travel_time,"
-                                                  "pt_wait_time,"
-                                                  "pt_accegr_time,"
-                                                  "mode\n")) {
+            : criterion(routeState),
+              routeState(routeState),
+              allowPublicTransport(allowPublicTransport),
+              logger(LogManager<LoggerT>::getLogger("modechoice.csv",
+                                                    "request_id,"
+                                                    "walk_travel_time,"
+                                                    "car_travel_time,"
+                                                    "taxi_travel_time,"
+                                                    "taxi_wait_time,"
+                                                    "taxi_accegr_time,"
+                                                    "pt_travel_time,"
+                                                    "pt_wait_time,"
+                                                    "pt_accegr_time,"
+                                                    "mode\n")) {
         }
 
         template<typename AsgnFinderResponseT>
@@ -75,7 +75,9 @@ namespace karri::mode_choice {
                                   ? "Ped"
                                   : choice == TransportMode::PublicTransport
                                         ? "PublicTransport"
-                                        : "Taxi")
+                                        : choice == TransportMode::Taxi
+                                              ? "Taxi"
+                                              : "None")
                     << "\n";
 
             return choice;

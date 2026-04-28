@@ -95,6 +95,9 @@ namespace karri {
         }
 
         bool tryAssignmentWithKnownCost(const Assignment &asgn, int cost) {
+            KASSERT(asgn.pickupStopIdx != asgn.dropoffStopIdx || asgn.pickup.id != 0 || asgn.dropoff.id != 0 || asgn.distToDropoff >= originalReqDirectDist, "Paired assignment with origin and destination has wrong direct distance.");
+            if (asgn.pickup.loc == asgn.dropoff.loc)
+                return false;
             if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
                                     breakCostTie(asgn, bestAssignment)))) {
                 bestAssignment = asgn;

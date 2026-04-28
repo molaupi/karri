@@ -224,8 +224,10 @@ namespace karri::DropoffAfterLastStopStrategies {
                     }
                 }
 
-                if (curRelPickupsBns->hasRelevantSpotsFor(vehId) &&
-                    occupancies[0] != asgn.vehicle->capacity) {
+                KASSERT(routeState.numStopsOf(vehId) > 1);
+                if (curRelPickupsBns->hasRelevantSpotsFor(vehId) && occupancies[0] != asgn.vehicle->capacity &&
+                    routeState.schedArrTimesFor(vehId)[1] - inputGraph.travelTime(routeState.stopLocationsFor(vehId)[1])
+                    > requestState.dispatchingTime) {
                     vehiclesSeen.insert(vehId);
                     asgn.pickupStopIdx = 0;
 

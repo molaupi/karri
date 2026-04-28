@@ -156,7 +156,7 @@ namespace karri {
             CurVehLocToPickupLabelSet>;
         tbb::enumerable_thread_specific<CurVehLocToPickupSearchesImpl> curVehLocToPickupSearches;
 
-        using PBNSInsertionsFinderImpl = PBNSAssignmentsFinder<PDDistancesImpl, CurVehLocToPickupSearchesImpl>;
+        using PBNSInsertionsFinderImpl = PBNSAssignmentsFinder<VehicleInputGraph, PDDistancesImpl, CurVehLocToPickupSearchesImpl>;
         tbb::enumerable_thread_specific<PBNSInsertionsFinderImpl> pbnsInsertionsFinder;
 
 
@@ -337,7 +337,7 @@ namespace karri {
                       vehicleInputGraph, locator.local(), vehChEnv, routeState, fleet.size());
               }),
               pbnsInsertionsFinder([&]() {
-                  return PBNSInsertionsFinderImpl(curVehLocToPickupSearches.local(), fleet, routeState);
+                  return PBNSInsertionsFinderImpl(vehicleInputGraph, curVehLocToPickupSearches.local(), fleet, routeState);
               }),
               palsStrategy([&]() {
                   return makePalsStrategy(

@@ -9,6 +9,7 @@
 namespace karri::mode_choice {
     // Decides whether a rider accepts an assignment based on the request and the assignment finder response.
     // Mode choice decision is based on KaRRi cost. Will only return Ped or Taxi, depending on which has smaller cost.
+    template<bool AlwaysVehicle>
     class KaRRiCostCriterion {
     public:
         explicit KaRRiCostCriterion(const RouteState &routeState)
@@ -26,7 +27,9 @@ namespace karri::mode_choice {
 
         void registerPed(const int walkingTimeTenthsOfSeconds, const RequestState &requestState) {
             KASSERT(walkingTimeTenthsOfSeconds >= 0 && walkingTimeTenthsOfSeconds < INFTY);
-            walkingCost = CostCalculator::calcCostForNotUsingVehicle(walkingTimeTenthsOfSeconds, requestState);
+            if constexpr (!AlwaysVehicle) {
+                walkingCost = CostCalculator::calcCostForNotUsingVehicle(walkingTimeTenthsOfSeconds, requestState);
+            }
             stats.walkTravelTime = tenthsOfSecondsToMinutes(walkingTimeTenthsOfSeconds);
         }
 
@@ -63,8 +66,15 @@ namespace karri::mode_choice {
 
         // Executes mode choice with previously registered modes.
         TransportMode apply() const {
+            if constexpr (AlwaysVehicle) {
+                if (taxiCost == INFTY)
+                    return TransportMode::None;
+                return TransportMode::Taxi;
+            }
             if (walkingCost < taxiCost)
                 return TransportMode::Ped;
+            if (taxiCost == INFTY)
+                return TransportMode::None;
             return TransportMode::Taxi;
         }
 
