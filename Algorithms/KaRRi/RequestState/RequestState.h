@@ -34,7 +34,7 @@
 #include "Tools/Simd/AlignedVector.h"
 #include "DataStructures/Containers/Subset.h"
 #include "Algorithms/KaRRi/CostCalculator.h"
-#include "Algorithms/KaRRi/RequestState/FindPDLocsInRadiusQuery.h"
+#include "Algorithms/KaRRi/BaseObjects/PDLocs.h"
 
 namespace karri {
 
@@ -52,8 +52,6 @@ namespace karri {
                 : originalRequest(),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
-                  pickups(),
-                  dropoffs(),
                   calculator(calculator) {}
 
 
@@ -71,17 +69,6 @@ namespace karri {
         int originalReqDirectDist;
         int minDirectPDDist;
 
-        std::vector<PDLoc> pickups;
-        std::vector<PDLoc> dropoffs;
-
-        int numPickups() const {
-            return pickups.size();
-        }
-
-        int numDropoffs() const {
-            return dropoffs.size();
-        }
-
         // Shorthand for requestTime
         int now() const {
             return originalRequest.requestTime;
@@ -92,20 +79,17 @@ namespace karri {
             return static_cast<int>(InputConfig::getInstance().alpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().beta;
         }
 
-        int getPassengerArrAtPickup(const int pickupId) const {
-            KASSERT(pickupId < numPickups());
-            return originalRequest.requestTime + pickups[pickupId].walkingDist;
+        int getPassengerArrAtPickup(const PDLoc &pickup) const {
+            return originalRequest.requestTime + pickup.walkingDist;
         }
 
-        int getMaxPDTripTime(const int pickupId, const int dropoffId) const {
-            KASSERT(pickupId < numPickups() && dropoffId < numDropoffs());
-            KASSERT(originalReqDirectDist >= 0);
-            return getOriginalReqMaxTripTime() - (pickups[pickupId].walkingDist + dropoffs[dropoffId].walkingDist);
+        int getMaxPDTripTime(const PDLoc &pickup, const PDLoc &dropoff) const {
+            assert(originalReqDirectDist >= 0);
+            return getOriginalReqMaxTripTime() - (pickup.walkingDist + dropoff.walkingDist);
         }
 
-        int getMaxArrTimeAtDropoff(const int pickupId, const int dropoffId) const {
-            KASSERT(pickupId < numPickups() && dropoffId < numDropoffs());
-            return getPassengerArrAtPickup(pickupId) + getMaxPDTripTime(pickupId, dropoffId);
+        int getMaxArrTimeAtDropoff(const PDLoc &pickup, const PDLoc &dropoff) const {
+            return getPassengerArrAtPickup(pickup) + getMaxPDTripTime(pickup, dropoff);
         }
 
         int getMaxDepTimeAtPickup() const {
@@ -122,9 +106,9 @@ namespace karri {
 
         void tryFinishedTransferAssignmentWithKnownCost(AssignmentWithTransfer &asgn, const RequestCost& cost) {
             KASSERT(asgn.isFinished());
-            KASSERT(asgn.pVeh->vehicleId >= 0 && asgn.dVeh->vehicleId >= 0 && asgn.pVeh->vehicleId != asgn.dVeh->vehicleId && asgn.pickup && asgn.dropoff);
+            KASSERT(asgn.pVeh->vehicleId >= 0 && asgn.dVeh->vehicleId >= 0 && asgn.pVeh->vehicleId != asgn.dVeh->vehicleId && asgn.pickup.id != INVALID_ID && asgn.dropoff.id != INVALID_ID);
             KASSERT(asgn.distToPickup >= 0 && asgn.distFromPickup >= 0 && asgn.distToTransferPVeh >= 0 && asgn.distFromTransferPVeh >= 0 && asgn.distToTransferDVeh >= 0 && asgn.distFromTransferDVeh >= 0 && asgn.distToDropoff >= 0 && asgn.distFromDropoff >= 0);
-            KASSERT(asgn.pickup->loc != asgn.transfer.loc && asgn.dropoff->loc != asgn.transfer.loc);
+            KASSERT(asgn.pickup.loc != asgn.transfer.loc && asgn.dropoff.loc != asgn.transfer.loc);
 
             // These assertions do not work due to edges with travel time 0
 //            KASSERT(asgn.pickupIdx == asgn.transferIdxPVeh || asgn.distFromPickup > 0 || asgn.pickupType == AFTER_LAST_STOP);
@@ -244,8 +228,6 @@ namespace karri {
             originalRequest = {};
             originalReqDirectDist = INFTY;
             minDirectPDDist = INFTY;
-            pickups.clear();
-            dropoffs.clear();
 
             bestCostOverall = INFTY;
             bestAsgnOverallType = INVALID;

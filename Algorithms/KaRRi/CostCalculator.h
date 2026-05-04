@@ -39,6 +39,7 @@
 #include "Tools/Constants.h"
 #include "Tools/Workarounds.h"
 #include "Algorithms/KaRRi/AssignmentCostFunctions/TimeIsMoneyCostFunction.h"
+#include "BaseObjects/PDLocs.h"
 
 namespace karri {
 
@@ -73,8 +74,8 @@ namespace karri {
         RequestCost calcBase(const Assignment &asgn, const RequestContext &context) {
 
             using namespace time_utils;
-            KASSERT(asgn.vehicle && asgn.pickup && asgn.dropoff);
-            if (!asgn.vehicle || !asgn.pickup || !asgn.dropoff)
+            KASSERT(asgn.vehicle && asgn.pickup.id != INVALID_ID && asgn.dropoff.id != INVALID_ID);
+            if (!asgn.vehicle || asgn.pickup.id == INVALID_ID || asgn.dropoff.id == INVALID_ID)
                 return RequestCost::INFTY_COST();
 
             if (asgn.distToPickup == INFTY || asgn.distFromPickup == INFTY ||
@@ -82,7 +83,7 @@ namespace karri {
                 return RequestCost::INFTY_COST();
             const int vehId = asgn.vehicle->vehicleId;
             const auto actualDepTimeAtPickup = getActualDepTimeAtPickup(asgn, context, routeState);
-            const bool pickupAtExistingStop = isPickupAtExistingStop(*asgn.pickup, vehId, context.now(),
+            const bool pickupAtExistingStop = isPickupAtExistingStop(asgn.pickup, vehId, context.now(),
                                                                     asgn.pickupStopIdx, routeState);
             const bool dropoffAtExistingStop = isDropoffAtExistingStop(asgn, routeState);
             if constexpr (checkHardConstraints) {
@@ -167,12 +168,12 @@ namespace karri {
                     return RequestCost::INFTY_COST();
             }
 
-            const int tripTime = arrTimeAtDropoff - context.originalRequest.requestTime + asgn.dropoff->walkingDist;
+            const int tripTime = arrTimeAtDropoff - context.originalRequest.requestTime + asgn.dropoff.walkingDist;
 
             // Apply cost function to time values
             RequestCost cost;
-            cost.walkingCost = F::calcWalkingCost(asgn.pickup->walkingDist, InputConfig::getInstance().pickupRadius) +
-                               F::calcWalkingCost(asgn.dropoff->walkingDist, InputConfig::getInstance().dropoffRadius);
+            cost.walkingCost = F::calcWalkingCost(asgn.pickup.walkingDist, InputConfig::getInstance().pickupRadius) +
+                               F::calcWalkingCost(asgn.dropoff.walkingDist, InputConfig::getInstance().dropoffRadius);
             cost.tripCost = F::calcTripCost(tripTime, context);
             cost.waitTimeViolationCost = F::calcWaitViolationCost(actualDepTimeAtPickup, context);
             cost.changeInTripCostsOfOthers = F::calcChangeInTripCostsOfExistingPassengers(addedTripTime);
@@ -196,7 +197,7 @@ namespace karri {
         RequestCost calcBase(AssignmentWithTransfer &asgn, const RequestContext &context) {
             using namespace time_utils;
 
-            if (!asgn.pVeh || !asgn.dVeh || !asgn.pickup || !asgn.dropoff)
+            if (!asgn.pVeh || !asgn.dVeh || asgn.pickup.id == INVALID_ID || asgn.dropoff.id == INVALID_ID)
                 return RequestCost::INFTY_COST();
             if (asgn.distToPickup == INFTY || asgn.distFromPickup == INFTY ||
                 asgn.distToTransferPVeh == INFTY || asgn.distFromTransferPVeh == INFTY ||
@@ -211,7 +212,7 @@ namespace karri {
             const auto numStopsDVeh = routeState.numStopsOf(dVehId);
 
             const auto actualDepTimeAtPickup = getActualDepTimeAtPickup(asgn, context, routeState);
-            const bool pickupAtExistingStop = isPickupAtExistingStop(*asgn.pickup, pVehId, context.now(),
+            const bool pickupAtExistingStop = isPickupAtExistingStop(asgn.pickup, pVehId, context.now(),
                                                                      asgn.pickupIdx, routeState);
             const bool transferPVehAtExistingStop = isTransferAtExistingStopPVeh(asgn, routeState);
             const bool dropoffAtExistingStop = isDropoffAtExistingStop(asgn, routeState);
@@ -347,13 +348,13 @@ namespace karri {
                     return RequestCost::INFTY_COST();
             }
 
-            const int tripTime = arrTimeAtDropoff - context.originalRequest.requestTime + asgn.dropoff->walkingDist;
+            const int tripTime = arrTimeAtDropoff - context.originalRequest.requestTime + asgn.dropoff.walkingDist;
             const int waitTimePickup = actualDepTimeAtPickup - context.originalRequest.requestTime;
 
             // Apply cost function to time values
             RequestCost cost;
-            cost.walkingCost = F::calcWalkingCost(asgn.pickup->walkingDist, InputConfig::getInstance().pickupRadius) +
-                               F::calcWalkingCost(asgn.dropoff->walkingDist, InputConfig::getInstance().dropoffRadius);
+            cost.walkingCost = F::calcWalkingCost(asgn.pickup.walkingDist, InputConfig::getInstance().pickupRadius) +
+                               F::calcWalkingCost(asgn.dropoff.walkingDist, InputConfig::getInstance().dropoffRadius);
             cost.tripCost = F::calcTripCost(tripTime, context);
             cost.waitTimeViolationCost = F::calcWaitViolationCost(riderArrTimeAtTransfer, depTimeAtTransfer,
                                                                   waitTimePickup, context);
@@ -370,8 +371,8 @@ namespace karri {
         template<bool checkHardConstraints, typename RequestContext>
         RequestCost calcLowerBoundForPartialOrdinaryTransfer(AssignmentWithTransfer &asgn, const RequestContext &context) {
             using namespace time_utils;
-            KASSERT(asgn.pVeh && asgn.dVeh && asgn.pickup);
-            KASSERT(!asgn.dropoff);
+            KASSERT(asgn.pVeh && asgn.dVeh && asgn.pickup.id != INVALID_ID);
+            KASSERT(asgn.dropoff.id == INVALID_ID);
             KASSERT(asgn.pickupIdx >= 0 && asgn.pickupIdx < routeState.numStopsOf(asgn.pVeh->vehicleId));
             KASSERT(asgn.transferIdxPVeh >= 0 && asgn.transferIdxPVeh < routeState.numStopsOf(asgn.pVeh->vehicleId));
             KASSERT(asgn.transferIdxDVeh >= 0 && asgn.transferIdxDVeh < routeState.numStopsOf(asgn.dVeh->vehicleId));
@@ -385,7 +386,7 @@ namespace karri {
             const auto numStopsDVeh = routeState.numStopsOf(dVehId);
 
             const auto actualDepTimeAtPickup = getActualDepTimeAtPickup(asgn, context, routeState);
-            const bool pickupAtExistingStop = isPickupAtExistingStop(*asgn.pickup, pVehId, context.now(),
+            const bool pickupAtExistingStop = isPickupAtExistingStop(asgn.pickup, pVehId, context.now(),
                                                                      asgn.pickupIdx, routeState);
             const bool transferPVehAtExistingStop = isTransferAtExistingStopPVeh(asgn, routeState);
             if constexpr (checkHardConstraints) {
@@ -489,7 +490,7 @@ namespace karri {
 
             // Apply cost function to time values
             RequestCost minCost;
-            minCost.walkingCost = F::calcWalkingCost(asgn.pickup->walkingDist, InputConfig::getInstance().pickupRadius);
+            minCost.walkingCost = F::calcWalkingCost(asgn.pickup.walkingDist, InputConfig::getInstance().pickupRadius);
             minCost.tripCost = F::calcTripCost(minTripTime, context);
             minCost.waitTimeViolationCost = F::calcWaitViolationCost(riderArrTimeAtTransfer, depTimeAtTransfer,
                                                                   waitTimePickup, context);
@@ -775,7 +776,7 @@ namespace karri {
         template<typename RequestContext>
         int calcCostLowerBoundForOrdinaryPairedAssignment(const Assignment &asgn, const RequestContext &context) const {
             using namespace time_utils;
-            if (!asgn.vehicle || !asgn.pickup || !asgn.dropoff)
+            if (!asgn.vehicle || asgn.pickup.id == INVALID_ID || asgn.dropoff.id == INVALID_ID)
                 return INFTY;
             if (asgn.distToPickup == INFTY || asgn.distFromPickup == INFTY ||
                 asgn.distToDropoff == INFTY || asgn.distFromDropoff == INFTY)
@@ -808,7 +809,7 @@ namespace karri {
             const int vehId = veh.vehicleId;
             const auto &numStops = routeState.numStopsOf(vehId);
 
-            Assignment asgn(&veh, &pickup);
+            Assignment asgn(&veh, pickup);
             asgn.distToPickup = distToPickup;
             asgn.distToDropoff = minDistToDropoff;
 
@@ -1313,122 +1314,6 @@ namespace karri {
 //        }
 
     private:
-
-//        template<typename RequestContext>
-//        RequestCost calcCostPVeh(AssignmentWithTransfer &asgn,
-//                                 const RequestContext &context, const int initialPickupDetour,
-//                                 const int residualDetourAtEnd, const int depTimeAtPickup,
-//                                 const bool transferAtExistingStop,
-//                                 const int addedTripTimeForExistingPassengers) const {
-//
-//            if (!asgn.pVeh || !asgn.pickup) {
-//                return RequestCost::INFTY_COST();
-//            }
-//
-//            using namespace time_utils;
-//
-//            const auto arrTimeAtTransfer = getArrTimeAtTransfer(depTimeAtPickup, asgn, initialPickupDetour,
-//                                                                transferAtExistingStop, routeState);
-//            asgn.arrAtTransferPoint = arrTimeAtTransfer;
-//            KASSERT(asgn.pickupPairedLowerBoundUsed || asgn.pickupBNSLowerBoundUsed ||
-//                   asgn.arrAtTransferPoint > asgn.depAtPickup);
-//
-//            const int pickupIdx = asgn.pickupIdx;
-//            const bool pickupAtExistingStop = isPickupAtExistingStop(*asgn.pickup, asgn.pVeh->vehicleId,
-//                                                                     context.originalRequest.requestTime, pickupIdx,
-//                                                                     routeState);
-//            (void) pickupAtExistingStop;
-//
-//            KASSERT(asgn.pickupBNSLowerBoundUsed || asgn.pickupPairedLowerBoundUsed ||
-//                   asgn.pickupIdx != asgn.transferIdxPVeh || transferAtExistingStop ||
-//                   asgn.arrAtTransferPoint != asgn.depAtPickup);
-//            const int tripTime = arrTimeAtTransfer - context.originalRequest.requestTime;
-//
-//            const auto walkingCostPVeh = F::calcWalkingCost(asgn.pickup->walkingDist,
-//                                                            InputConfig::getInstance().pickupRadius);
-//            const auto tripCostPVeh = F::calcTripCost(tripTime, context);
-//            asgn.waitTimeAtPickup = depTimeAtPickup - context.originalRequest.requestTime;
-//            const auto waitTimeViolationCost = F::calcWaitViolationCost(depTimeAtPickup, context);
-//            KASSERT(addedTripTimeForExistingPassengers >= 0);
-//            const auto changeInTripCostsOfOthers = F::calcChangeInTripCostsOfExistingPassengers(
-//                    addedTripTimeForExistingPassengers);
-//            KASSERT(changeInTripCostsOfOthers >= 0);
-//            const auto vehCostPVeh = F::calcVehicleCost(residualDetourAtEnd);
-//
-//            RequestCost costPVeh;
-//            costPVeh.walkingCost = walkingCostPVeh;
-//            costPVeh.tripCost = tripCostPVeh;
-//            costPVeh.waitTimeViolationCost = waitTimeViolationCost;
-//            costPVeh.changeInTripCostsOfOthers = changeInTripCostsOfOthers;
-//            costPVeh.vehCost = vehCostPVeh;
-//
-//            KASSERT(walkingCostPVeh >= 0 && tripCostPVeh >= 0 && waitTimeViolationCost >= 0 &&
-//                   changeInTripCostsOfOthers >= 0 && vehCostPVeh >= 0);
-//
-//            const int total =
-//                    vehCostPVeh + walkingCostPVeh + tripCostPVeh + waitTimeViolationCost + changeInTripCostsOfOthers;
-//            KASSERT(total >= 0);
-//
-//            costPVeh.total = total;
-//
-//            KASSERT(costPVeh.total >= 0);
-//            return costPVeh;
-//        }
-//
-//        template<typename RequestContext>
-//        RequestCost
-//        calcFinalCost(AssignmentWithTransfer &asgn, const RequestCost &costPVeh, const RequestContext &context,
-//                      const int initialTransferDetour,
-//                      const int residualDetourAtEnd, const int actualDepTimeAtTransfer,
-//                      const bool dropoffAtExistingStop, const int addedTripTime) const {
-//            if (!asgn.dVeh || !asgn.pVeh || !asgn.pickup || !asgn.dropoff) {
-//                return RequestCost::INFTY_COST();
-//            }
-//
-//            using namespace time_utils;
-//
-//            const int arrTimeAtDropoff = getArrTimeAtDropoff(actualDepTimeAtTransfer, asgn, initialTransferDetour,
-//                                                             dropoffAtExistingStop, routeState);
-//            const int tripTime = arrTimeAtDropoff - asgn.arrAtTransferPoint + asgn.dropoff->walkingDist;
-//            asgn.tripTimeDVeh = tripTime;
-//            asgn.arrAtDropoff = arrTimeAtDropoff;
-//            asgn.requestTime = context.originalRequest.requestTime;
-//
-//            const int walkingCost = F::calcWalkingCost(asgn.dropoff->walkingDist,
-//                                                       InputConfig::getInstance().dropoffRadius);
-//            const int tripCost = F::calcTripCost(tripTime, context);
-//            const int waitTimeViolationCost = F::calcWaitViolationCost(asgn.arrAtTransferPoint, actualDepTimeAtTransfer,
-//                                                                       asgn.waitTimeAtPickup, context);
-//            const int changeInTripCostsOfOthers = F::calcChangeInTripCostsOfExistingPassengers(addedTripTime);
-//            const int vehCost = F::calcVehicleCost(residualDetourAtEnd);
-//
-//            if (walkingCost >= INFTY || tripCost >= INFTY || waitTimeViolationCost >= INFTY ||
-//                changeInTripCostsOfOthers >= INFTY || vehCost >= INFTY) {
-//                return RequestCost::INFTY_COST();
-//            }
-//
-//            RequestCost cost;
-//            cost.walkingCost = costPVeh.walkingCost + walkingCost;
-//            cost.tripCost = costPVeh.tripCost + tripCost;
-//            cost.waitTimeViolationCost = costPVeh.waitTimeViolationCost + waitTimeViolationCost;
-//            cost.changeInTripCostsOfOthers = costPVeh.changeInTripCostsOfOthers + changeInTripCostsOfOthers;
-//            cost.vehCost = costPVeh.vehCost + vehCost;
-//            KASSERT(cost.walkingCost >= 0 && cost.tripCost >= 0 && cost.waitTimeViolationCost >= 0 &&
-//                   cost.changeInTripCostsOfOthers >= 0 && cost.vehCost >= 0);
-//
-//            if (cost.walkingCost >= INFTY || cost.tripCost >= INFTY ||
-//                cost.waitTimeViolationCost >= INFTY || cost.changeInTripCostsOfOthers >= INFTY ||
-//                cost.vehCost >= INFTY) {
-//                return RequestCost::INFTY_COST();
-//            }
-//
-//            int total = (costPVeh.total + vehCost + walkingCost + tripCost + waitTimeViolationCost +
-//                         changeInTripCostsOfOthers);
-//            KASSERT(total >= 0);
-//            cost.total = total;
-//            return cost;
-//        }
-
 
         const RouteState &routeState;
         const Fleet &fleet;

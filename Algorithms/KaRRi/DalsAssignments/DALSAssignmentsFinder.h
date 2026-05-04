@@ -24,6 +24,9 @@
 
 
 #pragma once
+
+#include <Algorithms/KaRRi/RequestState/RelevantPDLocs.h>
+
 namespace karri {
 
 // Wrapper around DALS strategy.
@@ -35,8 +38,9 @@ namespace karri {
         DALSAssignmentsFinder(StrategyT &strategy) : strategy(strategy) {}
 
         void findAssignments(const RelevantPDLocs &relevantOrdinaryPickups,
-                             const RelevantPDLocs &relevantPickupsBeforeNextStop) {
-            strategy.tryDropoffAfterLastStop(relevantOrdinaryPickups, relevantPickupsBeforeNextStop);
+                             const RelevantPDLocs &relevantPickupsBeforeNextStop,
+                             const PDLocs &pdLocs) {
+            strategy.tryDropoffAfterLastStop(relevantOrdinaryPickups, relevantPickupsBeforeNextStop, pdLocs);
         }
 
         void init() {

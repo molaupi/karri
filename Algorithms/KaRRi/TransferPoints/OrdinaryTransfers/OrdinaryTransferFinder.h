@@ -122,7 +122,8 @@ namespace karri {
             const RelevantPDLocs &relORDPickups, const RelevantPDLocs &relBNSPickups,
                                 const RelevantPDLocs &relORDDropoffs, const RelevantPDLocs &relBNSDropoffs,
                              const RelevantDropoffsAfterLastStop &relALSDropoffs,
-                             const EllipsesT &ellipseContainer) {
+                             const EllipsesT &ellipseContainer,
+                             const PDLocs &pdLocs) {
             Timer total;
             Timer innerTimer;
             if (relORDPickups.getVehiclesWithRelevantPDLocs().empty() &&
@@ -139,9 +140,9 @@ namespace karri {
             // transfers to dropoffs.
             std::vector<int> pdLocRanks;
             std::vector<int> pdLocOffsets;
-            pdLocRanks.reserve(requestState.numPickups());
-            pdLocOffsets.reserve(requestState.numPickups());
-            for (const auto &p: requestState.pickups) {
+            pdLocRanks.reserve(pdLocs.numPickups());
+            pdLocOffsets.reserve(pdLocs.numPickups());
+            for (const auto &p: pdLocs.pickups) {
                 pdLocRanks.push_back(vehCh.rank(inputGraph.edgeHead(p.loc)));
                 pdLocOffsets.push_back(0);
             }
@@ -149,9 +150,9 @@ namespace karri {
 
             pdLocRanks.clear();
             pdLocOffsets.clear();
-            pdLocRanks.reserve(requestState.numDropoffs());
-            pdLocOffsets.reserve(requestState.numDropoffs());
-            for (const auto &d: requestState.dropoffs) {
+            pdLocRanks.reserve(pdLocs.numDropoffs());
+            pdLocOffsets.reserve(pdLocs.numDropoffs());
+            for (const auto &d: pdLocs.dropoffs) {
                 pdLocRanks.push_back(vehCh.rank(inputGraph.edgeTail(d.loc)));
                 pdLocOffsets.push_back(inputGraph.travelTime(d.loc));
             }
@@ -183,16 +184,16 @@ namespace karri {
 
                     // Find the assignments with the transfer points
                     promisingPartials.clear();
-                    findPartialAssignmentsForPairOfStopPairs(pStopId, dStopId, relORDPickups, relBNSPickups, promisingPartials);
+                    findPartialAssignmentsForPairOfStopPairs(pStopId, dStopId, relORDPickups, relBNSPickups, promisingPartials, pdLocs);
 
                     if (promisingPartials.empty())
                         continue;
 
                     KASSERT(postponedFullAssignments.empty());
                     for (const auto &partialAsgn: promisingPartials) {
-                        tryDropoffBNS(partialAsgn, relBNSDropoffs, postponedFullAssignments);
-                        tryDropoffORD(partialAsgn, relORDDropoffs, postponedFullAssignments);
-                        tryDropoffALS(partialAsgn, relALSDropoffs, postponedFullAssignments);
+                        tryDropoffBNS(partialAsgn, relBNSDropoffs, postponedFullAssignments, pdLocs);
+                        tryDropoffORD(partialAsgn, relORDDropoffs, postponedFullAssignments, pdLocs);
+                        tryDropoffALS(partialAsgn, relALSDropoffs, postponedFullAssignments, pdLocs);
                     }
 
                     promisingPartials.clear();
@@ -203,7 +204,7 @@ namespace karri {
                     // Finish the postponed assignments
                     numPostponed += postponedFullAssignments.size();
                     postponedTimer.restart();
-                    finishAssignments(pVehId, dVehId, postponedFullAssignments);
+                    finishAssignments(pVehId, dVehId, postponedFullAssignments, pdLocs);
                     tryPostponedTime += postponedTimer.elapsed<std::chrono::nanoseconds>();
 
                     postponedFullAssignments.clear();
@@ -243,7 +244,8 @@ namespace karri {
         void findPartialAssignmentsForPairOfStopPairs(const int pStopId, const int dStopId,
             const RelevantPDLocs &relORDPickups,
             const RelevantPDLocs &relBNSPickups,
-                                                      std::vector<AssignmentWithTransfer> &promisingPartials) {
+                                                      std::vector<AssignmentWithTransfer> &promisingPartials,
+                                                      const PDLocs &pdLocs) {
             ++numStopPairs;
 
             const auto transferPoints = ellipseIntersector.getTransferPoints(pStopId, dStopId);
@@ -255,15 +257,16 @@ namespace karri {
             const auto trIdxPVeh = routeState.stopPositionOf(pStopId);
             const auto trIdxDVeh = routeState.stopPositionOf(dStopId);
             for (const auto &tp: transferPoints) {
-                tryPickupBNS(pVehId, dVehId, trIdxPVeh, trIdxDVeh, tp, relBNSPickups, promisingPartials);
-                tryPickupORD(pVehId, dVehId, trIdxPVeh, trIdxDVeh, tp, relORDPickups, promisingPartials);
+                tryPickupBNS(pVehId, dVehId, trIdxPVeh, trIdxDVeh, tp, relBNSPickups, promisingPartials, pdLocs);
+                tryPickupORD(pVehId, dVehId, trIdxPVeh, trIdxDVeh, tp, relORDPickups, promisingPartials, pdLocs);
             }
         }
 
         void tryPickupORD(const int pVehId, const int dVehId, const int trIdxPVeh, const int trIdxDVeh,
         const TransferPoint &tp,
         const RelevantPDLocs &relORDPickups,
-                          std::vector<AssignmentWithTransfer> &promisingPartials) {
+                          std::vector<AssignmentWithTransfer> &promisingPartials,
+                          const PDLocs &pdLocs) {
             if (trIdxPVeh == 0 || !relORDPickups.hasRelevantSpotsFor(pVehId))
                 return;
 
@@ -272,9 +275,9 @@ namespace karri {
                     break; // pickups in relevant stops are ordered by stop index
 
                 // Build the partial assignment with the transfer point
-                PDLoc *pickupPDLoc = &requestState.pickups[pickup.pdId];
+                const PDLoc &pickupPDLoc = pdLocs.pickups[pickup.pdId];
 
-                if (pickupPDLoc->loc == tp.loc || transferIsLaterOnRoute(dVehId, trIdxDVeh, tp.loc))
+                if (pickupPDLoc.loc == tp.loc || transferIsLaterOnRoute(dVehId, trIdxDVeh, tp.loc))
                     continue;
 
                 AssignmentWithTransfer asgn(&fleet[pVehId], &fleet[dVehId], tp, pickupPDLoc, pickup.stopIndex,
@@ -286,7 +289,7 @@ namespace karri {
                 asgn.pickupType = ORDINARY;
                 asgn.transferTypePVeh = ORDINARY;
 
-                KASSERT(asgn.pickup->id >= 0);
+                KASSERT(asgn.pickup.id >= 0);
                 // Try the partial assignment
                 tryPartialAssignment(asgn, promisingPartials);
             }
@@ -295,15 +298,16 @@ namespace karri {
         void tryPickupBNS(const int pVehId, const int dVehId, const int trIdxPVeh, const int trIdxDVeh,
         const TransferPoint &tp,
         const RelevantPDLocs &relBNSPickups,
-        std::vector<AssignmentWithTransfer> &promisingPartials) {
+        std::vector<AssignmentWithTransfer> &promisingPartials,
+        const PDLocs &pdLocs) {
             if (!relBNSPickups.hasRelevantSpotsFor(pVehId))
                 return;
 
             for (const auto &pickup: relBNSPickups.relevantSpotsFor(pVehId)) {
                 // Build the partial assignment with the transfer point
-                PDLoc *pickupPDLoc = &requestState.pickups[pickup.pdId];
+                const PDLoc &pickupPDLoc = pdLocs.pickups[pickup.pdId];
 
-                if (pickupPDLoc->loc == tp.loc || transferIsLaterOnRoute(dVehId, trIdxDVeh, tp.loc))
+                if (pickupPDLoc.loc == tp.loc || transferIsLaterOnRoute(dVehId, trIdxDVeh, tp.loc))
                     continue;
 
                 AssignmentWithTransfer asgn(&fleet[pVehId], &fleet[dVehId], tp, pickupPDLoc, pickup.stopIndex,
@@ -314,7 +318,7 @@ namespace karri {
                 asgn.pickupType = BEFORE_NEXT_STOP;
                 asgn.transferTypePVeh = trIdxPVeh == 0 ? BEFORE_NEXT_STOP : ORDINARY;
 
-                KASSERT(asgn.pickup->id >= 0);
+                KASSERT(asgn.pickup.id >= 0);
                 // Try the partial assignment
                 tryPartialAssignment(asgn, promisingPartials);
             }
@@ -334,7 +338,7 @@ namespace karri {
         tryPartialAssignment(AssignmentWithTransfer &asgn, std::vector<AssignmentWithTransfer> &promisingPartials) {
             // Check the cost of the partial assignment with transfer where pickup vehicle, dropoff vehicle, pickup and transfer point (therefore also both transfer stop indices) are set
 
-            KASSERT(asgn.pVeh && asgn.pickup);
+            KASSERT(asgn.pVeh && asgn.pickup.id != INVALID_ID);
             if (asgn.distToPickup == INFTY || asgn.distFromPickup == INFTY || asgn.distToTransferPVeh == INFTY ||
                 asgn.distFromTransferPVeh == INFTY)
                 return;
@@ -360,7 +364,8 @@ namespace karri {
 
         void tryDropoffBNS(const AssignmentWithTransfer &partialAsgn,
                            const RelevantPDLocs &relBNSDropoffs,
-                           std::vector<AssignmentWithTransfer> &postponedAssignments) {
+                           std::vector<AssignmentWithTransfer> &postponedAssignments,
+                           const PDLocs &pdLocs) {
             if (partialAsgn.transferIdxDVeh != 0 ||
                 relBNSDropoffs.relevantSpotsFor(partialAsgn.dVeh->vehicleId).size() == 0)
                 return;
@@ -369,12 +374,12 @@ namespace karri {
                 KASSERT(partialAsgn.transferIdxDVeh == 0);
                 KASSERT(dropoff.stopIndex == 0);
 
-                PDLoc *dropoffPDLoc = &requestState.dropoffs[dropoff.pdId];
-                if (dropoffPDLoc->loc == partialAsgn.transfer.loc)
+                const PDLoc &dropoffPDLoc = pdLocs.dropoffs[dropoff.pdId];
+                if (dropoffPDLoc.loc == partialAsgn.transfer.loc)
                     continue;
 
                 AssignmentWithTransfer newAssignment(partialAsgn);
-                newAssignment.dropoff = &requestState.dropoffs[dropoff.pdId];
+                newAssignment.dropoff = pdLocs.dropoffs[dropoff.pdId];
                 newAssignment.dropoffIdx = dropoff.stopIndex;
 
                 newAssignment.distToDropoff = dropoff.distToPDLoc;
@@ -384,7 +389,7 @@ namespace karri {
                 newAssignment.dropoffType = BEFORE_NEXT_STOP;
                 newAssignment.transferTypeDVeh = BEFORE_NEXT_STOP;
 
-                if (newAssignment.dropoff->loc == newAssignment.transfer.loc)
+                if (newAssignment.dropoff.loc == newAssignment.transfer.loc)
                     continue;
 
                 tryAssignment(newAssignment, postponedAssignments);
@@ -393,7 +398,8 @@ namespace karri {
 
         void tryDropoffORD(const AssignmentWithTransfer &partialAsgn,
                            const RelevantPDLocs &relORDDropoffs,
-                           std::vector<AssignmentWithTransfer> &postponedAssignments) {
+                           std::vector<AssignmentWithTransfer> &postponedAssignments,
+                           const PDLocs &pdLocs) {
             if (relORDDropoffs.relevantSpotsFor(partialAsgn.dVeh->vehicleId).size() == 0)
                 return;
 
@@ -401,8 +407,8 @@ namespace karri {
                 if (dropoff.stopIndex < partialAsgn.transferIdxDVeh)
                     continue;
 
-                PDLoc *dropoffPDLoc = &requestState.dropoffs[dropoff.pdId];
-                if (dropoffPDLoc->loc == partialAsgn.transfer.loc)
+                const PDLoc &dropoffPDLoc = pdLocs.dropoffs[dropoff.pdId];
+                if (dropoffPDLoc.loc == partialAsgn.transfer.loc)
                     continue;
 
                 AssignmentWithTransfer newAssignment(partialAsgn);
@@ -416,7 +422,7 @@ namespace karri {
                 newAssignment.dropoffType = ORDINARY;
                 newAssignment.transferTypeDVeh = newAssignment.transferIdxDVeh == 0 ? BEFORE_NEXT_STOP : ORDINARY;
 
-                if (newAssignment.dropoff->loc == newAssignment.transfer.loc)
+                if (newAssignment.dropoff.loc == newAssignment.transfer.loc)
                     continue;
 
                 tryAssignment(newAssignment, postponedAssignments);
@@ -425,13 +431,14 @@ namespace karri {
 
         void
         tryDropoffALS(const AssignmentWithTransfer &partialAsgn, const RelevantDropoffsAfterLastStop &relALSDropoffs,
-                      std::vector<AssignmentWithTransfer> &postponedAssignments) {
+                      std::vector<AssignmentWithTransfer> &postponedAssignments,
+                      const PDLocs &pdLocs) {
             const auto vehId = partialAsgn.dVeh->vehicleId;
             if (!relALSDropoffs.hasRelevantSpotsFor(vehId))
                 return;
 
             for (const auto &dropoffAlsEntry: relALSDropoffs.relevantSpotsFor(vehId)) {
-                const auto &dropoff = requestState.dropoffs[dropoffAlsEntry.dropoffId];
+                const auto &dropoff = pdLocs.dropoffs[dropoffAlsEntry.dropoffId];
                 int distanceToDropoff = dropoffAlsEntry.distToDropoff;
                 KASSERT(distanceToDropoff < INFTY);
 
@@ -440,7 +447,7 @@ namespace karri {
 
                 AssignmentWithTransfer newAssignment(partialAsgn);
                 newAssignment.dropoffIdx = routeState.numStopsOf(partialAsgn.dVeh->vehicleId) - 1;
-                newAssignment.dropoff = &dropoff;
+                newAssignment.dropoff = dropoff;
 
                 newAssignment.distToDropoff = distanceToDropoff;
                 newAssignment.distFromDropoff = 0;
@@ -454,7 +461,7 @@ namespace karri {
         }
 
         void finishAssignments(const int pVehId, const int dVehId,
-                               std::vector<AssignmentWithTransfer> &postponedAssignments) {
+                               std::vector<AssignmentWithTransfer> &postponedAssignments, const PDLocs &pdLocs) {
             // Method to finish the assignments that have lower bounds used
             std::vector<AssignmentWithTransfer> toCalculate;
             std::vector<AssignmentWithTransfer> currentlyCalculating;
@@ -465,7 +472,7 @@ namespace karri {
             for (auto &asgn: postponedAssignments) {
                 if (asgn.pickupBNSLowerBoundUsed) {
                     currentlyCalculating.push_back(asgn);
-                    searches.addPickupForProcessing(asgn.pickup->id, asgn.distToPickup);
+                    searches.addPickupForProcessing(asgn.pickup.id, asgn.distToPickup);
                 } else {
                     toCalculate.push_back(asgn);
                 }
@@ -474,12 +481,12 @@ namespace karri {
             postponedAssignments.clear();
 
             if (currentlyCalculating.size() > 0)
-                searches.computeExactDistancesVia(fleet[pVehId]);
+                searches.computeExactDistancesVia(fleet[pVehId], pdLocs.pickups);
 
             for (auto &asgn: currentlyCalculating) {
                 KASSERT(searches.knowsCurrentLocationOf(pVehId));
-                KASSERT(searches.knowsDistance(pVehId, asgn.pickup->id));
-                const int distance = searches.getDistance(pVehId, asgn.pickup->id);
+                KASSERT(searches.knowsDistance(pVehId, asgn.pickup.id));
+                const int distance = searches.getDistance(pVehId, asgn.pickup.id);
                 asgn.distToPickup = distance;
                 asgn.pickupBNSLowerBoundUsed = false;
 
@@ -511,7 +518,7 @@ namespace karri {
 
                     pickupToTransferDistancesFinder.runQueryForTransferRank(transferRank);
                     const int distance =
-                            pickupToTransferDistancesFinder.getDistances().getDistance(asgn.pickup->id, transferRank) +
+                            pickupToTransferDistancesFinder.getDistances().getDistance(asgn.pickup.id, transferRank) +
                             transferOffset;
 
                     asgn.distToTransferPVeh = distance;
@@ -591,7 +598,7 @@ namespace karri {
 
                 const int transferRank = vehCh.rank(inputGraph.edgeHead(asgn.transfer.loc));
                 transferToDropoffDistancesFinder.runQueryForTransferRank(transferRank);
-                const int distance = transferToDropoffDistancesFinder.getDistances().getDistance(asgn.dropoff->id,
+                const int distance = transferToDropoffDistancesFinder.getDistances().getDistance(asgn.dropoff.id,
                                                                                                  transferRank);
 
                 asgn.distToDropoff = distance;
@@ -617,7 +624,7 @@ namespace karri {
 
             KASSERT(pickupIdx < numStops - 1);
 
-            const int pickup = asgn.pickup->loc;
+            const int pickup = asgn.pickup.loc;
             const int transfer = asgn.transfer.loc;
 
             const bool bns = pickupIdx == 0;
@@ -645,8 +652,8 @@ namespace karri {
 
             if (bns) {
                 // Assignment with pickup BNS
-                if (searches.knowsDistance(asgn.pVeh->vehicleId, asgn.pickup->id)) {
-                    asgn.distToPickup = searches.getDistance(asgn.pVeh->vehicleId, asgn.pickup->id);
+                if (searches.knowsDistance(asgn.pVeh->vehicleId, asgn.pickup.id)) {
+                    asgn.distToPickup = searches.getDistance(asgn.pVeh->vehicleId, asgn.pickup.id);
                 } else {
                     asgn.pickupBNSLowerBoundUsed = true;
                 }
@@ -677,7 +684,7 @@ namespace karri {
             const int dropoffIdx = asgn.dropoffIdx;
 
             const int transfer = asgn.transfer.loc;
-            const int dropoff = asgn.dropoff->loc;
+            const int dropoff = asgn.dropoff.loc;
 
             const bool bns = transferIdx == 0;
             const bool paired = transferIdx == dropoffIdx;
@@ -735,12 +742,12 @@ namespace karri {
             const int numStopsPVeh = routeState.numStopsOf(asgn.pVeh->vehicleId);
             const int numStopsDVeh = routeState.numStopsOf(asgn.dVeh->vehicleId);
 
-            if ((asgn.pickupIdx < numStopsPVeh - 1 && asgn.pickup->loc == stopLocationsPVeh[asgn.pickupIdx + 1])
+            if ((asgn.pickupIdx < numStopsPVeh - 1 && asgn.pickup.loc == stopLocationsPVeh[asgn.pickupIdx + 1])
                 || (asgn.transferIdxPVeh < numStopsPVeh - 1 &&
                     asgn.transfer.loc == stopLocationsPVeh[asgn.transferIdxPVeh + 1])
                 || (asgn.transferIdxDVeh < numStopsDVeh - 1 &&
                     asgn.transfer.loc == stopLocationsDVeh[asgn.transferIdxDVeh + 1])
-                || (asgn.dropoffIdx < numStopsDVeh - 1 && asgn.dropoff->loc == stopLocationsDVeh[asgn.dropoffIdx + 1]))
+                || (asgn.dropoffIdx < numStopsDVeh - 1 && asgn.dropoff.loc == stopLocationsDVeh[asgn.dropoffIdx + 1]))
                 return;
 
             switch (asgn.pickupType) {

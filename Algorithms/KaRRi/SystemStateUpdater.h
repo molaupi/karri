@@ -202,8 +202,8 @@ namespace karri {
                                          Subset& vehiclesWithChangesInRoute) {
             Timer timer;
 
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup->loc));
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff->loc));
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup.loc));
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff.loc));
             requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.transfer.loc));
             KASSERT(asgn.pVeh != nullptr);
             KASSERT(asgn.dVeh != nullptr);
@@ -329,9 +329,10 @@ namespace karri {
             }
 
             const auto &asgn = requestState.getBestAssignmentWithoutTransfer();
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup->loc));
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff->loc));
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup.loc));
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff.loc));
             KASSERT(asgn.vehicle != nullptr);
+
 
             const auto vehId = asgn.vehicle->vehicleId;
             const auto numStopsBefore = routeState.numStopsOf(vehId);
@@ -497,10 +498,10 @@ namespace karri {
                         << bestAsgn.distFromPickup << ", "
                         << bestAsgn.distToDropoff << ", "
                         << bestAsgn.distFromDropoff << ", "
-                        << bestAsgn.pickup->id << ", "
-                        << bestAsgn.pickup->walkingDist << ", "
-                        << bestAsgn.dropoff->id << ", "
-                        << bestAsgn.dropoff->walkingDist << ", "
+                        << bestAsgn.pickup.id << ", "
+                        << bestAsgn.pickup.walkingDist << ", "
+                        << bestAsgn.dropoff.id << ", "
+                        << bestAsgn.dropoff.walkingDist << ", "
                         << numStops << ", "
                         << vehDepTimeBeforePickup << ", "
                         << vehDepTimeBeforeDropoff << ", "
@@ -555,10 +556,10 @@ namespace karri {
                         << transferTypePVeh << ", "
                         << transferTypeDVeh << ", "
                         << dropoffType << ", "
-                        << bestAsgnWT.pickup->id << ", "
-                        << bestAsgnWT.pickup->walkingDist << ", "
-                        << bestAsgnWT.dropoff->id << ", "
-                        << bestAsgnWT.dropoff->walkingDist << ", "
+                        << bestAsgnWT.pickup.id << ", "
+                        << bestAsgnWT.pickup.walkingDist << ", "
+                        << bestAsgnWT.dropoff.id << ", "
+                        << bestAsgnWT.dropoff.walkingDist << ", "
                         << numStopsPVeh << ", "
                         << numStopsDVeh << ", "
                         << vehDepTimeBeforePickupWT << ", "

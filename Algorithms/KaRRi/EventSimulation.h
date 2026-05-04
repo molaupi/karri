@@ -413,7 +413,7 @@ namespace karri {
 
         template<typename AssignmentWithTransferT>
         void applyAssignmentWithTransfer(const AssignmentWithTransferT &asgn, const int &cost, const int reqId) {
-            if (!asgn.dVeh || !asgn.pVeh || !asgn.pickup || !asgn.dropoff) {
+            if (!asgn.dVeh || !asgn.pVeh || asgn.pickup.id == INVALID_ID || asgn.dropoff.id == INVALID_ID) {
                 requestState[reqId] = FINISHED;
                 systemStateUpdater.writePerformanceLogs();
                 return;
@@ -423,8 +423,8 @@ namespace karri {
             requestEvents.deleteMin(id, key); // event for walking arrival at dest inserted at dropoff
 
             requestState[reqId] = ASSIGNED_TO_PVEH;
-            requestData[reqId].walkingTimeToPickup = asgn.pickup->walkingDist;
-            requestData[reqId].walkingTimeFromDropoff = asgn.dropoff->walkingDist;
+            requestData[reqId].walkingTimeToPickup = asgn.pickup.walkingDist;
+            requestData[reqId].walkingTimeFromDropoff = asgn.dropoff.walkingDist;
             requestData[reqId].assignmentCost = cost;
             requestData[reqId].usingTransfer = true;
 
@@ -480,15 +480,15 @@ namespace karri {
             KASSERT(id == reqId && key == occTime);
 
             const auto &bestAsgn = asgnFinderResponse.getBestAssignmentWithoutTransfer();
-            if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
+            if (!bestAsgn.vehicle || bestAsgn.pickup.id == INVALID_ID || bestAsgn.dropoff.id == INVALID_ID) {
                 requestState[reqId] = FINISHED;
                 systemStateUpdater.writePerformanceLogs();
                 return;
             }
 
             requestState[reqId] = ASSIGNED_TO_VEH;
-            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
-            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
+            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup.walkingDist;
+            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff.walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
 
             int pickupStopId, dropoffStopId;

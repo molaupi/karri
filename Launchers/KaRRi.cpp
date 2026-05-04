@@ -85,6 +85,7 @@
 #include "Algorithms/KaRRi/LastStopSearches/UnsortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
+#include "Algorithms/KaRRi/RequestState/PDLocsFinder.h"
 #include "Algorithms/KaRRi/AssignmentFinder.h"
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
@@ -597,9 +598,13 @@ int main(int argc, char *argv[]) {
         using DALSInsertionsFinderImpl = DALSAssignmentsFinder<DALSStrategy>;
         DALSInsertionsFinderImpl dalsInsertionsFinder(dalsStrategy);
 
-        using RequestStateInitializerImpl = RequestStateInitializer<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv, VehicleToPDLocQueryImpl>;
+        using PDLocsFinder = PDLocsFinder<VehicleInputGraph, PsgInputGraph, VehicleToPDLocQueryImpl>;
+        PsgInputGraph revPsgGraph = psgInputGraph.getReverseGraph();
+        PDLocsFinder findPdLocsInRadiusQuery(vehicleInputGraph, psgInputGraph, revPsgGraph, vehicleToPdLocQuery);
+
+        using RequestStateInitializerImpl = RequestStateInitializer<VehicleInputGraph, PsgInputGraph, VehCHEnv, PsgCHEnv>;
         RequestStateInitializerImpl requestStateInitializer(vehicleInputGraph, psgInputGraph, *vehChEnv, *psgChEnv,
-                                                            reqState, vehicleToPdLocQuery);
+                                                            reqState);
 
         using InsertionAsserterImpl = InsertionAsserter<VehicleInputGraph, VehCHEnv>;
         InsertionAsserterImpl asserter(routeState, vehicleInputGraph, *vehChEnv);
@@ -735,6 +740,7 @@ int main(int argc, char *argv[]) {
                 VehicleInputGraph,
                 FeasibleEllipticDistancesImpl,
                 RequestStateInitializerImpl,
+        PDLocsFinder,
                 PDLocsAtExistingStopsFinderImpl,
                 EllipticBCHSearchesImpl,
                 FFPDDistanceQueryImpl,
@@ -746,7 +752,7 @@ int main(int argc, char *argv[]) {
                 AssignmentsWithTransferFinderImpl,
                 InsertionAsserterImpl>;
         InsertionFinderImpl insertionFinder(reqState, vehicleInputGraph, fleet, routeState,
-                                            requestStateInitializer, pdLocsAtExistingStops, ellipticSearches, ffPDDistanceQuery,
+                                            requestStateInitializer, findPdLocsInRadiusQuery, pdLocsAtExistingStops, ellipticSearches, ffPDDistanceQuery,
                                             ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
                                             dalsInsertionsFinder, relevantPdLocsFilter,
                                             insertionsWithTransferFinder, asserter);

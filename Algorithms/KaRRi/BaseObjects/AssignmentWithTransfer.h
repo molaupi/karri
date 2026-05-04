@@ -65,7 +65,7 @@ namespace karri {
             distFromTransferDVeh = tpArg.distanceDVehFromTransfer;
         }
 
-        AssignmentWithTransfer(const Vehicle *pVehArg, const Vehicle *dVehArg, const TransferPoint tpArg, const PDLoc *pickupPDLoc, int pickupIdxArg, int distToPickupArg, int distFromPickupArg, int tIdxPVeh, int tIdxDVeh) {
+        AssignmentWithTransfer(const Vehicle *pVehArg, const Vehicle *dVehArg, const TransferPoint tpArg, const PDLoc &pickupPDLoc, int pickupIdxArg, int distToPickupArg, int distFromPickupArg, int tIdxPVeh, int tIdxDVeh) {
             pVeh = pVehArg;
             dVeh = dVehArg;
             transfer = tpArg;
@@ -82,7 +82,7 @@ namespace karri {
             distFromTransferDVeh = tpArg.distanceDVehFromTransfer;
         }
         
-        AssignmentWithTransfer(const Vehicle &pVehArg, const Vehicle &dVehArg, const TransferPoint tpArg, const PDLoc *pickupPDLoc, int pickupIdxArg, int distToPickupArg, int distFromPickupArg, int tIdxPVeh, int tIdxDVeh) {
+        AssignmentWithTransfer(const Vehicle &pVehArg, const Vehicle &dVehArg, const TransferPoint tpArg, const PDLoc &pickupPDLoc, int pickupIdxArg, int distToPickupArg, int distFromPickupArg, int tIdxPVeh, int tIdxDVeh) {
             pVeh = &pVehArg;
             dVeh = &dVehArg;
             transfer = tpArg;
@@ -107,9 +107,9 @@ namespace karri {
         const Vehicle *pVeh = nullptr;
         const Vehicle *dVeh = nullptr;
 
-        const PDLoc *pickup = nullptr;
+        PDLoc pickup = {};
         TransferPoint transfer;
-        const PDLoc *dropoff = nullptr;
+        PDLoc dropoff = {};
 
         int pickupIdx = INVALID_INDEX;
         int transferIdxPVeh = INVALID_INDEX;

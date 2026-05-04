@@ -26,7 +26,8 @@
 #pragma once
 
 #include "DataStructures/Containers/FastResetFlagArray.h"
-
+#include "DataStructures/Labels/BasicLabelSet.h"
+#include "DataStructures/Labels/ParentInfo.h"
 namespace karri {
 
 // Finds the vehicle distances between the origin/destination and pickups/dropoffs using a Dijkstra search on

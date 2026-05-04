@@ -59,7 +59,7 @@ namespace karri {
             const auto stopLocationsPVeh = routeState.stopLocationsFor(asgn.pVeh->vehicleId);
 
             const int stopBeforePickup = stopLocationsPVeh[asgn.pickupIdx];
-            const int pickup = asgn.pickup->loc;
+            const int pickup = asgn.pickup.loc;
             const int transfer = asgn.transfer.loc;
 
             // Assert the distance to the pickup
@@ -131,7 +131,7 @@ namespace karri {
 
             const int stopBeforeTransfer = stopLocationsDVeh[asgn.transferIdxDVeh];
             const int transfer = asgn.transfer.loc;
-            const int dropoff = asgn.dropoff->loc;
+            const int dropoff = asgn.dropoff.loc;
 
             if (asgn.transferIdxDVeh > 0) {
                 // Assert the distance to the transfer
@@ -155,8 +155,8 @@ namespace karri {
 
             if (asgn.transferIdxDVeh == asgn.dropoffIdx) {
                 // Assert paired distance
-                const int dropoff = asgn.dropoff->loc;
-                const int pairedDistance = getDistanceBetweenLocations(transfer, dropoff);
+                const int dropoffLoc = asgn.dropoff.loc;
+                const int pairedDistance = getDistanceBetweenLocations(transfer, dropoffLoc);
                 KASSERT(asgn.distFromTransferDVeh == 0 && asgn.distToDropoff == pairedDistance);
 
                 if (asgn.distFromTransferDVeh > 0 || asgn.distToDropoff != pairedDistance) {
@@ -205,15 +205,15 @@ namespace karri {
         bool assertNoTransferAssignment(const Assignment &asgn) {
 
             // An invalid assignment can be skipped
-            if (!asgn.vehicle || !asgn.dropoff || !asgn.pickup)
+            if (!asgn.vehicle || asgn.dropoff.id == INVALID_ID || asgn.pickup.id == INVALID_ID)
                 return true;
 
             const int numStops = routeState.numStopsOf(asgn.vehicle->vehicleId);
             const auto stopLocations = routeState.stopLocationsFor(asgn.vehicle->vehicleId);
 
             const int stopBeforePickup = stopLocations[asgn.pickupStopIdx];
-            const int pickup = asgn.pickup->loc;
-            const int dropoff = asgn.dropoff->loc;
+            const int pickup = asgn.pickup.loc;
+            const int dropoff = asgn.dropoff.loc;
 
             // Assert the distance to the pickup
             if (asgn.pickupStopIdx > 0 || numStops == 1) {

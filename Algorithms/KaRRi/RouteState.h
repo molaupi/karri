@@ -263,8 +263,8 @@ namespace karri {
         std::pair<int, int>
         insertVehStops(const Assignment &asgn, const RequestStateT &requestState) {
             const auto vehId = asgn.vehicle->vehicleId;
-            const auto &pickup = *asgn.pickup;
-            const auto &dropoff = *asgn.dropoff;
+            const auto &pickup = asgn.pickup;
+            const auto &dropoff = asgn.dropoff;
             const int now = requestState.originalRequest.requestTime;
             const int numRiders = requestState.originalRequest.numRiders;
             const auto &start = pos[vehId].start;
@@ -289,14 +289,13 @@ namespace karri {
                 // For pickup at existing stop we don't count another stopTime. The vehicle can depart at the earliest
                 // moment when vehicle and passenger are at the location.
                 schedDepTimes[start + pickupIndex] = std::max(schedDepTimes[start + pickupIndex],
-                                                              requestState.getPassengerArrAtPickup(pickup.id));
+                                                              requestState.getPassengerArrAtPickup(pickup));
 
                 // If we allow pickupRadius > waitTime, then the passenger may arrive at the pickup location after
                 // the regular max dep time of requestTime + waitTime. In this case, the new latest permissible arrival
                 // time is defined by the passenger arrival time at the pickup, not the maximum wait time.
-
                 const int psgMaxDepTime = std::max(requestState.getMaxDepTimeAtPickup(),
-                                                   requestState.getPassengerArrAtPickup(pickup.id));
+                                                   requestState.getPassengerArrAtPickup(pickup));
                 maxArrTimes[start + pickupIndex] = std::min(maxArrTimes[start + pickupIndex], psgMaxDepTime -
                                                                                               InputConfig::getInstance().stopTime);
 
@@ -314,8 +313,7 @@ namespace karri {
                 schedArrTimes[start + pickupIndex] = schedDepTimes[start + pickupIndex - 1] + asgn.distToPickup;
                 schedDepTimes[start + pickupIndex] = std::max(
                         schedArrTimes[start + pickupIndex] + InputConfig::getInstance().stopTime,
-                        requestState.getPassengerArrAtPickup(pickup.id));
-
+                        requestState.getPassengerArrAtPickup(pickup));
 
                 maxArrTimes[start + pickupIndex] =
                         requestState.getMaxDepTimeAtPickup() - InputConfig::getInstance().stopTime;
@@ -337,8 +335,7 @@ namespace karri {
 
             if (pickup.loc != dropoff.loc && dropoff.loc == stopLocations[start + dropoffIndex]) {
                 maxArrTimes[start + dropoffIndex] = std::min(maxArrTimes[start + dropoffIndex],
-                                                             requestState.getMaxArrTimeAtDropoff(pickup.id,
-                                                                                                 dropoff.id));
+                                                             requestState.getMaxArrTimeAtDropoff(pickup, dropoff));
             } else {
                 ++dropoffIndex;
                 stableInsertion(vehId, dropoffIndex, getUnusedStopId(),
@@ -350,7 +347,7 @@ namespace karri {
                 schedDepTimes[start + dropoffIndex] =
                         schedArrTimes[start + dropoffIndex] + InputConfig::getInstance().stopTime;
                 // compare maxVehArrTime to next stop later
-                maxArrTimes[start + dropoffIndex] = requestState.getMaxArrTimeAtDropoff(pickup.id, dropoff.id);
+                maxArrTimes[start + dropoffIndex] = requestState.getMaxArrTimeAtDropoff(pickup, dropoff);
                 occupancies[start + dropoffIndex] = occupancies[start + dropoffIndex - 1];
                 numDropoffsPrefixSum[start + dropoffIndex] = numDropoffsPrefixSum[start + dropoffIndex - 1];
                 dropoffInsertedAsNewStop = true;
@@ -491,7 +488,7 @@ namespace karri {
         insertPVehStops(const AssignmentWithTransfer &asgn,
                         const RequestStateT &requestState) {
             const auto vehId = asgn.pVeh->vehicleId;
-            const auto &pickup = *asgn.pickup;
+            const auto &pickup = asgn.pickup;
             const auto transfer = asgn.transfer;
             const int now = requestState.originalRequest.requestTime;
             const int numRiders = requestState.originalRequest.numRiders;
@@ -521,13 +518,13 @@ namespace karri {
                 // For pickup at existing stop we don't count another stopTime. The vehicle can depart at the earliest
                 // moment when vehicle and passenger are at the location.
                 schedDepTimes[start + pickupIdx] = std::max(schedDepTimes[start + pickupIdx],
-                                                            requestState.getPassengerArrAtPickup(pickup.id));
+                                                            requestState.getPassengerArrAtPickup(pickup));
 
                 // If we allow pickupRadius > waitTime, then the passenger may arrive at the pickup location after
                 // the regular max dep time of requestTime + waitTime. In this case, the new latest permissible arrival
                 // time is defined by the passenger arrival time at the pickup, not the maximum wait time.
                 const int psgMaxDepTime = std::max(requestState.getMaxDepTimeAtPickup(),
-                                                   requestState.getPassengerArrAtPickup(pickup.id));
+                                                   requestState.getPassengerArrAtPickup(pickup));
                 maxArrTimes[start + pickupIdx] = std::min(maxArrTimes[start + pickupIdx],
                                                           psgMaxDepTime - InputConfig::getInstance().stopTime);
             } else {
@@ -546,7 +543,7 @@ namespace karri {
                 schedArrTimes[start + pickupIdx] = schedDepTimes[start + pickupIdx - 1] + asgn.distToPickup;
                 schedDepTimes[start + pickupIdx] = std::max(
                         schedArrTimes[start + pickupIdx] + InputConfig::getInstance().stopTime,
-                        requestState.getPassengerArrAtPickup(pickup.id));
+                        requestState.getPassengerArrAtPickup(pickup));
                 maxArrTimes[start + pickupIdx] =
                         requestState.getMaxDepTimeAtPickup() - InputConfig::getInstance().stopTime;
                 occupancies[start + pickupIdx] = occupancies[start + pickupIdx - 1];
@@ -696,7 +693,7 @@ namespace karri {
                         const RequestStateT &requestState) {
             const auto vehId = asgn.dVeh->vehicleId;
             const auto transfer = asgn.transfer;
-            const auto &dropoff = *asgn.dropoff;
+            const auto &dropoff = asgn.dropoff;
             const int now = requestState.originalRequest.requestTime;
             const int numRiders = requestState.originalRequest.numRiders;
             const auto &start = pos[vehId].start;
@@ -767,8 +764,7 @@ namespace karri {
 
             if (transfer.loc != dropoff.loc && dropoff.loc == stopLocations[start + dropoffIdx]) {
                 maxArrTimes[start + dropoffIdx] = std::min(maxArrTimes[start + dropoffIdx],
-                                                           requestState.getMaxArrTimeAtDropoff(asgn.pickup->id,
-                                                                                               dropoff.id));
+                                                           requestState.getMaxArrTimeAtDropoff(asgn.pickup, dropoff));
             } else {
                 ++dropoffIdx;
                 stableInsertion(vehId, dropoffIdx, getUnusedStopId(),
@@ -781,7 +777,7 @@ namespace karri {
                 schedDepTimes[start + dropoffIdx] =
                         schedArrTimes[start + dropoffIdx] + InputConfig::getInstance().stopTime;
                 // compare maxVehArrTime to next stop later
-                maxArrTimes[start + dropoffIdx] = requestState.getMaxArrTimeAtDropoff(asgn.pickup->id, dropoff.id);
+                maxArrTimes[start + dropoffIdx] = requestState.getMaxArrTimeAtDropoff(asgn.pickup, dropoff);
                 occupancies[start + dropoffIdx] = occupancies[start + dropoffIdx - 1];
                 numDropoffsPrefixSum[start + dropoffIdx] = numDropoffsPrefixSum[start + dropoffIdx - 1];
                 dropoffInsertedAsNewStop = true;
@@ -1057,12 +1053,12 @@ namespace karri {
             // Find the pickup and transfer indices
             int pickupIdx = asgn.pickupIdx;
             const bool pickupBNS = asgn.pickupIdx == 0;
-            while (stopLocationsPVeh[pickupIdx] != asgn.pickup->loc ||
+            while (stopLocationsPVeh[pickupIdx] != asgn.pickup.loc ||
                    schedDepTimesPVeh[pickupIdx] <= requestTime) {
                 pickupIdx++;
             }
 
-            if (!(stopLocationsPVeh[pickupIdx] != asgn.pickup->loc || pickupIdx > 0 ||
+            if (!(stopLocationsPVeh[pickupIdx] != asgn.pickup.loc || pickupIdx > 0 ||
                   schedDepTimesPVeh[pickupIdx] >= requestTime)) {
                 KASSERT(false);
                 return false;
@@ -1089,7 +1085,7 @@ namespace karri {
             }
 
             // Assert that the departure at the pickup is later than the arrival at the pickup
-            if (schedDepTimesPVeh[pickupIdx] < requestTime + asgn.pickup->walkingDist) {
+            if (schedDepTimesPVeh[pickupIdx] < requestTime + asgn.pickup.walkingDist) {
                 KASSERT(false);
                 return false;
             }
@@ -1184,7 +1180,7 @@ namespace karri {
 
             const int transferLaterShifted = transferIdxDVeh - asgn.transferIdxDVeh;
             int dropoffIdx = std::max(transferIdxDVeh + 1, asgn.dropoffIdx + transferLaterShifted);
-            while (stopLocationsDVeh[dropoffIdx] != asgn.dropoff->loc) {
+            while (stopLocationsDVeh[dropoffIdx] != asgn.dropoff.loc) {
                 ++dropoffIdx;
             }
 
@@ -1208,7 +1204,7 @@ namespace karri {
             // Assert that the trip time of the dVeh is correct
             const int waitingTimeAtTransfer = schedDepTimesDVeh[transferIdxDVeh] - arrAtTransferPoint;
             const int actualTripTime =
-                    schedArrTimesDVeh[dropoffIdx] - schedDepTimesDVeh[transferIdxDVeh] + asgn.dropoff->walkingDist +
+                    schedArrTimesDVeh[dropoffIdx] - schedDepTimesDVeh[transferIdxDVeh] + asgn.dropoff.walkingDist +
                     waitingTimeAtTransfer;
 
 

@@ -61,7 +61,7 @@ namespace karri {
                 const auto initialPickupDetour = calcInitialPickupDetour(bestAsgn, depTimeAtPickup, resp, routeState);
                 const auto dropoffAtExistingStop = isDropoffAtExistingStop(bestAsgn, routeState);
                 const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, bestAsgn, initialPickupDetour, dropoffAtExistingStop, routeState);
-                tripTime = arrTimeAtDropoff + bestAsgn.dropoff->walkingDist - req.requestTime;
+                tripTime = arrTimeAtDropoff + bestAsgn.dropoff.walkingDist - req.requestTime;
             } else {
                 KASSERT(bestAsgnType == RequestState::BestAsgnType::TWO_LEGS);
                 const auto &bestAsgn = resp.getBestAssignmentWithTransfer();
@@ -76,7 +76,7 @@ namespace karri {
                                                                            detourComputer, routeState, resp);
                 const int arrTimeAtDropoff = computeArrTimeAtDropoffAfterTransfer(
                         bestAsgn, depTimeAtTransfer, detourComputer, routeState);
-                tripTime = arrTimeAtDropoff + bestAsgn.dropoff->walkingDist - req.requestTime;
+                tripTime = arrTimeAtDropoff + bestAsgn.dropoff.walkingDist - req.requestTime;
             }
 
             const auto directTime = resp.originalReqDirectDist;

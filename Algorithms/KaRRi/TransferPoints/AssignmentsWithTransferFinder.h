@@ -71,11 +71,12 @@ namespace karri {
                                 const RelevantPDLocs &relBNSPickups,
                                 const RelevantPDLocs &relORDDropoffs,
                                 const RelevantPDLocs &relBNSDropoffs,
-                                const PDDistances &pdDistances) {
+                                const PDDistances &pdDistances,
+                                const PDLocs &pdLocs) {
             // Method to find the best assignment with exactly one transfer, i. e. the best possible
             // single transfer journey for the given request
 
-            const auto relALSDropoffs = dropoffALSStrategy.findDropoffsAfterLastStop();
+            const auto relALSDropoffs = dropoffALSStrategy.findDropoffsAfterLastStop(pdLocs);
             std::vector<int> pVehStopIds;
             std::vector<int> dVehStopIds;
             getPVehAndDVehStopIdsForOrdinaryTransfers(relORDPickups, relBNSPickups, relORDDropoffs, relBNSDropoffs,
@@ -100,13 +101,13 @@ namespace karri {
             const auto ellipseContainer = ellipseReconstructor.computeEllipses(allStopIds, requestState.stats().ellipseReconstructionStats);
 
             // * TRANSFER AFTER LAST STOP (PVeh)
-            transfersALSPVeh.findAssignments(relORDPickups, relBNSPickups, relORDDropoffs, relALSDropoffs, pdDistances, ellipseContainer);
+            transfersALSPVeh.findAssignments(relORDPickups, relBNSPickups, relORDDropoffs, relALSDropoffs, pdDistances, ellipseContainer, pdLocs);
 
             // * ORDINARY TRANSFER
-            ordinaryTransfers.findAssignments(pVehStopIds, dVehStopIds, relORDPickups, relBNSPickups, relORDDropoffs, relBNSDropoffs, relALSDropoffs, ellipseContainer);
+            ordinaryTransfers.findAssignments(pVehStopIds, dVehStopIds, relORDPickups, relBNSPickups, relORDDropoffs, relBNSDropoffs, relALSDropoffs, ellipseContainer, pdLocs);
 
             // * TRANSFER AFTER LAST STOP (DVeh)
-            transfersALSDVeh.findAssignments(relORDPickups, relBNSPickups, relALSDropoffs, ellipseContainer);
+            transfersALSDVeh.findAssignments(relORDPickups, relBNSPickups, relALSDropoffs, ellipseContainer, pdLocs);
 
             //* Test the best assignment found
             KASSERT(requestState.getBestCostWithTransfer() == INFTY || asserter.assertAssignment(requestState.getBestAssignmentWithTransfer()));

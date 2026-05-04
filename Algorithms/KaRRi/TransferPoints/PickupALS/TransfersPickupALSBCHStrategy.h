@@ -171,33 +171,33 @@ namespace karri::Transfers {
             return distance;
         }
 
-        const LightweightSubset& findPickupsAfterLastStop(const PDDistances &pdDistances) {
-            runBchSearches(pdDistances);
-            filterVehiclesBasedOnParetoDominance();
+        const LightweightSubset& findPickupsAfterLastStop(const PDDistances &pdDistances, const PDLocs &pdLocs) {
+            runBchSearches(pdDistances, pdLocs);
+            filterVehiclesBasedOnParetoDominance(pdLocs);
             return vehiclesSeenForPickups;
         }
 
     private:
 
         // Run BCH searches that find distances from last stops to pickups
-        void runBchSearches(const PDDistances &pdDistances) {
+        void runBchSearches(const PDDistances &pdDistances, const PDLocs &pdLocs) {
             // Timer timer;
 
-            initPickupSearches();
-            for (int i = 0; i < requestState.numPickups(); i += K)
-                runSearchesForPickupBatch(i, pdDistances);
+            initPickupSearches(pdLocs);
+            for (int i = 0; i < pdLocs.numPickups(); i += K)
+                runSearchesForPickupBatch(i, pdDistances, pdLocs);
         }
 
 
-        void initPickupSearches() {
+        void initPickupSearches(const PDLocs &pdLocs) {
             upperBoundCost = requestState.getBestCost();
             vehiclesSeenForPickups.clear();
-            const int numPickupBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
+            const int numPickupBatches = pdLocs.numPickups() / K + (pdLocs.numPickups() % K != 0);
             distances.init(numPickupBatches);
         }
 
-        void runSearchesForPickupBatch(const int firstPickupId, const PDDistances &pdDistances) {
-            KASSERT(firstPickupId % K == 0 && firstPickupId < requestState.numPickups());
+        void runSearchesForPickupBatch(const int firstPickupId, const PDDistances &pdDistances, const PDLocs &pdLocs) {
+            KASSERT(firstPickupId % K == 0 && firstPickupId < pdLocs.numPickups());
 
             distances.setCurBatchIdx(firstPickupId / K);
 
@@ -205,12 +205,12 @@ namespace karri::Transfers {
             std::array<int, K> travelTimes;
             for (int i = 0; i < K; ++i) {
                 const auto &pickup =
-                        firstPickupId + i < requestState.numPickups() ? requestState.pickups[firstPickupId + i]
-                                                                      : requestState.pickups[firstPickupId];
+                        firstPickupId + i < pdLocs.numPickups() ? pdLocs.pickups[firstPickupId + i]
+                                                                      : pdLocs.pickups[firstPickupId];
                 pickupTails[i] = inputGraph.edgeTail(pickup.loc);
                 travelTimes[i] = inputGraph.travelTime(pickup.loc);
                 currentPickupWalkingDists[i] = pickup.walkingDist;
-                curPassengerArrTimesAtPickups[i] = requestState.getPassengerArrAtPickup(pickup.id);
+                curPassengerArrTimesAtPickups[i] = requestState.getPassengerArrAtPickup(pickup);
                 curDistancesToDest[i] = pdDistances.getDirectDistance(pickup.id, 0);
 
                 // Initialize distance to 0 for every last stop coinciding with the pickup
@@ -230,14 +230,14 @@ namespace karri::Transfers {
         }
 
 
-        bool dominates(const int vehId1, const int vehId2) {
+        bool dominates(const int vehId1, const int vehId2, const PDLocs &pdLocs) {
 
             const int stopIdx1 = routeState.numStopsOf(vehId1) - 1;
             const int stopIdx2 = routeState.numStopsOf(vehId2) - 1;
 
             using namespace time_utils;
             using F = CostCalculator::CostFunction;
-            for (const auto &pickup: requestState.pickups) {
+            for (const auto &pickup: pdLocs.pickups) {
                 const auto distToPickup1 = getDistanceToPickup(vehId1, pickup.id);
                 const auto distToPickup2 = getDistanceToPickup(vehId2, pickup.id);
                 if (distToPickup1 == INFTY && distToPickup2 == INFTY)
@@ -273,7 +273,7 @@ namespace karri::Transfers {
             return true;
         }
 
-        void filterVehiclesBasedOnParetoDominance() {
+        void filterVehiclesBasedOnParetoDominance(const PDLocs &pdLocs) {
             if (vehiclesSeenForPickups.empty())
                 return;
 
@@ -284,7 +284,7 @@ namespace karri::Transfers {
                 bool isDominated = false;
                 for (const int idxOfVeh2: indicesToKeep) {
                     const int vehId2 = *(vehiclesSeenForPickups.begin() + idxOfVeh2);
-                    if (dominates(vehId2, vehId1)) {
+                    if (dominates(vehId2, vehId1, pdLocs)) {
                         isDominated = true;
                         break; // vehId1 is dominated by vehId2
                     }
@@ -297,7 +297,7 @@ namespace karri::Transfers {
                 indicesToKeep.push_back(i);
                 for (int j = 0; j < indicesToKeep.size();) {
                     const int vehId2 = *(vehiclesSeenForPickups.begin() + indicesToKeep[j]);
-                    if (dominates(vehId1, vehId2)) {
+                    if (dominates(vehId1, vehId2, pdLocs)) {
                         std::swap(indicesToKeep[j], indicesToKeep.back());
                         indicesToKeep.pop_back();
                         continue;

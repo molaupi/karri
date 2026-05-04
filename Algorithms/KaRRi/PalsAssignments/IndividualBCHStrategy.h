@@ -171,20 +171,20 @@ namespace karri::PickupAfterLastStopStrategies {
                          PickupAfterLastStopPruner(*this, calculator)),
                   vehiclesSeenForPickups(fleet.size()) {}
 
-        void tryPickupAfterLastStop(const PDDistances& pdDistances) {
-            runBchSearches(pdDistances);
-            enumerateAssignments(pdDistances);
+        void tryPickupAfterLastStop(const PDDistances& pdDistances, const PDLocs &pdLocs) {
+            runBchSearches(pdDistances, pdLocs);
+            enumerateAssignments(pdDistances, pdLocs);
         }
 
     private:
 
         // Run BCH searches that find distances from last stops to pickups
-        void runBchSearches(const PDDistances& pdDistances) {
+        void runBchSearches(const PDDistances& pdDistances, const PDLocs &pdLocs) {
             Timer timer;
 
-            initPickupSearches();
-            for (int i = 0; i < requestState.numPickups(); i += K)
-                runSearchesForPickupBatch(i, pdDistances);
+            initPickupSearches(pdLocs);
+            for (int i = 0; i < pdLocs.numPickups(); i += K)
+                runSearchesForPickupBatch(i, pdDistances, pdLocs);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().palsAssignmentsStats.searchTime += searchTime;
@@ -195,7 +195,8 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Enumerate assignments with pickup after last stop
-        void enumerateAssignments(const PDDistances& pdDistances) {
+        void enumerateAssignments(const PDDistances& pdDistances, const PDLocs &pdLocs) {
+
             using namespace time_utils;
 
 
@@ -213,9 +214,9 @@ namespace karri::PickupAfterLastStopStrategies {
                 asgn.pickupStopIdx = numStops - 1;
                 asgn.dropoffStopIdx = numStops - 1;
 
-                for (auto &p: requestState.pickups) {
-                    asgn.pickup = &p;
-                    asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup->id);
+                for (auto &p: pdLocs.pickups) {
+                    asgn.pickup = p;
+                    asgn.distToPickup = getDistanceToPickup(vehId, asgn.pickup.id);
                     if (asgn.distToPickup >= INFTY)
                         continue;
 
@@ -226,22 +227,22 @@ namespace karri::PickupAfterLastStopStrategies {
                                                                                           requestState, routeState);
                     const auto psgTimeTillDepAtThisPickup =
                             depTimeAtThisPickup - requestState.originalRequest.requestTime;
-                    const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup->id);
+                    const auto minDirectDistForThisPickup = pdDistances.getMinDirectDistanceForPickup(asgn.pickup.id);
                     const auto minCost = calculator.calcCostForPairedAssignmentAfterLastStop(vehTimeTillDepAtThisPickup,
                                                                                              psgTimeTillDepAtThisPickup,
                                                                                              minDirectDistForThisPickup,
-                                                                                             asgn.pickup->walkingDist,
+                                                                                             asgn.pickup.walkingDist,
                                                                                              0,
                                                                                              requestState);
                     if (minCost > requestState.getBestCost())
                         continue;
 
-                    for (auto &d: requestState.dropoffs) {
-                        asgn.dropoff = &d;
+                    for (auto &d: pdLocs.dropoffs) {
+                        asgn.dropoff = d;
 
                         // Try inserting pair with pickup after last stop:
                         ++numAssignmentsTried;
-                        asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
+                        asgn.distToDropoff = pdDistances.getDirectDistance(asgn.pickup, asgn.dropoff);
                         requestState.tryAssignment(asgn);
                     }
                 }
@@ -257,19 +258,19 @@ namespace karri::PickupAfterLastStopStrategies {
             return distances.getDistance(vehId, pickupId);
         }
 
-        void initPickupSearches() {
+        void initPickupSearches(const PDLocs &pdLocs) {
             totalNumEdgeRelaxations = 0;
             totalNumVerticesSettled = 0;
             totalNumEntriesScanned = 0;
 
             upperBoundCost = bestCostBeforeQuery;
             vehiclesSeenForPickups.clear();
-            const int numPickupBatches = requestState.numPickups() / K + (requestState.numPickups() % K != 0);
+            const int numPickupBatches = pdLocs.numPickups() / K + (pdLocs.numPickups() % K != 0);
             distances.init(numPickupBatches);
         }
 
-        void runSearchesForPickupBatch(const int firstPickupId, const PDDistances& pdDistances) {
-            KASSERT(firstPickupId % K == 0 && firstPickupId < requestState.numPickups());
+        void runSearchesForPickupBatch(const int firstPickupId, const PDDistances& pdDistances, const PDLocs &pdLocs) {
+            KASSERT(firstPickupId % K == 0 && firstPickupId < pdLocs.numPickups());
 
 
 
@@ -277,12 +278,12 @@ namespace karri::PickupAfterLastStopStrategies {
             std::array<int, K> travelTimes;
             for (int i = 0; i < K; ++i) {
                 const auto &pickup =
-                        firstPickupId + i < requestState.numPickups() ? requestState.pickups[firstPickupId + i]
-                                                                      : requestState.pickups[firstPickupId];
+                        firstPickupId + i < pdLocs.numPickups() ? pdLocs.pickups[firstPickupId + i]
+                                                                      : pdLocs.pickups[firstPickupId];
                 pickupTails[i] = inputGraph.edgeTail(pickup.loc);
                 travelTimes[i] = inputGraph.travelTime(pickup.loc);
                 currentPickupWalkingDists[i] = pickup.walkingDist;
-                curPassengerArrTimesAtPickups[i] = requestState.getPassengerArrAtPickup(pickup.id);
+                curPassengerArrTimesAtPickups[i] = requestState.getPassengerArrAtPickup(pickup);
                 curDistancesToDest[i] = pdDistances.getDirectDistance(pickup.id, 0);
             }
 

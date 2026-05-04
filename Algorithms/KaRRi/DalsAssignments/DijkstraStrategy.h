@@ -28,6 +28,11 @@
 #include <Algorithms/KaRRi/CostCalculator.h>
 #include <Algorithms/KaRRi/RequestState/RequestState.h>
 #include <Algorithms/KaRRi/RequestState/RelevantPDLocs.h>
+
+#include <Algorithms/KaRRi/BaseObjects/PDLocs.h>
+
+#include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
+#include "DataStructures/Containers/LightweightSubset.h"
 #include "Tools/Timer.h"
 
 namespace karri::DropoffAfterLastStopStrategies {
@@ -95,7 +100,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                   vehiclesSeen(fleet.size()) {}
 
         void tryDropoffAfterLastStop(const RelevantPDLocs &relevantOrdinaryPickups,
-                                     const RelevantPDLocs &relevantPickupsBeforeNextStop) {
+                                     const RelevantPDLocs &relevantPickupsBeforeNextStop,
+                                     const PDLocs &pdLocs) {
 
             vehiclesSeen.clear();
             tryAssignmentsTime = 0;
@@ -117,8 +123,9 @@ namespace karri::DropoffAfterLastStopStrategies {
 
             // Runs Dijkstra searches. Possible assignments are enumerated during the searches whenever a last stop is
             // scanned.
-            for (unsigned int i = 0; i < requestState.numDropoffs(); i += K) {
-                runSearchesForDropoffBatch(i);
+            curPdLocs = &pdLocs;
+            for (unsigned int i = 0; i < pdLocs.numDropoffs(); i += K) {
+                runSearchesForDropoffBatch(i, pdLocs);
 
                 numEdgeRelaxations += dijSearchToDropoff.getNumEdgeRelaxations();
                 numVerticesSettled += dijSearchToDropoff.getNumVerticesSettled();
@@ -140,7 +147,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             requestState.stats().dalsAssignmentsStats.numEntriesOrLastStopsScanned += numLastStopsVisited;
             requestState.stats().dalsAssignmentsStats.searchTime += searchTime;
             requestState.stats().dalsAssignmentsStats.numCandidateDropoffsAcrossAllVehicles +=
-                    vehiclesSeen.size() * requestState.numDropoffs();
+                    vehiclesSeen.size() * pdLocs.numDropoffs();
             requestState.stats().dalsAssignmentsStats.numCandidateVehicles += vehiclesSeen.size();
             requestState.stats().dalsAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
             requestState.stats().dalsAssignmentsStats.tryAssignmentsTime +=
@@ -149,24 +156,26 @@ namespace karri::DropoffAfterLastStopStrategies {
 
     private:
 
-        void runSearchesForDropoffBatch(const int firstDropoffId) {
+
+        void runSearchesForDropoffBatch(const int firstDropoffId, const PDLocs &pdLocs) {
             KASSERT(firstDropoffId % K == 0 && firstDropoffId < requestState.numDropoffs());
+
 
             std::array<int, K> dropoffTails;
             std::array<int, K> offsets;
             for (int i = 0; i < K; ++i) {
                 curDropoffIds[i] = firstDropoffId + i;
-                if (curDropoffIds[i] >= requestState.numDropoffs())
+                if (curDropoffIds[i] >= pdLocs.numDropoffs())
                     curDropoffIds[i] = firstDropoffId; // fill last batch with copies of first dropoff in batch
-                const auto &dropoff = requestState.dropoffs[curDropoffIds[i]];
+                const auto &dropoff = pdLocs.dropoffs[curDropoffIds[i]];
                 dropoffTails[i] = inputGraph.edgeTail(dropoff.loc);
                 offsets[i] = inputGraph.travelTime(dropoff.loc);
                 curWalkingDists[i] = dropoff.walkingDist;
             }
 
             // Mark index from where last batch contains only copies.
-            if (firstDropoffId + K > requestState.numDropoffs()) {
-                endOfCurBatch = requestState.numDropoffs() % K;
+            if (firstDropoffId + K > pdLocs.numDropoffs()) {
+                endOfCurBatch = pdLocs.numDropoffs() % K;
             } else {
                 endOfCurBatch = K;
             }
@@ -206,7 +215,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (minCosts[searchIdx] > requestState.getBestCost())
                             continue;
 
-                        asgn.dropoff = &requestState.dropoffs[curDropoffIds[searchIdx]];
+                        asgn.dropoff = curPdLocs->dropoffs[curDropoffIds[searchIdx]];
                         asgn.distToDropoff = distFromV[searchIdx];
 
                         for (auto pickupIt = relevantPickupsInRevOrder.begin();
@@ -217,8 +226,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                                 asgn.vehicle->capacity)
                                 break;
 
-                            asgn.pickup = &requestState.pickups[entry.pdId];
-                            if (asgn.pickup->loc == asgn.dropoff->loc)
+                            asgn.pickup = curPdLocs->pickups[entry.pdId];
+                            if (asgn.pickup.loc == asgn.dropoff.loc)
                                 continue;
 
                             asgn.pickupStopIdx = entry.stopIndex;
@@ -240,23 +249,23 @@ namespace karri::DropoffAfterLastStopStrategies {
                         if (minCosts[searchIdx] > requestState.getBestCost())
                             continue;
 
-                        asgn.dropoff = &requestState.dropoffs[curDropoffIds[searchIdx]];
+                        asgn.dropoff = curPdLocs->dropoffs[curDropoffIds[searchIdx]];
                         asgn.distToDropoff = distFromV[searchIdx];
 
                         pickupsToTryBeforeNextStop.clear();
 
 
                         for (const auto &entry: curRelPickupsBns->relevantSpotsFor(vehId)) {
-                            asgn.pickup = &requestState.pickups[entry.pdId];
-                            if (asgn.pickup->loc == asgn.dropoff->loc)
+                            asgn.pickup = curPdLocs->pickups[entry.pdId];
+                            if (asgn.pickup.loc == asgn.dropoff.loc)
                                 continue;
 
                             asgn.distFromPickup = entry.distFromPDLocToNextStop;
 
-                            if (curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id)) {
+                            if (curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup.id)) {
                                 // If we know the exact distance to the pickup via the vehicles current location, we try
                                 // the precise assignment.
-                                asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
+                                asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup.id);
                                 if (asgn.distToPickup >= INFTY)
                                     continue;
 
@@ -275,18 +284,18 @@ namespace karri::DropoffAfterLastStopStrategies {
                                     // vehicle. We postpone computation of that distance to be able to bundle it with the
                                     // computation of distances to other pickups via the vehicle location. Then all remaining
                                     // assignments with this pickup can be tried with the exact distance later.
-                                    pickupsToTryBeforeNextStop.push_back({asgn.pickup->id, asgn.distFromPickup});
-                                    curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup->id,
+                                    pickupsToTryBeforeNextStop.push_back({asgn.pickup.id, asgn.distFromPickup});
+                                    curVehLocToPickupSearches.addPickupForProcessing(asgn.pickup.id,
                                                                                      asgn.distToPickup);
                                 }
                             }
                         }
 
 
-                        curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId]);
+                        curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId], curPdLocs->pickups);
                         for (const auto &pair: pickupsToTryBeforeNextStop) {
-                            asgn.pickup = &requestState.pickups[pair.first];
-                            asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
+                            asgn.pickup = curPdLocs->pickups[pair.first];
+                            asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup.id);
                             if (asgn.distToPickup >= INFTY)
                                 continue;
 
@@ -308,6 +317,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         const InputGraphT &inputGraph;
         RequestState &requestState;
+
+        PDLocs const *curPdLocs; // pointer to PDLocs for current search batch so Dijkstra callback can access it
 
         const Fleet &fleet;
         const RouteState &routeState;

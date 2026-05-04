@@ -145,20 +145,20 @@ namespace karri::Transfers {
                          DropoffAfterLastStopPruner(*this, calculator)),
                   lastStopDistances(fleet.size()) {}
 
-        RelevantDropoffsAfterLastStop findDropoffsAfterLastStop() {
-            runBchQueries();
-            return constructResult();
+        RelevantDropoffsAfterLastStop findDropoffsAfterLastStop(const PDLocs &pdLocs) {
+            runBchQueries(pdLocs);
+            return constructResult(pdLocs);
         }
 
     private:
 
         // Run BCH queries that obtain distances from last stops to dropoffs
-        void runBchQueries() {
+        void runBchQueries(const PDLocs &pdLocs) {
             // Timer timer;
 
-            initDropoffSearches();
-            for (unsigned int i = 0; i < requestState.numDropoffs(); i += K)
-                runSearchesForDropoffBatch(i);
+            initDropoffSearches(pdLocs);
+            for (unsigned int i = 0; i < pdLocs.numDropoffs(); i += K)
+                runSearchesForDropoffBatch(i, pdLocs);
 
             // const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             // requestState.stats().dalsAssignmentsStats.searchTime += searchTime;
@@ -168,7 +168,7 @@ namespace karri::Transfers {
             // requestState.stats().dalsAssignmentsStats.numCandidateVehicles += vehiclesSeenForDropoffs.size();
         }
 
-        void initDropoffSearches() {
+        void initDropoffSearches(const PDLocs &pdLocs) {
             totalNumEdgeRelaxations = 0;
             totalNumVerticesSettled = 0;
             totalNumEntriesScanned = 0;
@@ -178,21 +178,21 @@ namespace karri::Transfers {
 
             // Construct more space for dropoff labels if needed.
             const int numDropoffBatches =
-                    requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
+                    pdLocs.numDropoffs() / K + (pdLocs.numDropoffs() % K != 0);
             lastStopDistances.init(numDropoffBatches);
 
         }
 
-        void runSearchesForDropoffBatch(const unsigned int firstDropoffId) {
-            KASSERT(firstDropoffId % K == 0 && firstDropoffId < requestState.numDropoffs());
+        void runSearchesForDropoffBatch(const unsigned int firstDropoffId, const PDLocs &pdLocs) {
+            KASSERT(firstDropoffId % K == 0 && firstDropoffId < pdLocs.numDropoffs());
             const int batchIdx = firstDropoffId / K;
 
             std::array<int, K> dropoffTails;
             std::array<int, K> travelTimes;
             for (int i = 0; i < K; ++i) {
                 const auto &dropoff =
-                        firstDropoffId + i < requestState.numDropoffs() ? requestState.dropoffs[firstDropoffId + i]
-                                                                        : requestState.dropoffs[firstDropoffId];
+                        firstDropoffId + i < pdLocs.numDropoffs() ? pdLocs.dropoffs[firstDropoffId + i]
+                                                                        : pdLocs.dropoffs[firstDropoffId];
                 dropoffTails[i] = inputGraph.edgeTail(dropoff.loc);
                 travelTimes[i] = inputGraph.travelTime(dropoff.loc);
                 currentDropoffWalkingDists[i] = dropoff.walkingDist;
@@ -206,11 +206,11 @@ namespace karri::Transfers {
             totalNumEntriesScanned += search.getNumEntriesScanned();
         }
 
-        RelevantDropoffsAfterLastStop constructResult() {
+        RelevantDropoffsAfterLastStop constructResult(const PDLocs &pdLocs) {
             RelevantDropoffsAfterLastStop result(fleet.size());
             for (const auto& vehId : vehiclesSeenForDropoffs) {
                 const auto numBefore = result.relevantSpots.size();
-                for (unsigned int dropoffId = 0; dropoffId < requestState.numDropoffs(); ++dropoffId) {
+                for (unsigned int dropoffId = 0; dropoffId < pdLocs.numDropoffs(); ++dropoffId) {
                     const auto dist = lastStopDistances.getDistance(vehId, dropoffId);
                     // TODO: cost based filtering here
                     if (dist >= INFTY)
