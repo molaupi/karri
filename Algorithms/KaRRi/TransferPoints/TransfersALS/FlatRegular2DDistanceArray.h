@@ -57,11 +57,10 @@ namespace karri {
 
         // Initializes 2D distance array to be able to contain at least numRows rows and rowWidth distances per row.
         // No initialization of values takes place.
-        void init(const int numRows, const int rowWidth) {
-            KASSERT(numRows >= 0 && rowWidth >= 0);
+        void init(const size_t numRows, const size_t rowWidth) {
             width = rowWidth;
             curNumRows = numRows;
-            const int newMinSize = numRows * rowWidth;
+            const size_t newMinSize = numRows * rowWidth;
             KASSERT(newMinSize >= 0);
             std::fill(minDistancePerRow.begin(), minDistancePerRow.end(), INFTY);
             if (newMinSize > distances.size())
@@ -70,8 +69,8 @@ namespace karri {
                 minDistancePerRow.resize(numRows, INFTY);
         }
 
-        int width; // Number of distances per row
-        int curNumRows;
+        size_t width; // Number of distances per row
+        size_t curNumRows;
         std::vector<int> distances;
         std::vector<int> minDistancePerRow;
     };

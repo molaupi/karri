@@ -109,7 +109,7 @@ namespace karri {
 
         const FlatRegular2DDistanceArray& calculateDistancesFromLastStopToAllTransfers(const std::vector<int> &lastStopLocs,
                                                                                 const std::vector<int> &transferPoints) {
-            const int numTransferPoints = static_cast<int>(transferPoints.size());
+            const auto numTransferPoints = transferPoints.size();
             lastStopsToTransfersDistances.init(lastStopLocs.size(), numTransferPoints);
 
             if (lastStopLocs.empty() || transferPoints.empty())
@@ -145,7 +145,7 @@ namespace karri {
                 minDistPerRow = INFTY;
                 anyTpAtLastStop = false;
 
-                for (int j = 0; j < numTransferPoints; j++) {
+                for (auto j = 0; j < numTransferPoints; j++) {
                     const int tpLoc = transferPoints[j];
                     const int tpTail = inputGraph.edgeTail(tpLoc);
                     const int tpRank = vehCh.rank(tpTail);
@@ -155,7 +155,7 @@ namespace karri {
                     anyTpAtLastStop |= (tpLoc == lastStopLocsInBatch);
                     const auto distArr = dist.toIntArray();
                     for (int i = batchStart; i < batchEnd; ++i) {
-                        const int idxOffset = i * numTransferPoints;
+                        const auto idxOffset = i * numTransferPoints;
                         lastStopsToTransfersDistances.distances[idxOffset + j] = distArr[i - batchStart];
                     }
                 }
@@ -170,7 +170,7 @@ namespace karri {
 
         const FlatRegular2DDistanceArray& calculateDistancesFromPickupsToAllTransfers(const std::vector<int> &pickupLocs,
                                                                                const std::vector<int> &transferPoints) {
-            const int numTransferPoints = static_cast<int>(transferPoints.size());
+            const auto numTransferPoints = transferPoints.size();
             pickupsToTransfersDistances.init(pickupLocs.size(), numTransferPoints);
 
             if (pickupLocs.empty() || transferPoints.empty())
@@ -205,7 +205,7 @@ namespace karri {
                 minDistPerRow = INFTY;
                 anyTpAtPickup = false;
 
-                for (int j = 0; j < numTransferPoints; j++) {
+                for (auto j = 0; j < numTransferPoints; j++) {
                     const int tpLoc = transferPoints[j];
                     const int tpTail = inputGraph.edgeTail(tpLoc);
                     const int tpRank = vehCh.rank(tpTail);
@@ -215,7 +215,7 @@ namespace karri {
                     anyTpAtPickup |= (tpLoc == pickupLocsInBatch);
                     const auto distArr = dist.toIntArray();
                     for (int i = batchStart; i < batchEnd; ++i) {
-                        const int idxOffset = i * numTransferPoints;
+                        const auto idxOffset = i * numTransferPoints;
                         pickupsToTransfersDistances.distances[idxOffset + j] = distArr[i - batchStart];
                     }
                 }

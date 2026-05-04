@@ -27,6 +27,9 @@ quality <- function(file_base, notransfer = FALSE) {
   asgnstats <- read.csv(paste0(file_base, ".assignmentquality.csv"))
   legstats <- read.csv(paste0(file_base, ".legstats.csv"))
   bestasgn <- read.csv(paste0(file_base, if (notransfer) ".bestassignments.csv" else ".bestassignmentsoverall.csv"))
+  numAccepted <- sum(bestasgn["accepted"] == 1)
+  numTotal <- nrow(bestasgn)
+  bestasgn <- bestasgn[bestasgn["accepted"] == 1,]
   
   eventsimstats <- read.csv(paste0(file_base, ".eventsimulationstats.csv"))
   num.Vehicles <- sum(eventsimstats$type == "VehicleStartup")
@@ -72,7 +75,8 @@ quality <- function(file_base, notransfer = FALSE) {
   # Reformat vehicle times to HH:MM
   veh_time_cols <- c("stop_time_avg", "empty_time_avg", "occ_time_avg", "drive_time_avg", "op_time_avg")
   df[, colnames(df) %in% veh_time_cols] <- convertToHHMM(df[, colnames(df) %in% veh_time_cols])
-  
+  df["service_rate"] <- c(numAccepted / numTotal)
+
   print(df)
 }
 

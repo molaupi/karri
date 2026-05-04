@@ -36,6 +36,7 @@ namespace karri {
 
 
     template<typename AssignmentFinderT,
+            typename AssignmentAcceptanceT,
             typename SystemStateUpdaterT,
             typename ScheduledStopsT>
     class EventSimulation {
@@ -77,12 +78,15 @@ namespace karri {
 
         EventSimulation(
                 const Fleet &fleet, const std::vector<Request> &requests,
-                AssignmentFinderT &assignmentFinder, SystemStateUpdaterT &systemStateUpdater,
+                AssignmentFinderT &assignmentFinder,
+                AssignmentAcceptanceT &assignmentAcceptance,
+                SystemStateUpdaterT &systemStateUpdater,
                 const ScheduledStopsT &scheduledStops,
                 const bool verbose = true)
                 : fleet(fleet),
                   requests(requests),
                   assignmentFinder(assignmentFinder),
+                    assignmentAcceptance(assignmentAcceptance),
                   systemStateUpdater(systemStateUpdater),
                   scheduledStops(scheduledStops),
                   requestEvents(requests.size()),
@@ -385,7 +389,16 @@ namespace karri {
 
             const auto &request = requests[reqId];
             const auto &asgnFinderResponse = assignmentFinder.findBestAssignment(request);
-            systemStateUpdater.writeBestAssignmentToLogger();
+
+            const bool accepted = assignmentAcceptance.doesRiderAcceptAssignment(request, asgnFinderResponse);
+            systemStateUpdater.writeBestAssignmentToLogger(accepted);
+            if (!accepted) {
+                requestState[reqId] = FINISHED;
+                int id, key;
+                requestEvents.deleteMin(id, key);
+                systemStateUpdater.writePerformanceLogs();
+                return;
+            }
 
             if (asgnFinderResponse.improvementThroughTransfer()) {
                 applyAssignmentWithTransfer(asgnFinderResponse.getBestAssignmentWithTransfer(),
@@ -557,6 +570,7 @@ namespace karri {
         const Fleet &fleet;
         const std::vector<Request> &requests;
         AssignmentFinderT &assignmentFinder;
+        AssignmentAcceptanceT &assignmentAcceptance;
         SystemStateUpdaterT &systemStateUpdater;
         const ScheduledStopsT &scheduledStops;
 
