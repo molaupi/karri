@@ -105,9 +105,6 @@ namespace karri {
                 TransferALSStrategyT &strategy,
                 TransfersPickupALSStrategyT &pickupALSStrategy,
                 CurVehLocToPickupSearchesT &searches,
-                const RelevantPDLocs &relORDPickups,
-                const RelevantPDLocs &relBNSPickups,
-                const RelevantPDLocs &relORDDropoffs,
                 const Fleet &fleet,
                 const RouteState &routeState,
                 RequestState &requestState,
@@ -118,9 +115,6 @@ namespace karri {
             strategy(strategy),
             pickupALSStrategy(pickupALSStrategy),
             searches(searches),
-            relORDPickups(relORDPickups),
-            relBNSPickups(relBNSPickups),
-            relORDDropoffs(relORDDropoffs),
             fleet(fleet),
             routeState(routeState),
             requestState(requestState),
@@ -135,7 +129,11 @@ namespace karri {
         void init() {}
 
         template<typename EllipsesT>
-        void findAssignments(const RelevantDropoffsAfterLastStop &relALSDropoffs, const EllipsesT &ellipseContainer) {
+        void findAssignments(const RelevantPDLocs &relORDPickups, const RelevantPDLocs &relBNSPickups,
+                            const RelevantPDLocs &relORDDropoffs,
+            const RelevantDropoffsAfterLastStop &relALSDropoffs,
+            const PDDistances &pdDistances,
+            const EllipsesT &ellipseContainer) {
             Timer total;
             Timer innerTimer;
 
@@ -237,7 +235,7 @@ namespace karri {
             const auto initTime = innerTimer.elapsed<std::chrono::nanoseconds>();
 
             innerTimer.restart();
-            const auto &pVehIdsALS = pickupALSStrategy.findPickupsAfterLastStop();
+            const auto &pVehIdsALS = pickupALSStrategy.findPickupsAfterLastStop(pdDistances);
             const auto searchTimePickupALS = innerTimer.elapsed<std::chrono::nanoseconds>();
 
             if (relevantLastStopLocs.empty() && pVehIdsALS.empty())
@@ -264,7 +262,7 @@ namespace karri {
             const auto searchTimeTransferToDropoff = innerTimer.elapsed<std::chrono::nanoseconds>();
 
             innerTimer.restart();
-            const auto workUnits = composeWorkUnits(pVehIdsALS, relALSDropoffs);
+            const auto workUnits = composeWorkUnits(pVehIdsALS, relORDPickups, relBNSPickups, relORDDropoffs, relALSDropoffs);
 
 
             // Hacky: Access every PALS distance that may be read once to make future reads of the underlying
@@ -291,7 +289,7 @@ namespace karri {
                 const auto &wu = workUnits[i];
                 auto &local = threadLocalData.local();
                 auto &localCalc = threadLocalCalc.local();
-                processWorkUnit(wu, relALSDropoffs, lastStopToTransfersDistances, pickupsToTransfersDistances,
+                processWorkUnit(wu, relORDPickups, relBNSPickups, relORDDropoffs, relALSDropoffs, lastStopToTransfersDistances, pickupsToTransfersDistances,
                                 transfersToDropoffsDistances, ellipseContainer, local.postponedAssignments,
                                 local.paretoOptimalTps, localCalc, local.bestAsgn, local.bestCost, local.numAsgnStats);
             });
@@ -356,7 +354,9 @@ namespace karri {
 
     private:
 
-        std::vector<WorkUnit> composeWorkUnits(const Subset &pVehIdsALS,
+        std::vector<WorkUnit> composeWorkUnits(const LightweightSubset &pVehIdsALS,
+            const RelevantPDLocs &relORDPickups, const RelevantPDLocs &relBNSPickups,
+            const RelevantPDLocs &relORDDropoffs,
                                                const RelevantDropoffsAfterLastStop &relALSDropoffs) {
             std::vector<WorkUnit> workUnits;
 
@@ -406,6 +406,7 @@ namespace karri {
         }
 
         void processWorkUnit(const WorkUnit &wu,
+            const RelevantPDLocs &relORDPickups, const RelevantPDLocs &relBNSPickups, const RelevantPDLocs &relORDDropoffs,
                              const RelevantDropoffsAfterLastStop &relALSDropoffs,
                              const FlatRegular2DDistanceArray &lastStopToTransfersDistances,
                              const FlatRegular2DDistanceArray &pickupsToTransfersDistances,
@@ -443,7 +444,7 @@ namespace karri {
                     const int minThisPickupToTransferDistance = pickupsToTransfersDistances.getMinDistanceFor(
                             pickupEntry.pdId);
                     if (wu.dVehType == ORDINARY) {
-                        tryDropoffORD(wu.pVehId, pickupEntry, wu.dVehId, postponedToUse,
+                        tryDropoffORD(wu.pVehId, pickupEntry, wu.dVehId, relORDDropoffs, postponedToUse,
                                       thisLastStopToTransfersDistances, minThisLastStopToTransferDistance,
                                       thisPickupToTransfersDistances, minThisPickupToTransferDistance,
                                       transfersToDropoffsDistances, ellipseContainer, localParetoOptimalTps,
@@ -475,7 +476,7 @@ namespace karri {
                             pickup.id);
 
                     if (wu.dVehType == ORDINARY) {
-                        tryDropoffORDForPickupALS(wu.pVehId, pickup, distanceToPickup, wu.dVehId,
+                        tryDropoffORDForPickupALS(wu.pVehId, pickup, distanceToPickup, wu.dVehId, relORDDropoffs,
                                                   placeholderLastStopDistanceRange, placeholderMinLastStopDistance,
                                                   thisPickupToTransfersDistances, minThisPickupToTransferDistance,
                                                   transfersToDropoffsDistances, ellipseContainer, localParetoOptimalTps,
@@ -523,6 +524,7 @@ namespace karri {
         }
 
         void tryDropoffORD(const int pVehId, const RelevantPDLoc &pickupEntry, const int dVehId,
+            const RelevantPDLocs &relORDDropoffs,
                            std::vector<AssignmentWithTransfer> &postponedAssignments,
                            const ConstantVectorRange<int> &thisLastStopToTransfersDistances,
                            const int minThisLastStopToTransferDistance,
@@ -589,6 +591,7 @@ namespace karri {
 
         void tryDropoffORDForPickupALS(const int pVehId, const PDLoc &pickup, const int distanceToPickup,
                                        const int dVehId,
+                                       const RelevantPDLocs &relORDDropoffs,
                                        const ConstantVectorRange<int> &thisLastStopToTransfersDistances,
                                        const int minThisLastStopToTransferDistance,
                                        const ConstantVectorRange<int> &thisPickupToTransfersDistances,
@@ -1123,10 +1126,6 @@ namespace karri {
         TransfersPickupALSStrategyT &pickupALSStrategy;
 
         CurVehLocToPickupSearchesT &searches;
-
-        const RelevantPDLocs &relORDPickups;
-        const RelevantPDLocs &relBNSPickups;
-        const RelevantPDLocs &relORDDropoffs;
 
         const Fleet &fleet;
         const RouteState &routeState;

@@ -70,7 +70,6 @@ add_subdirectory(External)
 # Dependencies fetched at configure time:
 include(FetchContentDependencies.cmake)
 
-
 # Targets for this project are defined in directories Launchers and RawData
 set(TARGETS_DIRECTORIES Launchers RawData)
 foreach (TAR_DIR ${TARGETS_DIRECTORIES})

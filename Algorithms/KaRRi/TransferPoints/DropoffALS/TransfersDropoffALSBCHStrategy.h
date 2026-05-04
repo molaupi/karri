@@ -129,7 +129,7 @@ namespace karri::Transfers {
         TransfersDropoffALSBCHStrategy(const InputGraphT &inputGraph,
                               const Fleet &fleet,
                               const CHEnvT &chEnv,
-                              const CostCalculator &calculator,
+                              CostCalculator &calculator,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
                               const RouteState &routeState,
                               RequestState &requestState)
@@ -229,7 +229,7 @@ namespace karri::Transfers {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const CostCalculator &calculator;
+        CostCalculator &calculator;
         const RouteState &routeState;
         RequestState &requestState;
 
@@ -239,7 +239,7 @@ namespace karri::Transfers {
         int upperBoundCost;
 
         // Vehicles seen by any last stop search
-        Subset vehiclesSeenForDropoffs;
+        LightweightSubset vehiclesSeenForDropoffs;
         DropoffBCHQuery search;
         DistanceLabel currentDropoffWalkingDists;
         TentativeLastStopDistances<LabelSet> lastStopDistances;

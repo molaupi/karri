@@ -39,27 +39,22 @@ namespace karri {
 // are inserted between the same pair of existing stops.
 //
 // Works based on filtered relevant PD locs.
-    template<typename PDDistancesT>
     class OrdinaryAssignmentsFinder {
 
 
     public:
 
-        OrdinaryAssignmentsFinder(const RelevantPDLocs &relPickups, const RelevantPDLocs &relDropoffs,
-                                  const PDDistancesT &pdDistances, const Fleet &fleet,
-                                  const CostCalculator &calculator, const RouteState &routeState,
+        OrdinaryAssignmentsFinder(const Fleet &fleet, const CostCalculator &calculator, const RouteState &routeState,
                                   RequestState &requestState)
-                : relPickups(relPickups),
-                  relDropoffs(relDropoffs),
-                  pdDistances(pdDistances),
-                  fleet(fleet),
+                : fleet(fleet),
                   calculator(calculator),
                   routeState(routeState),
                   requestState(requestState) {}
 
-        void findAssignments() {
-            findOrdinaryAssignments();
-            findOrdinaryPairedAssignments();
+        void findAssignments(const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs,
+                             const PDDistances& pdDistances) {
+            findOrdinaryAssignments(relPickups, relDropoffs);
+            findOrdinaryPairedAssignments(pdDistances, relPickups, relDropoffs);
         }
 
         void init() {
@@ -71,19 +66,20 @@ namespace karri {
         // Try assignments where pickup is inserted at or just after stop i and dropoff is inserted at or just after stop j
         // with j > i. Does not deal with inserting the pickup at or after a last stop. Does not deal with inserting the
         // dropoff after a last stop.
-        void findOrdinaryAssignments() {
+        void findOrdinaryAssignments(const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs) {
 
             Timer timer;
             int numCandidateVehicles = 0;
             int numAssignmentsTried = 0;
 
             for (const auto &vehId: relPickups.getVehiclesWithRelevantPDLocs()) {
-                if (!relDropoffs.getVehiclesWithRelevantPDLocs().contains(vehId))
+                if (!relDropoffs.hasRelevantSpotsFor(vehId))
                     continue;
 
-                if (!relPickups.hasRelevantSpotsFor(vehId) ||
-                    !relDropoffs.hasRelevantSpotsFor(vehId))
-                    continue;
+                KASSERT(relPickups.hasRelevantSpotsFor(vehId));
+//                if (!relPickups.hasRelevantSpotsFor(vehId) ||
+//                    !relDropoffs.hasRelevantSpotsFor(vehId))
+//                    continue;
 
                 ++numCandidateVehicles; 
                 Assignment asgn(&fleet[vehId]);
@@ -107,7 +103,7 @@ namespace karri {
                     asgn.distToPickup = pickupEntry.distToPDLoc;
                     asgn.distFromPickup = pickupEntry.distFromPDLocToNextStop;
 
-                    numAssignmentsTried += tryDropoffLaterThanPickup(asgn, curFirstDropoffIt);
+                    numAssignmentsTried += tryDropoffLaterThanPickup(asgn, curFirstDropoffIt, relDropoffs);
                 }
             }
 
@@ -123,7 +119,8 @@ namespace karri {
         // completes the assignment with those dropoffs, and tries the resulting assignments.
         // Note that startIdxInRegularStops has to be an absolute index in relevantRegularHaltingSpots.
         int tryDropoffLaterThanPickup(Assignment &asgn,
-                                      const RelevantPDLocs::It &startItInRegularDropoffs) {
+                                      const RelevantPDLocs::It &startItInRegularDropoffs,
+                                      const RelevantPDLocs& relDropoffs) {
             KASSERT(asgn.vehicle && asgn.pickup);
             const auto &vehId = asgn.vehicle->vehicleId;
 
@@ -131,7 +128,7 @@ namespace karri {
             KASSERT(startItInRegularDropoffs >= relevantDropoffs.begin() &&
                    startItInRegularDropoffs <= relevantDropoffs.end());
 
-            if (!relDropoffs.getVehiclesWithRelevantPDLocs().contains(vehId))
+            if (!relDropoffs.hasRelevantSpotsFor(vehId))
                 return 0;
 
             auto numAssignmentsTriedWithOrdinaryDropoff = 0;
@@ -168,7 +165,7 @@ namespace karri {
         }
 
 
-        void findOrdinaryPairedAssignments() {
+        void findOrdinaryPairedAssignments(const PDDistances& pdDistances, const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs) {
 
             Timer timer;
             int numAssignmentsTried = 0;
@@ -181,7 +178,7 @@ namespace karri {
             int minDistToPickup, minDistFromDropoff;
             RelevantPDLocs::It pickupIt, dropoffIt;
             for (const auto &vehId: relPickups.getVehiclesWithRelevantPDLocs()) {
-                if (!relDropoffs.getVehiclesWithRelevantPDLocs().contains(vehId))
+                if (!relDropoffs.hasRelevantSpotsFor(vehId))
                     continue;
 
                 const auto &veh = fleet[vehId];
@@ -291,9 +288,6 @@ namespace karri {
             requestState.stats().ordAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
         }
 
-        const RelevantPDLocs &relPickups;
-        const RelevantPDLocs &relDropoffs;
-        const PDDistancesT &pdDistances;
         const Fleet &fleet;
         const CostCalculator &calculator;
         const RouteState &routeState;

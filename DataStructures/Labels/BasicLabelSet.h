@@ -177,14 +177,16 @@ public:
             return values[i];
         }
 
-        std::array<int, K> toIntArray() const {
-            return values;
+        // Copy K integer values starting at ptr into distance label. Make sure that there is no overlap between
+        // [ptr, ptr+K) and this label.
+        void load(int const * const ptr) {
+            std::copy(ptr, ptr + K, values.begin());
         }
 
-        void loadIntArray(const int *arr) {
-            for (int i = 0; i < K; ++i) {
-                values[i] = arr[i];
-            }
+        // Copy K integer values from this distance label into ptr. Make sure that there is no overlap between
+        // [ptr, ptr+K) and this label.
+        void store(int * const ptr) const {
+            std::copy(values.begin(), values.end(), ptr);
         }
 
         // Returns the packed sum of lhs and rhs.

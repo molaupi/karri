@@ -157,7 +157,7 @@ public:
     int firstSetBit() const {
         if (blocks.empty()) return -1;
         int blockIndex = 0;
-        while (blocks[blockIndex] == 0 && blockIndex < blocks.size()) ++blockIndex;
+        while (blockIndex < blocks.size() && blocks[blockIndex] == 0) ++blockIndex;
         if (blockIndex == blocks.size()) return -1;
         return blockIndex * BITS_PER_BLOCK + numTrailingZeros(blocks[blockIndex]);
     }

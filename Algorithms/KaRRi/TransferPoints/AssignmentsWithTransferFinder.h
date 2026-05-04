@@ -70,7 +70,8 @@ namespace karri {
         void findBestAssignment(const RelevantPDLocs &relORDPickups,
                                 const RelevantPDLocs &relBNSPickups,
                                 const RelevantPDLocs &relORDDropoffs,
-                                const RelevantPDLocs &relBNSDropoffs) {
+                                const RelevantPDLocs &relBNSDropoffs,
+                                const PDDistances &pdDistances) {
             // Method to find the best assignment with exactly one transfer, i. e. the best possible
             // single transfer journey for the given request
 
@@ -99,13 +100,13 @@ namespace karri {
             const auto ellipseContainer = ellipseReconstructor.computeEllipses(allStopIds, requestState.stats().ellipseReconstructionStats);
 
             // * TRANSFER AFTER LAST STOP (PVeh)
-            transfersALSPVeh.findAssignments(relALSDropoffs, ellipseContainer);
+            transfersALSPVeh.findAssignments(relORDPickups, relBNSPickups, relORDDropoffs, relALSDropoffs, pdDistances, ellipseContainer);
 
             // * ORDINARY TRANSFER
-            ordinaryTransfers.findAssignments(pVehStopIds, dVehStopIds, relALSDropoffs, ellipseContainer);
+            ordinaryTransfers.findAssignments(pVehStopIds, dVehStopIds, relORDPickups, relBNSPickups, relORDDropoffs, relBNSDropoffs, relALSDropoffs, ellipseContainer);
 
             // * TRANSFER AFTER LAST STOP (DVeh)
-            transfersALSDVeh.findAssignments(relALSDropoffs, ellipseContainer);
+            transfersALSDVeh.findAssignments(relORDPickups, relBNSPickups, relALSDropoffs, ellipseContainer);
 
             //* Test the best assignment found
             KASSERT(requestState.getBestCostWithTransfer() == INFTY || asserter.assertAssignment(requestState.getBestAssignmentWithTransfer()));

@@ -43,31 +43,133 @@ inline void printUsage() {
               "Outputs all request origin and destination edges in a given road network as GeoJson.\n"
               "  -g <file>         input road network in binary format.\n"
               "  -r <file>         input requests in CSV format.\n"
+              "  -vertices         if set, outputs GeoJson for small squares around head vertices of origin/destination\n"
+              "  -vertex-width <length>     side-length of square around vertex in meters, default: 50m\n"
+              "  -vertex-opacity <value>     opacity of vertex squares, default: 0.1\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
               "  -o <file>         place GeoJSON in <file>\n"
               "  -help             display this help and exit\n";
 }
 
 
+double computeLatitudeOffset(const int sideLengthInM) {
+    KASSERT(sideLengthInM >= 0);
+    const double offsetInM = static_cast<double>(sideLengthInM) / 2;
+    return toDegrees(offsetInM / EARTH_RADIUS);
+}
+
+double computeLongitudeOffset(const LatLng &latLng, const int sideLengthInM) {
+    KASSERT(sideLengthInM >= 0);
+    const double offsetInM = static_cast<double>(sideLengthInM) / 2;
+    return toDegrees(offsetInM / (EARTH_RADIUS * cos(toRadians(latLng.latInDeg()))));
+}
+
+std::array<LatLng, 4> computeSquareAroundLatLng(const LatLng &latLng, const int sideLengthInM) {
+    const auto latOffset = computeLatitudeOffset(sideLengthInM);
+    const auto lngOffset = computeLongitudeOffset(latLng, sideLengthInM);
+
+    // 4 coordinates of square in counter-clockwise order, starting at northwest corner
+    std::array<LatLng, 4> result;
+    result[0] = LatLng(latLng.latInDeg() + latOffset, latLng.lngInDeg() - lngOffset);
+    result[1] = LatLng(latLng.latInDeg() - latOffset, latLng.lngInDeg() - lngOffset);
+    result[2] = LatLng(latLng.latInDeg() - latOffset, latLng.lngInDeg() + lngOffset);
+    result[3] = LatLng(latLng.latInDeg() + latOffset, latLng.lngInDeg() + lngOffset);
+    return result;
+}
+
+
 template<typename InputGraphT>
-nlohmann::json generateGeoJsonFeatureForEdge(const InputGraphT &inputGraph, const int e, const int reqId) {
+nlohmann::json generateGeoJsonFeatureForVertex(const InputGraphT &inputGraph, const int v, const int reqId,
+                                               const std::string &type, const int sideLengthInM,
+                                               const double opacity) {
 
-    static char color[] = "blue";
+//    static char color[] = "blue";
+
+    assert(type == "origin" || type == "destination");
+    const std::string color = type == "origin" ? "blue" : "red";
+
     nlohmann::json feature;
-    feature["type"] = "LineString";
+    feature["type"] = "Feature";
 
+    // Add properties
+    feature["properties"] = {{"fill",       color},
+                             {"stroke-width", 0},
+                             {"opacity",    opacity},
+                             {"vertex_id",  v},
+                             {"request_id", reqId},
+                             {"type",       type}};
+
+    // Make polygon geometry member for vertex
+    nlohmann::json geometry;
+    geometry["type"] = "Polygon";
+
+    const auto latLng = inputGraph.latLng(v);
+    const auto squareLatLngs = computeSquareAroundLatLng(latLng, sideLengthInM);
+    nlohmann::json polygonCoordinates;
+    for (const auto &squareLatLng: squareLatLngs) {
+        const auto coordinate = nlohmann::json::array({squareLatLng.lngInDeg(), squareLatLng.latInDeg()});
+        polygonCoordinates.push_back(coordinate);
+    }
+    // Close the polygon by adding the first coordinate again
+    polygonCoordinates.push_back(polygonCoordinates[0]);
+    geometry["coordinates"].push_back(polygonCoordinates);
+
+    feature["geometry"] = geometry;
+
+    return feature;
+}
+
+
+template<typename InputGraphT>
+nlohmann::json
+generateGeoJsonObjectForRequestVertices(const InputGraphT &inputGraph, const std::vector<karri::Request> &requests,
+                                        const int sideLengthInM, const double opacity) {
+    // Construct the needed GeoJSON object
+    nlohmann::json topGeoJson;
+    topGeoJson["type"] = "FeatureCollection";
+
+    for (const auto &req: requests) {
+
+        topGeoJson["features"].push_back(
+                generateGeoJsonFeatureForVertex(inputGraph, inputGraph.edgeHead(req.origin), req.requestId, "origin", sideLengthInM, opacity));
+        topGeoJson["features"].push_back(
+                generateGeoJsonFeatureForVertex(inputGraph, inputGraph.edgeHead(req.destination), req.requestId, "destination", sideLengthInM, opacity));
+
+    }
+
+    return topGeoJson;
+}
+
+template<typename InputGraphT>
+nlohmann::json generateGeoJsonFeatureForEdge(const InputGraphT &inputGraph, const int e, const int reqId,
+                                             const std::string &type) {
+
+//    static char color[] = "blue";
+
+    assert(type == "origin" || type == "destination");
+    const std::string color = type == "origin" ? "blue" : "red";
+
+    nlohmann::json feature;
+    feature["type"] = "Feature";
+
+    // Add properties
+    feature["properties"] = {{"stroke",     color},
+//                             {"stroke-width", 1},
+                             {"edge_id",    e},
+                             {"request_id", reqId},
+                             {"type",       type}};
+
+    // Make LineString geometry member for edge
+    nlohmann::json geometry;
+    geometry["type"] = "LineString";
     const auto tailLatLng = inputGraph.latLng(inputGraph.edgeTail(e));
     const auto tailCoordinate = nlohmann::json::array({tailLatLng.lngInDeg(), tailLatLng.latInDeg()});
-    feature["coordinates"].push_back(tailCoordinate);
+    geometry["coordinates"].push_back(tailCoordinate);
 
     const auto headLatLng = inputGraph.latLng(inputGraph.edgeHead(e));
     const auto headCoordinate = nlohmann::json::array({headLatLng.lngInDeg(), headLatLng.latInDeg()});
-    feature["coordinates"].push_back(headCoordinate);
-
-    feature["properties"] = {{"stroke",       color},
-                             {"stroke-width", 3},
-                             {"edge_id",      e},
-                             {"request_id",   reqId}};
+    geometry["coordinates"].push_back(headCoordinate);
+    feature["geometry"] = geometry;
 
     return feature;
 }
@@ -77,12 +179,14 @@ nlohmann::json
 generateGeoJsonObjectForRequestEdges(const InputGraphT &inputGraph, const std::vector<karri::Request> &requests) {
     // Construct the needed GeoJSON object
     nlohmann::json topGeoJson;
-    topGeoJson["type"] = "GeometryCollection";
+    topGeoJson["type"] = "FeatureCollection";
 
     for (const auto &req: requests) {
 
-        topGeoJson["geometries"].push_back(generateGeoJsonFeatureForEdge(inputGraph, req.origin, req.requestId));
-        topGeoJson["geometries"].push_back(generateGeoJsonFeatureForEdge(inputGraph, req.destination, req.requestId));
+        topGeoJson["features"].push_back(
+                generateGeoJsonFeatureForEdge(inputGraph, req.origin, req.requestId, "origin"));
+        topGeoJson["features"].push_back(
+                generateGeoJsonFeatureForEdge(inputGraph, req.destination, req.requestId, "destination"));
 
     }
 
@@ -107,6 +211,8 @@ int main(int argc, char *argv[]) {
         auto outputFileName = clp.getValue<std::string>("o");
         if (!endsWith(outputFileName, ".geojson"))
             outputFileName += ".geojson";
+
+        const bool outputVertices = clp.isSet("vertices");
 
 
         // Read the source network from file.
@@ -148,16 +254,16 @@ int main(int argc, char *argv[]) {
         io::CSVReader<3, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_no_column, "pickup_spot", "dropoff_spot", "min_dep_time");
+            reqFileReader.read_header(io::ignore_extra_column, "pickup_spot", "dropoff_spot", "min_dep_time");
         } else {
-            reqFileReader.read_header(io::ignore_no_column, "origin", "destination", "req_time");
+            reqFileReader.read_header(io::ignore_extra_column, "origin", "destination", "req_time");
         }
 
         while (reqFileReader.read_row(origin, destination, requestTime)) {
             if (origin < 0 || origin >= origIdToSeqId.size() || origIdToSeqId[origin] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
             if (destination < 0 || destination >= origIdToSeqId.size() ||
-                    origIdToSeqId[destination] == INVALID_ID)
+                origIdToSeqId[destination] == INVALID_ID)
                 throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
             const auto originSeqId = origIdToSeqId[origin];
             const auto destSeqId = origIdToSeqId[destination];
@@ -170,7 +276,14 @@ int main(int argc, char *argv[]) {
 
 
         std::cout << "Generating GeoJson object ..." << std::flush;
-        nlohmann::json geoJson = generateGeoJsonObjectForRequestEdges(inputGraph, requests);
+        nlohmann::json geoJson;
+        if (!outputVertices) {
+            geoJson = generateGeoJsonObjectForRequestEdges(inputGraph, requests);
+        } else {
+            const int sideLengthInM = clp.getValue<int>("vertex-width", 50);
+            const double opacity = clp.getValue<double>("vertex-opacity", 0.1);
+            geoJson = generateGeoJsonObjectForRequestVertices(inputGraph, requests, sideLengthInM, opacity);
+        }
         std::cout << " done." << std::endl;
 
 

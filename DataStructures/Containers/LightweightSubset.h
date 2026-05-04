@@ -75,6 +75,9 @@ class LightweightSubset {
       return elements.end();
   }
 
+  bool empty() const noexcept {
+    return elements.empty();
+  }
 
   // Returns the number of elements in the subset.
   int size() const noexcept {

@@ -251,7 +251,7 @@ namespace karri {
 
             KASSERT(vehiclesWithChangesInRoute.contains(asgn.vehicle->vehicleId));
             for (const auto& vehId : vehiclesWithChangesInRoute)
-                updateAdditionalRouteInformation(vehId);
+                updateAdditionalRouteInformation(vehId, requestState.now());
 
             // Length of new legs could be longer than the previous maximum leg length.
             updateMaxLegLength(asgn.vehicle->vehicleId, pickupIdx, dropoffIdx);
@@ -477,7 +477,7 @@ namespace karri {
             KASSERT(vehiclesWithChangesInRoute.contains(asgn.pVeh->vehicleId));
             KASSERT(vehiclesWithChangesInRoute.contains(asgn.dVeh->vehicleId));
             for (const auto& vehId : vehiclesWithChangesInRoute)
-                updateAdditionalRouteInformation(vehId);
+                updateAdditionalRouteInformation(vehId, requestState.now());
 
             // Length of new legs could be longer than the previous maximum leg length.
             updateMaxLegLength(asgn.pVeh->vehicleId, pickupIdx, transferIdxPVeh);
@@ -944,13 +944,14 @@ namespace karri {
             }
         }
 
-        void updateAdditionalRouteInformation(const int vehId) {
+        void updateAdditionalRouteInformation(const int vehId, const int now) {
             const auto &start = pos[vehId].start;
             const auto &end = pos[vehId].end;
-            recalculateVehWaitTimesPrefixSum(start, end - 1, 0);
+            const bool scheduleHasIntermediateStop = schedArrTimes[start + 1] == now;
+            recalculateVehWaitTimesPrefixSum(start, end - 1, 0, scheduleHasIntermediateStop);
             recalculateVehWaitTimesAtDropoffsPrefixSum(start, end - 1, 0);
 
-            updateLeeways(vehId);
+            updateLeeways(vehId, now);
         }
 
 
@@ -1567,18 +1568,20 @@ namespace karri {
             }
         }
 
-        void updateLeeways(const int vehId) {
+        void updateLeeways(const int vehId, const int now) {
+            unused(now);
             const auto start = pos[vehId].start;
             const auto end = pos[vehId].end;
 
             for (int idx = start; idx < end - 1; ++idx) {
+                LIGHT_KASSERT(idx <= start + 1 || schedDepTimes[idx] - schedArrTimes[idx] >= InputConfig::getInstance().stopTime);
                 const auto &stopId = stopIds[idx];
 
                 // Set leeway of stop, possibly update max leeway
-                const auto leeway =
-                        std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1]) - schedDepTimes[idx] -
+                const auto leeway = std::max(maxArrTimes[idx + 1], schedDepTimes[idx + 1]) - schedDepTimes[idx] -
                         InputConfig::getInstance().stopTime;
                 KASSERT(leeway >= 0);
+
                 stopIdToLeeway[stopId] = leeway;
 
                 if (leeway > maxLeeway) {
@@ -1627,7 +1630,8 @@ namespace karri {
 
         // Recalculate the prefix sum of vehicle wait times from fromIdx up to toIdx (both inclusive) based on current
         // minVehArrTime and minVehDepTime values. Takes a sum for the element before fromIdx as baseline.
-        void recalculateVehWaitTimesPrefixSum(const int fromIdx, const int toIdx, const int baseline) {
+        void recalculateVehWaitTimesPrefixSum(const int fromIdx, const int toIdx, const int baseline, const bool scheduleHasIntermediateStop) {
+            unused(scheduleHasIntermediateStop);
             int prevSum = baseline;
             for (int l = fromIdx; l <= toIdx; ++l) {
                 const auto stopLength = std::max(schedDepTimes[l] - InputConfig::getInstance().stopTime - schedArrTimes[l], 0);

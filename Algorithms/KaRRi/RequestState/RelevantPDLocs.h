@@ -30,6 +30,8 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 
+#include <map>
+
 namespace karri {
 
 
@@ -52,40 +54,52 @@ namespace karri {
         using It = typename RelevantPDLocVector::const_iterator;
         using RevIt = typename RelevantPDLocVector::const_reverse_iterator;
 
-        RelevantPDLocs(const int fleetSize)
+        explicit RelevantPDLocs(const int fleetSize)
                 : fleetSize(fleetSize),
-                  startOfRelevantPDLocs(fleetSize + 1),
                   relevantSpots(),
-                  vehiclesWithRelevantSpots(fleetSize) {}
+                  vehiclesWithRelevantSpots() {}
 
-        const Subset &getVehiclesWithRelevantPDLocs() const {
+        const std::vector<int> &getVehiclesWithRelevantPDLocs() const {
             return vehiclesWithRelevantSpots;
         }
 
         bool hasRelevantSpotsFor(const int vehId) const {
             KASSERT(vehId >= 0 && vehId < fleetSize);
-            return startOfRelevantPDLocs[vehId] != startOfRelevantPDLocs[vehId + 1];
+            return vehicleToPdLocs.contains(vehId);
         }
 
         IteratorRange<It> relevantSpotsFor(const int vehId) const {
             KASSERT(vehId >= 0 && vehId < fleetSize);
-            return {relevantSpots.begin() + startOfRelevantPDLocs[vehId],
-                    relevantSpots.begin() + startOfRelevantPDLocs[vehId + 1]};
+            if (!hasRelevantSpotsFor(vehId))
+                return {relevantSpots.end(), relevantSpots.end()};
+            const auto range = vehicleToPdLocs.at(vehId);
+            return {relevantSpots.begin() + range.start,
+                    relevantSpots.begin() + range.end};
         }
 
         IteratorRange<RevIt> relevantSpotsForInReverseOrder(const int vehId) const {
             KASSERT(vehId >= 0 && vehId < fleetSize);
-            const int rstart = relevantSpots.size() - startOfRelevantPDLocs[vehId + 1];
-            const int rend = relevantSpots.size() - startOfRelevantPDLocs[vehId];
+            if (!hasRelevantSpotsFor(vehId))
+                return {relevantSpots.rend(), relevantSpots.rend()};
+            const auto range = vehicleToPdLocs.at(vehId);
+            const int rstart = relevantSpots.size() - range.end;
+            const int rend = relevantSpots.size() - range.start;
             return {relevantSpots.rbegin() + rstart, relevantSpots.rbegin() + rend};
         }
 
     private:
 
-        const int fleetSize;
-        std::vector<int> startOfRelevantPDLocs;
+        int fleetSize;
+//        std::vector<int> startOfRelevantPDLocs;
         RelevantPDLocVector relevantSpots;
-        Subset vehiclesWithRelevantSpots;
+//        Subset vehiclesWithRelevantSpots;
+
+        struct RelevantPDLocsRange {
+            int start = INVALID_INDEX;
+            int end = INVALID_INDEX;
+        };
+        std::unordered_map<int, RelevantPDLocsRange> vehicleToPdLocs;
+        std::vector<int> vehiclesWithRelevantSpots;
 
     };
 }

@@ -36,7 +36,6 @@ namespace karri {
     class TripTimeThresholdAssignmentAcceptance {
 
     public:
-
         explicit TripTimeThresholdAssignmentAcceptance(const RouteState& routeState) : routeState(routeState),
                                                                                        detourComputer(routeState) {}
 

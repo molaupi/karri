@@ -25,7 +25,7 @@
 
 #pragma once
 
-
+#include <vector>
 #include "MinCostPairAfterLastStopQuery.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
@@ -42,13 +42,13 @@ namespace karri::PickupAfterLastStopStrategies {
             typename CHEnvT,
             typename LastStopBucketsEnvT,
             typename VehicleToPDLocQueryT,
-            typename PDDistancesT,
+            typename PDLabelSetT,
             typename FallbackLabelSetT>
     class CollectiveBCHStrategy {
 
-        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT>;
+        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDLabelSetT>;
 
-        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, FallbackLabelSetT>;
+        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsEnvT, FallbackLabelSetT>;
 
     public:
 
@@ -57,7 +57,6 @@ namespace karri::PickupAfterLastStopStrategies {
                               const CHEnvT &chEnv,
                               VehicleToPDLocQueryT &vehicleToPDLocQuery,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              PDDistancesT &pdDistances,
                               CostCalculator &calculator,
                               const RouteState &routeState,
                               RequestState &requestState)
@@ -67,14 +66,15 @@ namespace karri::PickupAfterLastStopStrategies {
                   ch(chEnv.getCH()),
                   routeState(routeState),
                   requestState(requestState),
-                  minCostSearch(inputGraph, fleet, chEnv, routeState, pdDistances, calculator, lastStopBucketsEnv,
+                  minCostSearch(inputGraph, fleet, chEnv, routeState, calculator, lastStopBucketsEnv,
                                 requestState),
                   vehicleToPDLocQuery(vehicleToPDLocQuery),
-                  pdDistances(pdDistances),
-                  fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, pdDistances, routeState,
+                  fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, routeState,
                                    requestState, minCostSearch.getUpperBoundCostWithHardConstraints()) {}
 
-        void tryPickupAfterLastStop() {
+
+        void tryPickupAfterLastStop(const PDDistances& pdDistances) {
+
             auto &stats = requestState.stats().palsAssignmentsStats;
             Timer timer;
 
@@ -114,7 +114,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_initializationTime += colInitTime;
             stats.collective_numPromisingDropoffs += promisingDropoffIds.size();
 
-            minCostSearch.run(promisingDropoffIds, requestState.getBestCost());
+            minCostSearch.run(promisingDropoffIds, requestState.getBestCost(), pdDistances);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.searchTime += searchTime;
@@ -157,7 +157,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_usedFallback = true;
 
             // Otherwise fall back to computing distances explicitly:
-            fallbackStrategy.tryPickupAfterLastStop();
+            fallbackStrategy.tryPickupAfterLastStop(pdDistances);
         }
 
     private:
@@ -171,8 +171,6 @@ namespace karri::PickupAfterLastStopStrategies {
 
         MinCostPairAfterLastStopQueryInst minCostSearch;
         VehicleToPDLocQueryT &vehicleToPDLocQuery;
-
-        PDDistancesT &pdDistances;
 
 
         FallbackIndividualBCHStrategy fallbackStrategy;

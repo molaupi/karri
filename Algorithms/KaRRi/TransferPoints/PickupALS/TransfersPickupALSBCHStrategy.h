@@ -32,7 +32,7 @@
 
 namespace karri::Transfers {
 
-    template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsEnvT, typename PDDistancesT, typename LabelSetT>
+    template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsEnvT, typename LabelSetT>
     class TransfersPickupALSBCHStrategy {
 
         static constexpr int K = LabelSetT::K;
@@ -152,13 +152,11 @@ namespace karri::Transfers {
                                       const CHEnvT &chEnv,
                                       const CostCalculator &calculator,
                                       const LastStopBucketsEnvT &lastStopBucketsEnv,
-                                      const PDDistancesT &pdDistances,
                                       const RouteState &routeState,
                                       RequestState &requestState)
                 : inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
-                  pdDistances(pdDistances),
                   lastStopBucketsEnv(lastStopBucketsEnv),
                   routeState(routeState),
                   requestState(requestState),
@@ -173,8 +171,8 @@ namespace karri::Transfers {
             return distance;
         }
 
-        const Subset& findPickupsAfterLastStop() {
-            runBchSearches();
+        const LightweightSubset& findPickupsAfterLastStop(const PDDistances &pdDistances) {
+            runBchSearches(pdDistances);
             filterVehiclesBasedOnParetoDominance();
             return vehiclesSeenForPickups;
         }
@@ -182,12 +180,12 @@ namespace karri::Transfers {
     private:
 
         // Run BCH searches that find distances from last stops to pickups
-        void runBchSearches() {
+        void runBchSearches(const PDDistances &pdDistances) {
             // Timer timer;
 
             initPickupSearches();
             for (int i = 0; i < requestState.numPickups(); i += K)
-                runSearchesForPickupBatch(i);
+                runSearchesForPickupBatch(i, pdDistances);
         }
 
 
@@ -198,7 +196,7 @@ namespace karri::Transfers {
             distances.init(numPickupBatches);
         }
 
-        void runSearchesForPickupBatch(const int firstPickupId) {
+        void runSearchesForPickupBatch(const int firstPickupId, const PDDistances &pdDistances) {
             KASSERT(firstPickupId % K == 0 && firstPickupId < requestState.numPickups());
 
             distances.setCurBatchIdx(firstPickupId / K);
@@ -322,7 +320,6 @@ namespace karri::Transfers {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const CostCalculator &calculator;
-        const PDDistancesT &pdDistances;
         const LastStopBucketsEnvT &lastStopBucketsEnv;
         const RouteState &routeState;
         RequestState &requestState;
@@ -333,7 +330,7 @@ namespace karri::Transfers {
         PickupBCHQuery search;
 
         // Vehicles seen by any last stop pickup search
-        Subset vehiclesSeenForPickups;
+        LightweightSubset vehiclesSeenForPickups;
         DistanceLabel currentPickupWalkingDists;
         DistanceLabel curPassengerArrTimesAtPickups;
         DistanceLabel curDistancesToDest;

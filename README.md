@@ -1,8 +1,8 @@
-# KaRRiT (Karlsruhe Rapid Ridesharing with Transfers)
+# KaRRiT (Karlsruhe Rapid Ride-Pooling with Transfers)
 
 This repository contains the C++20 implementation of KaRRiT, a state-of-the-art dispatcher for the dynamic 
-taxi sharing problem with transfers. 
-KaRRiT uses engineered on-the-fly shortest path queries to allow for fast query times with maximum flexibility. 
+ride-pooling problem with transfers. 
+KaRRiT uses engineered on-the-fly shortest path queries to allow for fast query times with maximum flexibility.
 
 [//]: # (For more information on KaRRi's novel techniques, we refer to the related publication:)
 

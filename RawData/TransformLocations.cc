@@ -41,6 +41,7 @@
 #include "LocationMapper/TargetVertexToOutputLocation.h"
 #include "LocationMapper/Utils.h"
 #include "LocationMapper/CloseEligibleVertexChooser.h"
+#include "Tools/CommandLine/ProgressBar.h"
 
 inline void printUsage() {
     std::cout <<
@@ -114,8 +115,9 @@ void transformPairs(const InputLocsT &inputPairs,
                     LocationMapperT &locationMapper,
                     const std::string &outputFileName) {
 
-    std::cout << "Transforming OD-pairs ... " << std::flush;
+    std::cout << "Transforming OD-pairs ... " << std::endl;
     std::vector<OriginDestination> outputPairs;
+    ProgressBar progressBar(inputPairs.size());
     for (const auto& curPair : inputPairs) {
 
         int mappingOfOrigin = INVALID_VERTEX;
@@ -123,12 +125,13 @@ void transformPairs(const InputLocsT &inputPairs,
         int mappingOfDestination = INVALID_VERTEX;
         success &= locationMapper.mapLocation(curPair.second, mappingOfDestination, mappingOfOrigin);
 
+        ++progressBar;
         if (!success)
             continue;
 
         outputPairs.emplace_back(mappingOfOrigin, mappingOfDestination);
     }
-    std::cout << " done.\n";
+    std::cout << "\ndone.\n";
 
     std::cout << "Writing " << outputPairs.size() << " pairs to output..." << std::flush;
     std::ofstream out(outputFileName + ".csv");

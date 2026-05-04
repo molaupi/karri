@@ -53,20 +53,24 @@ nlohmann::json generateGeoJsonFeatureForEdge(const InputGraphT &inputGraph, cons
 
     static char color[] = "blue";
     nlohmann::json feature;
-    feature["type"] = "LineString";
+    feature["type"] = "Feature";
+    feature["properties"] = {{"stroke",       color},
+//                             {"stroke-width", 3},
+                             {"edge_id",      e},
+                             {"vehicle_id",   vehId}};
+
+    nlohmann::json geometry;
+    geometry["type"] = "LineString";
 
     const auto tailLatLng = inputGraph.latLng(inputGraph.edgeTail(e));
     const auto tailCoordinate = nlohmann::json::array({tailLatLng.lngInDeg(), tailLatLng.latInDeg()});
-    feature["coordinates"].push_back(tailCoordinate);
+    geometry["coordinates"].push_back(tailCoordinate);
 
     const auto headLatLng = inputGraph.latLng(inputGraph.edgeHead(e));
     const auto headCoordinate = nlohmann::json::array({headLatLng.lngInDeg(), headLatLng.latInDeg()});
-    feature["coordinates"].push_back(headCoordinate);
+    geometry["coordinates"].push_back(headCoordinate);
 
-    feature["properties"] = {{"stroke",       color},
-                             {"stroke-width", 3},
-                             {"edge_id",      e},
-                             {"vehicle_id",   vehId}};
+    feature["geometry"] = geometry;
 
     return feature;
 }
@@ -76,12 +80,10 @@ nlohmann::json
 generateGeoJsonObjectForRequestEdges(const InputGraphT &inputGraph, const std::vector<karri::Vehicle> &vehicles) {
     // Construct the needed GeoJSON object
     nlohmann::json topGeoJson;
-    topGeoJson["type"] = "GeometryCollection";
+    topGeoJson["type"] = "FeatureCollection";
 
     for (const auto &veh: vehicles) {
-
-        topGeoJson["geometries"].push_back(generateGeoJsonFeatureForEdge(inputGraph, veh.initialLocation, veh.vehicleId));
-
+        topGeoJson["features"].push_back(generateGeoJsonFeatureForEdge(inputGraph, veh.initialLocation, veh.vehicleId));
     }
 
     return topGeoJson;

@@ -64,7 +64,6 @@ FetchContent_MakeAvailable(vectorclass)
 FetchContent_GetProperties(vectorclass SOURCE_DIR vectorclass_SOURCE_DIR)
 add_library(vectorclass INTERFACE)
 target_include_directories(vectorclass SYSTEM INTERFACE ${vectorclass_SOURCE_DIR})
-message("done.")
 
 # Fetch nlohmann_json
 message("Fetching nlohmann_json library...")

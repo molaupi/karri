@@ -34,11 +34,12 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/TimeUtils.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
+#include "Tools/Timer.h"
 
 namespace karri {
 
 
-    template<typename LabelSetT>
+    template<typename LabelSetT, bool StoreMeetingVertices = false>
     class FeasibleEllipticDistances {
 
 
@@ -51,35 +52,48 @@ namespace karri {
 
     public:
 
-        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState)
+        explicit FeasibleEllipticDistances(const int fleetSize, const RouteState &routeState,
+                                           stats::EllipticBCHPerformanceStats& stats)
                 : routeState(routeState),
+                  fleetSize(fleetSize),
                   maxStopId(routeState.getMaxStopId()),
-                  startOfRangeInValueArray(fleetSize),
-                  vehiclesWithRelevantPDLocs(fleetSize),
+                  startOfRangeInValueArray(fleetSize, INVALID_INDEX),
                   minDistToPDLoc(fleetSize),
-                  minDistFromPDLocToNextStop(fleetSize) {}
+                  minDistFromPDLocToNextStop(fleetSize),
+                  stats(stats) {}
 
-        template<typename PDLocsAtExistingStopsT, typename InputGraphT>
-        void init(const int newNumPDLocs, const PDLocsAtExistingStopsT &pdLocsAtExistingStops,
-                  const InputGraphT &inputGraph) {
+        void init(const int newNumPDLocs) {
+            Timer timer;
             numLabelsPerStop = newNumPDLocs / K + (newNumPDLocs % K != 0);
 
             KASSERT(maxStopId >= 0);
             if (maxStopId >= startOfRangeInValueArray.size()) {
-                startOfRangeInValueArray.resize(maxStopId + 1);
+                startOfRangeInValueArray.resize(maxStopId + 1, INVALID_INDEX);
                 minDistToPDLoc.resize(maxStopId + 1);
                 minDistFromPDLocToNextStop.resize(maxStopId + 1);
             }
 
-            for (auto &idx: startOfRangeInValueArray)
-                idx = INVALID_INDEX;
-            vehiclesWithRelevantPDLocs.clear();
+            // Reset startOfRangeInValueArray using stopIdsWithRelevantPDLocs from previous run,
+            // then clear stopIdsWithRelevantPDLocs
+            for (const auto& stopId : stopIdsWithRelevantPDLocs)
+                startOfRangeInValueArray[stopId] = INVALID_INDEX;
+            KASSERT(std::all_of(startOfRangeInValueArray.begin(), startOfRangeInValueArray.end(),
+                                [](const auto idx) { return idx == INVALID_INDEX; }));
+            stopIdsWithRelevantPDLocs.clear();
 
             distToRelevantPDLocs.clear();
             distFromRelevantPDLocsToNextStop.clear();
             meetingVerticesToRelevantPDLocs.clear();
             meetingVerticesFromRelevantPDLocsToNextStop.clear();
 
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            stats.initializationTime += time;
+        }
+
+        template<typename PDLocsAtExistingStopsT, typename InputGraphT>
+        void initializeDistancesForPdLocsAtExistingStops(PDLocsAtExistingStopsT &&pdLocsAtExistingStops,
+                                                          const InputGraphT &inputGraph) {
+            Timer timer;
 
             // Pre-allocate entries for PD locs at existing stops. The distance 0 may otherwise not be found by the
             // BCH searches. Also, this way, the distance for such a PD loc never has to be updated, and we already
@@ -103,19 +117,16 @@ namespace karri {
                 lengthOfLegLabel[pdLocAtExistingStop.pdId % K] = lengthOfLegStartingHere;
                 updateDistanceFromPDLocToNextStop(stopId, firstIdInBatch, lengthOfLegLabel, stopVertex);
             }
-        }
 
-        // Allocate entries for the given stop if none exist already.
-        void preallocateEntriesFor(const int stopId) {
-            if (!hasPotentiallyRelevantPDLocs(stopId))
-                allocateEntriesFor(stopId);
+            const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
+            stats.initializationTime += time;
         }
 
         // Updates the distance from stop to the PD loc. Distance is written if there are
         // entries for the stop already or dynamic allocation of entries is allowed.
         // Returns mask indicating where the distance has been improved (all false if we don't know the stop and dynamic
         // allocation is not allowed).
-        LabelMask updateDistanceFromStopToPDLoc(const int stopId, const unsigned int firstPDLocId,
+        void updateDistanceFromStopToPDLoc(const int stopId, const unsigned int firstPDLocId,
                                                 const DistanceLabel newDistToPDLoc, const int meetingVertex) {
             KASSERT(stopId >= 0 && stopId <= maxStopId);
             KASSERT(firstPDLocId < numLabelsPerStop * K);
@@ -129,20 +140,22 @@ namespace karri {
 
             // Write values for new entry and set pointer from PD loc to the entries
             const auto idx = startOfRangeInValueArray[stopId] + firstPDLocId / K;
-            const LabelMask improved = newDistToPDLoc < distToRelevantPDLocs[idx];
-            distToRelevantPDLocs[idx].setIf(newDistToPDLoc, improved);
-            meetingVerticesToRelevantPDLocs[idx].setIf(meetingVertex, improved);
+            if constexpr (StoreMeetingVertices) {
+                const LabelMask improved = newDistToPDLoc < distToRelevantPDLocs[idx];
+                distToRelevantPDLocs[idx].setIf(newDistToPDLoc, improved);
+                meetingVerticesToRelevantPDLocs[idx].setIf(meetingVertex, improved);
+            } else {
+                distToRelevantPDLocs[idx].min(newDistToPDLoc);
+            }
 
             auto &globalMin = minDistToPDLoc[stopId];
             globalMin.min(newDistToPDLoc);
-
-            return improved;
         }
 
         // Updates the distance from the PD loc to the stop that follows stopId. Distance is written only if entries
         // for the stop exist already.
         // Returns mask indicating where the distance has been improved (all false if we don't know the stop).
-        LabelMask updateDistanceFromPDLocToNextStop(const int stopId, const int firstPDLocId,
+        void updateDistanceFromPDLocToNextStop(const int stopId, const int firstPDLocId,
                                                     const DistanceLabel newDistFromPDLocToNextStop,
                                                     const int meetingVertex) {
 
@@ -150,17 +163,19 @@ namespace karri {
             // considered irrelevant for the to-searches (regardless of whether we allow dynamic allocation or not).
             // Therefore, this stop cannot be relevant on both sides which means we can skip it here.
             if (startOfRangeInValueArray[stopId] == INVALID_INDEX)
-                return LabelMask(false);
+                return;
 
             const auto idx = startOfRangeInValueArray[stopId] + firstPDLocId / K;
-            const LabelMask improved = newDistFromPDLocToNextStop < distFromRelevantPDLocsToNextStop[idx];
-            distFromRelevantPDLocsToNextStop[idx].setIf(newDistFromPDLocToNextStop, improved);
-            meetingVerticesFromRelevantPDLocsToNextStop[idx].setIf(meetingVertex, improved);
+            if constexpr (StoreMeetingVertices) {
+                const LabelMask improved = newDistFromPDLocToNextStop < distFromRelevantPDLocsToNextStop[idx];
+                distFromRelevantPDLocsToNextStop[idx].setIf(newDistFromPDLocToNextStop, improved);
+                meetingVerticesFromRelevantPDLocsToNextStop[idx].setIf(meetingVertex, improved);
+            } else {
+                distFromRelevantPDLocsToNextStop[idx].min(newDistFromPDLocToNextStop);
+            }
 
             auto &globalMin = minDistFromPDLocToNextStop[stopId];
             globalMin.min(newDistFromPDLocToNextStop);
-
-            return improved;
         }
 
         bool hasPotentiallyRelevantPDLocs(const int stopId) const {
@@ -186,8 +201,7 @@ namespace karri {
             friend FeasibleEllipticDistances;
 
             PerPDLocFacade(const It labelBegin, const int numLabelsPerStop) : labelBegin(labelBegin),
-                                                                              numLabelsPerStop(
-                                                                                      numLabelsPerStop) {}
+                                                                              numLabelsPerStop(numLabelsPerStop) {}
 
             const It labelBegin;
             const int numLabelsPerStop;
@@ -208,9 +222,10 @@ namespace karri {
             return minDistToPDLoc[stopId].horizontalMin();
         }
 
-        PerPDLocFacade meetingVerticesToRelevantPDLocsFor(const int stopId) const {
+        PerPDLocFacade meetingVerticesToRelevantPDLocsFor(const int stopId) const requires StoreMeetingVertices {
             KASSERT(stopId <= maxStopId);
             KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
+
             const auto start = startOfRangeInValueArray[stopId];
             KASSERT(meetingVerticesToRelevantPDLocs.begin() + start + numLabelsPerStop <=
                    meetingVerticesToRelevantPDLocs.end());
@@ -232,7 +247,7 @@ namespace karri {
             return minDistFromPDLocToNextStop[stopId].horizontalMin();
         }
 
-        PerPDLocFacade meetingVerticesFromRelevantPDLocsToNextStopOf(const int stopId) const {
+        PerPDLocFacade meetingVerticesFromRelevantPDLocsToNextStopOf(const int stopId) const requires StoreMeetingVertices {
             KASSERT(stopId <= maxStopId);
             KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
             const auto start = startOfRangeInValueArray[stopId];
@@ -241,8 +256,23 @@ namespace karri {
             return {meetingVerticesFromRelevantPDLocsToNextStop.begin() + start, numLabelsPerStop};
         }
 
-        const Subset &getVehiclesWithRelevantPDLocs() const {
-            return vehiclesWithRelevantPDLocs;
+
+        // Makes unexpectedly heavy computations, use with care.
+        int numVehiclesWithRelevantPDLocs() const {
+            BitVector hasPdLocs(fleetSize);
+            for (const auto &stopId: stopIdsWithRelevantPDLocs) {
+                hasPdLocs[routeState.vehicleIdOf(stopId)] = true;
+            }
+            return hasPdLocs.cardinality();
+        }
+
+
+        std::vector<int>& getStopIdsWithRelevantPDLocs() {
+            return stopIdsWithRelevantPDLocs;
+        }
+
+        int numStopsWithRelevantPDLocs() const {
+            return distToRelevantPDLocs.size() / numLabelsPerStop;
         }
 
     private:
@@ -251,21 +281,24 @@ namespace karri {
             KASSERT(startOfRangeInValueArray[stopId] == INVALID_INDEX);
             const auto curNumLabels = distToRelevantPDLocs.size();
             startOfRangeInValueArray[stopId] = curNumLabels;
-            vehiclesWithRelevantPDLocs.insert(routeState.vehicleIdOf(stopId));
+            stopIdsWithRelevantPDLocs.push_back(stopId);
             distToRelevantPDLocs.insert(distToRelevantPDLocs.end(), numLabelsPerStop, DistanceLabel(INFTY));
-            distFromRelevantPDLocsToNextStop.insert(distFromRelevantPDLocsToNextStop.end(),
-                                                    numLabelsPerStop, DistanceLabel(INFTY));
-            meetingVerticesToRelevantPDLocs.insert(meetingVerticesToRelevantPDLocs.end(), numLabelsPerStop,
-                                                   DistanceLabel(INVALID_VERTEX));
-            meetingVerticesFromRelevantPDLocsToNextStop.insert(
-                    meetingVerticesFromRelevantPDLocsToNextStop.end(),
-                    numLabelsPerStop, DistanceLabel(INVALID_VERTEX));
+            distFromRelevantPDLocsToNextStop.insert(distFromRelevantPDLocsToNextStop.end(), numLabelsPerStop,
+                                                    DistanceLabel(INFTY));
+            // If we store meeting vertices also allocate entries in meeting vertices value arrays.
+            if constexpr (StoreMeetingVertices) {
+                meetingVerticesToRelevantPDLocs.insert(meetingVerticesToRelevantPDLocs.end(), numLabelsPerStop,
+                                                       DistanceLabel(INVALID_VERTEX));
+                meetingVerticesFromRelevantPDLocsToNextStop.insert(meetingVerticesFromRelevantPDLocsToNextStop.end(),
+                                                                   numLabelsPerStop, DistanceLabel(INVALID_VERTEX));
+            }
 
             minDistToPDLoc[stopId] = INFTY;
             minDistFromPDLocToNextStop[stopId] = INFTY;
         }
 
         const RouteState &routeState;
+        const int fleetSize;
 
         int numLabelsPerStop{};
         const int &maxStopId;
@@ -280,10 +313,13 @@ namespace karri {
         MeetingVerticesVector meetingVerticesToRelevantPDLocs;
         MeetingVerticesVector meetingVerticesFromRelevantPDLocsToNextStop;
 
-        Subset vehiclesWithRelevantPDLocs;
+        // Iterable set of stop IDs that have relevant PD locs.
+        std::vector<int> stopIdsWithRelevantPDLocs;
 
         std::vector<DistanceLabel> minDistToPDLoc;
         std::vector<DistanceLabel> minDistFromPDLocToNextStop;
+
+        stats::EllipticBCHPerformanceStats& stats;
 
     };
 

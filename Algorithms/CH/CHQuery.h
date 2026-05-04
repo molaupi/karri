@@ -43,9 +43,9 @@
 // edges, and computes multiple shortest paths simultaneously, optionally using SSE or AVX
 // instructions. The algorithm can be used with different distance label containers and queues.
 template<
-        typename LabelSetT, bool USE_STALLING = true,
-        template<typename> class DistanceLabelContainerT = StampedDistanceLabelContainer,
-        typename QueueT = AddressableQuadHeap>
+    typename LabelSetT, bool USE_STALLING = true,
+    template<typename> class DistanceLabelContainerT = StampedDistanceLabelContainer,
+    typename QueueT = AddressableQuadHeap>
 class CHQuery {
 private:
     static constexpr int K = LabelSetT::K; // The number of simultaneous shortest-path computations.
@@ -54,19 +54,21 @@ private:
 public:
     // The pruning criterion for a CH query, also known as stall-on-demand.
     struct PruningCriterion {
-        using LabelMask = typename LabelSetT::LabelMask;     // Marks a subset of components in a label.
+        using LabelMask = typename LabelSetT::LabelMask; // Marks a subset of components in a label.
 
         // Constructs a pruning criterion for a CH query.
         PruningCriterion(const CH::SearchGraph &oppositeGraph) noexcept
-                : oppositeGraph(oppositeGraph) {}
+            : oppositeGraph(oppositeGraph) {
+        }
 
         // Returns true if the search can be pruned at v.
         template<typename DistLabelContainerT>
         bool operator()(const int v, const DistLabel &distToV, DistLabelContainerT &distLabels) const {
             LabelMask continueSearch = true;
-            FORALL_INCIDENT_EDGES(oppositeGraph, v, e)continueSearch &=
-                                                              distToV < distLabels[oppositeGraph.edgeHead(e)] +
-                                                                        oppositeGraph.traversalCost(e);
+            FORALL_INCIDENT_EDGES(oppositeGraph, v, e)
+                continueSearch &=
+                        distToV < distLabels[oppositeGraph.edgeHead(e)] +
+                        oppositeGraph.traversalCost(e);
             return !anySet(continueSearch);
         }
 
@@ -76,12 +78,14 @@ public:
     // Constructs a CH query instance that uses stall-on-demand.
     template<bool COND = USE_STALLING>
     explicit CHQuery(std::enable_if_t<COND, const CH &> ch)
-            : search(ch.upwardGraph(), ch.downwardGraph(), {ch.downwardGraph()}, {ch.upwardGraph()}) {}
+        : search(ch.upwardGraph(), ch.downwardGraph(), {ch.downwardGraph()}, {ch.upwardGraph()}) {
+    }
 
     // Constructs a CH query instance that does not use stall-on-demand.
     template<bool COND = USE_STALLING>
     explicit CHQuery(std::enable_if_t<!COND, const CH &> ch)
-            : search(ch.upwardGraph(), ch.downwardGraph()) {}
+        : search(ch.upwardGraph(), ch.downwardGraph()) {
+    }
 
     // Runs a CH query from s to t.
     void run(const int s, const int t) {
@@ -133,10 +137,11 @@ private:
     struct StoppingCriterion {
         // Constructs a stopping criterion for a CH query.
         StoppingCriterion(
-                const QueueT &forwardQueue, const QueueT &reverseQueue, const int &maxTentativeDistance)
-                : forwardQueue(forwardQueue),
-                  reverseQueue(reverseQueue),
-                  maxTentativeDistance(maxTentativeDistance) {}
+            const QueueT &forwardQueue, const QueueT &reverseQueue, const int &maxTentativeDistance)
+            : forwardQueue(forwardQueue),
+              reverseQueue(reverseQueue),
+              maxTentativeDistance(maxTentativeDistance) {
+        }
 
         // Returns true if we can stop the forward search.
         bool stopForwardSearch() const {
@@ -148,21 +153,27 @@ private:
             return reverseQueue.empty() || maxTentativeDistance <= reverseQueue.minKey();
         }
 
-        const QueueT &forwardQueue;      // The priority queue of the forward search.
-        const QueueT &reverseQueue;      // The priority queue of the reverse search.
+        const QueueT &forwardQueue; // The priority queue of the forward search.
+        const QueueT &reverseQueue; // The priority queue of the reverse search.
         const int &maxTentativeDistance; // The largest of all k tentative distances.
     };
 
     using UpwardSearchStall = Dijkstra<
-            CH::SearchGraph, TraversalCostAttribute, LabelSetT, dij::NoCriterion, PruningCriterion,
-            DistanceLabelContainerT, QueueT>;
+        CH::SearchGraph, TraversalCostAttribute, LabelSetT, dij::NoCriterion, PruningCriterion,
+        DistanceLabelContainerT, QueueT>;
     using UpwardSearchNoStall = Dijkstra<
-            CH::SearchGraph, TraversalCostAttribute, LabelSetT, dij::NoCriterion, dij::NoCriterion,
-            DistanceLabelContainerT, QueueT>;
+        CH::SearchGraph, TraversalCostAttribute, LabelSetT, dij::NoCriterion, dij::NoCriterion,
+        DistanceLabelContainerT, QueueT>;
     using UpwardSearch = std::conditional_t<USE_STALLING, UpwardSearchStall, UpwardSearchNoStall>;
-
-    BiDijkstra<UpwardSearch, StoppingCriterion> search; // The modified bidirectional search.
 
     int64_t numVerticesSettled;
     int64_t numEdgesRelaxed;
+
+    using BiDirSearch = BiDijkstra<UpwardSearch, StoppingCriterion>;
+    BiDirSearch search; // The modified bidirectional search.
+
+public:
+    BiDirSearch &getInternalSearch() {
+        return search;
+    }
 };

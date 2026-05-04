@@ -33,26 +33,25 @@
 namespace karri {
 
 // Finds pickup-after-last-stop (PALS) insertions using the encapsulated strategy.
-    template<typename InputGraphT, typename PDDistancesT, typename StrategyT, typename LastStopsAtVerticesT>
+    template<typename InputGraphT, typename StrategyT, typename LastStopsAtVerticesT>
     class PALSAssignmentsFinder {
 
     public:
 
         PALSAssignmentsFinder(StrategyT &strategy, const InputGraphT &inputGraph, const Fleet &fleet,
                               const CostCalculator &calculator, const LastStopsAtVerticesT &lastStopsAtVertices,
-                              const RouteState &routeState, const PDDistancesT &pdDistances, RequestState &requestState)
+                              const RouteState &routeState, RequestState &requestState)
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
                   calculator(calculator),
                   lastStopsAtVertices(lastStopsAtVertices),
                   routeState(routeState),
-                  pdDistances(pdDistances),
                   requestState(requestState) {}
 
-        void findAssignments() {
-            findAssignmentsWherePickupCoincidesWithLastStop();
-            strategy.tryPickupAfterLastStop();
+        void findAssignments(const PDDistances& pdDistances) {
+            findAssignmentsWherePickupCoincidesWithLastStop(pdDistances);
+            strategy.tryPickupAfterLastStop(pdDistances);
         }
 
         void init() {
@@ -63,7 +62,7 @@ namespace karri {
 
         // Simple case for pickups that coincide with last stops of vehicles is the same regardless of strategy, so it
         // is treated here.
-        void findAssignmentsWherePickupCoincidesWithLastStop() {
+        void findAssignmentsWherePickupCoincidesWithLastStop(const PDDistances& pdDistances) {
             int numInsertionsForCoinciding = 0;
             int numCandidateVehiclesForCoinciding = 0;
             Timer timer;
@@ -113,7 +112,6 @@ namespace karri {
         const CostCalculator &calculator;
         const LastStopsAtVerticesT &lastStopsAtVertices;
         const RouteState &routeState;
-        const PDDistancesT &pdDistances;
         RequestState &requestState;
 
     };

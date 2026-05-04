@@ -141,10 +141,11 @@ namespace karri {
 
                 forwardQuery.run(*chosenTargetsSelection, sources);
 
-                lastStopLocsInBatch.loadIntArray(lastStopLocsInBatchArr.data());
+                lastStopLocsInBatch.load(lastStopLocsInBatchArr.data());
                 minDistPerRow = INFTY;
                 anyTpAtLastStop = false;
 
+                std::array<int, K> distArr{};
                 for (auto j = 0; j < numTransferPoints; j++) {
                     const int tpLoc = transferPoints[j];
                     const int tpTail = inputGraph.edgeTail(tpLoc);
@@ -153,7 +154,7 @@ namespace karri {
                     const DistanceLabel dist = forwardQuery.getDistances(tpRankSelection) + inputGraph.travelTime(tpLoc);
                     minDistPerRow.min(dist);
                     anyTpAtLastStop |= (tpLoc == lastStopLocsInBatch);
-                    const auto distArr = dist.toIntArray();
+                    dist.store(distArr.data());
                     for (int i = batchStart; i < batchEnd; ++i) {
                         const auto idxOffset = i * numTransferPoints;
                         lastStopsToTransfersDistances.distances[idxOffset + j] = distArr[i - batchStart];
@@ -201,10 +202,11 @@ namespace karri {
 
                 forwardQuery.run(*chosenTargetsSelection, sources);
 
-                pickupLocsInBatch.loadIntArray(pickupLocsInBatchArr.data());
+                pickupLocsInBatch.load(pickupLocsInBatchArr.data());
                 minDistPerRow = INFTY;
                 anyTpAtPickup = false;
 
+                std::array<int, K> distArr{};
                 for (auto j = 0; j < numTransferPoints; j++) {
                     const int tpLoc = transferPoints[j];
                     const int tpTail = inputGraph.edgeTail(tpLoc);
@@ -213,7 +215,7 @@ namespace karri {
                     const DistanceLabel dist = forwardQuery.getDistances(tpRankSelection) + inputGraph.travelTime(tpLoc);
                     minDistPerRow.min(dist);
                     anyTpAtPickup |= (tpLoc == pickupLocsInBatch);
-                    const auto distArr = dist.toIntArray();
+                    dist.store(distArr.data());
                     for (int i = batchStart; i < batchEnd; ++i) {
                         const auto idxOffset = i * numTransferPoints;
                         pickupsToTransfersDistances.distances[idxOffset + j] = distArr[i - batchStart];
@@ -266,11 +268,12 @@ namespace karri {
 
                 reverseQuery.run(*chosenSourcesSelection, targets);
 
-                dropoffLocsInBatch.loadIntArray(dropoffLocsInBatchArr.data());
-                dropoffOffsets.loadIntArray(dropoffOffsetsArr.data());
+                dropoffLocsInBatch.load(dropoffLocsInBatchArr.data());
+                dropoffOffsets.load(dropoffOffsetsArr.data());
                 minDistPerRow = INFTY;
                 anyTpAtDropoff = false;
 
+                std::array<int, K> distArr{};
                 for (int j = 0; j < numTransferPoints; j++) {
                     const int tpLoc = transferPoints[j];
                     const int tpHead = inputGraph.edgeHead(tpLoc);
@@ -279,7 +282,7 @@ namespace karri {
                     const DistanceLabel dist = reverseQuery.getDistances(tpRankSelection) + dropoffOffsets;
                     minDistPerRow.min(dist);
                     anyTpAtDropoff |= (tpLoc == dropoffLocsInBatch);
-                    const auto distArr = dist.toIntArray();
+                    dist.store(distArr.data());
                     for (int i = batchStart; i < batchEnd; ++i) {
                         const int idxOffset = i * numTransferPoints;
                         transfersToDropoffsDistances.distances[idxOffset + j] = distArr[i - batchStart];

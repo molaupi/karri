@@ -78,10 +78,6 @@ namespace karri {
                 const InputGraphT &inputGraph,
                 const VehCHEnvT &vehChEnv,
                 CurVehLocToPickupSearchesT &searches,
-                const RelevantPDLocs &relORDPickups,
-                const RelevantPDLocs &relBNSPickups,
-                const RelevantPDLocs &relORDDropoffs,
-                const RelevantPDLocs &relBNSDropoffs,
                 DirectTransferDistancesFinderT &pickupToTransferDistancesFinder,
                 DirectTransferDistancesFinderT &transferToDropoffDistancesFinder,
                 const Fleet &fleet,
@@ -94,10 +90,6 @@ namespace karri {
                 vehCh(vehChEnv.getCH()),
                 vehChQuery(vehChEnv.template getFullCHQuery<VehCHQueryLabelSet>()),
                 searches(searches),
-                relORDPickups(relORDPickups),
-                relBNSPickups(relBNSPickups),
-                relORDDropoffs(relORDDropoffs),
-                relBNSDropoffs(relBNSDropoffs),
                 pickupToTransferDistancesFinder(pickupToTransferDistancesFinder),
                 transferToDropoffDistancesFinder(transferToDropoffDistancesFinder),
                 fleet(fleet),
@@ -127,6 +119,8 @@ namespace karri {
         // be inserted, this method finds all possible assignments with an ordinary transfer.
         template<typename EllipsesT>
         void findAssignments(const std::vector<int> &pVehStopIds, const std::vector<int> &dVehStopIds,
+            const RelevantPDLocs &relORDPickups, const RelevantPDLocs &relBNSPickups,
+                                const RelevantPDLocs &relORDDropoffs, const RelevantPDLocs &relBNSDropoffs,
                              const RelevantDropoffsAfterLastStop &relALSDropoffs,
                              const EllipsesT &ellipseContainer) {
             Timer total;
@@ -189,15 +183,15 @@ namespace karri {
 
                     // Find the assignments with the transfer points
                     promisingPartials.clear();
-                    findPartialAssignmentsForPairOfStopPairs(pStopId, dStopId, promisingPartials);
+                    findPartialAssignmentsForPairOfStopPairs(pStopId, dStopId, relORDPickups, relBNSPickups, promisingPartials);
 
                     if (promisingPartials.empty())
                         continue;
 
                     KASSERT(postponedFullAssignments.empty());
                     for (const auto &partialAsgn: promisingPartials) {
-                        tryDropoffBNS(partialAsgn, postponedFullAssignments);
-                        tryDropoffORD(partialAsgn, postponedFullAssignments);
+                        tryDropoffBNS(partialAsgn, relBNSDropoffs, postponedFullAssignments);
+                        tryDropoffORD(partialAsgn, relORDDropoffs, postponedFullAssignments);
                         tryDropoffALS(partialAsgn, relALSDropoffs, postponedFullAssignments);
                     }
 
@@ -247,6 +241,8 @@ namespace karri {
     private:
 
         void findPartialAssignmentsForPairOfStopPairs(const int pStopId, const int dStopId,
+            const RelevantPDLocs &relORDPickups,
+            const RelevantPDLocs &relBNSPickups,
                                                       std::vector<AssignmentWithTransfer> &promisingPartials) {
             ++numStopPairs;
 
@@ -259,13 +255,15 @@ namespace karri {
             const auto trIdxPVeh = routeState.stopPositionOf(pStopId);
             const auto trIdxDVeh = routeState.stopPositionOf(dStopId);
             for (const auto &tp: transferPoints) {
-                tryPickupBNS(pVehId, dVehId, trIdxPVeh, trIdxDVeh, tp, promisingPartials);
-                tryPickupORD(pVehId, dVehId, trIdxPVeh, trIdxDVeh, tp, promisingPartials);
+                tryPickupBNS(pVehId, dVehId, trIdxPVeh, trIdxDVeh, tp, relBNSPickups, promisingPartials);
+                tryPickupORD(pVehId, dVehId, trIdxPVeh, trIdxDVeh, tp, relORDPickups, promisingPartials);
             }
         }
 
         void tryPickupORD(const int pVehId, const int dVehId, const int trIdxPVeh, const int trIdxDVeh,
-                          const TransferPoint &tp, std::vector<AssignmentWithTransfer> &promisingPartials) {
+        const TransferPoint &tp,
+        const RelevantPDLocs &relORDPickups,
+                          std::vector<AssignmentWithTransfer> &promisingPartials) {
             if (trIdxPVeh == 0 || !relORDPickups.hasRelevantSpotsFor(pVehId))
                 return;
 
@@ -295,7 +293,9 @@ namespace karri {
         }
 
         void tryPickupBNS(const int pVehId, const int dVehId, const int trIdxPVeh, const int trIdxDVeh,
-                          const TransferPoint &tp, std::vector<AssignmentWithTransfer> &promisingPartials) {
+        const TransferPoint &tp,
+        const RelevantPDLocs &relBNSPickups,
+        std::vector<AssignmentWithTransfer> &promisingPartials) {
             if (!relBNSPickups.hasRelevantSpotsFor(pVehId))
                 return;
 
@@ -359,6 +359,7 @@ namespace karri {
         }
 
         void tryDropoffBNS(const AssignmentWithTransfer &partialAsgn,
+                           const RelevantPDLocs &relBNSDropoffs,
                            std::vector<AssignmentWithTransfer> &postponedAssignments) {
             if (partialAsgn.transferIdxDVeh != 0 ||
                 relBNSDropoffs.relevantSpotsFor(partialAsgn.dVeh->vehicleId).size() == 0)
@@ -391,6 +392,7 @@ namespace karri {
         }
 
         void tryDropoffORD(const AssignmentWithTransfer &partialAsgn,
+                           const RelevantPDLocs &relORDDropoffs,
                            std::vector<AssignmentWithTransfer> &postponedAssignments) {
             if (relORDDropoffs.relevantSpotsFor(partialAsgn.dVeh->vehicleId).size() == 0)
                 return;
@@ -854,11 +856,6 @@ namespace karri {
         VehCHQuery vehChQuery;
 
         CurVehLocToPickupSearchesT &searches;
-
-        const RelevantPDLocs &relORDPickups;
-        const RelevantPDLocs &relBNSPickups;
-        const RelevantPDLocs &relORDDropoffs;
-        const RelevantPDLocs &relBNSDropoffs;
 
         DirectTransferDistancesFinderT &pickupToTransferDistancesFinder;
         DirectTransferDistancesFinderT &transferToDropoffDistancesFinder;
