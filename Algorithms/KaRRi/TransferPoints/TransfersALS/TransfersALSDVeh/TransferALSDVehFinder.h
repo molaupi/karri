@@ -550,7 +550,7 @@ namespace karri {
                     tp.distancePVehToTransfer = edge.distToTail + tpOffset;
                     tp.distancePVehFromTransfer = edge.distFromHead;
 
-                    KASSERT(distToTransferDVeh > 0 || stopLocationsDVeh[numStopsDVeh - 1] == tpLoc);
+                    KASSERT(distToTransferDVeh > 0 || stopLocationsDVeh[numStopsDVeh - 1] == tpLoc || inputGraph.travelTime(tpLoc) == 0);
                     tp.distanceDVehToTransfer = distToTransferDVeh;
                     tp.distanceDVehFromTransfer = 0;
 
