@@ -36,6 +36,7 @@ namespace karri {
         int destination = INVALID_EDGE;
         int requestTime = INFTY;
         int numRiders = INFTY;
+        double allowPrivateCarProbability = 1.0; // Probability of allowing private car as an option for this request in mode choice. Should be between 0 and 1.
     };
 
 }

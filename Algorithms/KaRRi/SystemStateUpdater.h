@@ -322,11 +322,11 @@ namespace karri {
                                   Subset& vehiclesWithChangesInRoute) {
             Timer timer;
 
-            if (requestState.isNotUsingVehicleBest()) {
-                pickupStopId = -1;
-                dropoffStopId = -1;
-                return;
-            }
+            // if (requestState.isNotUsingVehicleBest()) {
+            //     pickupStopId = -1;
+            //     dropoffStopId = -1;
+            //     return;
+            // }
 
             const auto &asgn = requestState.getBestAssignmentWithoutTransfer();
             requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup.loc));
@@ -420,13 +420,10 @@ namespace karri {
             // Set up the best assignment for logging
             int numLegs = -1;
             switch (requestState.getBestAsgnType()) {
-                case RequestState::BestAsgnType::NOT_USING_VEHICLE:
-                    numLegs = 0; // Nothing to log
-                    break;
-                case RequestState::BestAsgnType::ONE_LEG:
+                case BestAsgnType::ONE_LEG:
                     numLegs = 1;
                     break;
-                case RequestState::BestAsgnType::TWO_LEGS:
+                case BestAsgnType::TWO_LEGS:
                     numLegs = 2;
                     break;
                 default:
@@ -458,13 +455,13 @@ namespace karri {
             assignmentsCostLogger << requestState.originalRequest.requestId << ", "
                                   << requestState.stats().costStats.getLoggerRow() << "\n";
 
-            const int costWithoutVehicle = requestState.getBestCostWithoutUsingVehicle();
+            // const int costWithoutVehicle = requestState.getBestCostWithoutUsingVehicle();
             const int costWOT = requestState.getCostObjectWithoutTransfer().total;
             const int costWT = requestState.getCostObjectWithTransfer().total;
 
-            if (costWithoutVehicle >= INFTY) {
-                bestAssignmentsWithoutUsingVehicleLogger << "-1,-1,inf\n";
-            }
+            // if (costWithoutVehicle >= INFTY) {
+            //     bestAssignmentsWithoutUsingVehicleLogger << "-1,-1,inf\n";
+            // }
 
             if (costWOT >= INFTY) {
                 bestAssignmentsWithoutTransferLogger << "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,inf\n";
@@ -476,10 +473,10 @@ namespace karri {
             }
 
             using time_utils::getVehDepTimeAtStopForRequest;
-            if (costWithoutVehicle < INFTY) {
-                bestAssignmentsWithoutUsingVehicleLogger << requestState.getNotUsingVehicleDist() << ", "
-                                                         << requestState.getBestCostWithoutUsingVehicle() << "\n";
-            }
+            // if (costWithoutVehicle < INFTY) {
+            //     bestAssignmentsWithoutUsingVehicleLogger << requestState.getNotUsingVehicleDist() << ", "
+            //                                              << requestState.getBestCostWithoutUsingVehicle() << "\n";
+            // }
 
             if (costWOT < INFTY) {
                 const auto &bestAsgn = requestState.getBestAssignmentWithoutTransfer();

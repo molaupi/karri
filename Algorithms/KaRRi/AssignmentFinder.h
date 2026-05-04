@@ -91,7 +91,7 @@ namespace karri {
                   assignmentsWithTransfer(assignmentsWithTransfer),
                   insertionAsserter(insertionAsserter) {}
 
-        const RequestState &findBestAssignment(const Request &req) {
+        RequestState findBestAssignment(const Request &req) {
 
             // Initialize finder for this request:
             auto pdLocs = pdLocsInRadiusQuery.findPDLocs(req.origin, req.destination, reqState.stats().initializationStats);

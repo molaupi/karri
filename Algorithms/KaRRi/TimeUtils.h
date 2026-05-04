@@ -1052,10 +1052,10 @@ namespace karri::time_utils {
 
     };
 
-    int computeRiderArrTimeAtTransfer(const AssignmentWithTransfer &asgn, const int depTimeAtPickup,
-                                      const bool transferPVehAtExistingStop,
-                                      DetourComputer &detourComputer,
-                                      const RouteState &routeState) {
+    inline int computeRiderArrTimeAtTransfer(const AssignmentWithTransfer &asgn, const int depTimeAtPickup,
+                                             const bool transferPVehAtExistingStop,
+                                             DetourComputer &detourComputer,
+                                             const RouteState &routeState) {
         const auto pVehId = asgn.pVeh->vehicleId;
         const int stopIdBeforeTransferPVeh = routeState.stopIdsFor(pVehId)[asgn.transferIdxPVeh];
 
@@ -1089,10 +1089,10 @@ namespace karri::time_utils {
         return std::max(minVehicleDepTimeAtTransferDVeh, riderArrTimeAtTransfer);
     }
 
-    int computeArrTimeAtDropoffAfterTransfer(const AssignmentWithTransfer &asgn,
-                                             const int depTimeAtTransfer,
-                                             DetourComputer &detourComputer,
-                                             const RouteState &routeState) {
+    inline int computeArrTimeAtDropoffAfterTransfer(const AssignmentWithTransfer &asgn,
+                                                    const int depTimeAtTransfer,
+                                                    DetourComputer &detourComputer,
+                                                    const RouteState &routeState) {
         if (asgn.transferIdxDVeh == asgn.dropoffIdx) {
             // If the dropoff is at the same stop as the transfer, we can use the departure time at the transfer.
             return depTimeAtTransfer + asgn.distToDropoff;

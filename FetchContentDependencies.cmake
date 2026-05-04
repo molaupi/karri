@@ -27,13 +27,6 @@ FetchContent_Declare(
         OVERRIDE_FIND_PACKAGE # Set so find_package(nlohmann_json) call in proj can redirect to this
 )
 
-# Declare proj dependency
-FetchContent_Declare(
-        proj
-        URL https://download.osgeo.org/proj/proj-9.5.0.tar.gz
-        URL_MD5 ac46b4e31562890d012ea6b31e579cf6
-)
-
 # Fetch kassert
 message("Fetching kassert library...")
 if (DEFINED KASSERT_ASSERTION_LEVEL)
@@ -83,12 +76,30 @@ file(APPEND
 )
 message("done.")
 
-# Fetch proj
-message("Fetching proj library...")
-set(BUILD_APPS OFF)
-set(BUILD_TESTING OFF)
-set(ENABLE_CURL OFF)
-set(ENABLE_TIFF OFF)
-set(TESTING_USE_NETWORK OFF)
-FetchContent_MakeAvailable(proj)
-message("done.")
+
+if (USE_FETCHCONTENT_PROJ)
+
+    # Declare proj dependency
+    FetchContent_Declare(
+            proj
+            URL https://download.osgeo.org/proj/proj-9.5.0.tar.gz
+            URL_MD5 ac46b4e31562890d012ea6b31e579cf6
+    )
+
+    # Fetch proj
+    message("Fetching proj library...")
+    set(BUILD_APPS OFF)
+    set(BUILD_TESTING OFF)
+    set(ENABLE_CURL OFF)
+    set(ENABLE_TIFF OFF)
+    set(TESTING_USE_NETWORK OFF)
+    FetchContent_MakeAvailable(proj)
+    message("done.")
+
+else ()
+    message("Not fetching proj library, using system version.")
+    FIND_LIBRARY(PROJ_LIBRARY proj)
+    if (NOT PROJ_LIBRARY)
+        message(FATAL_ERROR "proj library not found. Please install proj or set USE_FETCHCONTENT_PROJ (e.g. by adding '-DUSE_FETCH_CONTENT_PROJ' to your CMake call) to fetch it automatically.")
+    endif ()
+endif ()

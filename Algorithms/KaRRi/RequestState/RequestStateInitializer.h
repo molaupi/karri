@@ -75,24 +75,24 @@ namespace karri {
             requestState.stats().initializationStats.computeODDistanceTime = directSearchTime;
 
 
-            if (!InputConfig::getInstance().alwaysUseVehicle) {
-                // Try pseudo-assignment for passenger walking to destination without using vehicle
-                timer.restart();
-                KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.origin)) == req.origin);
-                const auto originInPsgGraph = vehInputGraph.toPsgEdge(req.origin);
-                KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
-                const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
-
-                const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
-                const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
-                const int destOffset = psgInputGraph.travelTime(destInPsgGraph);
-                psgChQuery.run(originHeadRank, destTailRank);
-                const auto totalDist = psgChQuery.getDistance() + destOffset;
-                requestState.tryNotUsingVehicleAssignment(totalDist, destOffset);
-
-                const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
-                requestState.stats().initializationStats.notUsingVehicleTime = notUsingVehiclesTime;
-            }
+            // if (!InputConfig::getInstance().alwaysUseVehicle) {
+            //     // Try pseudo-assignment for passenger walking to destination without using vehicle
+            //     timer.restart();
+            //     KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.origin)) == req.origin);
+            //     const auto originInPsgGraph = vehInputGraph.toPsgEdge(req.origin);
+            //     KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
+            //     const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
+            //
+            //     const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
+            //     const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
+            //     const int destOffset = psgInputGraph.travelTime(destInPsgGraph);
+            //     psgChQuery.run(originHeadRank, destTailRank);
+            //     const auto totalDist = psgChQuery.getDistance() + destOffset;
+            //     requestState.tryNotUsingVehicleAssignment(totalDist, destOffset);
+            //
+            //     const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
+            //     requestState.stats().initializationStats.notUsingVehicleTime = notUsingVehiclesTime;
+            // }
         }
 
 

@@ -34,19 +34,14 @@
 #include "Tools/Simd/AlignedVector.h"
 #include "DataStructures/Containers/Subset.h"
 #include "Algorithms/KaRRi/CostCalculator.h"
+#include "Algorithms/KaRRi/BaseObjects/BestAsgnType.h"
 #include "Algorithms/KaRRi/BaseObjects/PDLocs.h"
+#include "Algorithms/KaRRi/RiderModeChoice/TaxiResult.h"
 
 namespace karri {
 
     // Holds information relating to a specific request like its pickups and dropoffs and the best known assignment.
     struct RequestState {
-
-        enum BestAsgnType {
-            NOT_USING_VEHICLE,
-            ONE_LEG,
-            TWO_LEGS,
-            INVALID
-        };
 
         RequestState(CostCalculator &calculator)
                 : originalRequest(),
@@ -140,9 +135,9 @@ namespace karri {
             return bestCostObjectTwoLegs;
         }
 
-        const int &getBestCostWithoutUsingVehicle() const {
-            return bestCostZeroLegs;
-        }
+        // const int &getBestCostWithoutUsingVehicle() const {
+        //     return bestCostZeroLegs;
+        // }
 
         const int &getBestCostWithoutTransfer() const {
             return bestCostOneLeg;
@@ -160,13 +155,13 @@ namespace karri {
             return bestAsgnOverallType;
         }
 
-        bool isNotUsingVehicleBest() const {
-            return bestAsgnOverallType == NOT_USING_VEHICLE;
-        }
+        // bool isNotUsingVehicleBest() const {
+        //     return bestAsgnOverallType == NOT_USING_VEHICLE;
+        // }
 
-        const int &getNotUsingVehicleDist() const {
-            return notUsingVehicleDist;
-        }
+        // const int &getNotUsingVehicleDist() const {
+        //     return notUsingVehicleDist;
+        // }
 
         bool tryAssignment(const Assignment &asgn) {
             const auto cost = calculator.calc(asgn, *this);
@@ -194,17 +189,17 @@ namespace karri {
             return false;
         }
 
-        void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
-            const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this);
-            if (cost < bestCostZeroLegs) {
-                bestCostZeroLegs = cost;
-                notUsingVehicleDist = notUsingVehDist;
-                if (cost < bestCostOverall) {
-                    bestCostOverall = cost;
-                    bestAsgnOverallType = NOT_USING_VEHICLE;
-                }
-            }
-        }
+        // void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
+        //     const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this);
+        //     if (cost < bestCostZeroLegs) {
+        //         bestCostZeroLegs = cost;
+        //         notUsingVehicleDist = notUsingVehDist;
+        //         if (cost < bestCostOverall) {
+        //             bestCostOverall = cost;
+        //             bestAsgnOverallType = NOT_USING_VEHICLE;
+        //         }
+        //     }
+        // }
 
         stats::DispatchingPerformanceStats &stats() {
             return perfStats;
@@ -234,10 +229,10 @@ namespace karri {
 
             bestAssignmentOneLeg = Assignment();
             bestAssignmentTwoLegs = AssignmentWithTransfer();
-            bestCostZeroLegs = INFTY;
+            // bestCostZeroLegs = INFTY;
             bestCostOneLeg = INFTY;
             bestCostTwoLegs = INFTY;
-            notUsingVehicleDist = INFTY;
+            // notUsingVehicleDist = INFTY;
 
             bestCostObjectOneLeg = RequestCost::INFTY_COST();
             bestCostObjectTwoLegs = RequestCost::INFTY_COST();
@@ -258,13 +253,13 @@ namespace karri {
         Assignment bestAssignmentOneLeg;
         AssignmentWithTransfer bestAssignmentTwoLegs;
 
-        int bestCostZeroLegs;
+        // int bestCostZeroLegs;
         int bestCostOneLeg;
         int bestCostTwoLegs;
 
         RequestCost bestCostObjectOneLeg;
         RequestCost bestCostObjectTwoLegs;
 
-        int notUsingVehicleDist;
+        // int notUsingVehicleDist;
     };
 }
