@@ -48,7 +48,7 @@ namespace karri {
             }
 
             const auto &bestAsgn = resp.getBestAssignment();
-            if (!resp.isNotUsingVehicleBest() && (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff)) {
+            if (!resp.isNotUsingVehicleBest() && (!bestAsgn.vehicle || bestAsgn.pickup.id == INVALID_ID || bestAsgn.dropoff.id == INVALID_ID)) {
                 return false; // no assignment found
             }
 
@@ -60,7 +60,7 @@ namespace karri {
                 const auto initialPickupDetour = calcInitialPickupDetour(bestAsgn, depTimeAtPickup, resp, routeState);
                 const auto dropoffAtExistingStop = isDropoffAtExistingStop(bestAsgn, routeState);
                 const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, bestAsgn, initialPickupDetour, dropoffAtExistingStop, routeState);
-                tripTime = arrTimeAtDropoff + bestAsgn.dropoff->walkingDist - req.requestTime;
+                tripTime = arrTimeAtDropoff + bestAsgn.dropoff.walkingDist - req.requestTime;
             }
 
             const auto directTime = resp.originalReqDirectDist;

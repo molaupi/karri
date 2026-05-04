@@ -66,6 +66,13 @@ namespace bidij {
 
 }
 
+
+// Forward declarations for friend
+namespace karri {
+    template<typename, typename>
+    class FindPDLocsInRadiusQuery;
+}
+
 // Implementation of a bidirectional search. Depending on the underlying Dijkstra implementation, it
 // keeps parent vertices and/or edges, and computes multiple shortest paths simultaneously,
 // optionally using SSE or AVX instructions. The algorithm can be used with different stopping
@@ -82,7 +89,7 @@ private:
 
     template<typename, typename>
     friend
-    class FindPDLocsInRadiusQuery;
+    class karri::FindPDLocsInRadiusQuery;
 
 public:
     using Graph = typename DijkstraT::Graph; // The graph on which we compute shortest paths.

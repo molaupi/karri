@@ -112,7 +112,7 @@ namespace karri::PDDistanceQueryStrategies {
                     const auto firstDropoffIdInBatch = dropoffBatchLabel.targetId * K;
                     if (firstDropoffIdInBatch == DropoffBatchLabel::invalid_target)
                         continue;
-                    for (int i = 0; i < K && firstDropoffIdInBatch + i < computer.requestState.numDropoffs(); ++i) {
+                    for (int i = 0; i < K && firstDropoffIdInBatch + i < computer.curNumDropoffs; ++i) {
                         computer.updatePDDistances(computer.curFirstPickupId, firstDropoffIdInBatch + i,
                                                    distToV + dropoffBatchLabel.distToDropoff[i]);
                     }
@@ -150,12 +150,12 @@ namespace karri::PDDistanceQueryStrategies {
 
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
-        PDDistancesT run() {
-            assert(requestState.pickups[0].loc == requestState.originalRequest.origin
-                   && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
+        PDDistancesT run(const PDLocs &pdLocs) {
+            KASSERT(pdLocs.pickups[0].loc == requestState.originalRequest.origin
+                   && pdLocs.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
 
-            PDDistancesT pdDistances(requestState.numPickups(), requestState.numDropoffs());
+            PDDistancesT pdDistances(pdLocs.numPickups(), pdLocs.numDropoffs());
 
             // Initialize distance from origin to dropoff
             pdDistances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
@@ -166,13 +166,14 @@ namespace karri::PDDistanceQueryStrategies {
 
             // set curPdDistances to allow callback from BCH searches to write distances
             curPdDistances = &pdDistances;
+            curNumDropoffs = pdLocs.numDropoffs();
 
-            if (requestState.numPickups() == 1 && requestState.numDropoffs() == 1) {
+            if (pdLocs.numPickups() == 1 && pdLocs.numDropoffs() == 1) {
                 requestState.minDirectPDDist = requestState.originalReqDirectDist;
                 return pdDistances;
             }
 
-            const auto numDropoffSearches = requestState.numDropoffs() / K + (requestState.numDropoffs() % K != 0);
+            const auto numDropoffSearches = pdLocs.numDropoffs() / K + (pdLocs.numDropoffs() % K != 0);
             dropoffBuckets.init(numDropoffSearches);
 
 
@@ -181,12 +182,12 @@ namespace karri::PDDistanceQueryStrategies {
             // to any dropoff.
 
             int maxPickupToOriginVehDist = 0;
-            for (const auto &pickup: requestState.pickups) {
+            for (const auto &pickup: pdLocs.pickups) {
                 maxPickupToOriginVehDist = std::max(maxPickupToOriginVehDist, pickup.vehDistToCenter);
             }
 
             int maxDestToDropoffVehDist = 0;
-            for (const auto &dropoff: requestState.dropoffs) {
+            for (const auto &dropoff: pdLocs.dropoffs) {
                 maxDestToDropoffVehDist = std::max(maxDestToDropoffVehDist, dropoff.vehDistFromCenter);
             }
 
@@ -207,9 +208,9 @@ namespace karri::PDDistanceQueryStrategies {
             std::array<int, K> dropoffOffsets{};
             // Run searches for full pickup batches
             int dropoffId = 0;
-            for (; dropoffId < requestState.numDropoffs();) {
-                tailRanks[dropoffId % K] = ch.rank(inputGraph.edgeTail(requestState.dropoffs[dropoffId].loc));
-                dropoffOffsets[dropoffId % K] = inputGraph.travelTime(requestState.dropoffs[dropoffId].loc);
+            for (; dropoffId < pdLocs.numDropoffs();) {
+                tailRanks[dropoffId % K] = ch.rank(inputGraph.edgeTail(pdLocs.dropoffs[dropoffId].loc));
+                dropoffOffsets[dropoffId % K] = inputGraph.travelTime(pdLocs.dropoffs[dropoffId].loc);
                 ++dropoffId;
                 if (dropoffId % K == 0) {
                     dropoffBatchId = dropoffId / K - 1;
@@ -238,8 +239,8 @@ namespace karri::PDDistanceQueryStrategies {
             std::array<int, K> headRanks{};
             // Run searches for full pickup batches
             int pickupId = 0;
-            for (; pickupId < requestState.numPickups();) {
-                headRanks[pickupId % K] = ch.rank(inputGraph.edgeHead(requestState.pickups[pickupId].loc));
+            for (; pickupId < pdLocs.numPickups();) {
+                headRanks[pickupId % K] = ch.rank(inputGraph.edgeHead(pdLocs.pickups[pickupId].loc));
                 ++pickupId;
                 if (pickupId % K == 0) {
                     curFirstPickupId = pickupId - K;
@@ -288,6 +289,7 @@ namespace karri::PDDistanceQueryStrategies {
 
         PDDistancesT *curPdDistances;
 
+        int curNumDropoffs;
         int upperBoundDirectPDDist;
         unsigned int curFirstPickupId;
         unsigned int dropoffBatchId;

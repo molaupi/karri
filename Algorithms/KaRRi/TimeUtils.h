@@ -88,13 +88,13 @@ namespace karri::time_utils {
         // We assume a pickup at an existing stop takes no additional counting of stopTime, irrespective of when the
         // passenger arrives there. The vehicle can depart as soon as both the vehicle and the passenger are at the
         // location. This is how LOUD originally did it, so we adhere to it.
-        return std::max(minVehicleDepTimeAtPickup, context.getPassengerArrAtPickup(pickup.id));
+        return std::max(minVehicleDepTimeAtPickup, context.getPassengerArrAtPickup(pickup));
     }
 
     template<typename RequestContext>
     static INLINE int
     getActualDepTimeAtPickup(const Assignment &asgn, const RequestContext &context, const RouteState &routeState) {
-        return getActualDepTimeAtPickup(asgn.vehicle->vehicleId, asgn.pickupStopIdx, asgn.distToPickup, *asgn.pickup,
+        return getActualDepTimeAtPickup(asgn.vehicle->vehicleId, asgn.pickupStopIdx, asgn.distToPickup, asgn.pickup,
                                         context, routeState);
     }
 
@@ -132,7 +132,7 @@ namespace karri::time_utils {
 
     static INLINE bool isDropoffAtExistingStop(const Assignment &asgn, const RouteState &routeState) {
         return asgn.pickupStopIdx != asgn.dropoffStopIdx &&
-               asgn.dropoff->loc == routeState.stopLocationsFor(asgn.vehicle->vehicleId)[asgn.dropoffStopIdx];
+               asgn.dropoff.loc == routeState.stopLocationsFor(asgn.vehicle->vehicleId)[asgn.dropoffStopIdx];
     }
 
     static INLINE int

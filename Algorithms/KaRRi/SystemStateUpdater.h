@@ -129,8 +129,8 @@ namespace karri {
             }
 
             const auto &asgn = requestState.getBestAssignment();
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup->loc));
-            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff->loc));
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.pickup.loc));
+            requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff.loc));
             assert(asgn.vehicle != nullptr);
 
             const auto vehId = asgn.vehicle->vehicleId;
@@ -223,10 +223,10 @@ namespace karri {
                     << bestAsgn.distFromPickup << ","
                     << bestAsgn.distToDropoff << ","
                     << bestAsgn.distFromDropoff << ","
-                    << bestAsgn.pickup->id << ","
-                    << bestAsgn.pickup->walkingDist << ","
-                    << bestAsgn.dropoff->id << ","
-                    << bestAsgn.dropoff->walkingDist << ","
+                    << bestAsgn.pickup.id << ","
+                    << bestAsgn.pickup.walkingDist << ","
+                    << bestAsgn.dropoff.id << ","
+                    << bestAsgn.dropoff.walkingDist << ","
                     << numStops << ","
                     << vehDepTimeBeforePickup << ","
                     << vehDepTimeBeforeDropoff << ","

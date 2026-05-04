@@ -322,15 +322,15 @@ namespace karri {
             assert(id == reqId && key == occTime);
 
             const auto &bestAsgn = asgnFinderResponse.getBestAssignment();
-            if (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff) {
+            if (!bestAsgn.vehicle || bestAsgn.pickup.id == INVALID_ID || bestAsgn.dropoff.id == INVALID_ID) {
                 requestState[reqId] = FINISHED;
                 systemStateUpdater.writePerformanceLogs();
                 return;
             }
 
             requestState[reqId] = ASSIGNED_TO_VEH;
-            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup->walkingDist;
-            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff->walkingDist;
+            requestData[reqId].walkingTimeToPickup = bestAsgn.pickup.walkingDist;
+            requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff.walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
 
             int pickupStopId, dropoffStopId;

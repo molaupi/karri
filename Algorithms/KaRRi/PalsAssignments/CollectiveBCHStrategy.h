@@ -72,7 +72,7 @@ namespace karri::PickupAfterLastStopStrategies {
                   fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, routeState,
                                    requestState, minCostSearch.getUpperBoundCostWithHardConstraints()) {}
 
-        void tryPickupAfterLastStop(const PDDistancesT& pdDistances) {
+        void tryPickupAfterLastStop(const PDDistancesT& pdDistances, const PDLocs &pdLocs) {
 
 
             auto &stats = requestState.stats().palsAssignmentsStats;
@@ -94,9 +94,9 @@ namespace karri::PickupAfterLastStopStrategies {
             if constexpr (ONLY_PROMISING_DROPOFFS) {
                 // Preparation: Compute vehicle distances from dropoffs to destination. Used to decide which dropoffs are
                 // promising.
-                vehicleToPDLocQuery.runReverse(requestState.dropoffs);
+                vehicleToPDLocQuery.runReverse(pdLocs.dropoffs);
 
-                for (const auto &dropoff: requestState.dropoffs) {
+                for (const auto &dropoff: pdLocs.dropoffs) {
                     if (dropoff.walkingDist <= dropoff.vehDistToCenter ||
                         calculator.isDropoffCostPromisingForAfterLastStop(dropoff, requestState)) {
                         promisingDropoffIds.push_back(dropoff.id);
@@ -105,7 +105,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 assert(promisingDropoffIds.front() == 0); // Assert destination itself is always promising
                 stats.collective_pickupVehDistQueryTime += vehicleToPDLocQuery.getRunTime();
             } else {
-                promisingDropoffIds.resize(requestState.numDropoffs());
+                promisingDropoffIds.resize(pdLocs.numDropoffs());
                 std::iota(promisingDropoffIds.begin(), promisingDropoffIds.end(), 0u);
             }
 
@@ -113,7 +113,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_initializationTime += colInitTime;
             stats.collective_numPromisingDropoffs += promisingDropoffIds.size();
 
-            minCostSearch.run(promisingDropoffIds, requestState.getBestCost(), pdDistances);
+            minCostSearch.run(promisingDropoffIds, requestState.getBestCost(), pdDistances, pdLocs);
 
             const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.searchTime += searchTime;
@@ -154,7 +154,7 @@ namespace karri::PickupAfterLastStopStrategies {
             stats.collective_usedFallback = true;
 
             // Otherwise fall back to computing distances explicitly:
-            fallbackStrategy.tryPickupAfterLastStop(pdDistances);
+            fallbackStrategy.tryPickupAfterLastStop(pdDistances, pdLocs);
         }
 
     private:
