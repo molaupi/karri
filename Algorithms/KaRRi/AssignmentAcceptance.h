@@ -36,30 +36,46 @@ namespace karri {
     class TripTimeThresholdAssignmentAcceptance {
 
     public:
-
-        TripTimeThresholdAssignmentAcceptance(const RouteState& routeState) : routeState(routeState) {}
+        explicit TripTimeThresholdAssignmentAcceptance(const RouteState& routeState) : routeState(routeState),
+                                                                                       detourComputer(routeState) {}
 
         template<typename AsgnFinderResponseT>
-        bool doesRiderAcceptAssignment(const Request &req, const AsgnFinderResponseT &resp) const {
+        bool doesRiderAcceptAssignment(const Request &req, const AsgnFinderResponseT &resp) {
             using namespace time_utils;
 
             if (InputConfig::getInstance().epsilon == 0.0) {
                 return true; // no trip time threshold, accept all assignments
             }
 
-            const auto &bestAsgn = resp.getBestAssignment();
-            if (!resp.isNotUsingVehicleBest() && (!bestAsgn.vehicle || !bestAsgn.pickup || !bestAsgn.dropoff)) {
+            const auto &bestAsgnType = resp.getBestAsgnType();
+            if (bestAsgnType == RequestState::BestAsgnType::INVALID) {
                 return false; // no assignment found
             }
 
             int tripTime;
-            if (resp.isNotUsingVehicleBest()) {
+            if (bestAsgnType == RequestState::BestAsgnType::NOT_USING_VEHICLE) {
                 tripTime = resp.getNotUsingVehicleDist();
-            } else {
+            } else if (bestAsgnType == RequestState::BestAsgnType::ONE_LEG) {
+                const auto &bestAsgn = resp.getBestAssignmentWithoutTransfer();
                 const auto depTimeAtPickup = getActualDepTimeAtPickup(bestAsgn, resp, routeState);
                 const auto initialPickupDetour = calcInitialPickupDetour(bestAsgn, depTimeAtPickup, resp, routeState);
                 const auto dropoffAtExistingStop = isDropoffAtExistingStop(bestAsgn, routeState);
                 const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, bestAsgn, initialPickupDetour, dropoffAtExistingStop, routeState);
+                tripTime = arrTimeAtDropoff + bestAsgn.dropoff->walkingDist - req.requestTime;
+            } else {
+                KASSERT(bestAsgnType == RequestState::BestAsgnType::TWO_LEGS);
+                const auto &bestAsgn = resp.getBestAssignmentWithTransfer();
+                const auto actualDepTimeAtPickup = getActualDepTimeAtPickup(bestAsgn, resp, routeState);
+                const bool transferPVehAtExistingStop = isTransferAtExistingStopPVeh(bestAsgn, routeState);
+
+                detourComputer.computeDetours(bestAsgn, resp);
+                const int riderArrTimeAtTransfer =
+                        computeRiderArrTimeAtTransfer(bestAsgn, actualDepTimeAtPickup, transferPVehAtExistingStop,
+                                                      detourComputer, routeState);
+                const int depTimeAtTransfer = computeDVehDepTimeAtTransfer(bestAsgn, riderArrTimeAtTransfer,
+                                                                           detourComputer, routeState, resp);
+                const int arrTimeAtDropoff = computeArrTimeAtDropoffAfterTransfer(
+                        bestAsgn, depTimeAtTransfer, detourComputer, routeState);
                 tripTime = arrTimeAtDropoff + bestAsgn.dropoff->walkingDist - req.requestTime;
             }
 
@@ -71,6 +87,7 @@ namespace karri {
     private:
 
         const RouteState &routeState;
+        time_utils::DetourComputer detourComputer;
 
     };
 

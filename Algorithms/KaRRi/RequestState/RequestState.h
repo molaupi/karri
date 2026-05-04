@@ -38,10 +38,17 @@
 
 namespace karri {
 
-// Holds information relating to a specific request like its pickups and dropoffs and the best known assignment.
+    // Holds information relating to a specific request like its pickups and dropoffs and the best known assignment.
     struct RequestState {
 
-        RequestState(const CostCalculator &calculator)
+        enum BestAsgnType {
+            NOT_USING_VEHICLE,
+            ONE_LEG,
+            TWO_LEGS,
+            INVALID
+        };
+
+        RequestState(CostCalculator &calculator)
                 : originalRequest(),
                   originalReqDirectDist(-1),
                   minDirectPDDist(-1),
@@ -81,23 +88,23 @@ namespace karri {
         }
 
         int getOriginalReqMaxTripTime() const {
-            assert(originalReqDirectDist >= 0);
+            KASSERT(originalReqDirectDist >= 0);
             return static_cast<int>(InputConfig::getInstance().alpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().beta;
         }
 
         int getPassengerArrAtPickup(const int pickupId) const {
-            assert(pickupId < numPickups());
+            KASSERT(pickupId < numPickups());
             return originalRequest.requestTime + pickups[pickupId].walkingDist;
         }
 
         int getMaxPDTripTime(const int pickupId, const int dropoffId) const {
-            assert(pickupId < numPickups() && dropoffId < numDropoffs());
-            assert(originalReqDirectDist >= 0);
+            KASSERT(pickupId < numPickups() && dropoffId < numDropoffs());
+            KASSERT(originalReqDirectDist >= 0);
             return getOriginalReqMaxTripTime() - (pickups[pickupId].walkingDist + dropoffs[dropoffId].walkingDist);
         }
 
         int getMaxArrTimeAtDropoff(const int pickupId, const int dropoffId) const {
-            assert(pickupId < numPickups() && dropoffId < numDropoffs());
+            KASSERT(pickupId < numPickups() && dropoffId < numDropoffs());
             return getPassengerArrAtPickup(pickupId) + getMaxPDTripTime(pickupId, dropoffId);
         }
 
@@ -105,18 +112,72 @@ namespace karri {
             return originalRequest.requestTime + InputConfig::getInstance().maxWaitTime;
         }
 
-        // Information about best known assignment for current request
-
-        const Assignment &getBestAssignment() const {
-            return bestAssignment;
+        const Assignment &getBestAssignmentWithoutTransfer() const {
+            return bestAssignmentOneLeg;
         }
 
-        const int &getBestCost() const {
-            return bestCost;
+        const AssignmentWithTransfer &getBestAssignmentWithTransfer() const {
+            return bestAssignmentTwoLegs;
+        }
+
+        void tryFinishedTransferAssignmentWithKnownCost(AssignmentWithTransfer &asgn, const RequestCost& cost) {
+            KASSERT(asgn.isFinished());
+            KASSERT(asgn.pVeh->vehicleId >= 0 && asgn.dVeh->vehicleId >= 0 && asgn.pVeh->vehicleId != asgn.dVeh->vehicleId && asgn.pickup && asgn.dropoff);
+            KASSERT(asgn.distToPickup >= 0 && asgn.distFromPickup >= 0 && asgn.distToTransferPVeh >= 0 && asgn.distFromTransferPVeh >= 0 && asgn.distToTransferDVeh >= 0 && asgn.distFromTransferDVeh >= 0 && asgn.distToDropoff >= 0 && asgn.distFromDropoff >= 0);
+            KASSERT(asgn.pickup->loc != asgn.transfer.loc && asgn.dropoff->loc != asgn.transfer.loc);
+
+            // These assertions do not work due to edges with travel time 0
+//            KASSERT(asgn.pickupIdx == asgn.transferIdxPVeh || asgn.distFromPickup > 0 || asgn.pickupType == AFTER_LAST_STOP);
+//            KASSERT(asgn.transferIdxDVeh == asgn.dropoffIdx || asgn.distFromTransferDVeh > 0 || asgn.transferTypeDVeh == AFTER_LAST_STOP);
+
+            KASSERT(cost == calculator.calc(asgn, *this));
+
+            if (cost.total < bestCostTwoLegs) {
+                bestAssignmentTwoLegs = AssignmentWithTransfer(asgn);
+                bestCostTwoLegs = cost.total;
+                bestCostObjectTwoLegs = cost;
+
+                if (cost.total < bestCostOverall) {
+                    bestCostOverall = cost.total;
+                    bestAsgnOverallType = TWO_LEGS;
+                }
+            }
+        }
+        
+        bool improvementThroughTransfer() const {
+            return bestAsgnOverallType == TWO_LEGS;
+        }
+
+        const RequestCost &getCostObjectWithoutTransfer() const {
+            return bestCostObjectOneLeg;
+        }
+
+        const RequestCost &getCostObjectWithTransfer() const {
+            return bestCostObjectTwoLegs;
+        }
+
+        const int &getBestCostWithoutUsingVehicle() const {
+            return bestCostZeroLegs;
+        }
+
+        const int &getBestCostWithoutTransfer() const {
+            return bestCostOneLeg;
+        }
+
+        const int &getBestCostWithTransfer() const {
+            return bestCostTwoLegs;
+        }
+
+        int getBestCost() const {
+            return bestCostOverall;
+        }
+
+        BestAsgnType getBestAsgnType() const {
+            return bestAsgnOverallType;
         }
 
         bool isNotUsingVehicleBest() const {
-            return notUsingVehicleIsBest;
+            return bestAsgnOverallType == NOT_USING_VEHICLE;
         }
 
         const int &getNotUsingVehicleDist() const {
@@ -128,28 +189,36 @@ namespace karri {
             return tryAssignmentWithKnownCost(asgn, cost);
         }
 
-        bool tryAssignmentWithKnownCost(const Assignment &asgn, const int cost) {
-            assert(calculator.calc(asgn, *this) == cost);
+        bool tryAssignmentWithKnownCost(const Assignment &asgn, const RequestCost cost) {
+            KASSERT(calculator.calc(asgn, *this).total == cost.total);
 
-            if (cost < INFTY && (cost < bestCost || (cost == bestCost &&
-                                    breakCostTie(asgn, bestAssignment)))) {
+            if (cost.total < INFTY && (cost.total < bestCostOneLeg || (cost.total == bestCostOneLeg &&
+                                    breakCostTie(asgn, bestAssignmentOneLeg)))) {
 
-                bestAssignment = asgn;
-                bestCost = cost;
-                notUsingVehicleIsBest = false;
-                notUsingVehicleDist = INFTY;
+                bestAssignmentOneLeg = asgn;
+                bestCostOneLeg = cost.total;
+                bestCostObjectOneLeg = cost;
+
+                if (cost.total < bestCostOverall) {
+                    bestCostOverall = cost.total;
+                    bestAsgnOverallType = ONE_LEG;
+                }
+
                 return true;
             }
+            
             return false;
         }
 
         void tryNotUsingVehicleAssignment(const int notUsingVehDist, const int travelTimeOfDestEdge) {
             const int cost = CostCalculator::calcCostForNotUsingVehicle(notUsingVehDist, travelTimeOfDestEdge, *this);
-            if (cost < bestCost) {
-                bestAssignment = Assignment();
-                bestCost = cost;
-                notUsingVehicleIsBest = true;
+            if (cost < bestCostZeroLegs) {
+                bestCostZeroLegs = cost;
                 notUsingVehicleDist = notUsingVehDist;
+                if (cost < bestCostOverall) {
+                    bestCostOverall = cost;
+                    bestAsgnOverallType = NOT_USING_VEHICLE;
+                }
             }
         }
 
@@ -178,10 +247,18 @@ namespace karri {
             pickups.clear();
             dropoffs.clear();
 
-            bestAssignment = Assignment();
-            bestCost = INFTY;
-            notUsingVehicleIsBest = false;
+            bestCostOverall = INFTY;
+            bestAsgnOverallType = INVALID;
+
+            bestAssignmentOneLeg = Assignment();
+            bestAssignmentTwoLegs = AssignmentWithTransfer();
+            bestCostZeroLegs = INFTY;
+            bestCostOneLeg = INFTY;
+            bestCostTwoLegs = INFTY;
             notUsingVehicleDist = INFTY;
+
+            bestCostObjectOneLeg = RequestCost::INFTY_COST();
+            bestCostObjectTwoLegs = RequestCost::INFTY_COST();
         }
 
     private:
@@ -190,12 +267,22 @@ namespace karri {
         stats::OsmRoadCategoryStats allPDLocsRoadCatStats;
         stats::OsmRoadCategoryStats chosenPDLocsRoadCatStats;
 
-        const CostCalculator &calculator;
+        CostCalculator &calculator;
 
         // Information about best known assignment for current request
-        Assignment bestAssignment;
-        int bestCost;
-        bool notUsingVehicleIsBest;
+        int bestCostOverall;
+        BestAsgnType bestAsgnOverallType;
+
+        Assignment bestAssignmentOneLeg;
+        AssignmentWithTransfer bestAssignmentTwoLegs;
+
+        int bestCostZeroLegs;
+        int bestCostOneLeg;
+        int bestCostTwoLegs;
+
+        RequestCost bestCostObjectOneLeg;
+        RequestCost bestCostObjectTwoLegs;
+
         int notUsingVehicleDist;
     };
 }

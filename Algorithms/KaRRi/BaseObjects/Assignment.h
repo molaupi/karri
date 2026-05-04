@@ -29,6 +29,7 @@
 
 #include "Vehicle.h"
 #include "Request.h"
+#include "RequestCost.h"
 
 namespace karri {
 
@@ -49,8 +50,8 @@ namespace karri {
                   dropoff(dropoff),
                   pickupStopIdx(pickupStopIdx),
                   dropoffStopIdx(dropoffStopIdx) {
-            assert(pickupStopIdx >= 0);
-            assert(dropoffStopIdx >= 0);
+            KASSERT(pickupStopIdx >= 0);
+            KASSERT(dropoffStopIdx >= 0);
         }
 
         Assignment(const Vehicle *vehicle,
@@ -67,12 +68,12 @@ namespace karri {
                   distFromPickup(distFromPickup),
                   distToDropoff(distToDropoff),
                   distFromDropoff(distFromDropoff) {
-            assert(pickupStopIdx >= 0);
-            assert(dropoffStopIdx >= 0);
-            assert(distToPickup >= 0);
-            assert(distFromPickup >= 0);
-            assert(distToDropoff >= 0);
-            assert(distFromDropoff >= 0);
+            KASSERT(pickupStopIdx >= 0);
+            KASSERT(dropoffStopIdx >= 0);
+            KASSERT(distToPickup >= 0);
+            KASSERT(distFromPickup >= 0);
+            KASSERT(distToDropoff >= 0);
+            KASSERT(distFromDropoff >= 0);
         }
 
         const Vehicle *vehicle = nullptr;

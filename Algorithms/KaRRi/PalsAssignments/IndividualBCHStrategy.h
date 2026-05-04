@@ -32,7 +32,7 @@
 
 namespace karri::PickupAfterLastStopStrategies {
 
-    template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsEnvT, typename PDDistancesT, typename LabelSetT>
+    template<typename InputGraphT, typename CHEnvT, typename LastStopBucketsEnvT, typename LabelSetT>
     class IndividualBCHStrategy {
 
         static constexpr int K = LabelSetT::K;
@@ -52,7 +52,7 @@ namespace karri::PickupAfterLastStopStrategies {
             // assignment than the best known.
             LabelMask doesDistanceNotAdmitBestAsgn(const DistanceLabel &distancesToPickups,
                                                    const bool considerPickupWalkingDists = false) const {
-                assert(strat.requestState.minDirectPDDist < INFTY);
+                KASSERT(strat.requestState.minDirectPDDist < INFTY);
 
                 if (strat.upperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with distancesToPickups[i] >= INFTY or
@@ -81,7 +81,7 @@ namespace karri::PickupAfterLastStopStrategies {
             // minDistancesToPickups needs to be a vehicle-independent lower bound on the last stop distance.
             LabelMask doesArrTimeNotAdmitBestAsgn(const DistanceLabel &arrTimesAtPickups,
                                                   const DistanceLabel &minDistancesToPickups) const {
-                assert(strat.requestState.minDirectPDDist < INFTY);
+                KASSERT(strat.requestState.minDirectPDDist < INFTY);
 
                 if (strat.upperBoundCost >= INFTY) {
                     // If current best is INFTY, only indices i with arrTimesAtPickups[i] >= INFTY or
@@ -129,7 +129,7 @@ namespace karri::PickupAfterLastStopStrategies {
             }
 
             void updateUpperBoundCost(const int vehId, const DistanceLabel &distancesToPickups) {
-                assert(allSet(distancesToPickups >= 0));
+                KASSERT(allSet(distancesToPickups >= 0));
                 const DistanceLabel cost = calc.template calcUpperBoundCostForKPairedAssignmentsAfterLastStop<LabelSetT>(
                         strat.fleet[vehId], distancesToPickups, strat.curPassengerArrTimesAtPickups,
                         strat.curDistancesToDest,
@@ -171,7 +171,7 @@ namespace karri::PickupAfterLastStopStrategies {
                          PickupAfterLastStopPruner(*this, calculator)),
                   vehiclesSeenForPickups(fleet.size()) {}
 
-        void tryPickupAfterLastStop(const PDDistancesT& pdDistances) {
+        void tryPickupAfterLastStop(const PDDistances& pdDistances) {
             runBchSearches(pdDistances);
             enumerateAssignments(pdDistances);
         }
@@ -179,7 +179,7 @@ namespace karri::PickupAfterLastStopStrategies {
     private:
 
         // Run BCH searches that find distances from last stops to pickups
-        void runBchSearches(const PDDistancesT& pdDistances) {
+        void runBchSearches(const PDDistances& pdDistances) {
             Timer timer;
 
             initPickupSearches();
@@ -195,7 +195,7 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         // Enumerate assignments with pickup after last stop
-        void enumerateAssignments(const PDDistancesT& pdDistances) {
+        void enumerateAssignments(const PDDistances& pdDistances) {
             using namespace time_utils;
 
 
@@ -268,8 +268,9 @@ namespace karri::PickupAfterLastStopStrategies {
             distances.init(numPickupBatches);
         }
 
-        void runSearchesForPickupBatch(const int firstPickupId, const PDDistancesT& pdDistances) {
-            assert(firstPickupId % K == 0 && firstPickupId < requestState.numPickups());
+        void runSearchesForPickupBatch(const int firstPickupId, const PDDistances& pdDistances) {
+            KASSERT(firstPickupId % K == 0 && firstPickupId < requestState.numPickups());
+
 
 
             std::array<int, K> pickupTails;

@@ -65,7 +65,6 @@ namespace karri::PickupAfterLastStopStrategies {
             }
 
         private:
-
             DijkstraStrategy &strategy;
             const CostCalculator &calculator;
             const RequestState &requestState;
@@ -195,7 +194,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 curPassengerArrTimesAtPickups[i] = requestState.getPassengerArrAtPickup(pickup.id);
                 curMinDirectDistances[i] = pdDistances.getMinDirectDistanceForPickup(pickup.id);
                 curDistancesToDest[i] = pdDistances.getDirectDistance(pickup.id, 0);
-                assert(pdDistances.getMinDirectDistance() <= curMinDirectDistances[i]);
+                KASSERT(pdDistances.getMinDirectDistance() <= curMinDirectDistances[i]);
                 pickupTails[i] = inputGraph.edgeTail(pickup.loc);
                 offsets[i] = inputGraph.travelTime(pickup.loc);
             }

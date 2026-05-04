@@ -44,7 +44,7 @@ namespace karri {
                   inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   chQuery(chEnv.template getFullCHQuery<>()),
-                  calculator(routeState),
+                  calculator(routeState, fleet),
                   routeState(routeState),
                   vehiclesWithFeasibleDistances(fleet.size()) {}
 
@@ -225,8 +225,8 @@ namespace karri {
                                 [&](const auto &h) {
                                     return h.distToPDLoc < INFTY && h.distFromPDLocToNextStop < INFTY;
                                 }));
-
             return rel;
+
         }
 
         inline bool isPickupRelevant(const Vehicle &veh, const int stopIndex, const unsigned int pickupId,
@@ -237,12 +237,12 @@ namespace karri {
 
             const int &vehId = veh.vehicleId;
 
-            assert(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <=
-                   veh.capacity);
+            KASSERT(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <= veh.capacity);
+
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
-            assert(distFromStopToPickup + distFromPickupToNextStop >=
+            KASSERT(distFromStopToPickup + distFromPickupToNextStop >=
                    calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
 
             const auto &p = requestState.pickups[pickupId];
@@ -284,7 +284,7 @@ namespace karri {
             const auto &numStops = routeState.numStopsOf(vehId);
             const auto &occupancy = routeState.occupanciesFor(vehId)[stopIndex];
             const auto &stopLocations = routeState.stopLocationsFor(vehId);
-            assert(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
+            KASSERT(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
             if (stopIndex == numStops - 1 || occupancy + requestState.originalRequest.numRiders > veh.capacity)
                 return d.loc == stopLocations[stopIndex];
 
@@ -299,7 +299,7 @@ namespace karri {
                                                                       distFromDropoffToNextStop,
                                                                       isDropoffAtExistingStop,
                                                                       routeState);
-            assert(initialDropoffDetour >= 0);
+            KASSERT(initialDropoffDetour >= 0);
             if (doesDropoffDetourViolateHardConstraints(veh, requestState, stopIndex, initialDropoffDetour,
                                                         routeState))
                 return false;

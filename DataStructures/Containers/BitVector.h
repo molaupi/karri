@@ -86,6 +86,11 @@ public:
         LIGHT_KASSERT(numBits > (end - begin - 1) * BITS_PER_BLOCK && numBits <= (end - begin) * BITS_PER_BLOCK);
     }
 
+    void swap(BitVector &other) noexcept {
+        blocks.swap(other.blocks);
+        std::swap(numBits, other.numBits);
+    }
+
     // Returns the number of bits in this bit vector.
     int size() const {
         return numBits;
@@ -106,6 +111,7 @@ public:
 
     // Changes the number of bits in this bit vector. Newly inserted bits are initialized to init.
     void resize(const int size, const bool init = false) {
+        KASSERT(size >= 0);
 
         if (size == 0) {
             numBits = 0;
@@ -149,6 +155,7 @@ public:
 
     // Returns the index of the first one-bit. If no such bit exists then -1 is returned.
     int firstSetBit() const {
+        if (blocks.empty()) return -1;
         int blockIndex = 0;
         while (blockIndex < blocks.size() && blocks[blockIndex] == 0) ++blockIndex;
         if (blockIndex == blocks.size()) return -1;
@@ -172,6 +179,9 @@ public:
 
     // Inverts every bit in the BitVector
     void flip() {
+        if (blocks.empty())
+            return;
+
         for (auto &b: blocks)
             b = ~b;
 

@@ -24,6 +24,11 @@
 
 
 #pragma once
+#include <kassert/kassert.hpp>
+#include <Algorithms/KaRRi/CostCalculator.h>
+#include <Algorithms/KaRRi/RequestState/RequestState.h>
+#include <Algorithms/KaRRi/RequestState/RelevantPDLocs.h>
+#include "Tools/Timer.h"
 
 namespace karri::DropoffAfterLastStopStrategies {
 
@@ -145,7 +150,7 @@ namespace karri::DropoffAfterLastStopStrategies {
     private:
 
         void runSearchesForDropoffBatch(const int firstDropoffId) {
-            assert(firstDropoffId % K == 0 && firstDropoffId < requestState.numDropoffs());
+            KASSERT(firstDropoffId % K == 0 && firstDropoffId < requestState.numDropoffs());
 
             std::array<int, K> dropoffTails;
             std::array<int, K> offsets;

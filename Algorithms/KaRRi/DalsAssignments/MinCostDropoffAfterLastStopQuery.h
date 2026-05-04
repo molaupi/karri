@@ -94,7 +94,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         ConstantVectorRange<DropoffLabel> getParetoBestDropoffLabelsFor(const int vehId) {
-            assert(vehId >= 0 && vehId < fleet.size());
+            KASSERT(vehId >= 0 && vehId < fleet.size());
             return vehicleLabelBuckets.getBucketOf(vehId);
         }
 
@@ -152,7 +152,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             for (const auto &vehId: vehiclesSeen) {
                 vehicleLabelBuckets.clearBucket(vehId);
             }
-            assert(vehicleLabelBuckets.allEmpty());
+            KASSERT(vehicleLabelBuckets.allEmpty());
             vehiclesSeen.clear();
 
             for (const auto &dropoff: requestState.dropoffs) {
@@ -202,11 +202,11 @@ namespace karri::DropoffAfterLastStopStrategies {
         // at which the label was settled. Returns true if the label was propagated to the neighbors of v or false if the
         // label was pruned.
         bool settleNextLabel(int &v, DropoffLabel &labelAtV) {
-            assert(!reverseQueue.empty());
+            KASSERT(!reverseQueue.empty());
             int cost;
             reverseQueue.min(v, cost);
             labelAtV = vertexLabelBuckets.closeMinOpenLabel(v);
-            assert(costOf(labelAtV) == cost);
+            KASSERT(costOf(labelAtV) == cost);
 
             // Check if this label can be pruned at v
             const bool pruned = STALL_LABELS && pruneLabel(v, labelAtV);
@@ -241,7 +241,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             if (vertexLabelBuckets.getBucketOf(v).open().size() == 0) {
                 int deletedV;
                 reverseQueue.deleteMin(deletedV, cost);
-                assert(v == deletedV && cost == costOf(labelAtV));
+                KASSERT(v == deletedV && cost == costOf(labelAtV));
             } else {
                 reverseQueue.increaseKey(v, costOf(vertexLabelBuckets.minOpenLabel(v)));
             }
@@ -430,7 +430,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             markedIndices.clear();
             while (i < bucket.size() && costOf(bucket[i]) == costOfNew) {
                 if (dominates(bucket[i], newLabel)) {
-                    assert(markedIndices.empty());
+                    KASSERT(markedIndices.empty());
                     return false;
                 } else if (dominates(newLabel, bucket[i])) {
                     markedIndices.push_back(i);
@@ -442,7 +442,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             bucket = vehicleLabelBuckets.getBucketOf(vehId); // bucket has changed
             ++i; // for inserted label
             while (i < bucket.size()) {
-                assert(costOf(bucket[i]) > costOfNew);
+                KASSERT(costOf(bucket[i]) > costOfNew);
                 if (dominates(newLabel, bucket[i]))
                     markedIndices.push_back(i);
                 ++i;

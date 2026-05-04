@@ -39,6 +39,7 @@ public:
 
 // Ensures that this container can hold the specified number of elements.
     void resize(const int size) {
+        KASSERT(size >= 0);
         const auto currentSize = elements.size();
         if (size < currentSize) {
             elements.erase(elements.begin() + size, elements.end());

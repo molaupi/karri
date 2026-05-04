@@ -66,7 +66,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                               const RouteState &routeState,
                               const CHEnvT &chEnv,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              const CostCalculator &calculator,
+                              CostCalculator &calculator,
                               CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
                               RequestState &requestState)
                 : inputGraph(inputGraph),
@@ -195,7 +195,7 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                     asgn.vehicle = &fleet[vehId];
                     asgn.distToDropoff = distFromLastStopToDropoff;
-                    assert(asgn.distToDropoff >= 0 && asgn.distToDropoff < INFTY);
+                    KASSERT(asgn.distToDropoff >= 0 && asgn.distToDropoff < INFTY);
                     asgn.dropoffStopIdx = numStops - 1;
 
                     const auto relevantPickupsInRevOrder = relevantOrdinaryPickups.relevantSpotsForInReverseOrder(
@@ -213,7 +213,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                                 asgn.vehicle->capacity)
                                 break;
 
-                            assert(entry.stopIndex < numStops - 1);
+                            KASSERT(entry.stopIndex < numStops - 1);
                             const auto minTripTimeToLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1] -
                                                                routeState.schedArrTimesFor(vehId)[entry.stopIndex + 1];
 
@@ -328,7 +328,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     // based on the trip time starting at stop 1 and the detour starting at the last stop.
                     // If this is already worse than the best known cost, we don't have to consider the PBNS case for
                     // this label.
-                    assert(numStops > 1);
+                    KASSERT(numStops > 1);
                     const auto minTripTimeToLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1] -
                                                        routeState.schedArrTimesFor(vehId)[1];
                     const auto minCostFromHere = calculator.calcVehicleIndependentCostLowerBoundForDALSWithKnownMinDistToDropoff(
@@ -353,7 +353,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                             const auto lowerBoundCost = calculator.calcWithoutHardConstraints(asgn, requestState);
                             // If the cost lower bound is worse than the best known cost, this pickup/dropoff
                             // combination is not relevant.
-                            if (lowerBoundCost > requestState.getBestCost())
+                            if (lowerBoundCost.total > requestState.getBestCost())
                                 continue;
 
                             // Otherwise, calculate the exact distance from the vehicle's location to the pickup.
@@ -375,7 +375,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                 for (const auto &pair: leftToCheck) {
                     asgn.pickup = &requestState.pickups[pair.pickupId];
                     asgn.dropoff = &requestState.dropoffs[pair.dropoffId];
-                    assert(curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id));
+                    KASSERT(curVehLocToPickupSearches.knowsDistance(vehId, asgn.pickup->id));
                     asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId, asgn.pickup->id);
                     if (asgn.distToPickup >= INFTY)
                         continue;
@@ -426,13 +426,14 @@ namespace karri::DropoffAfterLastStopStrategies {
 
                 const auto &constraintBreaker = constraintBreakers[cur];
                 const auto lowerBoundCost = calculator.calcWithoutHardConstraints(constraintBreaker, requestState);
-                if (lowerBoundCost > requestState.getBestCost()) {
+                if (lowerBoundCost.total > requestState.getBestCost()) {
                     // Lower bound is worse than best known => actual cost is worse than best known => remove
                     ++nextGoodOffset;
                 } else {
                     ++cur;
                 }
             }
+            KASSERT(constraintBreakers.size() >= nextGoodOffset);
             constraintBreakers.resize(constraintBreakers.size() - nextGoodOffset);
         }
 
@@ -467,6 +468,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     ++cur;
                 }
             }
+            KASSERT(constraintBreakers.size() > nextGoodOffset);
             constraintBreakers.resize(constraintBreakers.size() - nextGoodOffset);
         }
 
@@ -501,8 +503,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                     // Explicitly evaluate all assignments using a constraint breaker of this vehicle and any dropoff.
                     for (int j = startOfLastVehId; j < i; ++j) {
                         auto asgn = constraintBreakers[j];
-                        assert(asgn.vehicle->vehicleId == lastVehId);
-                        assert(asgn.dropoffStopIdx == routeState.numStopsOf(lastVehId) - 1);
+                        KASSERT(asgn.vehicle->vehicleId == lastVehId);
+                        KASSERT(asgn.dropoffStopIdx == routeState.numStopsOf(lastVehId) - 1);
 
                         for (const auto &dropoff: requestState.dropoffs) {
                             asgn.dropoff = &dropoff;
@@ -524,7 +526,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         // Skips dropoffs for which the given distances vector already has a valid entry.
         // Returns number of CH searches run.
         int computeDistancesFromLastStopToAllDropoffs(const int vehId, TimestampedVector<int> &distances) {
-            assert(distances.size() == requestState.numDropoffs());
+            KASSERT(distances.size() == requestState.numDropoffs());
 
             int numSearchesRun = 0;
 
@@ -579,7 +581,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         const InputGraphT &inputGraph;
         const Fleet &fleet;
         const RouteState &routeState;
-        const CostCalculator &calculator;
+        CostCalculator &calculator;
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         ClosestDropoffToLastStopQuery closestDropoffSearch;
         const CH &ch;

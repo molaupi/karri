@@ -71,7 +71,7 @@ public:
         friend LabelMask operator&(const LabelMask &mask1, const LabelMask &mask2) {
             LabelMask res;
             for (int i = 0; i < K; ++i)
-                res.isMarked[i] = mask1.isMarked[i] & mask2.isMarked[i];
+                res.isMarked[i] = mask1.isMarked[i] && mask2.isMarked[i];
             return res;
         }
 
@@ -85,7 +85,7 @@ public:
         friend LabelMask operator|(const LabelMask &mask1, const LabelMask& mask2) {
             LabelMask res;
             for (int i = 0; i < K; ++i) {
-                res.isMarked[i] = mask1.isMarked[i] | mask2.isMarked[i];
+                res.isMarked[i] = mask1.isMarked[i] || mask2.isMarked[i];
             }
             return res;
         }
@@ -110,6 +110,20 @@ public:
             assert(i >= 0);
             assert(i < K);
             return isMarked[i];
+        }
+
+        void set(const int i, const bool val) {
+            assert(i >= 0);
+            assert(i < K);
+            isMarked[i] = val;
+        }
+
+        std::array<int, K> toIntArray() const {
+            std::array<int, K> arr;
+            for (int i = 0; i < K; ++i) {
+                arr[i] = static_cast<int>(isMarked[i]);
+            }
+            return arr;
         }
 
 //        // Returns true if this mask marks at least one component.
@@ -161,6 +175,18 @@ public:
             assert(i >= 0);
             assert(i < K);
             return values[i];
+        }
+
+        // Copy K integer values starting at ptr into distance label. Make sure that there is no overlap between
+        // [ptr, ptr+K) and this label.
+        void load(int const * const ptr) {
+            std::copy(ptr, ptr + K, values.begin());
+        }
+
+        // Copy K integer values from this distance label into ptr. Make sure that there is no overlap between
+        // [ptr, ptr+K) and this label.
+        void store(int * const ptr) const {
+            std::copy(values.begin(), values.end(), ptr);
         }
 
         // Returns the packed sum of lhs and rhs.

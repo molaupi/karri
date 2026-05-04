@@ -36,20 +36,30 @@ FetchContent_Declare(
 
 # Fetch kassert
 message("Fetching kassert library...")
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(KASSERT_ASSERTION_LEVEL 40)
+if (DEFINED KASSERT_ASSERTION_LEVEL)
+    message("KASSERT_ASSERTION_LEVEL manually set to ${KASSERT_ASSERTION_LEVEL}.")
 else ()
-    set(KASSERT_ASSERTION_LEVEL 20)
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        message("KASSERT_ASSERTION_LEVEL not manually set, setting it to 40 for build type Debug.")
+        set(KASSERT_ASSERTION_LEVEL 40)
+    else ()
+        message("KASSERT_ASSERTION_LEVEL not manually set, setting it to 20.")
+        set(KASSERT_ASSERTION_LEVEL 20)
+    endif ()
 endif ()
 FetchContent_MakeAvailable(kassert)
+message("done.")
 
 # Fetch fast-cpp-csv-parser (header only library, create interface target)
+message("Fetching fast_cpp_csv_parser library...")
 FetchContent_MakeAvailable(fast_cpp_csv_parser)
 FetchContent_GetProperties(fast_cpp_csv_parser SOURCE_DIR fast_cpp_csv_parser_SOURCE_DIR)
 add_library(fast_cpp_csv_parser INTERFACE)
 target_include_directories(fast_cpp_csv_parser SYSTEM INTERFACE ${fast_cpp_csv_parser_SOURCE_DIR})
+message("done.")
 
 # Fetch vectorclass (header only library, create interface target)
+message("Fetching vectorclass library...")
 FetchContent_MakeAvailable(vectorclass)
 FetchContent_GetProperties(vectorclass SOURCE_DIR vectorclass_SOURCE_DIR)
 add_library(vectorclass INTERFACE)
@@ -71,6 +81,7 @@ file(APPEND
         ${CMAKE_FIND_PACKAGE_REDIRECTS_DIR}/nlohmann_json-config-version.cmake
         "\n# Manually added PACKAGE_VERSION variable\nset(PACKAGE_VERSION ${nlohmann_json_VERSION})"
 )
+message("done.")
 
 # Fetch proj
 message("Fetching proj library...")
@@ -80,3 +91,4 @@ set(ENABLE_CURL OFF)
 set(ENABLE_TIFF OFF)
 set(TESTING_USE_NETWORK OFF)
 FetchContent_MakeAvailable(proj)
+message("done.")

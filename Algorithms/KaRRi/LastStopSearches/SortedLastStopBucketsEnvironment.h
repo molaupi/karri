@@ -333,8 +333,8 @@ namespace karri {
 
         template<bool wasIdle>
         void removeBucketEntries(const Vehicle &veh, const int stopIndex) {
-            assert(stopIndex >= 0);
-            assert(stopIndex < routeState.numStopsOf(veh.vehicleId));
+            KASSERT(stopIndex >= 0);
+            KASSERT(stopIndex < routeState.numStopsOf(veh.vehicleId));
 
             Timer timer;
             const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];

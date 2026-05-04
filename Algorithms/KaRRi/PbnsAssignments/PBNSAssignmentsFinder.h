@@ -26,18 +26,19 @@
 #pragma once
 
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
+#include "Algorithms/KaRRi/BaseObjects/PD.h"
 #include "Algorithms/KaRRi/PbnsAssignments/CurVehLocToPickupSearches.h"
 
 namespace karri {
 
 
-// Finds pickup before next stop assignments, i.e. assignments where the pickup is inserted before the vehicle's next
-// stop, which means the vehicle is rerouted at its current location. Dropoff may be inserted before the next stop or
-// at ordinary locations, i.e. after the next stop but before the last stop.
-// (The case of pickup before next stop and dropoff after last stop is considered by the DALSAssignmentsFinder.)
-//
-// Works based on filtered relevant pickups and dropoffs before next stop as well as relevant ordinary dropoffs.
-    template<typename PDDistancesT, typename CurVehLocToPickupSearchesT>
+    // Finds pickup before next stop assignments, i.e. assignments where the pickup is inserted before the vehicle's next
+    // stop, which means the vehicle is rerouted at its current location. Dropoff may be inserted before the next stop or
+    // at ordinary locations, i.e. after the next stop but before the last stop.
+    // (The case of pickup before next stop and dropoff after last stop is considered by the DALSAssignmentsFinder.)
+    //
+    // Works based on filtered relevant pickups and dropoffs before next stop as well as relevant ordinary dropoffs.
+    template<typename CurVehLocToPickupSearchesT>
     class PBNSAssignmentsFinder {
 
         // Algorithm iterates through combinations of pickups and dropoffs and filters based on lower bound cost.
@@ -53,8 +54,9 @@ namespace karri {
 
     public:
 
+
         PBNSAssignmentsFinder(CurVehLocToPickupSearchesT &curVehLocToPickupSearches,
-                              const Fleet &fleet, const CostCalculator &calculator,
+                              const Fleet &fleet, CostCalculator &calculator,
                               const RouteState &routeState, RequestState &requestState)
                 : curVehLocToPickupSearches(curVehLocToPickupSearches),
                   fleet(fleet),
@@ -63,7 +65,7 @@ namespace karri {
                   requestState(requestState) {}
 
         void findAssignments(const RelevantPDLocs &relPickupsBns, const RelevantPDLocs &relOrdinaryDropoffs,
-                             const RelevantPDLocs &relDropoffsBns, const PDDistancesT& pdDistances) {
+                             const RelevantPDLocs &relDropoffsBns, const PDDistances& pdDistances) {
             numAssignmentsTriedWithPickupBeforeNextStop = 0;
             Timer timer;
 
@@ -78,7 +80,7 @@ namespace karri {
                 ordinaryContinuations.clear();
                 pairedContinuations.clear();
 
-                assert(routeState.occupanciesFor(vehId)[0]  + requestState.originalRequest.numRiders <= fleet[vehId].capacity);
+                KASSERT(routeState.occupanciesFor(vehId)[0]  + requestState.originalRequest.numRiders <= fleet[vehId].capacity);
 
                 determineNecessaryExactDistances(fleet[vehId], relPickupsBns, relOrdinaryDropoffs, relDropoffsBns, pdDistances);
 
@@ -108,7 +110,6 @@ namespace karri {
 
     private:
 
-
         // Filters combinations of pickups and dropoffs using a cost lower bound.
         // If a combination is found for a pickup that cannot be filtered, we need the exact distance from the vehicle
         // location to the pickup.
@@ -116,7 +117,7 @@ namespace karri {
         // the iteration of combinations for that pickup after the computation of exact distances.
         void determineNecessaryExactDistances(const Vehicle &veh, const RelevantPDLocs &relPickupsBns,
                                               const RelevantPDLocs &relOrdinaryDropoffs,
-                                              const RelevantPDLocs &relDropoffsBns, const PDDistancesT& pdDistances) {
+                                              const RelevantPDLocs &relDropoffsBns, const PDDistances& pdDistances) {
 
             const auto &relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(veh.vehicleId);
             const auto &relDropoffsBeforeNextStopForVeh = relDropoffsBns.relevantSpotsFor(veh.vehicleId);
@@ -171,8 +172,8 @@ namespace karri {
         // Examines combinations of a given pickup and all dropoffs before the next stop of a given vehicle until a
         // paired assignment needs the exact distance to the pickup via the vehicle. Returns an iterator to the dropoff at
         // which the exact distance is first needed or one-past-end iterator if all combinations could be filtered.
-        RelevantPDLocs::It tryLowerBoundsForPaired(Assignment &asgn, const RelevantPDLocs &relDropoffsBns, const PDDistancesT& pdDistances) {
-            assert(asgn.vehicle && asgn.pickup);
+        RelevantPDLocs::It tryLowerBoundsForPaired(Assignment &asgn, const RelevantPDLocs &relDropoffsBns, const PDDistances& pdDistances) {
+            KASSERT(asgn.vehicle && asgn.pickup);
             const auto vehId = asgn.vehicle->vehicleId;
 
 
@@ -196,8 +197,8 @@ namespace karri {
                 asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                 asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
                 const auto cost = calculator.calc(asgn, requestState);
-                if (cost < requestState.getBestCost() || (cost == requestState.getBestCost() &&
-                                                          breakCostTie(asgn, requestState.getBestAssignment()))) {
+                if (cost.total < requestState.getBestCost() || (cost.total == requestState.getBestCost() &&
+                                                          breakCostTie(asgn, requestState.getBestAssignmentWithoutTransfer()))) {
                     // Lower bound is better than best known cost => We need the exact distance to pickup.
                     // Return and postpone remaining combinations.
                     return dropoffIt;
@@ -212,7 +213,7 @@ namespace karri {
         // dropoff at which the exact distance is first needed or one-past-end iterator if all combinations could be filtered.
         RelevantPDLocs::It tryLowerBoundsForOrdinary(Assignment &asgn, const RelevantPDLocs& relOrdinaryDropoffs) {
             using namespace time_utils;
-            assert(asgn.vehicle && asgn.pickup);
+            KASSERT(asgn.vehicle && asgn.pickup);
             const auto vehId = asgn.vehicle->vehicleId;
 
             const auto relevantDropoffs = relOrdinaryDropoffs.relevantSpotsFor(vehId);
@@ -240,8 +241,8 @@ namespace karri {
                 ++numAssignmentsTriedWithPickupBeforeNextStop;
 
                 const auto cost = calculator.calc(asgn, requestState);
-                if (cost < requestState.getBestCost() || (cost == requestState.getBestCost() &&
-                                                          breakCostTie(asgn, requestState.getBestAssignment()))) {
+                if (cost.total < requestState.getBestCost() || (cost.total == requestState.getBestCost() &&
+                                                          breakCostTie(asgn, requestState.getBestAssignmentWithoutTransfer()))) {
                     // Lower bound is better than best known cost => We need the exact distance to pickup.
                     // Return and postpone remaining combinations.
                     return dropoffIt;
@@ -251,7 +252,7 @@ namespace karri {
             return relevantDropoffs.end();
         }
 
-        void finishContinuations(const Vehicle &veh, const RelevantPDLocs& relOrdinaryDropoffs, const RelevantPDLocs& relDropoffsBns, const PDDistancesT& pdDistances) {
+        void finishContinuations(const Vehicle &veh, const RelevantPDLocs& relOrdinaryDropoffs, const RelevantPDLocs& relDropoffsBns, const PDDistances& pdDistances) {
             const auto stopLocations = routeState.stopLocationsFor(veh.vehicleId);
             const auto numStops = routeState.numStopsOf(veh.vehicleId);
             Assignment asgn(&veh);
@@ -326,7 +327,7 @@ namespace karri {
 
         CurVehLocToPickupSearchesT &curVehLocToPickupSearches;
         const Fleet &fleet;
-        const CostCalculator &calculator;
+        CostCalculator &calculator;
         const RouteState &routeState;
         RequestState &requestState;
 

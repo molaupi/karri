@@ -106,13 +106,13 @@ namespace karri {
             KASSERT(vehId >= 0 && vehId < fleetSize);
             const auto start = firstLastStopAtVertex[vertex].start;
             const auto end = firstLastStopAtVertex[vertex].end;
-            assert(end > start);
+            KASSERT(end > start);
             for (auto i = start; i < end; ++i)
                 if (vehiclesOrderedByLastStop[i] == vehId) {
                     removal(vertex, i - start, firstLastStopAtVertex, vehiclesOrderedByLastStop);
                     break;
                 }
-            assert(firstLastStopAtVertex[vertex].end - firstLastStopAtVertex[vertex].start == end - start - 1);
+            KASSERT(firstLastStopAtVertex[vertex].end - firstLastStopAtVertex[vertex].start == end - start - 1);
         }
 
 

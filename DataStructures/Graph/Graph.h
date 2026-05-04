@@ -512,7 +512,14 @@ public:
     }
 
     // Reorders the vertices according to the specified permutation.
-    void permuteVertices(const Permutation &perm) {
+    void permuteVertices(const Permutation& perm) {
+        Permutation edgePerm;
+        permuteVertices(perm, edgePerm);
+    }
+
+    // Reorders the vertices according to the specified permutation. If the graph is static, the second
+    // permutation is set to the resulting permutation of edge IDs.
+    void permuteVertices(const Permutation &perm, Permutation& edgePerm) {
         assert(perm.size() == numVertices());
         assert(perm.validate());
         if (dynamic) {
@@ -521,7 +528,7 @@ public:
             AlignedVector<OutEdgeRange> temp(outEdges.size());
             temp.back().first() = numEdges();
             Permutation inversePerm = perm.getInversePermutation();
-            Permutation edgePerm(numEdges());
+            edgePerm = Permutation(numEdges());
             int newEdgeIdx = 0;
 
             // Sort the edge arrays by new tail ID.

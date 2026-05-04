@@ -46,7 +46,9 @@ namespace karri {
             typename PbnsAssignmentsT,
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
-            typename RelevantPdLocsFilterT
+            typename RelevantPDLocsFilterT,
+            typename AssignmentsWithTransferT,
+            typename InsertionAsserterT
     >
     class AssignmentFinder {
 
@@ -64,7 +66,10 @@ namespace karri {
                          PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments,
                          DalsAssignmentsT &dalsAssignments,
-                         RelevantPdLocsFilterT &relevantPdLocsFilter)
+                         RelevantPDLocsFilterT &relevantPdLocsFilter,
+                         AssignmentsWithTransferT &assignmentsWithTransfer,
+                         InsertionAsserterT &insertionAsserter
+        )
                 : reqState(requestState),
                   inputGraph(inputGraph),
                   fleet(fleet),
@@ -79,7 +84,9 @@ namespace karri {
                   pbnsAssignments(pbnsAssignments),
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
-                  relevantPdLocsFilter(relevantPdLocsFilter) {}
+                  relevantPdLocsFilter(relevantPdLocsFilter),
+                  assignmentsWithTransfer(assignmentsWithTransfer),
+                  insertionAsserter(insertionAsserter) {}
 
         const RequestState &findBestAssignment(const Request &req) {
 
@@ -87,10 +94,10 @@ namespace karri {
             initializeForRequest(req);
 
             // Compute PD distances:
-            const auto ffPdDistances = ffPDDistanceSearches.run();
+            const PDDistances pdDistances = ffPDDistanceSearches.run();
 
             // Try PALS assignments:
-            palsAssignments.findAssignments(ffPdDistances);
+            palsAssignments.findAssignments(pdDistances);
 
             // Run elliptic BCH searches (populates feasibleEllipticPickups and feasibleEllipticDropoffs):
             ellipticBchSearches.run(feasibleEllipticPickups, feasibleEllipticDropoffs);
@@ -100,7 +107,7 @@ namespace karri {
             const auto relOrdinaryDropoffs = relevantPdLocsFilter.filterOrdinaryDropoffs(feasibleEllipticDropoffs, reqState);
 
             // Try ordinary assignments:
-            ordAssignments.findAssignments(relOrdinaryPickups, relOrdinaryDropoffs, ffPdDistances);
+            ordAssignments.findAssignments(relOrdinaryPickups, relOrdinaryDropoffs, pdDistances);
 
             // Filter feasible pickups before next stops:
             const auto relPickupsBeforeNextStop = relevantPdLocsFilter.filterPickupsBeforeNextStop(
@@ -115,7 +122,37 @@ namespace karri {
 
             // Try PBNS assignments:
             pbnsAssignments.findAssignments(relPickupsBeforeNextStop, relOrdinaryDropoffs, relDropoffsBeforeNextStop,
-                                            ffPdDistances);
+                                            pdDistances);
+
+            KASSERT(insertionAsserter.assertAssignment(reqState.getBestAssignmentWithoutTransfer()));
+
+            // * Find the best assignment that contains a transfer
+            if (InputConfig::getInstance().includeTransfers)
+                assignmentsWithTransfer.findBestAssignment(relOrdinaryPickups, relPickupsBeforeNextStop, relOrdinaryDropoffs, relDropoffsBeforeNextStop, pdDistances);
+
+            //* Log the cost data
+            const auto &costWOT = reqState.getCostObjectWithoutTransfer();
+            const auto &costWT = reqState.getCostObjectWithTransfer();
+
+            auto &costStats = reqState.stats().costStats;
+
+            costStats.totalWOT = costWOT.total;
+            costStats.walkingCostWOT = costWOT.walkingCost;
+            costStats.tripCostWOT = costWOT.tripCost;
+            costStats.waitTimeViolationCostWOT = costWOT.waitTimeViolationCost;
+            costStats.changeInTripCostsOfOthersWOT = costWOT.changeInTripCostsOfOthers;
+            costStats.vehCostWOT = costWOT.vehCost;
+
+            costStats.totalWT = costWT.total;
+            costStats.walkingCostWT = costWT.walkingCost;
+            costStats.tripCostWT = costWT.tripCost;
+            costStats.waitTimeViolationCostWT = costWT.waitTimeViolationCost;
+            costStats.changeInTripCostsOfOthersWT = costWT.changeInTripCostsOfOthers;
+            costStats.vehCostWT = costWT.vehCost;
+
+            costStats.inftyWOT = costWOT.total >= INFTY;
+            costStats.inftyWT = costWT.total >= INFTY;
+            costStats.transferImproves = costWT.total < costWOT.total;
 
             return reqState;
         }
@@ -140,6 +177,7 @@ namespace karri {
             pbnsAssignments.init();
             palsAssignments.init();
             dalsAssignments.init();
+            assignmentsWithTransfer.init();
         }
 
         RequestState &reqState;
@@ -157,8 +195,10 @@ namespace karri {
         PbnsAssignmentsT &pbnsAssignments; // Tries PBNS assignments where pickup (and possibly dropoff) is inserted before the next vehicle stop.
         PalsAssignmentsT &palsAssignments; // Tries PALS assignments where pickup and dropoff are inserted after the last stop.
         DalsAssignmentsT &dalsAssignments; // Tries DALS assignments where only the dropoff is inserted after the last stop.
-        RelevantPdLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
+        RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
 
+        AssignmentsWithTransferT &assignmentsWithTransfer;
 
+        InsertionAsserterT& insertionAsserter;
     };
 }

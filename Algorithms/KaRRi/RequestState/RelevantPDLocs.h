@@ -66,7 +66,6 @@ namespace karri {
         bool hasRelevantSpotsFor(const int vehId) const {
             KASSERT(vehId >= 0 && vehId < fleetSize);
             return vehicleToPdLocs.contains(vehId);
-//            return startOfRelevantPDLocs[vehId] != startOfRelevantPDLocs[vehId + 1];
         }
 
         IteratorRange<It> relevantSpotsFor(const int vehId) const {

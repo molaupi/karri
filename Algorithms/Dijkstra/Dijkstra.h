@@ -79,6 +79,9 @@ namespace karri {
 
     template<typename, typename, typename, typename, typename>
     class ClosestPDLocToLastStopBCHQuery;
+
+    template<typename, typename, typename>
+    class DijkstraEllipseReconstructorQuery;
 }
 
 
@@ -123,6 +126,10 @@ class Dijkstra {
     template<typename, typename, typename, typename, typename>
     friend
     class karri::ClosestPDLocToLastStopBCHQuery;
+
+    template<typename, typename, typename>
+    friend
+    class karri::DijkstraEllipseReconstructorQuery;
 
 private:
     using Graph = GraphT;                                    // The graph we work on.
@@ -175,6 +182,23 @@ public:
                 break;
             settleNextVertex();
         }
+    }
+
+    int runAnyShortestPath(const std::vector<int> &sources, const std::vector<int> &targets) {
+        init(sources);
+
+        while (!queue.empty()) {
+            const auto id = queue.minId();
+
+            for (const auto target : targets) {
+                if (target == id)
+                    return distanceLabels[target][0];
+            }
+
+            settleNextVertex();
+        }
+
+        return INFTY;
     }
 
     // Runs a Dijkstra search from multiple sources s, with the distances of the sources initialized to the given
@@ -281,6 +305,27 @@ private:
                 queue.insert(s, distanceLabels[s].getKey());
         }
     }
+
+    template<bool COND = K == 1>
+    void init(std::enable_if_t<COND, const std::vector<int>&> sources, const std::vector<int>& offsets) {
+        KASSERT(sources.size() == offsets.size());
+        numEdgeRelaxations = 0;
+        numVerticesSettled = 0;
+        distanceLabels.init();
+        queue.clear();
+
+        for (int i = 0; i < sources.size(); i++) {
+            const auto s = sources[i];
+            parent.setVertex(s, s, true);
+            parent.setEdge(s, INVALID_EDGE, true);
+
+            distanceLabels[s] = offsets[i];
+
+            if (!queue.contains(s))
+                queue.insert(s, distanceLabels[s].getKey());
+        }
+    } 
+
 
     // Removes the next vertex from the queue, relaxes its outgoing edges, and returns its ID.
     int settleNextVertex() {

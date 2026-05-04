@@ -26,6 +26,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <sstream>
 
 namespace karri::stats {
 
@@ -280,6 +282,495 @@ namespace karri::stats {
             return ss.str();
         }
     };
+
+    struct EllipseReconstructionStats {
+
+        int64_t withoutLeewayNumEllipses;
+        int64_t withoutLeewaySumSizesEllipses;
+        int64_t withLeewayNumEllipses;
+        int64_t withLeewaySumSizesEllipses;
+
+        int64_t initTime;
+        int64_t withoutLeewaySearchTime;
+        int64_t withoutLeewayConvertToEdgesTime;
+        int64_t withLeewaySearchTime;
+        int64_t withLeewayConvertToEdgesTime;
+
+        int64_t withLeewayQuery_initTime;
+        int64_t withLeewayQuery_topoSearchTime;
+        int64_t withLeewayQuery_postprocessTime;
+        int64_t withLeewayQuery_numVerticesSettled;
+        int64_t withLeewayQuery_numEdgesRelaxed;
+
+        static constexpr auto LOGGER_NAME = "perf_ellipse_reconstruction.csv";
+        static constexpr auto LOGGER_COLS =
+                "without_leeway_num_ellipses,"
+                "without_leeway_sum_sizes_ellipses,"
+                "with_leeway_num_ellipses,"
+                "with_leeway_sum_sizes_ellipses,"
+                "init_time,"
+                "without_leeway_search_time,"
+                "without_leeway_convert_to_edges_time,"
+                "with_leeway_search_time,"
+                "with_leeway_convert_to_edges_time,"
+                "with_leeway_query.init_time,"
+                "with_leeway_query.topo_search_time,"
+                "with_leeway_query.postprocess_time,"
+                "with_leeway_query.num_vertices_settled,"
+                "with_leeway_query.num_edges_relaxed,"
+                "total_time\n";
+
+        int64_t getTotalTime() const {
+            return initTime + withoutLeewaySearchTime + withoutLeewayConvertToEdgesTime + withLeewaySearchTime +
+                   withLeewayConvertToEdgesTime;
+        }
+
+        std::string getLoggerRow() const {
+            std::stringstream ss;
+            ss << withoutLeewayNumEllipses << ", "
+               << withoutLeewaySumSizesEllipses << ", "
+               << withLeewayNumEllipses << ", "
+               << withLeewaySumSizesEllipses << ", "
+               << initTime << ", "
+               << withoutLeewaySearchTime << ", "
+               << withoutLeewayConvertToEdgesTime << ", "
+               << withLeewaySearchTime << ", "
+               << withLeewayConvertToEdgesTime << ", "
+               << withLeewayQuery_initTime << ", "
+               << withLeewayQuery_topoSearchTime << ", "
+               << withLeewayQuery_postprocessTime << ", "
+               << withLeewayQuery_numVerticesSettled << ", "
+               << withLeewayQuery_numEdgesRelaxed << ", "
+               << getTotalTime();
+            return ss.str();
+        }
+
+        void clear() {
+            withoutLeewayNumEllipses = 0;
+            withoutLeewaySumSizesEllipses = 0;
+            withLeewayNumEllipses = 0;
+            withLeewaySumSizesEllipses = 0;
+            initTime = 0;
+            withoutLeewaySearchTime = 0;
+            withoutLeewayConvertToEdgesTime = 0;
+            withLeewaySearchTime = 0;
+            withLeewayConvertToEdgesTime = 0;
+            withLeewayQuery_initTime = 0;
+            withLeewayQuery_topoSearchTime = 0;
+            withLeewayQuery_postprocessTime = 0;
+            withLeewayQuery_numVerticesSettled = 0;
+            withLeewayQuery_numEdgesRelaxed = 0;
+        }
+    };
+
+    struct AssignmentsWithOrdinaryTransferPerformanceStats {
+
+        // Overall stats
+        int64_t totalTime;
+
+        // Stats for the PD Locs
+        int64_t numCandidateVehiclesPickupBNS;
+        int64_t numCandidateVehiclesPickupORD;
+
+        int64_t numCandidateVehiclesDropoffBNS;
+        int64_t numCandidateVehiclesDropoffORD;
+        int64_t numCandidateVehiclesDropoffALS;
+
+        // Stats for the tried assignments
+        int64_t numPartialsTriedPickupBNS;
+        int64_t numPartialsTriedPickupORD;
+
+        int64_t numAssignmentsTriedPickupBNS;
+        int64_t numAssignmentsTriedPickupORD;
+
+        int64_t numAssignmentsTriedDropoffBNS;
+        int64_t numAssignmentsTriedDropoffORD;
+        int64_t numAssignmentsTriedDropoffALS;
+
+        int64_t tryAssignmentsTime;
+        int64_t tryPostponedAssignmentsTime;
+        int64_t numPostponedAssignments;
+
+        // Stats for the transfer search itself
+        int64_t numStopPairs;
+        int64_t numInputTransferPoints;
+        int64_t numNonPrunedTransferPoints;
+        int64_t intersectEllipsesTime;
+
+        static constexpr auto LOGGER_NAME = "perf_transf_ord.csv";
+        static constexpr auto LOGGER_COLS =
+                "total_time,"
+                "num_vehs_pickup_bns,"
+                "num_vehs_pickup_ord,"
+                "num_vehs_dropoff_bns,"
+                "num_vehs_dropoff_ord,"
+                "num_vehs_dropoff_als,"
+                "num_partials_pickup_bns,"
+                "num_partials_pickup_ord,"
+                "num_assignments_pickup_bns,"
+                "num_assignments_pickup_ord,"
+                "num_assignments_dropoff_bns,"
+                "num_assignments_dropoff_ord,"
+                "num_assignments_dropoff_als,"
+                "try_assignments_time,"
+                "try_postponed_assignments_time,"
+                "num_postponed_assignments,"
+                "num_stop_pairs,"
+                "num_input_transfer_points,"
+                "num_non_pruned_transfer_points,"
+                "intersect_ellipses_time\n";
+
+        std::string getLoggerRow() const {
+            std::stringstream ss;
+            ss << totalTime << ", "
+               << numCandidateVehiclesPickupBNS << ", "
+               << numCandidateVehiclesPickupORD << ", "
+               << numCandidateVehiclesDropoffBNS << ", "
+               << numCandidateVehiclesDropoffORD << ", "
+               << numCandidateVehiclesDropoffALS << ", "
+               << numPartialsTriedPickupBNS << ", "
+               << numPartialsTriedPickupORD << ", "
+               << numAssignmentsTriedPickupBNS << ", "
+               << numAssignmentsTriedPickupORD << ", "
+               << numAssignmentsTriedDropoffBNS << ", "
+               << numAssignmentsTriedDropoffORD << ", "
+               << numAssignmentsTriedDropoffALS << ", "
+               << tryAssignmentsTime << ", "
+               << tryPostponedAssignmentsTime << ", "
+               << numPostponedAssignments << ", "
+               << numStopPairs << ", "
+               << numInputTransferPoints << ", "
+               << numNonPrunedTransferPoints << ", "
+               << intersectEllipsesTime;
+            return ss.str();
+        }
+
+        int64_t getTotalTime() const {
+            return totalTime;
+        }
+
+        void clear() {
+            totalTime = 0;
+            numCandidateVehiclesPickupBNS = 0;
+            numCandidateVehiclesPickupORD = 0;
+            numCandidateVehiclesDropoffBNS = 0;
+            numCandidateVehiclesDropoffORD = 0;
+            numCandidateVehiclesDropoffALS = 0;
+            numPartialsTriedPickupBNS = 0;
+            numPartialsTriedPickupORD = 0;
+            numAssignmentsTriedPickupBNS = 0;
+            numAssignmentsTriedPickupORD = 0;
+            numAssignmentsTriedDropoffBNS = 0;
+            numAssignmentsTriedDropoffORD = 0;
+            numAssignmentsTriedDropoffALS = 0;
+            tryAssignmentsTime = 0;
+            tryPostponedAssignmentsTime = 0;
+            numPostponedAssignments = 0;
+            numStopPairs = 0;
+            numInputTransferPoints = 0;
+            numNonPrunedTransferPoints = 0;
+            intersectEllipsesTime = 0;
+        }
+    };
+
+    struct AssignmentsWithTransferALSPVehPerformanceStats {
+        // Overall stats
+        int64_t totalTime;
+        int64_t initTime;
+
+        // Stats for the PD Locs
+        int64_t numCandidateVehiclesPickupBNS;
+        int64_t numCandidateVehiclesPickupORD;
+        int64_t numCandidateVehiclesPickupALS;
+
+        int64_t numCandidateVehiclesDropoffORD;
+        int64_t numCandidateVehiclesDropoffALS;
+
+        // Stats for the tried assignments 
+        int64_t numAssignmentsTriedPickupBNS;
+        int64_t numAssignmentsTriedPickupORD;
+        int64_t numAssignmentsTriedPickupALS;
+
+        int64_t numAssignmentsTriedDropoffORD;
+        int64_t numAssignmentsTriedDropoffALS;
+
+        int64_t tryAssignmentsTime;
+        int64_t tryPostponedAssignmentsTime;
+        int64_t numPostponedAssignments;
+
+        // Stats for the transfer search itself
+        int64_t numInputTransferPoints;
+        int64_t numNonPrunedTransferPoints;
+
+        int64_t searchTimePickupALS;
+        int64_t searchTimeLastStopToTransfer;
+        int64_t searchTimePickupToTransfer;
+        int64_t searchTimeTransferToDropoff;
+
+        static constexpr auto LOGGER_NAME = "perf_transf_als_pveh.csv";
+        static constexpr auto LOGGER_COLS =
+                "total_time,"
+                "init_time,"
+                "num_vehs_pickup_bns,"
+                "num_vehs_pickup_ord,"
+                "num_vehs_pickup_als,"
+                "num_vehs_dropoff_ord,"
+                "num_vehs_dropoff_als,"
+                "num_assignments_pickup_bns,"
+                "num_assignments_pickup_ord,"
+                "num_assignments_pickup_als,"
+                "num_assignments_dropoff_ord,"
+                "num_assignments_dropoff_als,"
+                "try_assignments_time,"
+                "try_postponed_assignments_time,"
+                "num_postponed_assignments,"
+                "num_input_transfer_points,"
+                "num_non_pruned_transfer_points,"
+                "search_time_pickup_als,"
+                "search_time_last_stop_to_transfer,"
+                "search_time_pickup_to_transfer,"
+                "search_time_transfer_to_dropoff\n";
+
+        std::string getLoggerRow() const {
+            std::stringstream ss;
+            ss << totalTime << ", "
+               << initTime << ","
+               << numCandidateVehiclesPickupBNS << ", "
+               << numCandidateVehiclesPickupORD << ", "
+               << numCandidateVehiclesPickupALS << ", "
+               << numCandidateVehiclesDropoffORD << ", "
+               << numCandidateVehiclesDropoffALS << ", "
+               << numAssignmentsTriedPickupBNS << ", "
+               << numAssignmentsTriedPickupORD << ", "
+               << numAssignmentsTriedPickupALS << ", "
+               << numAssignmentsTriedDropoffORD << ", "
+               << numAssignmentsTriedDropoffALS << ", "
+               << tryAssignmentsTime << ", "
+               << tryPostponedAssignmentsTime << ", "
+               << numPostponedAssignments << ", "
+               << numInputTransferPoints << ", "
+               << numNonPrunedTransferPoints << ", "
+               << searchTimePickupALS << ", "
+               << searchTimeLastStopToTransfer << ", "
+               << searchTimePickupToTransfer << ", "
+               << searchTimeTransferToDropoff;
+            return ss.str();
+        }
+
+        int64_t getTotalTime() const {
+            return totalTime;
+        }
+
+        void clear() {
+            totalTime = 0;
+            initTime = 0;
+            numCandidateVehiclesPickupBNS = 0;
+            numCandidateVehiclesPickupORD = 0;
+            numCandidateVehiclesPickupALS = 0;
+            numCandidateVehiclesDropoffORD = 0;
+            numCandidateVehiclesDropoffALS = 0;
+            numAssignmentsTriedPickupBNS = 0;
+            numAssignmentsTriedPickupORD = 0;
+            numAssignmentsTriedPickupALS = 0;
+            numAssignmentsTriedDropoffORD = 0;
+            numAssignmentsTriedDropoffALS = 0;
+            tryAssignmentsTime = 0;
+            tryPostponedAssignmentsTime = 0;
+            numPostponedAssignments = 0;
+            numInputTransferPoints = 0;
+            numNonPrunedTransferPoints = 0;
+            searchTimePickupALS = 0;
+            searchTimeLastStopToTransfer = 0;
+            searchTimePickupToTransfer = 0;
+            searchTimeTransferToDropoff = 0;
+        }
+    };
+
+    struct AssignmentsWithTransferALSDVehPerformanceStats {
+
+        // Overall stats
+        int64_t totalTime;
+        int64_t initTime;
+
+        // Stats for the PD Locs
+        int64_t numCandidateVehiclesPickupBNS;
+        int64_t numCandidateVehiclesPickupORD;
+        int64_t numCandidateVehiclesDropoffALS;
+
+        int64_t numPickups;
+        int64_t numDropoffs;
+
+        // Stats for the tried assignments 
+        int64_t numAssignmentsTriedPickupBNS;
+        int64_t numAssignmentsTriedPickupORD;
+        int64_t numAssignmentsTriedDropoffALS;
+
+        int64_t tryAssignmentsTime;
+        int64_t tryPostponedAssignmentsTime;
+        int64_t numPostponedAssignments;
+
+        // Stats for the transfer search itself
+        int64_t numInputTransferPoints;
+        int64_t numNonPrunedTransferPoints;
+
+        // Search from last stop to all stops
+        int64_t searchTimeLastStopToTransfer;
+        int64_t searchTimePickupToTransfer;
+        int64_t searchTimeTransferToDropoff;
+
+        static constexpr auto LOGGER_NAME = "perf_transf_als_dveh.csv";
+        static constexpr auto LOGGER_COLS =
+                "total_time,"
+                "init_time,"
+                "num_vehs_pickup_bns,"
+                "num_vehs_pickup_ord,"
+                "num_vehs_dropoff_als,"
+                "num_pickups,"
+                "num_dropoffs,"
+                "num_assignments_pickup_bns,"
+                "num_assignments_pickup_ord,"
+                "num_assignments_dropoff_als,"
+                "try_assignments_time,"
+                "try_postponed_assignments_time,"
+                "num_postponed_assignments,"
+                "num_input_transfer_points,"
+                "num_non_pruned_transfer_points,"
+                "search_time_last_stop_to_transfer,"
+                "search_time_pickup_to_transfer,"
+                "search_time_transfer_to_dropoff\n";
+
+        std::string getLoggerRow() const {
+            std::stringstream ss;
+            ss << totalTime << ", "
+               << initTime << ", "
+               << numCandidateVehiclesPickupBNS << ", "
+               << numCandidateVehiclesPickupORD << ", "
+               << numCandidateVehiclesDropoffALS << ", "
+               << numPickups << ", "
+               << numDropoffs << ", "
+
+               << numAssignmentsTriedPickupBNS << ", "
+               << numAssignmentsTriedPickupORD << ", "
+               << numAssignmentsTriedDropoffALS << ", "
+               << tryAssignmentsTime << ", "
+               << tryPostponedAssignmentsTime << ", "
+               << numPostponedAssignments << ", "
+
+               << numInputTransferPoints << ", "
+               << numNonPrunedTransferPoints << ", "
+
+               << searchTimeLastStopToTransfer << ", "
+               << searchTimePickupToTransfer << ", "
+               << searchTimeTransferToDropoff;
+            return ss.str();
+        }
+
+        int64_t getTotalTime() const {
+            return totalTime;
+        }
+
+        void clear() {
+            totalTime = 0;
+            initTime = 0;
+            numCandidateVehiclesPickupBNS = 0;
+            numCandidateVehiclesPickupORD = 0;
+            numCandidateVehiclesDropoffALS = 0;
+            numPickups = 0;
+            numDropoffs = 0;
+            numAssignmentsTriedPickupBNS = 0;
+            numAssignmentsTriedPickupORD = 0;
+            numAssignmentsTriedDropoffALS = 0;
+            tryAssignmentsTime = 0;
+            tryPostponedAssignmentsTime = 0;
+            numPostponedAssignments = 0;
+            numInputTransferPoints = 0;
+            numNonPrunedTransferPoints = 0;
+            searchTimePickupToTransfer = 0;
+            searchTimeLastStopToTransfer = 0;
+            searchTimeTransferToDropoff = 0;
+        }
+
+    };
+
+    struct AssignmentCostStats {
+        int64_t totalWOT;
+        int64_t walkingCostWOT;
+        int64_t tripCostWOT;
+        int64_t waitTimeViolationCostWOT;
+        int64_t changeInTripCostsOfOthersWOT;
+        int64_t vehCostWOT;
+
+        int64_t totalWT;
+        int64_t walkingCostWT;
+        int64_t tripCostWT;
+        int64_t waitTimeViolationCostWT;
+        int64_t changeInTripCostsOfOthersWT;
+        int64_t vehCostWT;
+
+        bool transferImproves;
+        bool inftyWOT;
+        bool inftyWT;
+
+        void clear() {
+            totalWOT = 0;
+            walkingCostWOT = 0;
+            tripCostWOT = 0;
+            waitTimeViolationCostWOT = 0;
+            changeInTripCostsOfOthersWOT = 0;
+            vehCostWOT = 0;
+
+            totalWT = 0;
+            walkingCostWT = 0;
+            tripCostWT = 0;
+            waitTimeViolationCostWT = 0;
+            changeInTripCostsOfOthersWT = 0;
+            vehCostWT = 0;
+
+            transferImproves = false;
+            inftyWOT = true;
+            inftyWT = true;
+        }
+
+        static constexpr auto LOGGER_NAME = "assignmentcost.csv";
+        static constexpr auto LOGGER_COLS =
+                "total_no_transfer,"
+                "walking_cost_no_transfer,"
+                "trip_cost_no_transfer,"
+                "wait_time_violation_cost_no_transfer,"
+                "change_in_trip_costs_of_others_no_transfer,"
+                "veh_cost_no_transfer,"
+                "total_transfer,"
+                "walking_cost_transfer,"
+                "trip_cost_transfer,"
+                "wait_time_violation_cost_transfer,"
+                "change_in_trip_costs_of_others_transfer,"
+                "veh_cost_transfer,"
+                "infty_no_transfer,"
+                "infty_transfer,"
+                "transfer_improves\n";
+
+
+        std::string getLoggerRow() const {
+            std::stringstream ss;
+            ss << totalWOT << ", "
+               << walkingCostWOT << ", "
+               << tripCostWOT << ", "
+               << waitTimeViolationCostWOT << ", "
+               << changeInTripCostsOfOthersWOT << ", "
+               << vehCostWOT << ", "
+               << totalWT << ", "
+               << walkingCostWT << ", "
+               << tripCostWT << ", "
+               << waitTimeViolationCostWT << ", "
+               << changeInTripCostsOfOthersWT << ", "
+               << vehCostWT << ", "
+               << inftyWOT << ", "
+               << inftyWT << ", "
+               << transferImproves;
+            return ss.str();
+        }
+    };
+
 
     struct PalsAssignmentsPerformanceStats {
 
@@ -558,7 +1049,14 @@ namespace karri::stats {
         PbnsAssignmentsPerformanceStats pbnsAssignmentsStats;
         PalsAssignmentsPerformanceStats palsAssignmentsStats;
         DalsAssignmentsPerformanceStats dalsAssignmentsStats;
+
+        EllipseReconstructionStats ellipseReconstructionStats;
+        AssignmentsWithOrdinaryTransferPerformanceStats ordinaryTransferStats;
+        AssignmentsWithTransferALSPVehPerformanceStats transferALSPVehStats;
+        AssignmentsWithTransferALSDVehPerformanceStats transferALSDVehStats;
+
         UpdatePerformanceStats updateStats;
+        AssignmentCostStats costStats;
 
         int64_t getTotalTime() const {
             return initializationStats.getTotalTime() +
@@ -568,6 +1066,10 @@ namespace karri::stats {
                    pbnsAssignmentsStats.getTotalTime() +
                    palsAssignmentsStats.getTotalTime() +
                    dalsAssignmentsStats.getTotalTime() +
+                   ellipseReconstructionStats.getTotalTime() +
+                   ordinaryTransferStats.getTotalTime() +
+                   transferALSPVehStats.getTotalTime() +
+                   transferALSDVehStats.getTotalTime() +
                    updateStats.getTotalTime();
         }
 
@@ -581,7 +1083,12 @@ namespace karri::stats {
             pbnsAssignmentsStats.clear();
             palsAssignmentsStats.clear();
             dalsAssignmentsStats.clear();
+            ellipseReconstructionStats.clear();
+            ordinaryTransferStats.clear();
+            transferALSPVehStats.clear();
+            transferALSDVehStats.clear();
             updateStats.clear();
+            costStats.clear();
         }
 
         static constexpr auto LOGGER_NAME = "perf_overall.csv";
@@ -595,6 +1102,10 @@ namespace karri::stats {
                 "pbns_assignments_time,"
                 "pals_assignments_time,"
                 "dals_assignments_time,"
+                "ellipse_reconstruction_time,"
+                "transf_ord_time,"
+                "transf_als_pveh_time,"
+                "transf_als_dveh_time,"
                 "update_time,"
                 "total_time\n";
 
@@ -610,6 +1121,10 @@ namespace karri::stats {
                << pbnsAssignmentsStats.getTotalTime() << ", "
                << palsAssignmentsStats.getTotalTime() << ", "
                << dalsAssignmentsStats.getTotalTime() << ", "
+               << ellipseReconstructionStats.getTotalTime() << ", "
+               << ordinaryTransferStats.getTotalTime() << ", "
+               << transferALSPVehStats.getTotalTime() << ", "
+               << transferALSDVehStats.getTotalTime() << ", "
                << updateStats.getTotalTime() << ", "
                << getTotalTime();
             return ss.str();

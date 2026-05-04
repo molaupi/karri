@@ -33,7 +33,7 @@
 namespace karri {
 
 // Finds pickup-after-last-stop (PALS) insertions using the encapsulated strategy.
-    template<typename InputGraphT, typename PDDistancesT, typename StrategyT, typename LastStopsAtVerticesT>
+    template<typename InputGraphT, typename StrategyT, typename LastStopsAtVerticesT>
     class PALSAssignmentsFinder {
 
     public:
@@ -49,7 +49,7 @@ namespace karri {
                   routeState(routeState),
                   requestState(requestState) {}
 
-        void findAssignments(const PDDistancesT& pdDistances) {
+        void findAssignments(const PDDistances& pdDistances) {
             findAssignmentsWherePickupCoincidesWithLastStop(pdDistances);
             strategy.tryPickupAfterLastStop(pdDistances);
         }
@@ -62,7 +62,7 @@ namespace karri {
 
         // Simple case for pickups that coincide with last stops of vehicles is the same regardless of strategy, so it
         // is treated here.
-        void findAssignmentsWherePickupCoincidesWithLastStop(const PDDistancesT& pdDistances) {
+        void findAssignmentsWherePickupCoincidesWithLastStop(const PDDistances& pdDistances) {
             int numInsertionsForCoinciding = 0;
             int numCandidateVehiclesForCoinciding = 0;
             Timer timer;

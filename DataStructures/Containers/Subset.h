@@ -41,6 +41,14 @@ class Subset {
     elements.reserve(size);
   }
 
+  void reserve(const int capacity) {
+    KASSERT(capacity >= 0);
+      if (capacity > elementsToIndices.size()) {
+            elementsToIndices.resize(capacity, INVALID_INDEX);
+            elements.reserve(capacity);
+      }
+  }
+
   // Returns an iterator referring to the first element in the subset.
   std::vector<int32_t>::const_iterator begin() const noexcept {
     return elements.begin();
@@ -89,7 +97,11 @@ class Subset {
     return elementsToIndices[element] != INVALID_INDEX;
   }
 
- private:
+    bool empty() const {
+        return elements.empty();
+    }
+
+private:
   std::vector<int32_t> elements;          // The elements contained in the subset.
   std::vector<int32_t> elementsToIndices; // The index in the element array of each element.
 };

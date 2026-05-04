@@ -25,7 +25,7 @@
 
 #pragma once
 
-
+#include <vector>
 #include "MinCostPairAfterLastStopQuery.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
@@ -42,13 +42,13 @@ namespace karri::PickupAfterLastStopStrategies {
             typename CHEnvT,
             typename LastStopBucketsEnvT,
             typename VehicleToPDLocQueryT,
-            typename PDDistancesT,
+            typename PDLabelSetT,
             typename FallbackLabelSetT>
     class CollectiveBCHStrategy {
 
-        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT>;
+        using MinCostPairAfterLastStopQueryInst = MinCostPairAfterLastStopQuery<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDLabelSetT>;
 
-        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsEnvT, PDDistancesT, FallbackLabelSetT>;
+        using FallbackIndividualBCHStrategy = IndividualBCHStrategy<InputGraphT, CHEnvT, LastStopBucketsEnvT, FallbackLabelSetT>;
 
     public:
 
@@ -57,7 +57,7 @@ namespace karri::PickupAfterLastStopStrategies {
                               const CHEnvT &chEnv,
                               VehicleToPDLocQueryT &vehicleToPDLocQuery,
                               const LastStopBucketsEnvT &lastStopBucketsEnv,
-                              const CostCalculator &calculator,
+                              CostCalculator &calculator,
                               const RouteState &routeState,
                               RequestState &requestState)
                 : inputGraph(inputGraph),
@@ -72,8 +72,8 @@ namespace karri::PickupAfterLastStopStrategies {
                   fallbackStrategy(inputGraph, fleet, chEnv, calculator, lastStopBucketsEnv, routeState,
                                    requestState, minCostSearch.getUpperBoundCostWithHardConstraints()) {}
 
-        void tryPickupAfterLastStop(const PDDistancesT& pdDistances) {
 
+        void tryPickupAfterLastStop(const PDDistances& pdDistances) {
 
             auto &stats = requestState.stats().palsAssignmentsStats;
             Timer timer;
@@ -102,9 +102,10 @@ namespace karri::PickupAfterLastStopStrategies {
                         promisingDropoffIds.push_back(dropoff.id);
                     }
                 }
-                assert(promisingDropoffIds.front() == 0); // Assert destination itself is always promising
+                KASSERT(promisingDropoffIds.front() == 0); // Assert destination itself is always promising
                 stats.collective_pickupVehDistQueryTime += vehicleToPDLocQuery.getRunTime();
             } else {
+                KASSERT(requestState.numDropoffs() >= 0);
                 promisingDropoffIds.resize(requestState.numDropoffs());
                 std::iota(promisingDropoffIds.begin(), promisingDropoffIds.end(), 0u);
             }
@@ -131,6 +132,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
 
             const int &minCost = minCostSearch.getBestCostWithoutConstraints();
+            unused(minCost);
             const auto &asgn = minCostSearch.getBestAssignment();
             if (!asgn.vehicle)
                 return;
@@ -140,8 +142,9 @@ namespace karri::PickupAfterLastStopStrategies {
             if (!isServiceTimeConstraintViolated(*asgn.vehicle, requestState, totalDetour, routeState)) {
                 // If assignment found by collective search adheres to service time constraint, we have found the
                 // best PALS assignment.
-                assert(calculator.calc(asgn, requestState) == minCost);
-                requestState.tryAssignmentWithKnownCost(asgn, minCost);
+                const auto cost = calculator.calc(asgn, requestState);
+                KASSERT(cost.total == minCost);
+                requestState.tryAssignmentWithKnownCost(asgn, cost);
 
                 const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
                 stats.tryAssignmentsTime += tryAssignmentsTime;
@@ -161,7 +164,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         const InputGraphT &inputGraph;
         const Fleet &fleet;
-        const CostCalculator &calculator;
+        CostCalculator &calculator;
         const CH &ch;
         const RouteState &routeState;
         RequestState &requestState;

@@ -95,7 +95,7 @@ namespace karri {
 
             const auto &requestIdsAtStop = requestIdsAt(idOfCompletedStop);
             const auto &pdLocTypesAtStop = pdLocTypesAt(idOfCompletedStop);
-            assert(requestIdsAtStop.size() == pdLocTypesAtStop.size());
+            KASSERT(requestIdsAtStop.size() == pdLocTypesAtStop.size());
             const auto numEvents = requestIdsAtStop.size();
 
             const auto stopCount = numCompletedStopsPerVeh[veh.vehicleId]++;
@@ -177,31 +177,31 @@ namespace karri {
         }
 
         ConstantVectorRange<int> requestIdsAt(const int stopId) const {
-            assert(stopId >= 0);
-            assert(stopId < eventIndexRange.size());
+            KASSERT(stopId >= 0);
+            KASSERT(stopId < eventIndexRange.size());
             const auto start = eventIndexRange[stopId].start;
             const auto end = eventIndexRange[stopId].end;
             return {requestIds.begin() + start, requestIds.begin() + end};
         }
 
         ConstantVectorRange<PDLocType> pdLocTypesAt(const int stopId) const {
-            assert(stopId >= 0);
-            assert(stopId < eventIndexRange.size());
+            KASSERT(stopId >= 0);
+            KASSERT(stopId < eventIndexRange.size());
             const auto start = eventIndexRange[stopId].start;
             const auto end = eventIndexRange[stopId].end;
             return {pdLocTypes.begin() + start, pdLocTypes.begin() + end};
         }
 
         void registerNewPDLocAtStop(const int stopId, const int requestId, const PDLocType type) {
-            assert(stopId >= 0);
-            assert(stopId < eventIndexRange.size());
+            KASSERT(stopId >= 0);
+            KASSERT(stopId < eventIndexRange.size());
             const auto idx = insertion(stopId, requestId, eventIndexRange, requestIds, pdLocTypes);
             pdLocTypes[idx] = type;
         }
 
         void invalidateEventDataFor(const int stopId) {
-            assert(stopId >= 0);
-            assert(stopId < eventIndexRange.size());
+            KASSERT(stopId >= 0);
+            KASSERT(stopId < eventIndexRange.size());
             removalOfAllCols(stopId, eventIndexRange, requestIds);
         }
 

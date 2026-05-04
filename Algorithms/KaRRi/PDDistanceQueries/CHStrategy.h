@@ -41,7 +41,6 @@ namespace karri::PDDistanceQueryStrategies {
 
         static constexpr int K = LabelSetT::K;
         using DistanceLabel = typename LabelSetT::DistanceLabel;
-        using PDDistancesT = PDDistances<LabelSetT>;
 
         CHStrategy(const InputGraphT &inputGraph, const CHEnvT &chEnv,
                     RequestState &requestState)
@@ -52,12 +51,12 @@ namespace karri::PDDistanceQueryStrategies {
 
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
-        PDDistancesT run() {
-            assert(requestState.pickups[0].loc == requestState.originalRequest.origin
+        PDDistances run() {
+            KASSERT(requestState.pickups[0].loc == requestState.originalRequest.origin
                    && requestState.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
 
-            PDDistancesT pdDistances(requestState);
+            PDDistances pdDistances(requestState.numPickups(), requestState.numDropoffs(), K);
 
             // Initialize distance from origin to dropoff
             pdDistances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);

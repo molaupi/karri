@@ -129,6 +129,20 @@ public:
             return isMarked[i / VECTOR_SIZE][i % VECTOR_SIZE];
         }
 
+        void set(const int i, const bool val) {
+            assert(i >= 0);
+            assert(i < K);
+            isMarked[i / VECTOR_SIZE][i % VECTOR_SIZE] = val;
+        }
+
+        std::array<int, K> toIntArray() const {
+            std::array<int, K> arr;
+            for (int i = 0; i < NUM_VECTORS; ++i) {
+                isMarked[i].store(arr.data() + i * VECTOR_SIZE);
+            }
+            return arr;
+        }
+
 //        // Returns true if this mask marks at least one component.
 //        operator bool() const {
 //            BooleanVector tmp = isMarked[0];
@@ -204,6 +218,20 @@ public:
             assert(i >= 0);
             assert(i < K);
             return values[i / VECTOR_SIZE].extract(i % VECTOR_SIZE);
+        }
+
+        // Copy K integer values starting at ptr into distance label. Make sure that there is no overlap between
+        // [ptr, ptr+K) and this label.
+        void load(int const * const ptr) {
+            for (int i = 0; i < NUM_VECTORS; ++i)
+                values[i].load(ptr + i * VECTOR_SIZE);
+        }
+
+        // Copy K integer values from this distance label into ptr. Make sure that there is no overlap between
+        // [ptr, ptr+K) and this label.
+        void store(int * const ptr) const {
+            for (int i = 0; i < NUM_VECTORS; ++i)
+                values[i].store(ptr + i * VECTOR_SIZE);
         }
 
         // Returns the packed sum of lhs and rhs.

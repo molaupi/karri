@@ -66,6 +66,7 @@ namespace karri {
             Timer timer;
             numLabelsPerStop = newNumPDLocs / K + (newNumPDLocs % K != 0);
 
+            KASSERT(maxStopId >= 0);
             if (maxStopId >= startOfRangeInValueArray.size()) {
                 startOfRangeInValueArray.resize(maxStopId + 1, INVALID_INDEX);
                 minDistToPDLoc.resize(maxStopId + 1);
@@ -99,7 +100,7 @@ namespace karri {
             // allocate the entry array for this stop, which is good since it will likely also be reachable by other PD locs.
             for (const auto &pdLocAtExistingStop: pdLocsAtExistingStops) {
                 const auto &vehId = pdLocAtExistingStop.vehId;
-                assert(pdLocAtExistingStop.stopIndex < routeState.numStopsOf(vehId));
+                KASSERT(pdLocAtExistingStop.stopIndex < routeState.numStopsOf(vehId));
                 const auto &stopId = routeState.stopIdsFor(vehId)[pdLocAtExistingStop.stopIndex];
                 const auto &stopVertex = inputGraph.edgeHead(
                         routeState.stopLocationsFor(vehId)[pdLocAtExistingStop.stopIndex]);
@@ -127,10 +128,10 @@ namespace karri {
         // allocation is not allowed).
         void updateDistanceFromStopToPDLoc(const int stopId, const unsigned int firstPDLocId,
                                                 const DistanceLabel newDistToPDLoc, const int meetingVertex) {
-            assert(stopId >= 0 && stopId <= maxStopId);
-            assert(firstPDLocId < numLabelsPerStop * K);
-            assert(firstPDLocId % K == 0);
-            assert(newDistToPDLoc.horizontalMin() >= 0 && newDistToPDLoc.horizontalMin() < INFTY);
+            KASSERT(stopId >= 0 && stopId <= maxStopId);
+            KASSERT(firstPDLocId < numLabelsPerStop * K);
+            KASSERT(firstPDLocId % K == 0);
+            KASSERT(newDistToPDLoc.horizontalMin() >= 0 && newDistToPDLoc.horizontalMin() < INFTY);
 
             // If no entries exist yet for this stop, perform the allocation.
             if (startOfRangeInValueArray[stopId] == INVALID_INDEX) {
@@ -178,7 +179,7 @@ namespace karri {
         }
 
         bool hasPotentiallyRelevantPDLocs(const int stopId) const {
-            assert(stopId <= maxStopId);
+            KASSERT(stopId <= maxStopId);
             return startOfRangeInValueArray[stopId] != INVALID_INDEX;
         }
 
@@ -192,7 +193,7 @@ namespace karri {
         public:
 
             int operator[](const unsigned int pdLocId) const {
-                assert(pdLocId / K < numLabelsPerStop);
+                KASSERT(pdLocId / K < numLabelsPerStop);
                 return labelBegin[pdLocId / K][pdLocId % K];
             }
 
@@ -208,48 +209,49 @@ namespace karri {
 
 
         PerPDLocFacade distancesToRelevantPDLocsFor(const int stopId) const {
-            assert(stopId <= maxStopId);
-            assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
+            KASSERT(stopId <= maxStopId);
+            KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
             const auto start = startOfRangeInValueArray[stopId];
-            assert(distToRelevantPDLocs.begin() + start + numLabelsPerStop <= distToRelevantPDLocs.end());
+            KASSERT(distToRelevantPDLocs.begin() + start + numLabelsPerStop <= distToRelevantPDLocs.end());
             return {distToRelevantPDLocs.begin() + start, numLabelsPerStop};
         }
 
         int minDistToRelevantPDLocsFor(const int stopId) const {
-            assert(stopId <= maxStopId);
-            assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
+            KASSERT(stopId <= maxStopId);
+            KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
             return minDistToPDLoc[stopId].horizontalMin();
         }
 
         PerPDLocFacade meetingVerticesToRelevantPDLocsFor(const int stopId) const requires StoreMeetingVertices {
-            assert(stopId <= maxStopId);
-            assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
+            KASSERT(stopId <= maxStopId);
+            KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
+
             const auto start = startOfRangeInValueArray[stopId];
-            assert(meetingVerticesToRelevantPDLocs.begin() + start + numLabelsPerStop <=
+            KASSERT(meetingVerticesToRelevantPDLocs.begin() + start + numLabelsPerStop <=
                    meetingVerticesToRelevantPDLocs.end());
             return {meetingVerticesToRelevantPDLocs.begin() + start, numLabelsPerStop};
         }
 
         PerPDLocFacade distancesFromRelevantPDLocsToNextStopOf(const int stopId) const {
-            assert(stopId <= maxStopId);
-            assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
+            KASSERT(stopId <= maxStopId);
+            KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
             const auto start = startOfRangeInValueArray[stopId];
-            assert(distFromRelevantPDLocsToNextStop.begin() + start + numLabelsPerStop <=
+            KASSERT(distFromRelevantPDLocsToNextStop.begin() + start + numLabelsPerStop <=
                    distFromRelevantPDLocsToNextStop.end());
             return {distFromRelevantPDLocsToNextStop.begin() + start, numLabelsPerStop};
         }
 
         int minDistFromPDLocToNextStopOf(const int stopId) const {
-            assert(stopId <= maxStopId);
-            assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
+            KASSERT(stopId <= maxStopId);
+            KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
             return minDistFromPDLocToNextStop[stopId].horizontalMin();
         }
 
         PerPDLocFacade meetingVerticesFromRelevantPDLocsToNextStopOf(const int stopId) const requires StoreMeetingVertices {
-            assert(stopId <= maxStopId);
-            assert(startOfRangeInValueArray[stopId] != INVALID_INDEX);
+            KASSERT(stopId <= maxStopId);
+            KASSERT(startOfRangeInValueArray[stopId] != INVALID_INDEX);
             const auto start = startOfRangeInValueArray[stopId];
-            assert(meetingVerticesFromRelevantPDLocsToNextStop.begin() + start + numLabelsPerStop <=
+            KASSERT(meetingVerticesFromRelevantPDLocsToNextStop.begin() + start + numLabelsPerStop <=
                    meetingVerticesFromRelevantPDLocsToNextStop.end());
             return {meetingVerticesFromRelevantPDLocsToNextStop.begin() + start, numLabelsPerStop};
         }
@@ -276,7 +278,7 @@ namespace karri {
     private:
 
         void allocateEntriesFor(const int stopId) {
-            assert(startOfRangeInValueArray[stopId] == INVALID_INDEX);
+            KASSERT(startOfRangeInValueArray[stopId] == INVALID_INDEX);
             const auto curNumLabels = distToRelevantPDLocs.size();
             startOfRangeInValueArray[stopId] = curNumLabels;
             stopIdsWithRelevantPDLocs.push_back(stopId);

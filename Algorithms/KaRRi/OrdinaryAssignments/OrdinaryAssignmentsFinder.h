@@ -2,6 +2,7 @@
 /// MIT License
 ///
 /// Copyright (c) 2023 Moritz Laupichler <moritz.laupichler@kit.edu>
+/// Copyright (c) 2024 Johannes Breitling <johannes.breitling@student.kit.edu>
 ///
 /// Permission is hereby granted, free of charge, to any person obtaining a copy
 /// of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +28,7 @@
 
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
+#include "Algorithms/KaRRi/BaseObjects/PD.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
 #include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
 
@@ -37,7 +39,6 @@ namespace karri {
 // are inserted between the same pair of existing stops.
 //
 // Works based on filtered relevant PD locs.
-    template<typename PDDistancesT>
     class OrdinaryAssignmentsFinder {
 
 
@@ -51,7 +52,7 @@ namespace karri {
                   requestState(requestState) {}
 
         void findAssignments(const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs,
-                             const PDDistancesT& pdDistances) {
+                             const PDDistances& pdDistances) {
             findOrdinaryAssignments(relPickups, relDropoffs);
             findOrdinaryPairedAssignments(pdDistances, relPickups, relDropoffs);
         }
@@ -80,7 +81,7 @@ namespace karri {
 //                    !relDropoffs.hasRelevantSpotsFor(vehId))
 //                    continue;
 
-                ++numCandidateVehicles;
+                ++numCandidateVehicles; 
                 Assignment asgn(&fleet[vehId]);
 
                 const auto relevantDropoffs = relDropoffs.relevantSpotsFor(vehId);
@@ -120,11 +121,11 @@ namespace karri {
         int tryDropoffLaterThanPickup(Assignment &asgn,
                                       const RelevantPDLocs::It &startItInRegularDropoffs,
                                       const RelevantPDLocs& relDropoffs) {
-            assert(asgn.vehicle && asgn.pickup);
+            KASSERT(asgn.vehicle && asgn.pickup);
             const auto &vehId = asgn.vehicle->vehicleId;
 
             const auto relevantDropoffs = relDropoffs.relevantSpotsFor(vehId);
-            assert(startItInRegularDropoffs >= relevantDropoffs.begin() &&
+            KASSERT(startItInRegularDropoffs >= relevantDropoffs.begin() &&
                    startItInRegularDropoffs <= relevantDropoffs.end());
 
             if (!relDropoffs.hasRelevantSpotsFor(vehId))
@@ -164,7 +165,7 @@ namespace karri {
         }
 
 
-        void findOrdinaryPairedAssignments(const PDDistancesT& pdDistances, const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs) {
+        void findOrdinaryPairedAssignments(const PDDistances& pdDistances, const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs) {
 
             Timer timer;
             int numAssignmentsTried = 0;
@@ -243,7 +244,7 @@ namespace karri {
                         const auto endOfStopInPickups = pickupIt;
                         const auto endOfStopInDropoffs = dropoffIt;
 
-                        // With collected lower bounds, we check whether an assignment better than the best known is possible with this vehicle
+                        // With collected lower bounds, we check whether an assignment is better than the best known is possible with this vehicle
                         asgn.pickup = &requestState.pickups[minPickupId];
                         asgn.dropoff = &requestState.dropoffs[minDropoffId];
                         asgn.pickupStopIdx = stopPos;
@@ -271,7 +272,7 @@ namespace karri {
                                 asgn.pickup = &requestState.pickups[pickupEntry.pdId];
                                 asgn.distToPickup = pickupEntry.distToPDLoc;
 
-                                assert(asgn.distToPickup < INFTY && asgn.distFromDropoff < INFTY);
+                                KASSERT(asgn.distToPickup < INFTY && asgn.distFromDropoff < INFTY);
                                 asgn.distToDropoff = pdDistances.getDirectDistance(*asgn.pickup, *asgn.dropoff);
                                 requestState.tryAssignment(asgn);
                                 ++numAssignmentsTried;
