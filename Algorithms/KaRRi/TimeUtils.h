@@ -1026,7 +1026,7 @@ namespace karri::time_utils {
                     if (nextStopId == afterDropoffStopId) {
                         nextArrTime += distViaDropoff;
                     } else {
-                        const auto legLength = schedDepTimes[i + 1] - schedArrTimes[i];
+                        const auto legLength = schedArrTimes[i + 1] - schedDepTimes[i];
                         nextArrTime += legLength;
                     }
                     newArrTimes[nextStopId] = std::max(newArrTimes[nextStopId], nextArrTime);

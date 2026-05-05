@@ -205,6 +205,10 @@ namespace karri {
             KASSERT(asgn.pVeh != nullptr);
             KASSERT(asgn.dVeh != nullptr);
 
+            if (requestState.originalRequest.requestId == 424) {
+                std::cout << "";
+            }
+
             const auto pVehId = asgn.pVeh->vehicleId;
             const auto dVehId = asgn.dVeh->vehicleId;
 
@@ -227,6 +231,13 @@ namespace karri {
                                       originalRequest.requestTime;
             const auto latestVehArrTimeAtDropoff = requestState.getHardConstraintMaxArrTimeAtDropoff(
                 asgn.dropoff, asgnTripTime);
+
+            const bool pickupAtExistingStop = isPickupAtExistingStop(asgn.pickup, pVehId, requestState.now(),
+                                                                     asgn.pickupIdx,
+                                                                     routeState);
+            const bool transferAtExistingStopPVeh = isTransferAtExistingStopPVeh(asgn, routeState);
+            const bool transferAtExistingStopDVeh = isTransferAtExistingStopDVeh(asgn, requestState.now(), routeState);
+            const bool dropoffAtExistingStopDVeh = isDropoffAtExistingStop(asgn, routeState);
             timer.restart();
 
             lastStopsWithChangedDepTime.clear();
@@ -284,12 +295,15 @@ namespace karri {
                 intermediateInsertedDVeh = true;
             }
 
-            KASSERT(validateRouteDistances(pVehId, intermediateInsertedPVeh? 1 : 0));
-            KASSERT(validateRouteDistances(dVehId, intermediateInsertedDVeh? 1 : 0));
-            KASSERT(routeState.assertRoutePVeh(asgn, requestState.originalRequest.requestTime, asgnDepTimeAtPickup,
-                transferAtStopPVeh, arrTimeAtTransferPoint));
-            KASSERT(routeState.assertRouteDVeh(asgn, requestState.originalRequest.requestTime, arrTimeAtTransferPoint,
-                depTimeAtTransferPoint, asgnArrTimeAtDropoff));
+            KASSERT(validateRouteDistances(pVehId, intermediateInsertedPVeh? 1 : 0), routeState.printRouteOf(pVehId));
+            KASSERT(validateRouteDistances(dVehId, intermediateInsertedDVeh? 1 : 0), routeState.printRouteOf(dVehId));
+            KASSERT(
+                routeState.assertRoutePVeh(asgn, intermediateInsertedPVeh, pickupAtExistingStop,
+                    transferAtExistingStopPVeh, asgnDepTimeAtPickup, arrTimeAtTransferPoint));
+            KASSERT(
+                routeState.assertRouteDVeh(asgn, intermediateInsertedDVeh, transferAtExistingStopDVeh,
+                    dropoffAtExistingStopDVeh, arrTimeAtTransferPoint,
+                    depTimeAtTransferPoint, asgnArrTimeAtDropoff));
 
 
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -711,7 +725,7 @@ namespace karri {
                 const auto distSchedule = schedArrTimes[i + 1] - schedDepTimes[i];
                 if (stopLocations[i] == stopLocations[i + 1]) {
                     if (distSchedule != 0) {
-                        KASSERT(false);
+                        KASSERT(false, routeState.printRouteOf(vehId));
                         return false;
                     }
                     continue;
@@ -724,7 +738,7 @@ namespace karri {
                 const auto distRecomputed = chQuery.getDistance() + offset;
 
                 if (distSchedule != distRecomputed) {
-                    KASSERT(false);
+                    KASSERT(false, routeState.printRouteOf(vehId));
                     return false;
                 }
             }

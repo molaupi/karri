@@ -33,31 +33,32 @@
 #include "Algorithms/KaRRi/InputConfig.h"
 #include "DataStructures/Labels/BasicLabelSet.h"
 #include "Algorithms/KaRRi/Stats/PerformanceStats.h"
-#include "DataStructures/Graph/Attributes/CarEdgeToPsgEdgeAttribute.h"
 
 namespace karri {
-    // This class finds every possible location suited for passenger pickups or dropoffs in a given radius around the
-    // origin or destination of a request. When queried, a local Dijkstra search bounded by the given radius is executed
-    // around the center point.
-    template<typename PassengerGraphT, typename WeightT = TravelTimeAttribute>
+
+
+// This class finds every possible location suited for passenger pickups or dropoffs in a given distance radius around
+// the origin or destination of a request. When queried, a local Dijkstra search bounded by the radius is executed
+// around the center point.
+    template<typename PassengerGraphT, typename WeightT = LengthAttribute>
     class FindPDLocsInRadiusQuery {
+
     private:
         struct StopWhenRadiusExceeded {
-            StopWhenRadiusExceeded(const int radius) : radius(radius) {
-            }
+            StopWhenRadiusExceeded(const int &radiusInMeters) : radiusInMeters(radiusInMeters) {}
 
             template<typename DistLabelT, typename DistLabelContainerT>
             bool operator()(const int, DistLabelT &distToV, const DistLabelContainerT & /*distLabels*/) {
-                return distToV[0] > radius;
+                return distToV[0] > radiusInMeters;
             }
 
         private:
-            const int radius;
+            const int &radiusInMeters;
         };
 
         struct RememberSearchSpace {
-            RememberSearchSpace(std::vector<int> &searchSpace) : searchSpace(searchSpace) {
-            }
+
+            RememberSearchSpace(std::vector<int> &searchSpace) : searchSpace(searchSpace) {}
 
             template<typename DistLabelT, typename DistLabelContT>
             bool operator()(const int v, DistLabelT &, const DistLabelContT &) {
@@ -67,89 +68,103 @@ namespace karri {
 
         private:
             std::vector<int> &searchSpace;
+
         };
 
-        using PickupSearch = Dijkstra<PassengerGraphT, WeightT, BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>,
-            StopWhenRadiusExceeded, RememberSearchSpace>;
-        using DropoffSearch = Dijkstra<PassengerGraphT, WeightT, BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>,
-            StopWhenRadiusExceeded, RememberSearchSpace>;
+        using PickupSearch = Dijkstra<PassengerGraphT, WeightT, BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>, StopWhenRadiusExceeded, RememberSearchSpace>;
+        using DropoffSearch = Dijkstra<PassengerGraphT, WeightT, BasicLabelSet<0, ParentInfo::NO_PARENT_INFO>, StopWhenRadiusExceeded, RememberSearchSpace>;
 
     public:
+
         FindPDLocsInRadiusQuery(const PassengerGraphT &forwardPsgGraph,
                                 const PassengerGraphT &reversePsgGraph)
-            : forwardGraph(forwardPsgGraph),
-              reverseGraph(reversePsgGraph),
-              pickupSearch(forwardPsgGraph, {InputConfig::getInstance().pickupRadius},
-                           {searchSpace}),
-              dropoffSearch(reversePsgGraph, {InputConfig::getInstance().dropoffRadius},
-                            {searchSpace}),
-              searchSpace(),
-              rand(seed) {
-        }
+                : forwardGraph(forwardPsgGraph),
+                  reverseGraph(reversePsgGraph),
+                  pickupSearch(forwardPsgGraph, {curRadiusInMeters},
+                               {searchSpace}),
+                  dropoffSearch(reversePsgGraph, {curRadiusInMeters},
+                                {searchSpace}),
+                  searchSpace(),
+                  rand(seed) {}
 
-        void findPickups(const int origin, std::vector<PDLoc> &pickups) {
-            assert(origin < forwardGraph.numEdges());
+        // Pickups will be collected into the given pickups vector and dropoffs will be collected into the given dropoffs vector
+        void findPDLocs(const int origin, const int destination,
+                        const int pickupWalkRadiusInMeters,
+                        const int dropoffWalkRadiusInMeters,
+                        const double walkingSpeedInMetersPerSecond,
+                        std::vector<PDLoc> &pickups, std::vector<PDLoc> &dropoffs) {
+            KASSERT(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
             pickups.clear();
-            if (InputConfig::getInstance().pickupRadius == 0) {
+            dropoffs.clear();
+
+            if (pickupWalkRadiusInMeters == 0) {
                 pickups.push_back({0, forwardGraph.toCarEdge(origin), origin, 0, INFTY, INFTY});
-                return;
+            } else {
+                searchSpace.clear();
+                auto headOfOriginEdge = forwardGraph.edgeHead(origin);
+                curRadiusInMeters = pickupWalkRadiusInMeters;
+                pickupSearch.run(headOfOriginEdge);
+                turnSearchSpaceIntoPickupLocations(pickups, pickupWalkRadiusInMeters, walkingSpeedInMetersPerSecond);
             }
-            searchSpace.clear();
-            auto headOfOriginEdge = forwardGraph.edgeHead(origin);
-            pickupSearch.run(headOfOriginEdge);
-            turnSearchSpaceIntoPickupLocations(pickups);
+
+            if (dropoffWalkRadiusInMeters == 0) {
+                dropoffs.push_back({0, forwardGraph.toCarEdge(destination), destination, 0, INFTY, INFTY});
+            } else {
+                searchSpace.clear();
+                auto tailOfDestEdge = forwardGraph.edgeTail(destination);
+                auto destOffset = forwardGraph.template get<WeightT>(destination);
+                curRadiusInMeters = dropoffWalkRadiusInMeters;
+                dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
+                turnSearchSpaceIntoDropoffLocations(dropoffs, dropoffWalkRadiusInMeters, walkingSpeedInMetersPerSecond);
+            }
 
             finalizePDLocs(origin, pickups, InputConfig::getInstance().maxNumPickups);
-        }
-
-        void findDropoffs(const int destination, std::vector<PDLoc> &dropoffs) {
-            assert(destination < forwardGraph.numEdges());
-            dropoffs.clear();
-            if (InputConfig::getInstance().dropoffRadius == 0) {
-                dropoffs.push_back({0, forwardGraph.toCarEdge(destination), destination, 0, INFTY, INFTY});
-                return;
-            }
-            searchSpace.clear();
-            auto tailOfDestEdge = forwardGraph.edgeTail(destination);
-            auto destOffset = forwardGraph.travelTime(destination);
-            dropoffSearch.runWithOffset(tailOfDestEdge, destOffset);
-            turnSearchSpaceIntoDropoffLocations(dropoffs);
-
             finalizePDLocs(destination, dropoffs, InputConfig::getInstance().maxNumDropoffs);
         }
 
     private:
-        void turnSearchSpaceIntoPickupLocations(std::vector<PDLoc> &pickups) {
+
+        void turnSearchSpaceIntoPickupLocations(std::vector<PDLoc> &pickups,
+                                                const int pickupWalkRadiusInMeters,
+                                                const double walkingSpeedInMetersPerSecond) {
             for (const auto &v: searchSpace) {
                 const auto distToV = pickupSearch.getDistance(v);
-                KASSERT(distToV <= InputConfig::getInstance().pickupRadius);
+                KASSERT(distToV <= pickupWalkRadiusInMeters);
                 FORALL_INCIDENT_EDGES(forwardGraph, v, e) {
+                    const int walkDistance = distToV + forwardGraph.template get<WeightT>(e);
                     const int eInVehGraph = forwardGraph.toCarEdge(e);
                     if (eInVehGraph == PsgEdgeToCarEdgeAttribute::defaultValue() ||
-                        distToV + forwardGraph.travelTime(e) > InputConfig::getInstance().pickupRadius)
+                        walkDistance > pickupWalkRadiusInMeters)
                         continue;
 
-                    pickups.push_back({INVALID_ID, eInVehGraph, e, distToV + forwardGraph.travelTime(e), INFTY, INFTY});
+
+                    const int walkTime = static_cast<int>(std::round(10.0 * static_cast<double>(walkDistance) /
+                                                                     walkingSpeedInMetersPerSecond));
+                    pickups.push_back({INVALID_ID, eInVehGraph, e, walkTime, INFTY, INFTY});
                 }
             }
         }
 
-        void turnSearchSpaceIntoDropoffLocations(std::vector<PDLoc> &dropoffs) {
+        void turnSearchSpaceIntoDropoffLocations(std::vector<PDLoc> &dropoffs,
+                                                 const int dropoffWalkRadiusInMeters,
+                                                 const double walkingSpeedInMetersPerSecond) {
             for (const auto &v: searchSpace) {
                 const auto distToV = dropoffSearch.getDistance(v);
-                KASSERT(distToV <= InputConfig::getInstance().dropoffRadius);
+                KASSERT(distToV <= dropoffWalkRadiusInMeters);
                 FORALL_INCIDENT_EDGES(reverseGraph, v, e) {
                     const auto eInForwGraph = reverseGraph.edgeId(e);
                     const int eInVehGraph = forwardGraph.toCarEdge(eInForwGraph);
                     if (eInVehGraph == PsgEdgeToCarEdgeAttribute::defaultValue())
                         continue;
-                    dropoffs.push_back({INVALID_ID, eInVehGraph, eInForwGraph, distToV, INFTY, INFTY});
+                    const int walkTime = static_cast<int>(std::round(10.0 * static_cast<double>(distToV) /
+                                                                     walkingSpeedInMetersPerSecond));
+                    dropoffs.push_back({INVALID_ID, eInVehGraph, eInForwGraph, walkTime, INFTY, INFTY});
                 }
             }
         }
 
         void finalizePDLocs(const int centerInPsgGraph, std::vector<PDLoc> &pdLocs, const int maxNumber) {
-            KASSERT(maxNumber > 0);
+            assert(maxNumber > 0);
             // Add center to PD locs
             const int nextSeqId = pdLocs.size();
             const int centerInVehGraph = forwardGraph.toCarEdge(centerInPsgGraph);
@@ -161,7 +176,7 @@ namespace karri {
             // Make sure center is at beginning
             auto centerIt = std::find_if(pdLocs.begin(), pdLocs.end(),
                                          [centerInVehGraph](const auto &h) { return h.loc == centerInVehGraph; });
-            KASSERT(centerIt < pdLocs.end());
+            assert(centerIt < pdLocs.end());
             const auto idx = centerIt - pdLocs.begin();
             std::swap(pdLocs[0], pdLocs[idx]);
 
@@ -175,7 +190,6 @@ namespace karri {
             }
 
             const int desiredSize = std::min(static_cast<int>(pdLocs.size()), maxNumber);
-            KASSERT(desiredSize >= 0);
             pdLocs.resize(desiredSize);
 
             // Assign sequential ids
@@ -183,7 +197,7 @@ namespace karri {
                 pdLocs[i].id = i;
             }
 
-            KASSERT(sanityCheckPDLocs(pdLocs, centerInVehGraph));
+            assert(sanityCheckPDLocs(pdLocs, centerInVehGraph));
         }
 
         // Remove duplicate PDLocs.
@@ -212,6 +226,9 @@ namespace karri {
 
         const PassengerGraphT &forwardGraph;
         const PassengerGraphT &reverseGraph;
+
+        int curRadiusInMeters;
+
         PickupSearch pickupSearch;
         DropoffSearch dropoffSearch;
 
@@ -224,40 +241,37 @@ namespace karri {
 
     // Initializes the pickup and dropoff locations for a new request.
     template<typename VehInputGraphT,
-        typename PsgInputGraphT,
-        typename VehicleToPDLocQueryT>
+            typename PsgInputGraphT,
+            typename VehicleToPDLocQueryT>
     class PDLocsFinder {
+
     public:
         PDLocsFinder(const VehInputGraphT &vehInputGraph, const PsgInputGraphT &psgInputGraph,
                      const PsgInputGraphT &revPsgGraph,
                      VehicleToPDLocQueryT &vehicleToPdLocQuery)
-            : vehInputGraph(vehInputGraph), psgInputGraph(psgInputGraph),
-              findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph),
-              vehicleToPdLocQuery(vehicleToPdLocQuery) {
-        }
+                : vehInputGraph(vehInputGraph), psgInputGraph(psgInputGraph),
+                  findPdLocsInRadiusQuery(psgInputGraph, revPsgGraph),
+                  vehicleToPdLocQuery(vehicleToPdLocQuery) {}
 
 
-        PDLocs findPDLocs(const int origin, const int destination, stats::InitializationPerformanceStats &stats) {
+        PDLocs findPDLocs(const int origin, const int destination,
+                          const int pickupWalkRadiusInMeters,
+                          const int dropoffWalkRadiusInMeters,
+                          const double walkingSpeedInMetersPerSecond,
+                          stats::InitializationPerformanceStats &stats) {
             Timer timer;
 
-            PDLocs pdLocs;
-            if (vehInputGraph.toPsgEdge(origin) != CarEdgeToPsgEdgeAttribute::defaultValue()) {
-                KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(origin)) == origin);
-                const auto originInPsgGraph = vehInputGraph.toPsgEdge(origin);
-                findPdLocsInRadiusQuery.findPickups(originInPsgGraph, pdLocs.pickups);
-            } else {
-                // If the origin is not accessible on foot, the origin is the only pickup location.
-                pdLocs.pickups = {{0, origin, INVALID_EDGE, 0, INFTY, INFTY}};
-            }
+            KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(origin)) == origin);
+            const auto originInPsgGraph = vehInputGraph.toPsgEdge(origin);
 
-            if (vehInputGraph.toPsgEdge(destination) != CarEdgeToPsgEdgeAttribute::defaultValue()) {
-                KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(destination)) == destination);
-                const auto destInPsgGraph = vehInputGraph.toPsgEdge(destination);
-                findPdLocsInRadiusQuery.findDropoffs(destInPsgGraph, pdLocs.dropoffs);
-            } else {
-                // If the destination is not accessible on foot, the destination is the only dropoff location.
-                pdLocs.dropoffs = {{0, destination, INVALID_EDGE, 0, INFTY, INFTY}};
-            }
+            KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(destination)) == destination);
+            const auto destInPsgGraph = vehInputGraph.toPsgEdge(destination);
+
+            PDLocs pdLocs;
+            findPdLocsInRadiusQuery.findPDLocs(originInPsgGraph, destInPsgGraph, pickupWalkRadiusInMeters,
+                                               dropoffWalkRadiusInMeters, walkingSpeedInMetersPerSecond,
+                                               pdLocs.pickups, pdLocs.dropoffs);
+
 
             const auto findHaltingSpotsTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.findPDLocsInRadiusTime = findHaltingSpotsTime;
@@ -273,7 +287,9 @@ namespace karri {
             return pdLocs;
         }
 
+
     private:
+
         const VehInputGraphT &vehInputGraph;
         const PsgInputGraphT &psgInputGraph;
 

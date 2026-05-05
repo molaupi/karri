@@ -94,7 +94,7 @@ namespace karri {
         RequestState findBestAssignment(const Request &req) {
 
             // Initialize finder for this request:
-            auto pdLocs = pdLocsInRadiusQuery.findPDLocs(req.origin, req.destination, reqState.stats().initializationStats);
+            PDLocs pdLocs = pdLocsInRadiusQuery.findPDLocs(req.origin, req.destination, req.maxPickupWalkingDist, req.maxDropoffWalkingDist, req.walkingSpeed, reqState.stats().initializationStats);
             requestStateInitializer.initializeRequestState(req);
             reqState.stats().numPickups = pdLocs.numPickups();
             reqState.stats().numDropoffs = pdLocs.numDropoffs();

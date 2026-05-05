@@ -30,20 +30,26 @@ namespace karri {
             const auto &request = requestState.originalRequest;
             const int originPsgEdge = vehInputGraph.toPsgEdge(request.origin);
             const int destPsgEdge = vehInputGraph.toPsgEdge(request.destination);
-            int walkingDist = INFTY;
+            int walkingTravelTime = INFTY;
             int travelTimeOfDestEdge = INFTY;
             if (originPsgEdge == destPsgEdge) {
-                walkingDist = 0;
+                walkingTravelTime = 0;
                 travelTimeOfDestEdge = 0;
             } else {
-                const int source = psgInputGraph.edgeHead(originPsgEdge);
-                const int target = psgInputGraph.edgeTail(destPsgEdge);
-                const int offset = psgInputGraph.travelTime(originPsgEdge);
-                psgChQuery.run(psgCh.rank(source), psgCh.rank(target));
-                walkingDist = psgChQuery.getDistance() + offset;
-                travelTimeOfDestEdge = offset;
+                const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originPsgEdge));
+                const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destPsgEdge));
+                const int destOffset = psgInputGraph.length(destPsgEdge);
+                KASSERT(destOffset >= 0 && destOffset < INFTY);
+                psgChQuery.run(originHeadRank, destTailRank);
+                const auto totalWalkingDist = psgChQuery.getDistance() + destOffset; // Distance in m
+                KASSERT(totalWalkingDist >= 0 && totalWalkingDist < INFTY);
+                // Convert distances to travel times according to rider-specific walking speed
+                walkingTravelTime = static_cast<int>(
+                    std::round(10.0 * static_cast<double>(totalWalkingDist) / request.walkingSpeed));
+                travelTimeOfDestEdge = static_cast<int>(
+                    std::round(10.0 * static_cast<double>(destOffset) / request.walkingSpeed));
             }
-            const WalkingResult res = {walkingDist, CostCalculator::calcCostForNotUsingVehicle(walkingDist, travelTimeOfDestEdge, requestState)};
+            const WalkingResult res = {walkingTravelTime, CostCalculator::calcCostForNotUsingVehicle(walkingTravelTime, travelTimeOfDestEdge, requestState)};
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             stats.notUsingVehicleTime += time;
             return res;
