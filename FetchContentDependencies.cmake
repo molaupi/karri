@@ -77,7 +77,14 @@ file(APPEND
 message("done.")
 
 
-if (USE_FETCHCONTENT_PROJ)
+if (USE_SYSTEM_PROJ)
+    message("Using system version of proj.")
+    FIND_LIBRARY(PROJ_LIBRARY proj)
+    if (NOT PROJ_LIBRARY)
+        message(WARNING "proj library not found. Please install proj or do not set USE_SYSTEM_PROJ (e.g. by using '-DUSE_SYSTEM_PROJ=OFF' in your CMake call) to fetch it automatically.")
+    endif ()
+else ()
+    message("Fetching proj library (This may take a while. To avoid this, install Proj on your system and set '-DUSE_SYSTEM_PROJ=ON' in your CMake call).")
 
     # Declare proj dependency
     FetchContent_Declare(
@@ -95,11 +102,4 @@ if (USE_FETCHCONTENT_PROJ)
     set(TESTING_USE_NETWORK OFF)
     FetchContent_MakeAvailable(proj)
     message("done.")
-
-else ()
-    message("Not fetching proj library, using system version.")
-    FIND_LIBRARY(PROJ_LIBRARY proj)
-    if (NOT PROJ_LIBRARY)
-        message(FATAL_ERROR "proj library not found. Please install proj or set USE_FETCHCONTENT_PROJ (e.g. by adding '-DUSE_FETCH_CONTENT_PROJ' to your CMake call) to fetch it automatically.")
-    endif ()
 endif ()
