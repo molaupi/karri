@@ -93,7 +93,6 @@ namespace karri::mode_choice {
                 });
             }
 
-            // TODO: adapt constraints
             const auto choice = criterion.apply(entries);
 
             logger << requestState.originalRequest.requestId << ","

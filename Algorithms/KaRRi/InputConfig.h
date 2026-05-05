@@ -44,19 +44,21 @@ namespace karri {
         InputConfig(InputConfig const&) = delete;
         void operator=(InputConfig const&) = delete;
 
-        int maxWaitTime = -1;
         int stopTime = -1;
         int pickupRadius = -1;
         int dropoffRadius = -1;
         int maxNumPickups = -1;
         int maxNumDropoffs = -1;
-        double alpha = -1.0;
-        int beta = -1;
-        double epsilon = -1.0;
-        int phi = -1;
-        bool alwaysUseVehicle = false;
+        int hardConstraintMaxAddedWaitTime = -1;
+        double hardConstraintAlpha = -1.0;
+        int hardConstraintBeta = -1;
         bool includeTransfers = false;
         bool includeOrdinaryTransfers = false;
+
+        // Not implemented
+        int softConstraintMaxWaitTime = INFTY;
+        double softConstraintAlpha = 1.0;
+        int softConstraintBeta = INFTY;
     };
 
 }

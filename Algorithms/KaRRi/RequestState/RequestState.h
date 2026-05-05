@@ -69,26 +69,33 @@ namespace karri {
             return originalRequest.requestTime;
         }
 
-        int getOriginalReqMaxTripTime() const {
-            KASSERT(originalReqDirectDist >= 0);
-            return static_cast<int>(InputConfig::getInstance().alpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().beta;
-        }
-
         int getPassengerArrAtPickup(const PDLoc &pickup) const {
             return originalRequest.requestTime + pickup.walkingDist;
         }
 
-        int getMaxPDTripTime(const PDLoc &pickup, const PDLoc &dropoff) const {
-            assert(originalReqDirectDist >= 0);
-            return getOriginalReqMaxTripTime() - (pickup.walkingDist + dropoff.walkingDist);
+        int getSoftConstraintMaxTripTime() const {
+            // Not implemented
+            // return static_cast<int>(InputConfig::getInstance().softConstraintAlpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().softConstraintBeta;
+            return INFTY;
         }
 
-        int getMaxArrTimeAtDropoff(const PDLoc &pickup, const PDLoc &dropoff) const {
-            return getPassengerArrAtPickup(pickup) + getMaxPDTripTime(pickup, dropoff);
+        int getSoftConstraintMaxDepTimeAtPickup() const {
+            // Not implemented
+            // return originalRequest.requestTime + InputConfig::getInstance().softConstraintMaxWaitTime;
+            return INFTY;
         }
 
-        int getMaxDepTimeAtPickup() const {
-            return originalRequest.requestTime + InputConfig::getInstance().maxWaitTime;
+        int getHardConstraintMaxTripTime(const int asgnTripTime) const {
+            return static_cast<int>(InputConfig::getInstance().hardConstraintAlpha * static_cast<double>(asgnTripTime)) + InputConfig::getInstance().hardConstraintBeta;
+        }
+
+        int getHardConstraintMaxArrTimeAtDropoff(const PDLoc& dropoff, const int asgnTripTime) const {
+            return originalRequest.requestTime + getHardConstraintMaxTripTime(asgnTripTime) - dropoff.walkingDist;
+        }
+
+        int getHardConstraintMaxDepTimeAtPickup(const int asgnDepTimeAtPickup) const {
+            KASSERT(asgnDepTimeAtPickup >= originalRequest.requestTime);
+            return asgnDepTimeAtPickup + InputConfig::getInstance().hardConstraintMaxAddedWaitTime;
         }
 
         const Assignment &getBestAssignmentWithoutTransfer() const {

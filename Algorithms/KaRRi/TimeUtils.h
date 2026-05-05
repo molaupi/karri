@@ -108,18 +108,6 @@ namespace karri::time_utils {
         return std::max(minVehicleDepTimeAtPickup, context.getPassengerArrAtPickup(pickup));
     }
 
-//    template<typename RequestContext>
-//    static INLINE int getActualDepTimeAtTransfer(const AssignmentWithTransfer &asgn, const RequestContext &context,
-//                                                 const RouteState &routeState) {
-//        const bool atStop = isTransferAtExistingStopDVeh(asgn, context.originalRequest.requestTime, routeState);
-//
-//        const auto minVehicleDepTimeAtTransfer =
-//                getVehDepTimeAtStopForRequest(asgn.dVeh->vehicleId, asgn.transferIdxDVeh, context, routeState) +
-//                !atStop * (asgn.distToTransferDVeh + InputConfig::getInstance().stopTime);
-//
-//        return std::max(minVehicleDepTimeAtTransfer, asgn.arrAtTransferPoint);
-//    }
-
     template<typename RequestContext>
     static INLINE int
     getActualDepTimeAtPickup(const Assignment &asgn, const RequestContext &context, const RouteState &routeState) {

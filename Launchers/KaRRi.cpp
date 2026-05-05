@@ -157,12 +157,9 @@ inline void printUsage() {
             "  -r <file>              requests in CSV format.\n"
             "  -v <file>              vehicles in CSV format.\n"
             "  -s <sec>               stop time (in s). (dflt: 60s)\n"
-            "  -w <sec>               maximum wait time (in s). (dflt: 300s)\n"
-            "  -a <factor>            model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.7)\n"
-            "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 120)\n"
-            "  -e <factor>            model parameter epsilon for the trip time rejection threshold = e * OD-dist + f\n"
-            "                             set to 0 to reject no requests (default)\n"
-            "  -f <factor>            model parameter phi for the trip time rejection threshold = e * OD-dist + f (dflt: 120)\n"
+            "  -w <sec>               maximum wait time (in s). (dflt: 600s)\n"
+            "  -a <factor>            model parameter alpha for max trip time = a * OD-dist + b (dflt: 1.4)\n"
+            "  -b <seconds>           model parameter beta for max trip time = a * OD-dist + b (dflt: 600s)\n"
             "  -p-radius <sec>        walking radius (in s) for pickup locations around origin. (dflt: 300s)\n"
             "  -d-radius <sec>        walking radius (in s) for dropoff locations around destination. (dflt: 300s)\n"
             "  -max-num-p <int>       max number of pickup locations to consider, sampled from all in radius. Set to 0 for no limit (dflt).\n"
@@ -201,19 +198,16 @@ int main(int argc, char *argv[]) {
         // Parse the command-line options.
         InputConfig &inputConfig = InputConfig::getInstance();
         inputConfig.stopTime = clp.getValue<int>("s", 60) * 10;
-        inputConfig.maxWaitTime = clp.getValue<int>("w", 300) * 10;
-        inputConfig.pickupRadius = clp.getValue<int>("p-radius", inputConfig.maxWaitTime / 10) * 10;
-        inputConfig.dropoffRadius = clp.getValue<int>("d-radius", inputConfig.maxWaitTime / 10) * 10;
+        inputConfig.pickupRadius = clp.getValue<int>("p-radius", 300 / 10) * 10;
+        inputConfig.dropoffRadius = clp.getValue<int>("d-radius", 300 / 10) * 10;
         inputConfig.maxNumPickups = clp.getValue<int>("max-num-p", INFTY);
         inputConfig.maxNumDropoffs = clp.getValue<int>("max-num-d", INFTY);
-        inputConfig.alwaysUseVehicle = clp.isSet("always-veh");
         if (inputConfig.maxNumPickups == 0) inputConfig.maxNumPickups = INFTY;
         if (inputConfig.maxNumDropoffs == 0) inputConfig.maxNumDropoffs = INFTY;
-        inputConfig.alpha = clp.getValue<double>("a", 1.7);
+        inputConfig.hardConstraintMaxAddedWaitTime = clp.getValue<int>("w", 600) * 10;
+        inputConfig.hardConstraintAlpha = clp.getValue<double>("a", 1.4);
+        inputConfig.hardConstraintBeta = clp.getValue<int>("b", 600) * 10;
         inputConfig.includeTransfers = clp.getValue<int>("trans", 1);
-        inputConfig.beta = clp.getValue<int>("b", 120) * 10;
-        inputConfig.epsilon = clp.getValue<double>("e", 0.0);
-        inputConfig.phi = clp.getValue<int>("f", 120) * 10;
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");
@@ -349,10 +343,10 @@ int main(int argc, char *argv[]) {
         double allowPrivateCarProbability;
         io::CSVReader<5, io::trim_chars<' '> > reqFileReader(requestFileName);
         if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time",
+            reqFileReader.read_header(io::ignore_missing_column | io::ignore_extra_column, "pickup_spot", "dropoff_spot", "min_dep_time",
                                       "num_riders", "allow_private_car_probability");
         } else {
-            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time",
+            reqFileReader.read_header(io::ignore_missing_column | io::ignore_extra_column, "origin", "destination", "req_time",
                                       "num_riders", "allow_private_car_probability");
         }
 

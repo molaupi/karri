@@ -41,11 +41,16 @@ target_compile_definitions(karri PRIVATE KARRI_WALKING_COST_SCALE=${KARRI_WALKIN
 set(KARRI_VEH_COST_SCALE 1 CACHE STRING "Importance of vehicle travel times in cost function.")
 target_compile_definitions(karri PRIVATE KARRI_VEH_COST_SCALE=${KARRI_VEH_COST_SCALE})
 
-set(KARRI_WAIT_PENALTY_SCALE 1 CACHE STRING "Weights penalties for violating wait time soft constraint.")
+set(KARRI_WAIT_PENALTY_SCALE 0 CACHE STRING "Weights penalties for violating wait time soft constraint.")
 target_compile_definitions(karri PRIVATE KARRI_WAIT_PENALTY_SCALE=${KARRI_WAIT_PENALTY_SCALE})
 
-set(KARRI_TRIP_PENALTY_SCALE 10 CACHE STRING "Weights penalties for violating trip time soft constraint.")
+set(KARRI_TRIP_PENALTY_SCALE 0 CACHE STRING "Weights penalties for violating trip time soft constraint.")
 target_compile_definitions(karri PRIVATE KARRI_TRIP_PENALTY_SCALE=${KARRI_TRIP_PENALTY_SCALE})
+
+## If set, use this value as fixed seed for RNG in UtilityLogit. Use for debugging.
+if (DEFINED KARRI_LOGIT_FIXED_SEED)
+    target_compile_definitions(karri PRIVATE KARRI_LOGIT_FIXED_SEED=${KARRI_LOGIT_FIXED_SEED})
+endif (DEFINED KARRI_LOGIT_FIXED_SEED)
 
 # Use CCHs?
 option(KARRI_USE_CCHS "Use CCHs instead of standard CHs." OFF)

@@ -501,11 +501,8 @@ namespace karri {
             requestData[reqId].assignmentCost = cost;
             requestData[reqId].usingTransfer = true;
 
-            int pickupStopId, transferStopIdPVeh, transferStopIdDVeh, dropoffStopId;
             vehiclesWithChangesInRoute.clear();
-            systemStateUpdater.insertBestAssignmentWithTransfer(asgn, pickupStopId, transferStopIdPVeh,
-                                                                transferStopIdDVeh, dropoffStopId,
-                                                                vehiclesWithChangesInRoute);
+            systemStateUpdater.insertBestAssignmentWithTransfer(asgn, vehiclesWithChangesInRoute);
             systemStateUpdater.writePerformanceLogs();
 
             KASSERT(vehiclesWithChangesInRoute.contains(asgn.pVeh->vehicleId));
@@ -535,20 +532,6 @@ namespace karri {
 
         template<typename AssignmentFinderResponseT>
         void applyAssignment(const AssignmentFinderResponseT &asgnFinderResponse, const int reqId, const int) {
-            // if (asgnFinderResponse.isNotUsingVehicleBest()) {
-            //     riderState[reqId] = OTHER_MODE_TO_DESTINATION;
-            //     requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
-            //     requestData[reqId].depTimeAtPickup = occTime;
-            //     requestData[reqId].walkingTimeToPickup = 0;
-            //     requestData[reqId].walkingTimeFromDropoff = asgnFinderResponse.getNotUsingVehicleDist();
-            //     requestData[reqId].usingTransfer = false;
-            //     requestData[reqId].arrAtTransferPoint = INFTY;
-            //     requestData[reqId].depTimeAtTransfer = INFTY;
-            //     requestEvents.increaseKey(reqId, occTime + asgnFinderResponse.getNotUsingVehicleDist());
-            //     systemStateUpdater.writePerformanceLogs();
-            //     return;
-            // }
-
             const auto &bestAsgn = asgnFinderResponse.getBestAssignmentWithoutTransfer();
             if (!bestAsgn.vehicle || bestAsgn.pickup.id == INVALID_ID || bestAsgn.dropoff.id == INVALID_ID) {
                 riderState[reqId] = FINISHED;
@@ -561,11 +544,9 @@ namespace karri {
             requestData[reqId].walkingTimeFromDropoff = bestAsgn.dropoff.walkingDist;
             requestData[reqId].assignmentCost = asgnFinderResponse.getBestCost();
 
-            int pickupStopId, dropoffStopId;
             vehiclesWithChangesInRoute.clear();
-            systemStateUpdater.insertBestAssignment(pickupStopId, dropoffStopId, vehiclesWithChangesInRoute);
+            systemStateUpdater.insertBestAssignment(vehiclesWithChangesInRoute);
             systemStateUpdater.writePerformanceLogs();
-            KASSERT(pickupStopId >= 0 && dropoffStopId >= 0);
 
             KASSERT(vehiclesWithChangesInRoute.contains(bestAsgn.vehicle->vehicleId));
             for (const auto &vehId: vehiclesWithChangesInRoute) {
