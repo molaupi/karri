@@ -63,6 +63,8 @@ class DagShortestPaths {
     template<typename, typename, typename>
     friend class karri::SingleUpdatesEllipticBucketsEnvironment;
 
+  static constexpr int K = LabelSetT::K; // The number of labels per vertex.
+
 
  public:
   // Constructs a shortest-path search instance for the specified directed acyclic graph.
@@ -88,12 +90,38 @@ class DagShortestPaths {
     }
   }
 
-  // Runs a shortest-path search from s, with the distance of s initialized to the given offset.
-  void runWithOffset(const int s, const int offset) {
-    init(s, offset);
-    while (!queue.empty())
-      settleNextVertex();
+  // Used to update the pruning criterion for different runs of this search, e.g. to configure callbacks
+  PruningCriterionT &getPruningCriterion() {
+    return pruneSearch;
   }
+
+  const int &getNumVerticesSettled() const {
+    return numVerticesSettled;
+  }
+
+  const int &getNumEdgeRelaxations() const {
+      return numEdgeRelaxations;
+  }
+
+
+    // Runs a shortest-path search from s, with the distance of s initialized to the given offset.
+    void runWithOffset(const int s, const int offset) {
+        std::array<int, K> sources;
+        std::array<int, K> offsets;
+        sources.fill(s);
+        offsets.fill(offset);
+        init(sources, offsets);
+        while (!queue.empty())
+            settleNextVertex();
+    }
+
+    // Runs a shortest-path search from multiple sources s, with the distances of the sources initialized to the given
+    // offsets.
+    void runWithOffset(const std::array<int, K> &sources, const std::array<int, K> &offsets) {
+        init(sources, offsets);
+        while (!queue.empty())
+            settleNextVertex();
+    }
 
   // Returns the shortest-path distance to t.
   int getDistance(const int t) {
@@ -124,21 +152,27 @@ class DagShortestPaths {
     return parent.getReverseEdgePath(t);
   }
 
-    // Used to update the pruning criterion for different runs of this search, e.g. to configure callbacks
-    PruningCriterionT &getPruningCriterion() {
-        return pruneSearch;
-    }
-
  private:
-  // Resets the distance labels and inserts the source into the queue.
-  void init(const int s, const int offset = 0) {
-    distanceLabels.init();
-    queue.clear();
-    distanceLabels[s] = offset;
-    parent.setVertex(s, s, true);
-    parent.setEdge(s, INVALID_EDGE, true);
-    queue.insert(s, s);
-  }
+    // Resets the distance labels and inserts the source into the queue.
+    void init(const std::array<int, K> &sources, const std::array<int, K> &offsets = {}) {
+        numVerticesSettled = 0;
+        numEdgeRelaxations = 0;
+        distanceLabels.init();
+        queue.clear();
+
+        for (auto i = 0; i < K; ++i) {
+            const auto s = sources[i];
+            distanceLabels[s][i] = offsets[i];
+            parent.setVertex(s, s, true);
+            parent.setEdge(s, INVALID_EDGE, true);
+        }
+
+        for (auto i = 0; i < K; ++i) {
+            const auto s = sources[i];
+            if (!queue.contains(s))
+                queue.insert(s, s);
+        }
+    }
 
   // Removes the next vertex from the queue, relaxes its outgoing edges, and returns its ID.
   int settleNextVertex() {
@@ -175,4 +209,7 @@ class DagShortestPaths {
   ParentLabelCont parent;           // The parent information for each vertex.
   QueueT queue;                     // The priority queue of unsettled vertices.
   PruningCriterionT pruneSearch;    // The criterion used to prune the search.
+
+  int numVerticesSettled = 0;
+  int numEdgeRelaxations = 0;
 };

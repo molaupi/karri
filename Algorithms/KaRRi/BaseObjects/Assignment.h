@@ -28,7 +28,6 @@
 #include <cassert>
 
 #include "Vehicle.h"
-#include "Request.h"
 #include "PDLocs.h"
 
 namespace karri {
@@ -41,8 +40,8 @@ namespace karri {
 
         explicit Assignment(
                 const Vehicle *vehicle = nullptr,
-                const PDLoc& pickup = {},
-                const PDLoc& dropoff = {},
+                const PDLoc &pickup = {},
+                const PDLoc &dropoff = {},
                 const int pickupStopIdx = 0,
                 const int dropoffStopIdx = 0) noexcept
                 : vehicle(vehicle),
@@ -50,8 +49,8 @@ namespace karri {
                   dropoff(dropoff),
                   pickupStopIdx(pickupStopIdx),
                   dropoffStopIdx(dropoffStopIdx) {
-            assert(pickupStopIdx >= 0);
-            assert(dropoffStopIdx >= 0);
+            KASSERT(pickupStopIdx >= 0);
+            KASSERT(dropoffStopIdx >= 0);
         }
 
         Assignment(const Vehicle *vehicle,
@@ -68,17 +67,17 @@ namespace karri {
                   distFromPickup(distFromPickup),
                   distToDropoff(distToDropoff),
                   distFromDropoff(distFromDropoff) {
-            assert(pickupStopIdx >= 0);
-            assert(dropoffStopIdx >= 0);
-            assert(distToPickup >= 0);
-            assert(distFromPickup >= 0);
-            assert(distToDropoff >= 0);
-            assert(distFromDropoff >= 0);
+            KASSERT(pickupStopIdx >= 0);
+            KASSERT(dropoffStopIdx >= 0);
+            KASSERT(distToPickup >= 0);
+            KASSERT(distFromPickup >= 0);
+            KASSERT(distToDropoff >= 0);
+            KASSERT(distFromDropoff >= 0);
         }
 
         const Vehicle *vehicle = nullptr;
-        PDLoc pickup;
-        PDLoc dropoff;
+        PDLoc pickup = {};
+        PDLoc dropoff = {};
 
         int pickupStopIdx = INVALID_INDEX; // Pickup is inserted at or after stop with index pickupStopIdx in route of vehicle
         int dropoffStopIdx = INVALID_INDEX; // Dropoff is inserted at or after stop with index dropoffStopIdx in route of vehicle

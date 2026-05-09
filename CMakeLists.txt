@@ -2,7 +2,7 @@
 # MIT License
 #
 # Copyright (c) 2020 Valentin Buchhold
-# Copyright (c) 2023 Moritz Laupichler
+# Copyright (c) 2025 Moritz Laupichler
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -34,56 +34,37 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Flags when building for the Devel configuration.
 if (CMAKE_CXX_COMPILER_ID MATCHES GNU|Clang)
-    set(CMAKE_CXX_FLAGS_DEVEL -O3)
+  set(CMAKE_CXX_FLAGS_DEVEL -O3)
 endif ()
 if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Devel)
+  set(CMAKE_BUILD_TYPE Devel)
 endif ()
 
 # Enable the compiler to use extended instructions in generated code.
 if (CMAKE_CXX_COMPILER_ID MATCHES GNU|Clang)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 endif ()
 option(DISABLE_AVX "Disable use of instructions in the AVX extended instruction set." OFF)
 if (DISABLE_AVX)
-    if (CMAKE_CXX_COMPILER_ID MATCHES GNU|Clang)
-        message("Disabling use of AVX instructions.")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mno-avx")
-    endif ()
+  if (CMAKE_CXX_COMPILER_ID MATCHES GNU|Clang)
+    message("Disabling use of AVX instructions.")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mno-avx")
+  endif ()
 endif ()
 
 # Request warnings.
 if (CMAKE_CXX_COMPILER_ID MATCHES GNU)
-    set(FULL_WARNINGS "-Werror" "-Wfatal-errors" "-Wpedantic" "-pedantic-errors" "-Wall" "-Wextra" "-ftemplate-backtrace-limit=1" "-Wno-unknown-pragmas" "-Wno-sign-compare")
+  set(FULL_WARNINGS "-Werror" "-Wfatal-errors" "-Wpedantic" "-pedantic-errors" "-Wall" "-Wextra" "-ftemplate-backtrace-limit=1" "-Wno-unknown-pragmas" "-Wno-sign-compare")
 elseif (CMAKE_CXX_COMPILER_ID MATCHES Clang)
-    set(FULL_WARNINGS "-Werror" "-Wall" "-Wextra" "-pedantic-errors" "-ferror-limit=1" "-ftemplate-backtrace-limit=1" "-Wno-sign-compare")
+  set(FULL_WARNINGS "-Werror" "-Wall" "-Wextra" "-pedantic-errors" "-ferror-limit=1" "-ftemplate-backtrace-limit=1" "-Wno-sign-compare")
 endif ()
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-# Dependencies installed via package manager
-find_package(OpenMP)
-find_package(TBB REQUIRED)
+# Prerequisites that have to be installed externally:
+include(PrerequisiteDependencies.cmake)
 
-# Find HWLOC Library
-find_path(HWLOC_INCLUDE_DIR NAME hwloc.h
-        HINTS $ENV{HOME}/local/include /opt/local/include /usr/local/include /usr/include)
-find_library(HWLOC_LIBRARY NAME hwloc
-        HINTS $ENV{HOME}/local/lib64 $ENV{HOME}/local/lib /usr/local/lib64 /usr/local/lib /opt/local/lib64 /opt/local/lib /usr/lib64 /usr/lib
-)
-
-IF (HWLOC_INCLUDE_DIR AND HWLOC_LIBRARY)
-    message(STATUS "Found hwloc library: inc=${HWLOC_INCLUDE_DIR}, lib=${HWLOC_LIBRARY}")
-    add_library(hwloc UNKNOWN IMPORTED)
-    set_property(TARGET hwloc PROPERTY
-            IMPORTED_LOCATION ${HWLOC_LIBRARY})
-    target_include_directories(hwloc INTERFACE ${HWLOC_INCLUDE_DIR})
-ELSE ()
-    message(FATAL_ERROR "
-    HwLoc library not found. Install HwLoc on your system.")
-ENDIF ()
-
-# Dependencies from git submodules and bundled libraries
+# Dependencies from git submodules and bundled libraries:
 add_subdirectory(External)
 
 # Dependencies fetched at configure time:
@@ -92,5 +73,5 @@ include(FetchContentDependencies.cmake)
 # Targets for this project are defined in directories Launchers and RawData
 set(TARGETS_DIRECTORIES Launchers RawData)
 foreach (TAR_DIR ${TARGETS_DIRECTORIES})
-    add_subdirectory(${TAR_DIR})
+  add_subdirectory(${TAR_DIR})
 endforeach ()

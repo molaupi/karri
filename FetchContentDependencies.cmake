@@ -27,32 +27,32 @@ FetchContent_Declare(
         OVERRIDE_FIND_PACKAGE # Set so find_package(nlohmann_json) call in proj can redirect to this
 )
 
-## Declare proj dependency
-#FetchContent_Declare(
-#        proj
-#        URL https://download.osgeo.org/proj/proj-9.5.0.tar.gz
-#        URL_MD5 ac46b4e31562890d012ea6b31e579cf6
-#)
-
 # Fetch kassert
 message("Fetching kassert library...")
-if (NOT DEFINED KASSERT_ASSERTION_LEVEL)
+if (DEFINED KASSERT_ASSERTION_LEVEL)
+    message("KASSERT_ASSERTION_LEVEL manually set to ${KASSERT_ASSERTION_LEVEL}.")
+else ()
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        message("KASSERT_ASSERTION_LEVEL not manually set, setting it to 40 for build type Debug.")
         set(KASSERT_ASSERTION_LEVEL 40)
     else ()
+        message("KASSERT_ASSERTION_LEVEL not manually set, setting it to 20.")
         set(KASSERT_ASSERTION_LEVEL 20)
     endif ()
-endif()
-message("Using kassert assertion level ${KASSERT_ASSERTION_LEVEL}")
+endif ()
 FetchContent_MakeAvailable(kassert)
+message("done.")
 
 # Fetch fast-cpp-csv-parser (header only library, create interface target)
+message("Fetching fast_cpp_csv_parser library...")
 FetchContent_MakeAvailable(fast_cpp_csv_parser)
 FetchContent_GetProperties(fast_cpp_csv_parser SOURCE_DIR fast_cpp_csv_parser_SOURCE_DIR)
 add_library(fast_cpp_csv_parser INTERFACE)
 target_include_directories(fast_cpp_csv_parser SYSTEM INTERFACE ${fast_cpp_csv_parser_SOURCE_DIR})
+message("done.")
 
 # Fetch vectorclass (header only library, create interface target)
+message("Fetching vectorclass library...")
 FetchContent_MakeAvailable(vectorclass)
 FetchContent_GetProperties(vectorclass SOURCE_DIR vectorclass_SOURCE_DIR)
 add_library(vectorclass INTERFACE)
@@ -74,14 +74,31 @@ file(APPEND
         ${CMAKE_FIND_PACKAGE_REDIRECTS_DIR}/nlohmann_json-config-version.cmake
         "\n# Manually added PACKAGE_VERSION variable\nset(PACKAGE_VERSION ${nlohmann_json_VERSION})"
 )
+message("done.")
 
-## Fetch proj
-#message("Fetching proj library...")
-#set(BUILD_APPS OFF)
-#set(BUILD_TESTING OFF)
-#set(ENABLE_CURL OFF)
-#set(ENABLE_TIFF OFF)
-#set(TESTING_USE_NETWORK OFF)
-#FetchContent_MakeAvailable(proj)
+if (USE_SYSTEM_PROJ)
+    message("Using system version of proj.")
+    FIND_LIBRARY(PROJ_LIBRARY proj)
+    if (NOT PROJ_LIBRARY)
+        message(WARNING "proj library not found. Please install proj or do not set USE_SYSTEM_PROJ (e.g. by using '-DUSE_SYSTEM_PROJ=OFF' in your CMake call) to fetch it automatically.")
+    endif ()
+else ()
+    message("Fetching proj library (This may take a while. To avoid this, install Proj on your system and set '-DUSE_SYSTEM_PROJ=ON' in your CMake call).")
 
-find_library(PROJ_LIBRARY proj)
+    # Declare proj dependency
+    FetchContent_Declare(
+            proj
+            URL https://download.osgeo.org/proj/proj-9.5.0.tar.gz
+            URL_MD5 ac46b4e31562890d012ea6b31e579cf6
+    )
+
+    # Fetch proj
+    message("Fetching proj library...")
+    set(BUILD_APPS OFF)
+    set(BUILD_TESTING OFF)
+    set(ENABLE_CURL OFF)
+    set(ENABLE_TIFF OFF)
+    set(TESTING_USE_NETWORK OFF)
+    FetchContent_MakeAvailable(proj)
+    message("done.")
+endif ()

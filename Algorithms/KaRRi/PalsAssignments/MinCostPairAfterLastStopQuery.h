@@ -56,15 +56,15 @@ namespace karri::PickupAfterLastStopStrategies {
         typename CHEnvT,
         typename LastStopBucketsT,
         bool AreLastStopBucketsSorted,
-        typename PDDistancesT,
+    typename PDDistancesLabelSet,
         typename QueueT = AddressableQuadHeap,
         bool STALL_LABELS = false>
     class MinCostPairAfterLastStopQuery {
         using BucketContainer = LabelBucketContainer<PDPairAfterLastStopLabel>;
 
-        using PDDistanceLabel = typename PDDistancesT::DistanceLabel;
-        using PDLabelMask = typename PDDistancesT::LabelMask;
-        static constexpr int PD_K = PDDistancesT::K;
+        using PDDistanceLabel = typename PDDistancesLabelSet::DistanceLabel;
+        using PDLabelMask = typename PDDistancesLabelSet::LabelMask;
+        static constexpr int PD_K = PDDistancesLabelSet::K;
         static constexpr int INVALID_DIST = -1;
 
     public:
@@ -78,7 +78,7 @@ namespace karri::PickupAfterLastStopStrategies {
               oppositeGraph(ch.upwardGraph()),
               fleet(fleet),
               routeState(routeState),
-              calculator(routeState),
+              calculator(routeState, fleet),
               lastStopBuckets(lastStopBuckets),
               reverseLabelBuckets(inputGraph.numVertices()),
               reverseQueue(queryGraph.numVertices()),
@@ -89,7 +89,7 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         void run(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost,
-                 const RequestState &requestState, const PDDistancesT &pdDistances, const PDLocs &pdLocs) {
+                 const RequestState &requestState, const PDDistances &pdDistances, const PDLocs &pdLocs) {
             Timer timer;
 
             initQueryForRun(promisingDropoffIds, bestKnownCost, requestState, pdDistances, pdLocs);
@@ -165,7 +165,7 @@ namespace karri::PickupAfterLastStopStrategies {
         }
 
         void initQueryForRun(const std::vector<int> &promisingDropoffIds, const int &bestKnownCost,
-                             const RequestState &requestState, const PDDistancesT &pdDistances, const PDLocs &pdLocs) {
+                             const RequestState &requestState, const PDDistances &pdDistances, const PDLocs &pdLocs) {
             numLabelsRelaxed = 0;
             numEntriesScanned = 0;
             numInitialLabelsGenerated = 0;
@@ -190,7 +190,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 directDistsForInitialLabels.clear();
                 for (const auto &dropoffId: promisingDropoffIds) {
                     const auto &dropoff = pdLocs.dropoffs[dropoffId];
-                    const auto &directDistBatch = pdDistances.getDirectDistancesForBatchOfPickups(
+                    const auto &directDistBatch = pdDistances.getDirectDistancesForBatchOfPickups<PDDistanceLabel>(
                         pickupBatchIdx * PD_K, dropoffId);
                     checkDropoffForInitialLabelWithGivenPickupBatch(dropoff, directDistBatch, pdLocs);
                 }
@@ -208,8 +208,10 @@ namespace karri::PickupAfterLastStopStrategies {
                             continue;
 
                         const auto &dropoff = pdLocs.dropoffs[dropoffIdsForInitialLabels[i]];
+
                         if (pickup.loc == dropoff.loc)
                             continue;
+
                         PDPairAfterLastStopLabel initialLabel = {pickup.id, dropoff.id, directDist, pickupOffset};
                         ++numInitialLabelsGenerated;
 
@@ -282,7 +284,7 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto &pickup2 = pdLocs.pickups[label2.pickupId];
             const auto &dropoff2 = pdLocs.dropoffs[label2.dropoffId];
 
-            assert(dropoff1.id != dropoff2.id);
+            KASSERT(dropoff1.id != dropoff2.id);
             if (pickup1.id != pickup2.id || label1.distToPickup != label2.distToPickup)
                 return false;
 
@@ -360,7 +362,7 @@ namespace karri::PickupAfterLastStopStrategies {
             int costLowerBound;
             reverseQueue.min(v, costLowerBound);
             labelAtV = reverseLabelBuckets.closeMinOpenLabel(v);
-            assert(lowerBoundCostOfLabel(labelAtV, requestState, pdLocs) == costLowerBound);
+            KASSERT(lowerBoundCostOfLabel(labelAtV, requestState, pdLocs) == costLowerBound);
 
             // Check if this label can be pruned at v
             const bool pruned = STALL_LABELS && pruneLabel(v, labelAtV, pdLocs);
@@ -380,7 +382,6 @@ namespace karri::PickupAfterLastStopStrategies {
                     if (minCostOfLabelViaV > bestCostWithoutConstraints)
                         continue;
 
-
                     bool inserted = insertLabelAtVertexAndClean(w, reverseLabelBuckets, labelViaV, minCostOfLabelViaV,
                                                                 requestState, pdLocs);
 
@@ -398,10 +399,10 @@ namespace karri::PickupAfterLastStopStrategies {
             }
 
             // Update PQ of buckets for closing the min label at v.
-            if (reverseLabelBuckets.getBucketOf(v).open().size() == 0) {
+            if (reverseLabelBuckets.getBucketOf(v).open().empty()) {
                 int deletedV;
                 reverseQueue.deleteMin(deletedV, costLowerBound);
-                assert(v == deletedV && costLowerBound == lowerBoundCostOfLabel(labelAtV, requestState, pdLocs));
+                KASSERT(v == deletedV && costLowerBound == lowerBoundCostOfLabel(labelAtV, requestState, pdLocs));
             } else {
                 reverseQueue.increaseKey(
                     v, lowerBoundCostOfLabel(reverseLabelBuckets.minOpenLabel(v), requestState, pdLocs));
@@ -456,7 +457,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
             // Insert new label at the right spot into the open labels
             openLabels = bucketContainer.getBucketOf(vertex).open(); // open labels changed
-            if (openLabels.size() == 0) {
+            if (openLabels.empty()) {
                 bucketContainer.stableInsertOpenLabel(vertex, 0, newLabel);
                 return true;
             }
@@ -636,18 +637,18 @@ namespace karri::PickupAfterLastStopStrategies {
             // out that a PALS assignment better than the upper bound cost may exist.
             const auto costIgnoringHardConstraints = calculator.calcWithoutHardConstraints(asgn, requestState);
 
-            assert(bestCostWithoutConstraints <= upperBoundCostWithConstraints);
-            if (costIgnoringHardConstraints > bestCostWithoutConstraints)
+            KASSERT(bestCostWithoutConstraints <= upperBoundCostWithConstraints);
+            if (costIgnoringHardConstraints.total > bestCostWithoutConstraints)
                 return;
 
-            if (costIgnoringHardConstraints == bestCostWithoutConstraints) {
+            if (costIgnoringHardConstraints.total == bestCostWithoutConstraints) {
                 if (!breakCostTie(asgn, bestAsgn))
                     return;
             }
 
             // If the cost is better than the best known cost for the vehicle or if the costs are equal and the
             // determinism argument decides so, update the best pair to this pair.
-            bestCostWithoutConstraints = costIgnoringHardConstraints;
+            bestCostWithoutConstraints = costIgnoringHardConstraints.total;
             bestAsgn = asgn;
 
             // fullDistToPickup is an upper bound on the actual distance from the last stop of this vehicle to this
@@ -655,7 +656,7 @@ namespace karri::PickupAfterLastStopStrategies {
             // actual cost of an assignment with this vehicle, pickup and dropoff. This is also an upper bound on
             // the cost of the best assignment. We can use this upper bound to prune the search.
             const auto costWithHardConstraints = calculator.calc(asgn, requestState);
-            upperBoundCostWithConstraints = std::min(upperBoundCostWithConstraints, costWithHardConstraints);
+            upperBoundCostWithConstraints = std::min(upperBoundCostWithConstraints, costWithHardConstraints.total);
         }
 
         const InputGraphT &inputGraph;

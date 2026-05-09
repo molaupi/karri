@@ -66,6 +66,13 @@ namespace bidij {
 
 }
 
+
+// Forward declarations for friend
+namespace karri {
+    template<typename, typename>
+    class FindPDLocsInRadiusQuery;
+}
+
 // Implementation of a bidirectional search. Depending on the underlying Dijkstra implementation, it
 // keeps parent vertices and/or edges, and computes multiple shortest paths simultaneously,
 // optionally using SSE or AVX instructions. The algorithm can be used with different stopping
@@ -82,7 +89,7 @@ private:
 
     template<typename, typename>
     friend
-    class FindPDLocsInRadiusQuery;
+    class karri::FindPDLocsInRadiusQuery;
 
 public:
     using Graph = typename DijkstraT::Graph; // The graph on which we compute shortest paths.
@@ -136,12 +143,31 @@ public:
         bool advanceForward = false;
         while (!stoppingCriterion.stopForwardSearch() || !stoppingCriterion.stopReverseSearch()) {
             advanceForward = !advanceForward; // Alternate between the forward and reverse search.
-            if ((advanceForward && !stoppingCriterion.stopForwardSearch()) ||
-                stoppingCriterion.stopReverseSearch())
+            if ((advanceForward && !stoppingCriterion.stopForwardSearch()) || stoppingCriterion.stopReverseSearch())
                 updateTentativeDistances(forwardSearch.settleNextVertex());
             else
                 updateTentativeDistances(reverseSearch.settleNextVertex());
         }
+    }
+
+    int runAnyShortestPath(const std::vector<int> &sources, const std::vector<int> &targets, const std::vector<int>& targetOffsets) {
+        std::vector<int> sourceZeroOffsets(sources.size(), 0);
+        forwardSearch.init(sources, sourceZeroOffsets);
+        reverseSearch.init(targets, targetOffsets);
+
+        tentativeDistances = INFTY;
+        maxTentativeDistance = INFTY;
+        bool advanceForward = false;
+
+        while (!stoppingCriterion.stopForwardSearch() || !stoppingCriterion.stopReverseSearch()) {
+            advanceForward = !advanceForward; // Alternate between the forward and reverse search.
+            if ((advanceForward && !stoppingCriterion.stopForwardSearch()) || stoppingCriterion.stopReverseSearch())
+                updateTentativeDistances(forwardSearch.settleNextVertex());
+            else
+                updateTentativeDistances(reverseSearch.settleNextVertex());
+        }
+
+        return tentativeDistances[0];
     }
 
     // Returns the length of the i-th shortest path.
@@ -165,13 +191,32 @@ public:
         return reverseSearch.getReverseEdgePath(meetingVertices.vertex(i), i);
     }
 
+    int getNumEdgeRelaxations() const {
+        return forwardSearch.getNumEdgeRelaxations() + reverseSearch.getNumEdgeRelaxations();
+    }
+
+    int getNumVerticesSettled() const {
+        return forwardSearch.getNumVerticesSettled() + reverseSearch.getNumVerticesSettled();
+    }
+
+    DijkstraT &getForwardSearch() {
+        return forwardSearch;
+    }
+
+    DijkstraT &getReverseSearch() {
+        return reverseSearch;
+    }
+
 private:
     // Checks whether the path via v improves the tentative distance for any search.
     void updateTentativeDistances(const int v) {
         const auto distances = forwardSearch.distanceLabels[v] + reverseSearch.distanceLabels[v];
-        meetingVertices.setVertex(v, distances < tentativeDistances);
-        tentativeDistances.min(distances);
-        maxTentativeDistance = tentativeDistances.horizontalMax();
+        const auto improved = distances < tentativeDistances;
+        if (anySet(improved)) {
+            meetingVertices.setVertex(v, improved);
+            tentativeDistances.setIf(distances, improved);
+            maxTentativeDistance = tentativeDistances.horizontalMax();
+        }
     }
 
 

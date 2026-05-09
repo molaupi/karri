@@ -66,7 +66,7 @@ namespace karri {
 
             Bucket(const BucketPosition &bucketPos, const std::vector<BucketEntryT> &entries)
                     : bucketPos(bucketPos), entries(entries) {
-                assert(bucketPos.end >= bucketPos.start && bucketPos.end - bucketPos.start >= bucketPos.numClosed);
+                KASSERT(bucketPos.end >= bucketPos.start && bucketPos.end - bucketPos.start >= bucketPos.numClosed);
             }
 
             const BucketPosition &bucketPos;
@@ -75,65 +75,66 @@ namespace karri {
 
         LabelBucketContainer(const int numVertices)
                 : bucketPositions(numVertices, {0, 0, 0}), entries() {
-            assert(numVertices >= 0);
+            KASSERT(numVertices >= 0);
         }
 
         // Returns the bucket of the specified vertex.
         Bucket getBucketOf(const int vertex) {
-            assert(vertex >= 0);
-            assert(vertex < bucketPositions.size());
+            KASSERT(vertex >= 0);
+            KASSERT(vertex < bucketPositions.size());
             return Bucket(bucketPositions[vertex], entries);
         }
 
         // Inserts the given entry into the bucket of the specified vertex at the given index in the bucket.
         void stableInsertOpenLabel(const int vertex, const int index, const BucketEntryT &entry) {
             const int numClosed = bucketPositions[vertex].numClosed;
-            assert(bucketPositions[vertex].end - bucketPositions[vertex].start >= numClosed);
+            KASSERT(bucketPositions[vertex].end - bucketPositions[vertex].start >= numClosed);
             dynamic_ragged2d::stableInsertion(vertex, index + numClosed, entry, bucketPositions, entries);
+
         }
 
         // Stable removal of the entries at the specified indices. Range of indices has to be sorted. Indices mean the
         // position in the range of open labels of the bucket, not the whole bucket.
         template<typename IndexRangeT>
         void stableRemoveOpenLabelsAtIndices(const int vertex, const IndexRangeT &indices) {
-            assert(vertex >= 0);
-            assert(vertex < bucketPositions.size());
-            assert(std::all_of(indices.begin(), indices.end(),
+            KASSERT(vertex >= 0);
+            KASSERT(vertex < bucketPositions.size());
+            KASSERT(std::all_of(indices.begin(), indices.end(),
                                [&](const int idx) { return idx >= 0 && idx < getBucketOf(vertex).open().size(); }));
             const int numClosed = bucketPositions[vertex].numClosed;
-            assert(bucketPositions[vertex].end - bucketPositions[vertex].start >= numClosed);
+            KASSERT(bucketPositions[vertex].end - bucketPositions[vertex].start >= numClosed);
             auto indicesWithOffset = std::vector<int>(indices.begin(), indices.end());
             std::for_each(indicesWithOffset.begin(), indicesWithOffset.end(),
                           [numClosed](int &idx) { idx += numClosed; });
 
             dynamic_ragged2d::stableRemovalOfSortedCols(vertex, indicesWithOffset, bucketPositions, entries);
-            assert(bucketPositions[vertex].end >= bucketPositions[vertex].start &&
+            KASSERT(bucketPositions[vertex].end >= bucketPositions[vertex].start &&
                    bucketPositions[vertex].end - bucketPositions[vertex].start >= bucketPositions[vertex].numClosed);
         }
 
         // Returns the label in the bucket of vertex with the minimum cost.
         const BucketEntryT &minOpenLabel(const int vertex) {
-            assert(vertex >= 0);
-            assert(vertex < bucketPositions.size());
+            KASSERT(vertex >= 0);
+            KASSERT(vertex < bucketPositions.size());
             auto &bucketPos = bucketPositions[vertex];
-            assert(bucketPos.start + bucketPos.numClosed < bucketPos.end);
+            KASSERT(bucketPos.start + bucketPos.numClosed < bucketPos.end);
             return entries[bucketPos.start + bucketPos.numClosed];
         }
 
         // Closes the open label with the best cost at vertex and returns it.
         BucketEntryT closeMinOpenLabel(const int vertex) {
-            assert(vertex >= 0);
-            assert(vertex < bucketPositions.size());
+            KASSERT(vertex >= 0);
+            KASSERT(vertex < bucketPositions.size());
             auto &bucketPos = bucketPositions[vertex];
-            assert(bucketPos.start + bucketPos.numClosed < bucketPos.end);
+            KASSERT(bucketPos.start + bucketPos.numClosed < bucketPos.end);
             const auto minOpenLabel = entries[bucketPos.start + bucketPos.numClosed];
             ++bucketPos.numClosed;
             return minOpenLabel;
         }
 
         void clearBucket(const int vertex) {
-            assert(vertex >= 0);
-            assert(vertex < bucketPositions.size());
+            KASSERT(vertex >= 0);
+            KASSERT(vertex < bucketPositions.size());
             dynamic_ragged2d::removalOfAllCols(vertex, bucketPositions, entries);
             bucketPositions[vertex].numClosed = 0;
         }

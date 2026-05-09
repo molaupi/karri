@@ -78,15 +78,15 @@ namespace karri {
         }
 
         unsigned int getIdOfSpotClosestToVeh(const int vehId) const {
-            assert(vehId >= 0);
-            assert(vehId < idOfClosestSpotToVeh.size());
+            KASSERT(vehId >= 0);
+            KASSERT(vehId < idOfClosestSpotToVeh.size());
             return idOfClosestSpotToVeh[vehId];
         }
 
         // Get distance from last stop of given vehicle to the closest PDLoc as calculated in the last call to run.
         int getDistToClosestPDLocFromVeh(const int vehId) const {
-            assert(vehId >= 0);
-            assert(vehId < distVehToClosestSpot.size());
+            KASSERT(vehId >= 0);
+            KASSERT(vehId < distVehToClosestSpot.size());
             return distVehToClosestSpot[vehId];
         }
 

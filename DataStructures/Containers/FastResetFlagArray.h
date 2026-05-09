@@ -38,6 +38,7 @@ public:
 
     // Ensures that this container can hold the specified number of flags.
     void resize(const int size) {
+        KASSERT(size >= 0);
         const auto currentSize = timestamps.size();
         if (size < currentSize) {
             timestamps.erase(timestamps.begin() + size, timestamps.end());
@@ -64,6 +65,11 @@ public:
     void set(const int i) {
         assert(i < timestamps.size());
         timestamps[i] = clock;
+    }
+
+    void setIf(const int i, const bool condition) {
+        assert(i < timestamps.size());
+        timestamps[i] = condition * clock;
     }
 
     bool isSet(const int i) const {

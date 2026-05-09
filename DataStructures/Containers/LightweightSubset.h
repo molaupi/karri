@@ -42,7 +42,14 @@
 class LightweightSubset {
  public:
   // Constructs an empty subset of a finite set of the specified size.
-  explicit LightweightSubset(const int size) : hasElement(size) {}
+  explicit LightweightSubset(const int size) : hasElement(size) {
+      elements.reserve(size);
+  }
+
+  void swap(LightweightSubset &other) noexcept {
+    elements.swap(other.elements);
+    hasElement.swap(other.hasElement);
+  }
 
   // Returns an iterator referring to the first element in the subset.
   std::vector<int32_t>::const_iterator begin() const noexcept {
@@ -52,6 +59,24 @@ class LightweightSubset {
   // Returns the past-the-end iterator for the subset.
   std::vector<int32_t>::const_iterator end() const noexcept {
     return elements.end();
+  }
+  
+  // Returns an iterator referring to the first element in the subset.
+  // User is responsible for ensuring consistency of subset when working with this iterator.
+  // Changing the order of elements does not destroy consistency but changing any values does.
+  std::vector<int32_t>::iterator begin() noexcept {
+    return elements.begin();
+  }
+
+  // Returns the past-the-end iterator for the subset.
+  // User is responsible for ensuring consistency of subset when working with this iterator.
+  // Changing the order of elements does not destroy consistency but changing any values does.
+  std::vector<int32_t>::iterator end() noexcept {
+      return elements.end();
+  }
+
+  bool empty() const noexcept {
+    return elements.empty();
   }
 
   // Returns the number of elements in the subset.

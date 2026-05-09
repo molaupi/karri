@@ -9,31 +9,22 @@
 
 #include "types.h"
 
+#include "Tools/ThreadSafeRandom.h"
+
 namespace karri::mode_choice::utility_logit {
-/**
- * A simple Logit utility distribution function. Keeps utilities and probabilities vector as reused state. Utility
- * calculation is defined in external function. Probabilities are calculated for each option i as e^(U_i) / Sum e^(U_j)
- * for all options in the choice set.
- *
- */
+    /**
+     * A simple Logit utility distribution function. Keeps utilities and probabilities vector as reused state. Utility
+     * calculation is defined in external function. Probabilities are calculated for each option i as e^(U_i) / Sum e^(U_j)
+     * for all options in the choice set.
+     *
+     */
+
     template<typename T, typename P>
     class Logit {
         using UtilityFunction = std::function<double(const Attributes &, const P &)>;
 
-#ifdef KARRI_LOGIT_FIXED_SEED
-        static constexpr uint32_t FIXED_SEED = KARRI_LOGIT_FIXED_SEED;
-        static uint32_t getSeed() {
-            return FIXED_SEED;
-        }
-#else
-        static uint32_t getSeed() {
-            return std::random_device{}();
-        }
-
-#endif
 
     private:
-        const std::vector<T> &options;
         mutable std::vector<double> utilities;
         mutable std::vector<double> expUtilities;
         mutable std::vector<double> probabilities;
@@ -41,22 +32,21 @@ namespace karri::mode_choice::utility_logit {
         std::unordered_map<T, P> paramsMap;
 
         void flush() const {
-            for (size_t i = 0; i < options.size(); ++i) {
-                utilities[i] = -std::numeric_limits<double>::infinity();
-                expUtilities[i] = -std::numeric_limits<double>::infinity();
-                probabilities[i] = 0.0;
-            }
+            for (auto &u: utilities)
+                u = -std::numeric_limits<double>::infinity();
+            for (auto &eu: expUtilities)
+                eu = -std::numeric_limits<double>::infinity();
+            for (auto &p: probabilities)
+                p = 0.0;
         }
 
     public:
-        explicit Logit(UtilityFunction utility, const std::vector<T> &options,
-                       std::unordered_map<T, P> params) : options(options), utilities(options.size(),
-                                                                                      -std::numeric_limits<double>::infinity()),
-                                                          expUtilities(options.size(),
-                                                                       -std::numeric_limits<double>::infinity()),
-                                                          probabilities(options.size(), 0),
-                                                          utilityFunction(std::move(utility)),
-                                                          paramsMap(std::move(params)) {
+        explicit Logit(UtilityFunction utility, std::unordered_map<T, P> params)
+            : utilities(params.size(), -std::numeric_limits<double>::infinity()),
+              expUtilities(params.size(), -std::numeric_limits<double>::infinity()),
+              probabilities(params.size(), 0),
+              utilityFunction(std::move(utility)),
+              paramsMap(std::move(params)) {
         }
 
         T select(const std::vector<Alternative<T> > &elements) const {
@@ -64,10 +54,6 @@ namespace karri::mode_choice::utility_logit {
 
             double sum = 0.0;
             for (size_t i = 0; i < elements.size(); ++i) {
-                if (!elements[i].enabled) {
-                    expUtilities[i] = 0.0;
-                    continue;
-                }
                 const double utility = utilityFunction(elements[i].data, paramsMap.at(elements[i].option));
                 utilities[i] = utility;
                 const double expUtility = exp(utility);

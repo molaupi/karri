@@ -50,10 +50,12 @@
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
 #include "Algorithms/KaRRi/AssignmentFinder.h"
-
-
 #include "Algorithms/KaRRi/PDDistanceQueries/BCHStrategy.h"
 #include "Algorithms/KaRRi/PDDistanceQueries/CHStrategy.h"
+
+#include "Algorithms/KaRRi/TransferPoints/OrdinaryTransfers/DirectTransferDistances/BCHDirectTransferDistancesFinder.h"
+#include "Algorithms/KaRRi/TransferPoints/TransfersALS/TransfersALSPVeh/TransferALSPVehFinder.h"
+#include "Algorithms/KaRRi/TransferPoints/TransfersALS/TransfersALSDVeh/TransferALSDVehFinder.h"
 
 
 #if KARRI_PALS_STRATEGY == KARRI_COL
@@ -92,6 +94,7 @@ namespace karri {
         typename VehCHEnv,
         typename PsgCHEnv,
         typename EllipticBucketsT,
+        typename EllipticBucketsEnvT,
         bool AreEllipticBucketsSortedByRemainingLeeway,
         typename PDLocsAtExistingStopsFinderT,
         typename LastStopBucketsT,
@@ -105,8 +108,10 @@ namespace karri {
         const PsgInputGraph &revPsgGraph;
         const VehCHEnv &vehChEnv;
         const PsgCHEnv &psgChEnv;
+        const RPHASTEnvironment &vehRphastEnv;
         const EllipticBucketsT &ellipticSourceBuckets;
         const EllipticBucketsT &ellipticTargetBuckets;
+        const EllipticBucketsEnvT &ellipticBucketsEnv;
         const PDLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder;
         const LastStopBucketsT &lastStopBuckets;
         const LastStopAtVerticesInfo &lastStopAtVerticesInfo;
@@ -139,7 +144,6 @@ namespace karri {
         using PDDistancesLabelSet = std::conditional_t<KARRI_PD_DISTANCES_USE_SIMD,
             SimdLabelSet<KARRI_PD_DISTANCES_LOG_K, ParentInfo::NO_PARENT_INFO>,
             BasicLabelSet<KARRI_PD_DISTANCES_LOG_K, ParentInfo::NO_PARENT_INFO> >;
-        using PDDistancesImpl = PDDistances<PDDistancesLabelSet>;
 
         using FFPDDistanceQueryImpl = std::conditional_t<KARRI_PD_STRATEGY == KARRI_BCH_PD_STRAT,
             PDDistanceQueryStrategies::BCHStrategy<VehicleInputGraph, VehCHEnv, PDDistancesLabelSet>,
@@ -148,7 +152,7 @@ namespace karri {
 
         // todo: The OrdinaryAssignmentsFinder does not manage any large memory on its own, could be constructed
         //  on-the-fly for one less enumerable_thread_specific.
-        using OrdinaryAssignmentsFinderImpl = OrdinaryAssignmentsFinder<PDDistancesImpl>;
+        using OrdinaryAssignmentsFinderImpl = OrdinaryAssignmentsFinder;
         tbb::enumerable_thread_specific<OrdinaryAssignmentsFinderImpl> ordinaryInsertionsFinder;
 
         using CurVehLocToPickupLabelSet = PDDistancesLabelSet;
@@ -156,7 +160,7 @@ namespace karri {
             CurVehLocToPickupLabelSet>;
         tbb::enumerable_thread_specific<CurVehLocToPickupSearchesImpl> curVehLocToPickupSearches;
 
-        using PBNSInsertionsFinderImpl = PBNSAssignmentsFinder<VehicleInputGraph, PDDistancesImpl, CurVehLocToPickupSearchesImpl>;
+        using PBNSInsertionsFinderImpl = PBNSAssignmentsFinder<VehicleInputGraph, CurVehLocToPickupSearchesImpl>;
         tbb::enumerable_thread_specific<PBNSInsertionsFinderImpl> pbnsInsertionsFinder;
 
 
@@ -168,14 +172,14 @@ namespace karri {
 
         // Use Collective-BCH PALS Strategy
         using PALSStrategy = PickupAfterLastStopStrategies::CollectiveBCHStrategy<VehicleInputGraph, VehCHEnv,
-            LastStopBucketsT, AreLastStopBucketsSorted, VehicleToPDLocQueryImpl, PDDistancesImpl, PALSLabelSet>;
+            LastStopBucketsT, AreLastStopBucketsSorted, PDDistancesLabelSet, VehicleToPDLocQueryImpl, PALSLabelSet>;
 
         static PALSStrategy makePalsStrategy(const VehicleInputGraph &vehicleInputGraph, const VehicleInputGraph &,
                                              const Fleet &fleet, const VehCHEnv &vehChEnv,
                                              const LastStopBucketsT &lastStopBuckets,
                                              const RouteState &routeState,
                                              VehicleToPDLocQueryImpl &vehicleToPdLocQuery,
-                                             const LastStopAtVerticesInfo&) {
+                                             const LastStopAtVerticesInfo &) {
             return PALSStrategy(vehicleInputGraph, fleet, vehChEnv, vehicleToPdLocQuery, lastStopBuckets,
                                 routeState);
         }
@@ -191,7 +195,7 @@ namespace karri {
                                              const LastStopBucketsT &lastStopBuckets,
                                              const RouteState &routeState,
                                              VehicleToPDLocQueryImpl &,
-                                             const LastStopAtVerticesInfo&) {
+                                             const LastStopAtVerticesInfo &) {
             return PALSStrategy(vehicleInputGraph, fleet, vehChEnv, lastStopBuckets, routeState);
         }
 
@@ -206,7 +210,7 @@ namespace karri {
                                              const LastStopBucketsT &,
                                              const RouteState &routeState,
                                              VehicleToPDLocQueryImpl &,
-                                             const LastStopAtVerticesInfo& lastStopAtVerticesInfo) {
+                                             const LastStopAtVerticesInfo &lastStopAtVerticesInfo) {
             return PALSStrategy(vehicleInputGraph, revVehicleGraph, fleet, routeState, lastStopAtVerticesInfo);
         }
 #endif
@@ -214,8 +218,7 @@ namespace karri {
 
         // todo: The PALSAssignmentsFinder does not manage any large memory on its own, could be constructed
         //  on-the-fly for one less enumerable_thread_specific.
-        using PALSInsertionsFinderImpl = PALSAssignmentsFinder<VehicleInputGraph, PDDistancesImpl, PALSStrategy,
-            LastStopAtVerticesInfo>;
+        using PALSInsertionsFinderImpl = PALSAssignmentsFinder<VehicleInputGraph, PALSStrategy, LastStopAtVerticesInfo>;
         tbb::enumerable_thread_specific<PALSInsertionsFinderImpl> palsInsertionsFinder;
 
 
@@ -232,7 +235,7 @@ namespace karri {
                                              const LastStopBucketsT &lastStopBuckets,
                                              const RouteState &routeState,
                                              CurVehLocToPickupSearchesImpl &curVehLocToPickupSearches,
-                                             const LastStopAtVerticesInfo&) {
+                                             const LastStopAtVerticesInfo &) {
             return DALSStrategy(vehicleInputGraph, fleet, routeState, vehChEnv, lastStopBuckets,
                                 curVehLocToPickupSearches);
         }
@@ -246,7 +249,7 @@ namespace karri {
                                              const LastStopBucketsT &lastStopBuckets,
                                              const RouteState &routeState,
                                              CurVehLocToPickupSearchesImpl &curVehLocToPickupSearches,
-                                             const LastStopAtVerticesInfo&) {
+                                             const LastStopAtVerticesInfo &) {
             return DALSStrategy(vehicleInputGraph, fleet, vehChEnv, lastStopBuckets, curVehLocToPickupSearches,
                                 routeState);
         }
@@ -260,7 +263,7 @@ namespace karri {
                                              const LastStopBucketsT &,
                                              const RouteState &routeState,
                                              CurVehLocToPickupSearchesImpl &curVehLocToPickupSearches,
-                                             const LastStopAtVerticesInfo& lastStopAtVerticesInfo) {
+                                             const LastStopAtVerticesInfo &lastStopAtVerticesInfo) {
             return DALSStrategy(vehicleInputGraph, revVehicleGraph, fleet, curVehLocToPickupSearches, routeState,
                                 lastStopAtVerticesInfo);
         }
@@ -279,6 +282,103 @@ namespace karri {
         using PDLocsFinderImpl = PDLocsFinder<VehicleInputGraph, PsgInputGraph, VehicleToPDLocQueryImpl>;
         tbb::enumerable_thread_specific<PDLocsFinderImpl> pdLocsFinder;
 
+
+        using InsertionAsserterImpl = InsertionAsserter<VehicleInputGraph, VehCHEnv>;
+        tbb::enumerable_thread_specific<InsertionAsserterImpl> insertionAsserter;
+
+#if KARRI_TRANSFER_HEURISTIC_LEVEL < 2 || KARRI_TRANSFER_USE_DIJKSTRA_ELLIPSE_RECONSTRUCTION
+        using EllipseReconstructorLabelSet = std::conditional_t<KARRI_TRANSFER_CH_ELLIPSE_RECONSTRUCTOR_USE_SIMD,
+            SimdLabelSet<KARRI_TRANSFER_CH_ELLIPSE_RECONSTRUCTOR_LOG_K, ParentInfo::NO_PARENT_INFO>,
+            BasicLabelSet<KARRI_TRANSFER_CH_ELLIPSE_RECONSTRUCTOR_LOG_K, ParentInfo::NO_PARENT_INFO> >;
+#endif
+
+#if KARRI_TRANSFER_USE_DIJKSTRA_ELLIPSE_RECONSTRUCTION
+        using EllipseReconstructorImpl = DijkstraEllipseReconstructor<VehicleInputGraph, VehCHEnv, TravelTimeAttribute,
+            EllipseReconstructorLabelSet>;
+#else
+#if KARRI_TRANSFER_HEURISTIC_LEVEL < 2
+
+        static constexpr int ELLIPSES_TOP_VERTICES_DIVISOR =
+                KARRI_TRANSFER_HEURISTIC_LEVEL == 0 ? 1 : KARRI_TRANSFER_CH_ELLIPSE_RECONSTRUCTOR_TOP_VERTICES_DIVISOR;
+
+        static constexpr bool PARALLELIZE_PHAST_DETOUR_ELLIPSES = false;
+
+        using EllipseReconstructorImpl = PHASTEllipseReconstructor<VehicleInputGraph, VehCHEnv, EllipticBucketsEnvT,
+            PARALLELIZE_PHAST_DETOUR_ELLIPSES, ELLIPSES_TOP_VERTICES_DIVISOR, TraversalCostAttribute,
+            EllipseReconstructorLabelSet>;
+        tbb::enumerable_thread_specific<EllipseReconstructorImpl> ellipseReconstructor;
+#else
+        using EllipseReconstructorImpl = OnlyAtStopEllipseReconstructor;
+        EllipseReconstructorImpl ellipseReconstructor(routeState);
+        tbb::enumerable_thread_specific<EllipseReconstructorImpl> ellipseReconstructor;
+#endif
+#endif
+
+        static constexpr bool KARRIT_USE_TP_PARETO_CHECKS = KARRI_TRANSFER_USE_TRANSFER_POINT_PARETO_CHECKS;
+        static constexpr bool KARRIT_USE_COST_LOWER_BOUNDS = KARRI_TRANSFER_USE_COST_LOWER_BOUNDS;
+
+#if KARRI_TRANSFER_HEURISTIC_LEVEL < 2
+        using DirectTransferDistancesLabelSet = std::conditional_t<KARRI_TRANSFER_DIRECT_DISTANCES_USE_SIMD,
+            SimdLabelSet<KARRI_TRANSFER_DIRECT_DISTANCES_LOG_K, ParentInfo::NO_PARENT_INFO>,
+            BasicLabelSet<KARRI_TRANSFER_DIRECT_DISTANCES_LOG_K, ParentInfo::NO_PARENT_INFO> >;
+        using DirectTransferDistancesFinder = BCHDirectTransferDistancesFinder<VehCHEnv,
+            DirectTransferDistancesLabelSet>;
+        tbb::enumerable_thread_specific<DirectTransferDistancesFinder> pickupToTransferDistancesFinder;
+        tbb::enumerable_thread_specific<DirectTransferDistancesFinder> transferToDropoffDistancesFinder;
+
+        using OrdinaryTransferInsertionsImpl = OrdinaryTransferFinder<VehicleInputGraph, VehCHEnv,
+            CurVehLocToPickupSearchesImpl, KARRIT_USE_COST_LOWER_BOUNDS, KARRIT_USE_TP_PARETO_CHECKS,
+            InsertionAsserterImpl, DirectTransferDistancesFinder>;
+        tbb::enumerable_thread_specific<OrdinaryTransferInsertionsImpl> ordinaryTransferInsertions;
+#else
+        using OrdinaryTransferInsertionsImpl = NoOpOrdinaryTransferFinder;
+        OrdinaryTransferInsertionsImpl ordinaryTransferInsertions;
+        tbb::enumerable_thread_specific<OrdinaryTransferInsertionsImpl> ordinaryTransferInsertionsDummy;
+#endif
+
+        using TransfersPickupALSStrategy = Transfers::TransfersPickupALSBCHStrategy<VehicleInputGraph, VehCHEnv,
+            LastStopBucketsT, AreLastStopBucketsSorted, LastStopAtVerticesInfo, PALSLabelSet>;
+        tbb::enumerable_thread_specific<TransfersPickupALSStrategy> transfersPickupALSStrategy;
+
+        using TransfersDropoffALSStrategy = Transfers::TransfersDropoffALSBCHStrategy<VehicleInputGraph, VehCHEnv,
+            LastStopBucketsT, AreLastStopBucketsSorted, DALSLabelSet>;
+        tbb::enumerable_thread_specific<TransfersDropoffALSStrategy> transfersDropoffALSStrategy;
+
+
+        using TALSLabelSet = std::conditional_t<KARRI_TRANSFER_TALS_USE_SIMD,
+            SimdLabelSet<KARRI_TRANSFER_TALS_LOG_K, ParentInfo::NO_PARENT_INFO>,
+            BasicLabelSet<KARRI_TRANSFER_TALS_LOG_K, ParentInfo::NO_PARENT_INFO> >;
+
+#if KARRI_TRANSFER_TALS_STRAT == KARRI_TRANSFER_TALS_PHAST
+
+        using TransferStrategyALSImpl = PHASTStrategyALS<VehicleInputGraph, VehCHEnv, RPHASTEnvironment, TALSLabelSet,
+            std::ofstream>;
+        tbb::enumerable_thread_specific<TransferStrategyALSImpl> transferALSStrategy;
+#else
+        using TransferStrategyALSImpl = CHStrategyALS<VehicleInputGraph, VehCHEnv, TALSLabelSet>;
+        TransferStrategyALSImpl transferALSStrategy(routeState, fleet, vehicleInputGraph, *vehChEnv);
+        tbb::enumerable_thread_specific<TransferStrategyALSImpl> transferALSStrategy;
+
+#endif
+
+        using TransferALSPVehFinderImpl = TransferALSPVehFinder<VehicleInputGraph, VehCHEnv, TransferStrategyALSImpl,
+            TransfersPickupALSStrategy, CurVehLocToPickupSearchesImpl, KARRIT_USE_COST_LOWER_BOUNDS,
+            KARRIT_USE_TP_PARETO_CHECKS, InsertionAsserterImpl>;
+        tbb::enumerable_thread_specific<TransferALSPVehFinderImpl> transferALSPVehFinder;
+
+        using TransferALSDVehFinderImpl = TransferALSDVehFinder<VehicleInputGraph, VehCHEnv, TransferStrategyALSImpl,
+            CurVehLocToPickupSearchesImpl, KARRIT_USE_COST_LOWER_BOUNDS, KARRIT_USE_TP_PARETO_CHECKS,
+            InsertionAsserterImpl>;
+        tbb::enumerable_thread_specific<TransferALSDVehFinderImpl> transferALSDVehFinder;
+
+        using AssignmentsWithTransferFinderImpl = AssignmentsWithTransferFinder<OrdinaryTransferInsertionsImpl,
+            TransferALSPVehFinderImpl,
+            TransferALSDVehFinderImpl,
+            TransfersDropoffALSStrategy,
+            EllipseReconstructorImpl,
+            InsertionAsserterImpl>;
+        tbb::enumerable_thread_specific<AssignmentsWithTransferFinderImpl> assignmentsWithTransferFinder;
+
     public:
         ThreadLocalAssignmentFinderFactory(const VehicleInputGraph &vehicleInputGraph,
                                            const VehicleInputGraph &revVehicleGraph,
@@ -286,8 +386,10 @@ namespace karri {
                                            const PsgInputGraph &revPsgGraph,
                                            const VehCHEnv &vehChEnv,
                                            const PsgCHEnv &psgChEnv,
+                                           const RPHASTEnvironment &vehRphastEnv,
                                            const EllipticBucketsT &ellipticSourceBuckets,
                                            const EllipticBucketsT &ellipticTargetBuckets,
+                                           const EllipticBucketsEnvT &ellipticBucketsEnv,
                                            const PDLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder,
                                            const LastStopBucketsT &lastStopBuckets,
                                            const LastStopAtVerticesInfo &lastStopAtVerticesInfo,
@@ -299,8 +401,10 @@ namespace karri {
               revPsgGraph(revPsgGraph),
               vehChEnv(vehChEnv),
               psgChEnv(psgChEnv),
+              vehRphastEnv(vehRphastEnv),
               ellipticSourceBuckets(ellipticSourceBuckets),
               ellipticTargetBuckets(ellipticTargetBuckets),
+              ellipticBucketsEnv(ellipticBucketsEnv),
               pdLocsAtExistingStopsFinder(pdLocsAtExistingStopsFinder),
               lastStopBuckets(lastStopBuckets),
               lastStopAtVerticesInfo(lastStopAtVerticesInfo),
@@ -337,7 +441,8 @@ namespace karri {
                       vehicleInputGraph, locator.local(), vehChEnv, routeState, fleet.size());
               }),
               pbnsInsertionsFinder([&]() {
-                  return PBNSInsertionsFinderImpl(vehicleInputGraph, curVehLocToPickupSearches.local(), fleet, routeState);
+                  return PBNSInsertionsFinderImpl(vehicleInputGraph, curVehLocToPickupSearches.local(), fleet,
+                                                  routeState);
               }),
               palsStrategy([&]() {
                   return makePalsStrategy(
@@ -361,7 +466,67 @@ namespace karri {
               }),
               pdLocsFinder([&]() {
                   return PDLocsFinderImpl(vehicleInputGraph, psgInputGraph, revPsgGraph, vehicleToPdLocQuery.local());
-              }) {
+              }),
+              insertionAsserter([&]() {
+                  return InsertionAsserterImpl(routeState, vehicleInputGraph, vehChEnv);
+              }),
+              ellipseReconstructor([&]() {
+                  return EllipseReconstructorImpl(vehicleInputGraph, vehChEnv, fleet, ellipticBucketsEnv, routeState);
+              }),
+              pickupToTransferDistancesFinder([&]() {
+                  return DirectTransferDistancesFinder(vehicleInputGraph.numVertices(), vehChEnv, PDLocType::PICKUP);
+              }),
+              transferToDropoffDistancesFinder([&]() {
+                  return DirectTransferDistancesFinder(vehicleInputGraph.numVertices(), vehChEnv, PDLocType::DROPOFF);
+              }),
+              ordinaryTransferInsertions([&]() {
+                  return OrdinaryTransferInsertionsImpl(vehicleInputGraph,
+                                                        vehChEnv,
+                                                        curVehLocToPickupSearches.local(),
+                                                        pickupToTransferDistancesFinder.local(),
+                                                        transferToDropoffDistancesFinder.local(),
+                                                        fleet, routeState,
+                                                        insertionAsserter.local());
+              }),
+              transfersPickupALSStrategy([&]() {
+                  return TransfersPickupALSStrategy(vehicleInputGraph, fleet, vehChEnv, lastStopBuckets,
+                                                    lastStopAtVerticesInfo, routeState);
+              }),
+              transfersDropoffALSStrategy([&]() {
+                  return TransfersDropoffALSStrategy(vehicleInputGraph, fleet, vehChEnv, lastStopBuckets, routeState);
+              }),
+              transferALSStrategy([&]() {
+                  return TransferStrategyALSImpl(routeState, fleet, vehicleInputGraph, vehChEnv, vehRphastEnv);
+              }),
+              transferALSPVehFinder([&]() {
+                  return TransferALSPVehFinderImpl(vehicleInputGraph,
+                                                   vehChEnv,
+                                                   transferALSStrategy.local(),
+                                                   transfersPickupALSStrategy.local(),
+                                                   curVehLocToPickupSearches.local(),
+                                                   fleet,
+                                                   routeState,
+                                                   insertionAsserter.local());
+              }),
+              transferALSDVehFinder([&]() {
+                  return TransferALSDVehFinderImpl(vehicleInputGraph,
+                                                   vehChEnv,
+                                                   transferALSStrategy.local(),
+                                                   curVehLocToPickupSearches.local(),
+                                                   fleet,
+                                                   routeState,
+                                                   insertionAsserter.local());
+              }),
+        assignmentsWithTransferFinder([&]() {
+            return AssignmentsWithTransferFinderImpl(ordinaryTransferInsertions.local(),
+                                                     transferALSPVehFinder.local(),
+                                                     transferALSDVehFinder.local(),
+                                                     transfersDropoffALSStrategy.local(),
+                                                     ellipseReconstructor.local(),
+                                                     routeState,
+                                                     insertionAsserter.local());
+        })
+         {
         }
 
         using InsertionFinderImpl = AssignmentFinder<
@@ -376,7 +541,9 @@ namespace karri {
             PBNSInsertionsFinderImpl,
             PALSInsertionsFinderImpl,
             DALSInsertionsFinderImpl,
-            RelevantPDLocsFilterImpl>;
+            RelevantPDLocsFilterImpl,
+            AssignmentsWithTransferFinderImpl,
+            InsertionAsserterImpl>;
 
         InsertionFinderImpl getThreadLocalAssignmentFinder() {
             return InsertionFinderImpl(vehicleInputGraph,
@@ -391,7 +558,9 @@ namespace karri {
                                        pbnsInsertionsFinder.local(),
                                        palsInsertionsFinder.local(),
                                        dalsInsertionsFinder.local(),
-                                       relevantPdLocsFilter.local());
+                                       relevantPdLocsFilter.local(),
+                                       assignmentsWithTransferFinder.local(),
+                                       insertionAsserter.local());
         }
     };
 } // karri

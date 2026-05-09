@@ -31,6 +31,7 @@
 #include "Algorithms/KaRRi/LastStopSearches/TentativeLastStopDistances.h"
 #include "Algorithms/KaRRi/RequestState/RequestState.h"
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
+#include "DataStructures/Containers/LightweightSubset.h"
 
 namespace karri::PickupAfterLastStopStrategies {
     template<typename InputGraphT, typename LastStopsAtVerticesT, typename PDDistancesT, typename DijLabelSet>
@@ -76,8 +77,8 @@ namespace karri::PickupAfterLastStopStrategies {
               fleet(fleet),
               routeState(routeState),
               lastStopsAtVertices(lastStopsAtVertices),
-              calculator(routeState),
-              dijSearchToPickup(reverseGraph, {*this, CostCalculator{routeState}}),
+              calculator(routeState, fleet),
+              dijSearchToPickup(reverseGraph, {*this, CostCalculator{routeState, fleet}}),
               lastStopDistances(fleet.size()),
               vehiclesSeen(fleet.size()) {
         }
@@ -191,7 +192,7 @@ namespace karri::PickupAfterLastStopStrategies {
                 curPassengerArrTimesAtPickups[i] = requestState.getPassengerArrAtPickup(pickup);
                 curMinDirectDistances[i] = pdDistances.getMinDirectDistanceForPickup(pickup.id);
                 curDistancesToDest[i] = pdDistances.getDirectDistance(pickup.id, 0);
-                assert(pdDistances.getMinDirectDistance() <= curMinDirectDistances[i]);
+                KASSERT(pdDistances.getMinDirectDistance() <= curMinDirectDistances[i]);
                 pickupTails[i] = inputGraph.edgeTail(pickup.loc);
                 offsets[i] = inputGraph.travelTime(pickup.loc);
             }
@@ -250,7 +251,7 @@ namespace karri::PickupAfterLastStopStrategies {
         const Fleet &fleet;
         const RouteState &routeState;
         const LastStopsAtVerticesT &lastStopsAtVertices;
-        const CostCalculator calculator;
+        CostCalculator calculator;
 
 
         Dijkstra<InputGraphT, TravelTimeAttribute, DijLabelSet, TryToInsertPickupAfterLastStop> dijSearchToPickup;

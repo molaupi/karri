@@ -28,6 +28,12 @@ target_compile_definitions(FindRegioStaRClass PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(FindRegioStaRClass PRIVATE ${FULL_WARNINGS})
 target_link_libraries(FindRegioStaRClass ${PROJ_LIBRARY} kassert fast_cpp_csv_parser nlohmann_json)
 
+add_executable(CategorizeRequestsByCoreAndPeriphery CategorizeRequestsByCoreAndPeriphery.cc)
+target_compile_definitions(CategorizeRequestsByCoreAndPeriphery PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(CategorizeRequestsByCoreAndPeriphery PRIVATE ${FULL_WARNINGS})
+target_link_libraries(CategorizeRequestsByCoreAndPeriphery kassert fast_cpp_csv_parser)
+
+
 add_executable(ConvertGraph ConvertGraph.cc)
 target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(ConvertGraph PRIVATE ${FULL_WARNINGS})
@@ -81,3 +87,12 @@ target_compile_definitions(GenerateGeoJsonForRequests PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(GenerateGeoJsonForRequests PRIVATE ${FULL_WARNINGS})
 target_link_libraries(GenerateGeoJsonForRequests PRIVATE nlohmann_json kassert fast_cpp_csv_parser)
 
+add_executable(GenerateGeoJsonForSearchSpace GenerateGeoJsonForSearchSpace.cc)
+target_compile_definitions(GenerateGeoJsonForSearchSpace PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(GenerateGeoJsonForSearchSpace PRIVATE ${FULL_WARNINGS})
+target_link_libraries(GenerateGeoJsonForSearchSpace PRIVATE nlohmann_json kassert fast_cpp_csv_parser routingkit)
+
+add_executable(TransformRequestsToLatLng TransformRequestsToLatLng.cc)
+target_compile_definitions(TransformRequestsToLatLng PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(TransformRequestsToLatLng PRIVATE ${FULL_WARNINGS})
+target_link_libraries(TransformRequestsToLatLng kassert)

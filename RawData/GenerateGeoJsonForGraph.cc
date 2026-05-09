@@ -50,30 +50,34 @@ template<typename InputGraphT>
 nlohmann::json generateGeoJsonObjectForEdges(const InputGraphT &inputGraph, const double ratio) {
     // Construct the needed path GeoJSON objects
     nlohmann::json topGeoJson;
-    topGeoJson["type"] = "GeometryCollection";
-    static char color[] = "blue";
+    topGeoJson["type"] = "FeatureCollection";
+    static char color[] = "black";
 
     int numEdgesOutput = 0;
     int numEdgesToOutput = inputGraph.numEdges() * ratio;
     FORALL_VALID_EDGES(inputGraph, v, e) {
 
             // Construct edge feature
-            nlohmann::json edgeFeature;
-            edgeFeature["type"] = "LineString";
+            nlohmann::json feature;
+            feature["type"] = "Feature";
+            feature["properties"] = {{"edge_id",      e},
+//                                         {"stroke-width", 3},
+                                     {"stroke",       color}
+            };
+
+            nlohmann::json edgeGeometry;
+            edgeGeometry["type"] = "LineString";
 
             const auto tailLatLng = inputGraph.latLng(v);
             const auto tailCoordinate = nlohmann::json::array({tailLatLng.lngInDeg(), tailLatLng.latInDeg()});
-            edgeFeature["coordinates"].push_back(tailCoordinate);
+            edgeGeometry["coordinates"].push_back(tailCoordinate);
 
             const auto headLatLng = inputGraph.latLng(inputGraph.edgeHead(e));
             const auto headCoordinate = nlohmann::json::array({headLatLng.lngInDeg(), headLatLng.latInDeg()});
-            edgeFeature["coordinates"].push_back(headCoordinate);
+            edgeGeometry["coordinates"].push_back(headCoordinate);
 
-            edgeFeature["properties"] = {{"edge_id",      e},
-                                         {"stroke",       color},
-                                         {"stroke-width", 3}};
-
-            topGeoJson["geometries"].push_back(edgeFeature);
+            feature["geometry"] = edgeGeometry;
+            topGeoJson["features"].push_back(feature);
 
             if (++numEdgesOutput >= numEdgesToOutput)
                 return topGeoJson;
@@ -84,16 +88,31 @@ nlohmann::json generateGeoJsonObjectForEdges(const InputGraphT &inputGraph, cons
 
 template<typename InputGraphT>
 nlohmann::json generateGeoJsonObjectForVertices(const InputGraphT &inputGraph, const double ratio) {
+
+
     // Construct the needed path GeoJSON objects
     nlohmann::json topGeoJson;
-    topGeoJson["type"] = "MultiPoint";
+    topGeoJson["type"] = "FeatureCollection";
+    static char color[] = "black";
 
     int numVerticesOutput = 0;
     int numVerticesToOutput = inputGraph.numVertices() * ratio;
     FORALL_VERTICES(inputGraph, v) {
+
+        nlohmann::json feature;
+        feature["type"] = "Feature";
+        feature["properties"] = {{"vertex_id", v},
+                                 {"stroke",    color}};
+
+        nlohmann::json vertexGeometry;
+        vertexGeometry["type"] = "Point";
+
         const auto latLng = inputGraph.latLng(v);
         const auto coordinate = nlohmann::json::array({latLng.lngInDeg(), latLng.latInDeg()});
-        topGeoJson["coordinates"].push_back(coordinate);
+        vertexGeometry["coordinates"] = coordinate;
+
+        feature["geometry"] = vertexGeometry;
+        topGeoJson["features"].push_back(feature);
 
         if (++numVerticesOutput >= numVerticesToOutput)
             return topGeoJson;

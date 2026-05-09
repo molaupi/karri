@@ -121,7 +121,7 @@ namespace karri {
                   fleetSize(fleetSize),
                   distances(),
                   currentVehicleLocations(fleetSize, INVALID_LOC),
-                  prevNumPickups(0),
+                  curNumPickups(0),
                   vehiclesWithKnownLocation(),
                   writeVehLabelsSearch(
                           chEnv.template getForwardSearch<WriteVehicleDistLabel, StopWhenMaxDistExceeded>(
@@ -131,24 +131,22 @@ namespace karri {
                                   ScanLabelAndUpdateDistances(*this),
                                   StopWhenMaxDistExceeded(maxTentativeDist))),
                   maxTentativeDist(INFTY),
+                  curTransferLocs(),
                   curPickupIds(),
                   currentTime(-1),
                   waitingQueue(),
+                  waitingQueueTransfer(),
+                  // distancesTransfer(std::map<std::pair<int, int>, int>{}),
                   distFromCurVehLocation(chEnv.getCH().upwardGraph().numVertices(), INFTY) {}
 
         void initialize(const int now, const PDLocs& pdLocs) {
             currentTime = now;
 
-            clearDistances();
+            clearDistances(pdLocs.pickups.size());
             waitingQueue.clear();
 
-            curNumPickups = pdLocs.numPickups();
-            const int numDistances = curNumPickups * fleetSize;
-            if (numDistances > distances.size()) {
-                const int diff = numDistances - distances.size();
-                distances.insert(distances.end(), diff, unknownDist);
-            }
-
+            waitingQueueTransfer.clear();
+            distancesTransfer.clear();
 
             totalLocatingVehiclesTimeForRequest = 0;
             totalVehicleToPickupSearchTimeForRequest = 0;
@@ -156,43 +154,58 @@ namespace karri {
         }
 
         bool knowsDistance(const int vehId, const unsigned int pickupId) const {
-            assert(vehId >= 0 && vehId < fleetSize);
-            assert(pickupId < curNumPickups);
+            KASSERT(vehId >= 0 && vehId < fleetSize);
+            KASSERT(pickupId < curNumPickups);
             const int idx = vehId * curNumPickups + pickupId;
             return distances[idx] != unknownDist;
         }
 
+        bool knowsDistanceTransfer(const int vehId, const int transferLoc) {
+            return distancesTransfer.count({vehId, transferLoc});
+        }
+
+        int getDistanceTransfer(const int vehId, const int transferLoc) {
+            return distancesTransfer[{vehId, transferLoc}];
+        }
+
         int getDistance(const int vehId, const unsigned int pickupId) const {
-            assert(vehId >= 0 && vehId < fleetSize);
-            assert(pickupId < curNumPickups);
+            KASSERT(vehId >= 0 && vehId < fleetSize);
+            KASSERT(pickupId < curNumPickups);
             const int idx = vehId * curNumPickups + pickupId;
             return distances[idx];
         }
 
         bool knowsCurrentLocationOf(const int vehId) const {
-            assert(vehId >= 0 && vehId < fleetSize);
+            KASSERT(vehId >= 0 && vehId < fleetSize);
             return currentVehicleLocations[vehId] != INVALID_LOC;
         }
 
         const VehicleLocation &getCurrentLocationOf(const int vehId) const {
-            assert(vehId >= 0 && vehId < fleetSize);
+            KASSERT(vehId >= 0 && vehId < fleetSize);
             return currentVehicleLocations[vehId];
         }
 
         // Register pickups for which we want to know the distance from the current location of a vehicle to this pickup.
         // All pickups registered until the next call to computeExactDistancesVia() will be processed with the same vehicle.
         void addPickupForProcessing(const int pickupId, const int distFromPrevStopToPickup) {
-            assert(pickupId >= 0);
-            assert(pickupId < curNumPickups);
+            KASSERT(pickupId >= 0);
+            KASSERT(pickupId < curNumPickups);
             waitingQueue.push_back({pickupId, distFromPrevStopToPickup});
+        }
+
+        void addTransferForProcessing(const int transferLoc, const int distFromPrevStopToTransfer) {            
+            KASSERT(transferLoc >= 0);
+            KASSERT(distFromPrevStopToTransfer >= 0);
+
+            waitingQueueTransfer.push_back({transferLoc, distFromPrevStopToTransfer});
         }
 
         // Computes the exact distances via a given vehicle to all pickups added using addPickupForProcessing() (since the
         // last call to this function or initialize()). Skips pickups for which the distance via the given vehicle is
         // already known.
         void computeExactDistancesVia(const Vehicle &vehicle, const PDLocs& pdLocs) {
-
-            assert(routeState.numStopsOf(vehicle.vehicleId) > 1);
+            KASSERT(pdLocs.pickups.size() == curNumPickups);
+            KASSERT(routeState.numStopsOf(vehicle.vehicleId) > 1);
             curLeeway = routeState.leewayOfLegStartingAt(routeState.stopIdsFor(vehicle.vehicleId)[0]);
             if (waitingQueue.empty()) return;
 
@@ -201,12 +214,11 @@ namespace karri {
                 vehiclesWithKnownLocation.push_back(vehicle.vehicleId);
             }
             const auto &vehLocation = currentVehicleLocations[vehicle.vehicleId];
-            assert(vehLocation != INVALID_LOC);
+            KASSERT(vehLocation != INVALID_LOC);
 
             if (vehLocation.location == routeState.stopLocationsFor(vehicle.vehicleId)[0]) {
                 fillDistancesForVehicleAtPrevStop(vehicle, pdLocs);
                 waitingQueue.clear();
-                prevNumPickups = curNumPickups;
                 return;
             }
 
@@ -271,7 +283,97 @@ namespace karri {
             }
 
             waitingQueue.clear();
-            prevNumPickups = curNumPickups;
+            
+            KASSERT(knowsCurrentLocationOf(vehicle.vehicleId));
+
+            totalVehicleToPickupSearchTimeForRequest += timer.elapsed<std::chrono::nanoseconds>();
+            totalNumCHSearchesRunForRequest += numChSearchesRun;
+        }
+
+        void computeExactTransferDistancesVia(const Vehicle &vehicle) {
+
+            KASSERT(routeState.numStopsOf(vehicle.vehicleId) > 1);
+
+            curLeeway = routeState.leewayOfLegStartingAt(routeState.stopIdsFor(vehicle.vehicleId)[0]);
+            if (waitingQueueTransfer.empty()) return;
+
+            if (!knowsCurrentLocationOf(vehicle.vehicleId)) {
+                currentVehicleLocations[vehicle.vehicleId] = locateVehicle(vehicle);
+                vehiclesWithKnownLocation.push_back(vehicle.vehicleId);
+            }
+            
+            const auto &vehLocation = currentVehicleLocations[vehicle.vehicleId];
+            KASSERT(vehLocation != INVALID_LOC);
+
+            if (vehLocation.location == routeState.stopLocationsFor(vehicle.vehicleId)[0]) {
+                fillDistancesForVehicleAtPrevStopTransfer(vehicle);
+                waitingQueueTransfer.clear();
+                return;
+            }
+        
+            const auto distToCurLoc = vehLocation.depTimeAtHead - routeState.schedDepTimesFor(vehicle.vehicleId)[0];
+        
+            int numChSearchesRun = 0;
+            Timer timer;
+            std::array<int, K> targets;
+            std::array<int, K> targetOffsets;
+
+            unsigned int i = 0;
+            bool builtLabelsForVeh = false;
+
+            for (auto it = waitingQueueTransfer.begin(); it != waitingQueueTransfer.end();) {
+
+                int transferLoc = it->first;
+
+                if (!knowsDistanceTransfer(vehicle.vehicleId, transferLoc)) {
+                    if (vehLocation.location == transferLoc) {
+                        distancesTransfer[{vehicle.vehicleId, transferLoc}] = distToCurLoc;
+                    } else {
+                        targets[i] = ch.rank(inputGraph.edgeTail(transferLoc));
+                        targetOffsets[i] = inputGraph.travelTime(transferLoc);
+                        curTransferLocs[i] = transferLoc;
+                        ++i;
+                    }
+                }
+
+                ++it;
+
+                if (i == K || (it == waitingQueueTransfer.end() && i > 0)) {
+                    // If there were any pairs left but fewer than K, fill the sources and targets with duplicates of the first pair
+                    int endOfBatch = i;
+                    for (; i < K; ++i) {
+                        targets[i] = targets[0];
+                        targetOffsets[i] = targetOffsets[0];
+                        curTransferLocs[i] = curTransferLocs[0];
+                    }
+
+                    maxTentativeDist = curLeeway;
+                    tentativeDistances = DistanceLabel(INFTY);
+                    // Build distance labels for the vehicle
+                    if (!builtLabelsForVeh) {
+                        distFromCurVehLocation.clear();
+                        const auto source = ch.rank(inputGraph.edgeHead(vehLocation.location));
+                        writeVehLabelsSearch.runWithOffset(source, distToCurLoc);
+                        builtLabelsForVeh = true;
+                    }
+
+                    // Run search from pickups against the vehicle distance labels
+                    findDistancesSearch.runWithOffset(targets, targetOffsets);
+                    ++numChSearchesRun;
+
+                    // Set found distances.
+                    for (int j = 0; j < endOfBatch; ++j) {
+                        distancesTransfer[{vehicle.vehicleId, curTransferLocs[j]}] = tentativeDistances[j];
+                    }
+
+                    i = 0;
+                }
+            }
+
+            KASSERT(knowsCurrentLocationOf(vehicle.vehicleId));
+
+            waitingQueueTransfer.clear();
+            // prevNumPickups = requestState.numPickups();
 
             totalVehicleToPickupSearchTimeForRequest += timer.elapsed<std::chrono::nanoseconds>();
             totalNumCHSearchesRunForRequest += numChSearchesRun;
@@ -291,19 +393,26 @@ namespace karri {
 
     private:
 
-        void clearDistances() {
+        void clearDistances(const int numPickups) {
 
             // Clear the distances for every vehicle for which we computed the current location:
             for (const auto &vehId: vehiclesWithKnownLocation) {
-                const int start = vehId * prevNumPickups;
-                const int end = start + prevNumPickups;
+                const int start = vehId * curNumPickups;
+                const int end = start + curNumPickups;
                 std::fill(distances.begin() + start, distances.begin() + end, unknownDist);
                 currentVehicleLocations[vehId] = INVALID_LOC;
             }
-            assert(std::all_of(distances.begin(), distances.end(), [&](const auto &d) { return d == unknownDist; }));
-            assert(std::all_of(currentVehicleLocations.begin(), currentVehicleLocations.end(),
+            KASSERT(std::all_of(distances.begin(), distances.end(), [&](const auto &d) { return d == unknownDist; }));
+            KASSERT(std::all_of(currentVehicleLocations.begin(), currentVehicleLocations.end(),
                                [&](const auto &l) { return l == INVALID_LOC; }));
             vehiclesWithKnownLocation.clear();
+
+            curNumPickups = numPickups;
+            const int numDistances = curNumPickups * fleetSize;
+            if (numDistances > distances.size()) {
+                const int diff = numDistances - distances.size();
+                distances.insert(distances.end(), diff, unknownDist);
+            }
         }
 
         VehicleLocation locateVehicle(const Vehicle &vehicle) {
@@ -314,6 +423,7 @@ namespace karri {
         }
 
         void fillDistancesForVehicleAtPrevStop(const Vehicle &vehicle, const PDLocs& pdLocs) {
+            KASSERT(pdLocs.pickups.size() == curNumPickups);
             const auto &stopLocations = routeState.stopLocationsFor(vehicle.vehicleId);
             for (const auto &[pickupId, distFromPrevStopToPickup]: waitingQueue) {
                 if (stopLocations[0] != pdLocs.pickups[pickupId].loc) {
@@ -322,6 +432,18 @@ namespace karri {
                 } else {
                     const int idx = vehicle.vehicleId * curNumPickups + pickupId;
                     distances[idx] = 0;
+                }
+            }
+        }
+
+        void fillDistancesForVehicleAtPrevStopTransfer(const Vehicle &vehicle) {
+            const auto &stopLocations = routeState.stopLocationsFor(vehicle.vehicleId);
+
+            for (const auto &[transferLoc, distFromPrevStopToTransfer] : waitingQueueTransfer) {
+                if (stopLocations[0] != transferLoc) {
+                    distancesTransfer[{vehicle.vehicleId, transferLoc}] = distFromPrevStopToTransfer;
+                } else {
+                    distancesTransfer[{vehicle.vehicleId, transferLoc}] = 0;
                 }
             }
         }
@@ -335,18 +457,18 @@ namespace karri {
 
         std::vector<int> distances;
         std::vector<VehicleLocation> currentVehicleLocations;
-        int prevNumPickups;
+        int curNumPickups;
         std::vector<int> vehiclesWithKnownLocation;
 
         WriteVehLabelsSearch writeVehLabelsSearch;
         FindDistancesSearch findDistancesSearch;
         DistanceLabel tentativeDistances;
         int maxTentativeDist;
+        std::array<unsigned int, K> curTransferLocs;
         std::array<unsigned int, K> curPickupIds;
         int curLeeway;
 
         int currentTime;
-        int curNumPickups;
 
         int64_t totalLocatingVehiclesTimeForRequest;
         int64_t totalVehicleToPickupSearchTimeForRequest;
@@ -354,6 +476,10 @@ namespace karri {
 
         // Entry in waiting queue is pickupId + dist from previous stop of vehicle to pickup.
         std::vector<std::pair<unsigned int, int>> waitingQueue;
+
+        std::vector<std::pair<int, int>> waitingQueueTransfer;
+        // Key is {vehicleId, transferLoc}, Value is distance from curVehLoc to transferLoc
+        std::map<std::pair<int, int>, int> distancesTransfer;
 
         TimestampedVector<int> distFromCurVehLocation;
     };

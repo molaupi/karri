@@ -135,7 +135,6 @@ namespace karri {
             const RouteState& routeState;
             int &numEntriesVisited;
             int &numEntriesVisitedWithDistSmallerLeeway;
-
             FeasibleEllipticDistancesT *curFeasible;
             int curFirstIdOfBatch;
         };

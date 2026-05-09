@@ -5,6 +5,10 @@
 # Generated input files
 /Inputs/
 /Publications/KaRRi/Inputs/
+/Publications/KaRRiT/Inputs/
+
+# Output files
+/Outputs/
 
 # Various config files.
 /.settings/
@@ -12,3 +16,10 @@
 /.project
 /.pydevproject
 /.idea/
+/.vscode/
+
+__pycache__/
+
+full_run_debug.sh
+full_run_profile.sh
+full_run_release.sh

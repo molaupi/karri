@@ -26,7 +26,8 @@
 #pragma once
 
 #include "DataStructures/Containers/FastResetFlagArray.h"
-
+#include "DataStructures/Labels/BasicLabelSet.h"
+#include "DataStructures/Labels/ParentInfo.h"
 namespace karri {
 
 // Finds the vehicle distances between the origin/destination and pickups/dropoffs using a Dijkstra search on
@@ -99,7 +100,7 @@ namespace karri {
                 const auto vertexOfSpot = forwardGraph.edgeTail(pdLoc.loc);
                 pdLoc.vehDistFromCenter =
                         forwardSearch.getDistance(vertexOfSpot) + forwardGraph.travelTime(pdLoc.loc);
-                assert(pdLoc.vehDistFromCenter < INFTY);
+                KASSERT(pdLoc.vehDistFromCenter < INFTY);
             }
 
 
@@ -134,7 +135,7 @@ namespace karri {
                 auto &pdLoc = pdLocs[i];
                 const auto vertexOfSpot = forwardGraph.edgeHead(pdLoc.loc);
                 pdLoc.vehDistToCenter = reverseSearch.getDistance(vertexOfSpot);
-                assert(pdLoc.vehDistToCenter < INFTY);
+                KASSERT(pdLoc.vehDistToCenter < INFTY);
             }
 
             runTime = timer.elapsed<std::chrono::nanoseconds>();

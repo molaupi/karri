@@ -2,6 +2,7 @@
 /// MIT License
 ///
 /// Copyright (c) 2023 Moritz Laupichler <moritz.laupichler@kit.edu>
+/// Copyright (c) 2024 Johannes Breitling <johannes.breitling@student.kit.edu>
 ///
 /// Permission is hereby granted, free of charge, to any person obtaining a copy
 /// of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +28,7 @@
 
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
+#include "Algorithms/KaRRi/BaseObjects/PD.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
 #include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
 
@@ -37,7 +39,6 @@ namespace karri {
 // are inserted between the same pair of existing stops.
 //
 // Works based on filtered relevant PD locs.
-    template<typename PDDistancesT>
     class OrdinaryAssignmentsFinder {
 
 
@@ -45,12 +46,12 @@ namespace karri {
 
         OrdinaryAssignmentsFinder(const Fleet &fleet, const RouteState &routeState)
                 : fleet(fleet),
-                  calculator(routeState),
+                  calculator(routeState, fleet),
                   routeState(routeState) {}
 
         void findAssignments(const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs,
                              RequestState& requestState,
-                             const PDDistancesT& pdDistances,
+                             const PDDistances& pdDistances,
                              const PDLocs& pdLocs, stats::OrdAssignmentsPerformanceStats& stats) {
             findOrdinaryAssignments(relPickups, relDropoffs, requestState, pdLocs, stats);
             findOrdinaryPairedAssignments(pdDistances, relPickups, relDropoffs, requestState, pdLocs, stats);
@@ -81,7 +82,7 @@ namespace karri {
 //                    !relDropoffs.hasRelevantSpotsFor(vehId))
 //                    continue;
 
-                ++numCandidateVehicles;
+                ++numCandidateVehicles; 
                 Assignment asgn(&fleet[vehId]);
 
                 const auto relevantDropoffs = relDropoffs.relevantSpotsFor(vehId);
@@ -123,11 +124,11 @@ namespace karri {
                                       const RelevantPDLocs& relDropoffs,
                                       RequestState& requestState,
                                       const PDLocs& pdLocs) {
-            assert(asgn.vehicle && asgn.pickup.id != INVALID_ID);
+            KASSERT(asgn.vehicle && asgn.pickup.id != INVALID_ID);
             const auto &vehId = asgn.vehicle->vehicleId;
 
             const auto relevantDropoffs = relDropoffs.relevantSpotsFor(vehId);
-            assert(startItInRegularDropoffs >= relevantDropoffs.begin() &&
+            KASSERT(startItInRegularDropoffs >= relevantDropoffs.begin() &&
                    startItInRegularDropoffs <= relevantDropoffs.end());
 
             if (!relDropoffs.hasRelevantSpotsFor(vehId))
@@ -166,8 +167,7 @@ namespace karri {
             return numAssignmentsTriedWithOrdinaryDropoff;
         }
 
-
-        void findOrdinaryPairedAssignments(const PDDistancesT& pdDistances, const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs,
+        void findOrdinaryPairedAssignments(const PDDistances& pdDistances, const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs,
                                            RequestState& requestState, const PDLocs& pdLocs,
                                            stats::OrdAssignmentsPerformanceStats& stats) {
 

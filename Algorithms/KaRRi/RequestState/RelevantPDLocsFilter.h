@@ -30,21 +30,18 @@
 #include "DataStructures/Containers/LightweightSubset.h"
 
 namespace karri {
-
-// Filters information about feasible distances found by elliptic BCH searches to pickups/dropoffs that are relevant
-// for certain stops by considering the leeway and the current best known assignment cost.
+    // Filters information about feasible distances found by elliptic BCH searches to pickups/dropoffs that are relevant
+    // for certain stops by considering the leeway and the current best known assignment cost.
     template<typename FeasibleDistancesT, typename InputGraphT, typename CHEnvT>
     class RelevantPDLocsFilter {
-
     public:
-
         RelevantPDLocsFilter(const Fleet &fleet, const InputGraphT &inputGraph, const CHEnvT &chEnv,
                              const RouteState &routeState)
                 : fleet(fleet),
                   inputGraph(inputGraph),
                   ch(chEnv.getCH()),
                   chQuery(chEnv.template getFullCHQuery<>()),
-                  calculator(routeState),
+                  calculator(routeState, fleet),
                   routeState(routeState),
                   vehiclesWithFeasibleDistances(fleet.size()) {}
 
@@ -102,6 +99,7 @@ namespace karri {
         RelevantPDLocs filterDropoffsBeforeNextStop(FeasibleDistancesT &feasibleDropoffDistances,
                                                     const RequestState &requestState, const PDLocs &pdLocs,
                                                     stats::PbnsAssignmentsPerformanceStats &stats) {
+
             Timer timer;
 
             int numRelStops = 0;
@@ -116,8 +114,6 @@ namespace karri {
         }
 
     private:
-
-
         template<bool beforeNextStop, bool isDropoff>
         RelevantPDLocs filter(FeasibleDistancesT &feasible, const int numPDLocs, int &numStopsRelevant,
                               const RequestState &requestState, const PDLocs &pdLocs) {
@@ -139,6 +135,7 @@ namespace karri {
                 if ((!beforeNextStop && stopPos == 0) || (beforeNextStop && stopPos > 0) ||
                     (!isDropoff && stopPos == routeState.numStopsOf(vehId) - 1))
                     continue;
+
                 // Skip vehicles that are already on edge that represents next stop since they can't have relevant PD locs before next stop
                 if (beforeNextStop && routeState.schedArrTimesFor(vehId)[1] - inputGraph.travelTime(routeState.stopLocationsFor(vehId)[1])
                     <= requestState.dispatchingTime)
@@ -155,14 +152,11 @@ namespace karri {
 
                 const int totalNumRelPdLocsBefore = static_cast<int>(rel.relevantSpots.size());
 
-
-
                 // Track relevant PD locs for each stop in the relevant PD locs data structure.
                 // Entries are ordered by vehicle and by stop.
                 constexpr int beginStopIdx = beforeNextStop ? 0 : 1;
                 const int endStopIdx = beforeNextStop ? 1 : (isDropoff ? numStops : numStops - 1);
                 for (int i = beginStopIdx; i < endStopIdx; ++i) {
-
                     if ((!isDropoff || beforeNextStop) &&
                         occupancies[i] + requestState.originalRequest.numRiders > veh.capacity)
                         continue;
@@ -239,6 +233,7 @@ namespace karri {
                                 }));
 
             return rel;
+
         }
 
         inline bool isPickupRelevant(const Vehicle &veh, const int stopIndex, const unsigned int pickupId,
@@ -250,13 +245,14 @@ namespace karri {
 
             const int &vehId = veh.vehicleId;
 
-            assert(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <=
-                   veh.capacity);
+
+            KASSERT(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <=
+                veh.capacity);
             if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
                 return false;
 
-            assert(distFromStopToPickup + distFromPickupToNextStop >=
-                   calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
+            KASSERT(distFromStopToPickup + distFromPickupToNextStop >=
+                calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
 
             const auto &p = pdLocs.pickups[pickupId];
 
@@ -298,7 +294,7 @@ namespace karri {
             const auto &numStops = routeState.numStopsOf(vehId);
             const auto &occupancy = routeState.occupanciesFor(vehId)[stopIndex];
             const auto &stopLocations = routeState.stopLocationsFor(vehId);
-            assert(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
+            KASSERT(d.loc != stopLocations[stopIndex] || distFromStopToDropoff == 0);
             if (stopIndex == numStops - 1 || occupancy + requestState.originalRequest.numRiders > veh.capacity)
                 return d.loc == stopLocations[stopIndex];
 
@@ -313,7 +309,7 @@ namespace karri {
                                                                       distFromDropoffToNextStop,
                                                                       isDropoffAtExistingStop,
                                                                       routeState);
-            assert(initialDropoffDetour >= 0);
+            KASSERT(initialDropoffDetour >= 0);
             if (doesDropoffDetourViolateHardConstraints(veh, requestState, stopIndex, initialDropoffDetour,
                                                         routeState))
                 return false;

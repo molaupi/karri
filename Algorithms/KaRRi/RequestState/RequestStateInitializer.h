@@ -68,32 +68,6 @@ namespace karri {
             const auto directSearchTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.computeODDistanceTime = directSearchTime;
 
-            // Compute direct walking distance between origin and destination
-            timer.restart();
-
-            KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.origin)) == req.origin);
-            const auto originInPsgGraph = vehInputGraph.toPsgEdge(req.origin);
-
-            KASSERT(psgInputGraph.toCarEdge(vehInputGraph.toPsgEdge(req.destination)) == req.destination);
-            const auto destInPsgGraph = vehInputGraph.toPsgEdge(req.destination);
-
-            if (originInPsgGraph == destInPsgGraph) {
-                requestState.odWalkingDist = 0;
-            } else {
-                const int originHeadRank = psgCh.rank(psgInputGraph.edgeHead(originInPsgGraph));
-                const int destTailRank = psgCh.rank(psgInputGraph.edgeTail(destInPsgGraph));
-                const int destOffset = psgInputGraph.length(destInPsgGraph);
-                KASSERT(destOffset >= 0 && destOffset < INFTY);
-                psgChQuery.run(originHeadRank, destTailRank);
-                const auto totalWalkingDist = psgChQuery.getDistance() + destOffset; // Distance in m
-                KASSERT(totalWalkingDist >= 0 && totalWalkingDist < INFTY);
-                const auto totalWalkingTime = static_cast<int>(std::round(
-                    10.0 * static_cast<double>(totalWalkingDist) / req.walkingSpeed));
-                requestState.odWalkingDist = totalWalkingTime; // "dist" means time in our model
-            }
-            const auto notUsingVehiclesTime = timer.elapsed<std::chrono::nanoseconds>();
-            stats.notUsingVehicleTime = notUsingVehiclesTime;
-
             return requestState;
         }
 

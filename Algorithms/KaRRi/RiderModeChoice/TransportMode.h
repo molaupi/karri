@@ -1,4 +1,6 @@
 #pragma once
+#include <stdexcept>
+#include <string>
 
 namespace karri::mode_choice {
 
@@ -12,5 +14,22 @@ namespace karri::mode_choice {
         if (str == "Taxi") return TransportMode::Taxi;
         if (str == "PublicTransport") return TransportMode::PublicTransport;
         throw std::runtime_error("Unrecognized transport mode");
+    }
+
+    inline std::string transportModeToString(const TransportMode &mode) {
+        switch (mode) {
+            case TransportMode::Car:
+                return "Car";
+            case TransportMode::Ped:
+                return "Ped";
+            case TransportMode::Taxi:
+                return "Taxi";
+            case TransportMode::PublicTransport:
+                return "PublicTransport";
+            case TransportMode::None:
+                return "None";
+            default:
+                return "InvalidMode";
+        }
     }
 }

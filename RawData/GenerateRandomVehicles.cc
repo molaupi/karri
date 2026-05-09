@@ -90,6 +90,10 @@ int main(int argc, char *argv[]) {
                     eligibleEdges.push_back(e);
             }
             std::cout << " done.\n";
+        } else {
+            FORALL_EDGES(inputGraph, e) {
+                eligibleEdges.push_back(e);
+            }
         }
         eligibleEdges.shrink_to_fit();
 

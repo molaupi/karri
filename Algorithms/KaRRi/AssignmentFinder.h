@@ -47,7 +47,9 @@ namespace karri {
             typename PbnsAssignmentsT,
             typename PalsAssignmentsT,
             typename DalsAssignmentsT,
-            typename RelevantPdLocsFilterT
+            typename RelevantPDLocsFilterT,
+            typename AssignmentsWithTransferT,
+            typename InsertionAsserterT
     >
     class AssignmentFinder {
 
@@ -65,12 +67,14 @@ namespace karri {
                          PbnsAssignmentsT &pbnsAssignments,
                          PalsAssignmentsT &palsAssignments,
                          DalsAssignmentsT &dalsAssignments,
-                         RelevantPdLocsFilterT &relevantPdLocsFilter)
+                         RelevantPDLocsFilterT &relevantPdLocsFilter,
+                   AssignmentsWithTransferT &assignmentsWithTransfer,
+                   InsertionAsserterT &insertionAsserter)
                 : inputGraph(inputGraph),
                   feasibleEllipticPickups(feasibleEllipticPickups),
                   feasibleEllipticDropoffs(feasibleEllipticDropoffs),
                   requestStateInitializer(requestStateInitializer),
-                  pdLocsFinder(pdLocsFinder),
+                    pdLocsFinder(pdLocsFinder),
                   pdLocsAtExistingStopsFinder(pdLocsAtExistingStopsFinder),
                   ellipticBchSearches(ellipticBchSearches),
                   ffPDDistanceSearches(ffPdDistanceSearches),
@@ -78,7 +82,9 @@ namespace karri {
                   pbnsAssignments(pbnsAssignments),
                   palsAssignments(palsAssignments),
                   dalsAssignments(dalsAssignments),
-                  relevantPdLocsFilter(relevantPdLocsFilter) {}
+                  relevantPdLocsFilter(relevantPdLocsFilter),
+                  assignmentsWithTransfer(assignmentsWithTransfer),
+                  insertionAsserter(insertionAsserter) {}
 
         RequestState findBestAssignment(const Request &req, const int now, stats::DispatchingPerformanceStats& stats) {
 
@@ -90,10 +96,10 @@ namespace karri {
             initializeComponentsForRequest(rs, pdLocs, stats);
 
             // Compute PD distances:
-            const auto ffPdDistances = ffPDDistanceSearches.run(rs, pdLocs, stats.pdDistancesStats);
+            const auto pdDistances = ffPDDistanceSearches.run(rs, pdLocs, stats.pdDistancesStats);
 
             // Try PALS assignments:
-            palsAssignments.findAssignments(rs, ffPdDistances, pdLocs, stats.palsAssignmentsStats);
+            palsAssignments.findAssignments(rs, pdDistances, pdLocs, stats.palsAssignmentsStats);
 
             // Run elliptic BCH searches (populates feasibleEllipticPickups and feasibleEllipticDropoffs):
             ellipticBchSearches.run(feasibleEllipticPickups, feasibleEllipticDropoffs, rs, pdLocs, stats.ellipticBchStats);
@@ -105,7 +111,7 @@ namespace karri {
                                                                                          rs, pdLocs, stats.ordAssignmentsStats);
 
             // Try ordinary assignments:
-            ordAssignments.findAssignments(relOrdinaryPickups, relOrdinaryDropoffs, rs, ffPdDistances, pdLocs, stats.ordAssignmentsStats);
+            ordAssignments.findAssignments(relOrdinaryPickups, relOrdinaryDropoffs, rs, pdDistances, pdLocs, stats.ordAssignmentsStats);
 
             // Filter feasible pickups before next stops:
             const auto relPickupsBeforeNextStop = relevantPdLocsFilter.filterPickupsBeforeNextStop(
@@ -120,7 +126,37 @@ namespace karri {
 
             // Try PBNS assignments:
             pbnsAssignments.findAssignments(relPickupsBeforeNextStop, relOrdinaryDropoffs, relDropoffsBeforeNextStop,
-                                            rs, ffPdDistances, pdLocs, stats.pbnsAssignmentsStats);
+                                            rs, pdDistances, pdLocs, stats.pbnsAssignmentsStats);
+
+                KASSERT(insertionAsserter.assertAssignment(rs.getBestAssignmentWithoutTransfer()));
+
+                // * Find the best assignment that contains a transfer
+                if (InputConfig::getInstance().includeTransfers)
+                        assignmentsWithTransfer.findBestAssignment(relOrdinaryPickups, relPickupsBeforeNextStop, relOrdinaryDropoffs, relDropoffsBeforeNextStop, rs, pdDistances, pdLocs, stats);
+
+                //* Log the cost data
+                const auto &costWOT = rs.getCostObjectWithoutTransfer();
+                const auto &costWT = rs.getCostObjectWithTransfer();
+
+                auto &costStats = stats.costStats;
+
+                costStats.totalWOT = costWOT.total;
+                costStats.walkingCostWOT = costWOT.walkingCost;
+                costStats.tripCostWOT = costWOT.tripCost;
+                costStats.waitTimeViolationCostWOT = costWOT.waitTimeViolationCost;
+                costStats.changeInTripCostsOfOthersWOT = costWOT.changeInTripCostsOfOthers;
+                costStats.vehCostWOT = costWOT.vehCost;
+
+                costStats.totalWT = costWT.total;
+                costStats.walkingCostWT = costWT.walkingCost;
+                costStats.tripCostWT = costWT.tripCost;
+                costStats.waitTimeViolationCostWT = costWT.waitTimeViolationCost;
+                costStats.changeInTripCostsOfOthersWT = costWT.changeInTripCostsOfOthers;
+                costStats.vehCostWT = costWT.vehCost;
+
+                costStats.inftyWOT = costWOT.total >= INFTY;
+                costStats.inftyWT = costWT.total >= INFTY;
+                costStats.transferImproves = costWT.total < costWOT.total;
 
             return rs;
         }
@@ -143,6 +179,7 @@ namespace karri {
             pbnsAssignments.init(requestState, pdLocs, stats.pbnsAssignmentsStats);
             palsAssignments.init(requestState, pdLocs, stats.palsAssignmentsStats);
             dalsAssignments.init(requestState, pdLocs, stats.dalsAssignmentsStats);
+            assignmentsWithTransfer.init();
         }
 
         const InputGraphT &inputGraph;
@@ -152,14 +189,17 @@ namespace karri {
         RequestStateInitializerT &requestStateInitializer;
         PDLocsFinderT &pdLocsFinder; // Finds possible pickup and dropoff locations for a given request
         const PdLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder; // Identifies pd locs that coincide with existing stops
+
         EllipticBchSearchesT &ellipticBchSearches; // Elliptic BCH searches that find distances between existing stops and PD-locations (except after last stop).
         FfPdDistanceSearchesT &ffPDDistanceSearches; // PD-distance searches that compute distances from pickups to dropoffs.
         OrdAssignmentsT &ordAssignments; // Tries ordinary assignments where pickup and dropoff are inserted between existing stops.
         PbnsAssignmentsT &pbnsAssignments; // Tries PBNS assignments where pickup (and possibly dropoff) is inserted before the next vehicle stop.
         PalsAssignmentsT &palsAssignments; // Tries PALS assignments where pickup and dropoff are inserted after the last stop.
         DalsAssignmentsT &dalsAssignments; // Tries DALS assignments where only the dropoff is inserted after the last stop.
-        RelevantPdLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
+        RelevantPDLocsFilterT &relevantPdLocsFilter; // Additionally filters feasible pickups/dropoffs found by elliptic BCH searches.
 
+        AssignmentsWithTransferT &assignmentsWithTransfer;
 
+        InsertionAsserterT& insertionAsserter;
     };
 }

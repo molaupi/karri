@@ -24,6 +24,16 @@
 
 
 #pragma once
+#include <kassert/kassert.hpp>
+#include <Algorithms/KaRRi/CostCalculator.h>
+#include <Algorithms/KaRRi/RequestState/RequestState.h>
+#include <Algorithms/KaRRi/RequestState/RelevantPDLocs.h>
+
+#include <Algorithms/KaRRi/BaseObjects/PDLocs.h>
+
+#include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
+#include "DataStructures/Containers/LightweightSubset.h"
+#include "Tools/Timer.h"
 
 namespace karri::DropoffAfterLastStopStrategies {
 
@@ -88,6 +98,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                                      RequestState &requestState,
                                      const PDLocs &pdLocs, stats::DalsAssignmentsPerformanceStats &stats) {
 
+
             vehiclesSeen.clear();
             tryAssignmentsTime = 0;
             timeSpentLocatingVehicles = 0;
@@ -141,7 +152,7 @@ namespace karri::DropoffAfterLastStopStrategies {
     private:
 
         void runSearchesForDropoffBatch(const int firstDropoffId, const PDLocs &pdLocs) {
-            assert(firstDropoffId % K == 0 && firstDropoffId < pdLocs.numDropoffs());
+            KASSERT(firstDropoffId % K == 0 && firstDropoffId < pdLocs.numDropoffs());
 
             std::array<int, K> dropoffTails;
             std::array<int, K> offsets;
@@ -276,7 +287,6 @@ namespace karri::DropoffAfterLastStopStrategies {
                             }
                         }
 
-
                         curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId], pdLocs);
                         for (const auto &pair: pickupsToTryBeforeNextStop) {
                             asgn.pickup = pdLocs.pickups[pair.first];
@@ -301,6 +311,8 @@ namespace karri::DropoffAfterLastStopStrategies {
 
 
         const InputGraphT &inputGraph;
+
+        PDLocs const *curPdLocs; // pointer to PDLocs for current search batch so Dijkstra callback can access it
 
         const Fleet &fleet;
         const RouteState &routeState;
@@ -327,7 +339,6 @@ namespace karri::DropoffAfterLastStopStrategies {
 
         Dijkstra <InputGraphT, TravelTimeAttribute, DijLabelSet, TryToInsertDropoffAfterLastStop> dijSearchToDropoff;
         LightweightSubset vehiclesSeen;
-
 
     };
 

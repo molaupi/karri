@@ -47,6 +47,16 @@ namespace karri {
             singleEnv.deleteTargetBucketEntries(veh, stopIndex, stats);
         }
 
+        using RankWithEntry = SingleUpdatesEllipticBucketsEnvironment<InputGraphT, CHEnvT, EllipticBucketsT>::RankWithEntry;
+
+        std::vector<RankWithEntry> enumerateRanksWithSourceBucketEntries(const int vehId, const int stopIndex, Subset& searchSpaceHelper) const {
+            return singleEnv.enumerateRanksWithSourceBucketEntries(vehId, stopIndex, searchSpaceHelper);
+        }
+
+        std::vector<RankWithEntry> enumerateRanksWithTargetBucketEntries(const int vehId, const int stopIndex, Subset &searchSpaceHelper) const {
+            return singleEnv.enumerateRanksWithTargetBucketEntries(vehId, stopIndex, searchSpaceHelper);
+        }
+
         // Batched buckets interface
         size_t totalNumSourceEntries() const {
             return batchEnv.totalNumSourceEntries();

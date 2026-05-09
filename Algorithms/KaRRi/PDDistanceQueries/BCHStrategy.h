@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include <kassert/kassert.hpp>
+#include <array>
 #include "Tools/Timer.h"
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/Buckets/SharedSearchSpaceBucketContainer.h"
@@ -44,7 +46,6 @@ namespace karri::PDDistanceQueryStrategies {
 
         static constexpr int K = LabelSetT::K;
         using DistanceLabel = typename LabelSetT::DistanceLabel;
-        using PDDistancesT = PDDistances<LabelSetT>;
 
     private:
 
@@ -60,7 +61,7 @@ namespace karri::PDDistanceQueryStrategies {
             }
 
             void cmpAndUpdate(const DropoffBatchLabel &other) {
-                assert(targetId == invalid_target || targetId == other.targetId);
+                KASSERT(targetId == invalid_target || targetId == other.targetId);
                 distToDropoff.min(other.distToDropoff);
                 if (targetId == invalid_target)
                     targetId = other.targetId;
@@ -148,12 +149,12 @@ namespace karri::PDDistanceQueryStrategies {
 
 
         // Computes all distances from every pickup to every dropoff and stores them in the given DirectPDDistances.
-        PDDistancesT run(RequestState& requestState, const PDLocs& pdLocs, stats::PDDistancesPerformanceStats& stats) {
+        PDDistances run(RequestState& requestState, const PDLocs& pdLocs, stats::PDDistancesPerformanceStats& stats) {
             assert(pdLocs.pickups[0].loc == requestState.originalRequest.origin
                    && pdLocs.dropoffs[0].loc == requestState.originalRequest.destination);
             Timer timer;
 
-            PDDistancesT pdDistances(pdLocs.numPickups(), pdLocs.numDropoffs());
+            PDDistances pdDistances(pdLocs.numPickups(), pdLocs.numDropoffs(), K);
 
             // Initialize distance from origin to dropoff
             pdDistances.updateDistanceIfSmaller(0, 0, requestState.originalReqDirectDist);
@@ -293,7 +294,7 @@ namespace karri::PDDistanceQueryStrategies {
         FillBucketsSearch fillBucketsSearch;
         FindPDDistancesSearch findPDDistancesSearch;
 
-        PDDistancesT *curPdDistances;
+        PDDistances *curPdDistances;
         int curNumDropoffs;
 
         int upperBoundDirectPDDist;

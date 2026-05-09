@@ -27,6 +27,10 @@
 
 #include "Algorithms/KaRRi/LastStopSearches/LastStopBCHQuery.h"
 #include "Algorithms/KaRRi/LastStopSearches/TentativeLastStopDistances.h"
+#include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
+#include "DataStructures/Containers/FastResetFlagArray.h"
+#include "DataStructures/Containers/LightweightSubset.h"
+#include "Tools/Timer.h"
 
 namespace karri::DropoffAfterLastStopStrategies {
     template<typename InputGraphT,
@@ -134,14 +138,14 @@ namespace karri::DropoffAfterLastStopStrategies {
                               const RouteState &routeState)
             : inputGraph(inputGraph),
               fleet(fleet),
-              calculator(routeState),
+              calculator(routeState, fleet),
               curVehLocToPickupSearches(curVehLocToPickupSearchesT),
               routeState(routeState),
               checkPBNSForVehicle(fleet.size()),
               vehiclesSeenForDropoffs(fleet.size()),
               search(lastStopBuckets, lastStopDistances, chEnv, routeState,
                      vehiclesSeenForDropoffs,
-                     DropoffAfterLastStopPruner(*this, CostCalculator(routeState))),
+                     DropoffAfterLastStopPruner(*this, CostCalculator(routeState, fleet))),
               lastStopDistances(fleet.size()) {
         }
 
@@ -184,7 +188,6 @@ namespace karri::DropoffAfterLastStopStrategies {
             const int64_t pbnsTimeBefore = curVehLocToPickupSearches.getTotalLocatingVehiclesTimeForRequest() +
                                            curVehLocToPickupSearches.getTotalVehicleToPickupSearchTimeForRequest();
             Timer timer;
-
             enumerateAssignmentsWithOrdinaryPickup(numAssignmentsTried, relevantOrdinaryPickups, requestState, pdLocs);
             enumerateAssignmentsWithPBNS(numAssignmentsTried, relevantPickupsBeforeNextStop, requestState, pdLocs);
 
@@ -234,7 +237,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     if (asgn.distToDropoff >= INFTY)
                         continue; // no need to check pickup before next stop
 
-                    assert(asgn.distToDropoff >= 0 && asgn.distToDropoff < INFTY);
+                    KASSERT(asgn.distToDropoff >= 0 && asgn.distToDropoff < INFTY);
                     int curPickupIndex = numStops - 1;
                     auto pickupIt = relevantPickupsInRevOrder.begin();
                     for (; pickupIt < relevantPickupsInRevOrder.end(); ++pickupIt) {
@@ -247,7 +250,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                                 capacity)
                                 break;
 
-                            assert(entry.stopIndex < numStops - 1);
+                            KASSERT(entry.stopIndex < numStops - 1);
                             const auto minTripTimeToLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1] -
                                                                routeState.schedArrTimesFor(vehId)[entry.stopIndex + 1];
 
@@ -332,9 +335,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                         } else {
                             asgn.distToPickup = entry.distToPDLoc;
                             const auto lowerBoundCost = calculator.calc(asgn, requestState);
-                            if (lowerBoundCost < requestState.getBestCost() ||
-                                (lowerBoundCost == requestState.getBestCost() &&
-                                 breakCostTie(asgn, requestState.getBestAssignment()))) {
+                            if (lowerBoundCost.total <= requestState.getBestCost()) {
                                 // In this case, we need the exact distance to the pickup via the current location of the
                                 // vehicle. We postpone computation of that distance to be able to bundle it with the
                                 // computation of distances to other pickups via the vehicle location. Then all remaining
@@ -350,8 +351,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                 // Continue with assignments for pickups where exact distance via vehicle location is needed
                 curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId], pdLocs);
                 for (const auto &continuation: pbnsContinuations) {
-                    assert(continuation.pickupID >= 0 && continuation.pickupID < pdLocs.numPickups());
-                    assert(continuation.fromDropoffID >= 0 && continuation.fromDropoffID < pdLocs.numDropoffs());
+                    KASSERT(continuation.pickupID >= 0 && continuation.pickupID < pdLocs.numPickups());
+                    KASSERT(continuation.fromDropoffID >= 0 && continuation.fromDropoffID < pdLocs.numDropoffs());
+
                     asgn.pickup = pdLocs.pickups[continuation.pickupID];
 
                     asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId,
@@ -393,6 +395,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             // Construct more space for dropoff labels if needed.
             const int numDropoffBatches =
                     pdLocs.numDropoffs() / K + (pdLocs.numDropoffs() % K != 0);
+
             lastStopDistances.init(numDropoffBatches);
         }
 

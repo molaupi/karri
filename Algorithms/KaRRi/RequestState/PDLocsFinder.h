@@ -93,7 +93,7 @@ namespace karri {
                         const int dropoffWalkRadiusInMeters,
                         const double walkingSpeedInMetersPerSecond,
                         std::vector<PDLoc> &pickups, std::vector<PDLoc> &dropoffs) {
-            assert(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
+            KASSERT(origin < forwardGraph.numEdges() && destination < forwardGraph.numEdges());
             pickups.clear();
             dropoffs.clear();
 
@@ -164,7 +164,7 @@ namespace karri {
         }
 
         void finalizePDLocs(const int centerInPsgGraph, std::vector<PDLoc> &pdLocs, const int maxNumber) {
-            assert(maxNumber > 0);
+            KASSERT(maxNumber > 0);
             // Add center to PD locs
             const int nextSeqId = pdLocs.size();
             const int centerInVehGraph = forwardGraph.toCarEdge(centerInPsgGraph);
@@ -176,7 +176,7 @@ namespace karri {
             // Make sure center is at beginning
             auto centerIt = std::find_if(pdLocs.begin(), pdLocs.end(),
                                          [centerInVehGraph](const auto &h) { return h.loc == centerInVehGraph; });
-            assert(centerIt < pdLocs.end());
+            KASSERT(centerIt < pdLocs.end());
             const auto idx = centerIt - pdLocs.begin();
             std::swap(pdLocs[0], pdLocs[idx]);
 
@@ -197,7 +197,7 @@ namespace karri {
                 pdLocs[i].id = i;
             }
 
-            assert(sanityCheckPDLocs(pdLocs, centerInVehGraph));
+            KASSERT(sanityCheckPDLocs(pdLocs, centerInVehGraph));
         }
 
         // Remove duplicate PDLocs.

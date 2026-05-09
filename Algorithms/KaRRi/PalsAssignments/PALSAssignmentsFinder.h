@@ -33,7 +33,7 @@
 namespace karri {
 
 // Finds pickup-after-last-stop (PALS) insertions using the encapsulated strategy.
-    template<typename InputGraphT, typename PDDistancesT, typename StrategyT, typename LastStopsAtVerticesT>
+    template<typename InputGraphT, typename StrategyT, typename LastStopsAtVerticesT>
     class PALSAssignmentsFinder {
 
     public:
@@ -44,11 +44,11 @@ namespace karri {
                 : strategy(strategy),
                   inputGraph(inputGraph),
                   fleet(fleet),
-                  calculator(routeState),
+                  calculator(routeState, fleet),
                   lastStopsAtVertices(lastStopsAtVertices),
                   routeState(routeState) {}
 
-        void findAssignments(RequestState& requestState, const PDDistancesT& pdDistances, const PDLocs& pdLocs, stats::PalsAssignmentsPerformanceStats& stats) {
+        void findAssignments(RequestState& requestState, const PDDistances& pdDistances, const PDLocs& pdLocs, stats::PalsAssignmentsPerformanceStats& stats) {
             findAssignmentsWherePickupCoincidesWithLastStop(requestState, pdDistances, pdLocs, stats);
             strategy.tryPickupAfterLastStop(requestState, pdDistances, pdLocs, stats);
         }
@@ -61,7 +61,7 @@ namespace karri {
 
         // Simple case for pickups that coincide with last stops of vehicles is the same regardless of strategy, so it
         // is treated here.
-        void findAssignmentsWherePickupCoincidesWithLastStop(RequestState& requestState, const PDDistancesT& pdDistances, const PDLocs& pdLocs,
+        void findAssignmentsWherePickupCoincidesWithLastStop(RequestState& requestState, const PDDistances& pdDistances, const PDLocs& pdLocs,
                                                              stats::PalsAssignmentsPerformanceStats& stats) {
             int numInsertionsForCoinciding = 0;
             int numCandidateVehiclesForCoinciding = 0;

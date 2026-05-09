@@ -30,6 +30,7 @@
 #include "Algorithms/KaRRi/RouteState.h"
 #include "Algorithms/KaRRi/Stats/PerformanceStats.h"
 
+
 namespace karri {
 
 // Wrapper around DALS strategy.
@@ -45,6 +46,7 @@ namespace karri {
                              RequestState& requestState,
                              const PDLocs& pdLocs, stats::DalsAssignmentsPerformanceStats& stats) {
             strategy.tryDropoffAfterLastStop(relevantOrdinaryPickups, relevantPickupsBeforeNextStop, requestState, pdLocs, stats);
+
         }
 
         void init(const RequestState&, const PDLocs&, stats::DalsAssignmentsPerformanceStats&) {

@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "Algorithms/KaRRi/BaseObjects/PDLocs.h"
+
 namespace karri {
 
     template<
@@ -55,9 +57,9 @@ namespace karri {
                                     lastStopsAtVertices(lastStopsAtVertices),
                                     routeState(routeState) {}
 
-        template<PDLocType type, typename PDLocsT>
+        template<PDLocType type>
         std::vector<PDLocAtExistingStop>
-        findPDLocsAtExistingStops(const PDLocsT &pdLocs,
+        findPDLocsAtExistingStops(const auto &pdLocs,
                                   stats::EllipticBCHPerformanceStats& stats) const {
             Timer timer;
             std::vector<PDLocAtExistingStop> res;

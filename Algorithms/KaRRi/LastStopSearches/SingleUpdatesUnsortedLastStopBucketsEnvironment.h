@@ -178,8 +178,8 @@ namespace karri {
 
         void removeBucketEntries(const Vehicle &veh, const int stopIndex,
                                  karri::stats::UpdatePerformanceStats &stats) {
-            assert(stopIndex >= 0);
-            assert(stopIndex < routeState.numStopsOf(veh.vehicleId));
+            KASSERT(stopIndex >= 0);
+            KASSERT(stopIndex < routeState.numStopsOf(veh.vehicleId));
 
             Timer timer;
             const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[stopIndex];

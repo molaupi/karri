@@ -48,6 +48,9 @@ namespace karri {
         template<typename LabelSetT = DefaultLabelSet>
         using FullCHQuery = CHQuery<LabelSetT>;
 
+        template<typename LabelSetT = DefaultLabelSet>
+        using NoStallOnDemandFullCHQuery = CHQuery<LabelSetT, false>;
+
         template<typename PruningCriterionT = dij::NoCriterion, typename StoppingCriterionT = dij::NoCriterion, typename LabelSetT = DefaultLabelSet>
         using UpwardSearch = Dijkstra<typename CH::SearchGraph, CH::Weight, LabelSetT, StoppingCriterionT, dij::CompoundCriterion<StallOnDemandCriterion<LabelSetT>, PruningCriterionT>>;
 
@@ -71,6 +74,12 @@ namespace karri {
         FullCHQuery<LabelSetT> getFullCHQuery() const {
             return FullCHQuery<LabelSetT>(ch);
         }
+
+        template<typename LabelSetT = DefaultLabelSet>
+        NoStallOnDemandFullCHQuery<LabelSetT> getFullCHQueryWithoutStallOnDemand() const {
+            return NoStallOnDemandFullCHQuery<LabelSetT>(ch);
+        }
+
 
         template<typename PruningCriterionT = dij::NoCriterion, typename StoppingCriterionT = dij::NoCriterion, typename LabelSetT = DefaultLabelSet>
         UpwardSearch<PruningCriterionT, StoppingCriterionT, LabelSetT>
