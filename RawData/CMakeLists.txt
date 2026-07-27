@@ -99,6 +99,10 @@ add_executable(GenerateGeoJsonForGraph GenerateGeoJsonForGraph.cc)
 target_compile_definitions(GenerateGeoJsonForGraph PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(GenerateGeoJsonForGraph PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
 
+add_executable(GenerateGeoJsonForFlow GenerateGeoJsonForFlow.cc)
+target_compile_definitions(GenerateGeoJsonForFlow PRIVATE CSV_IO_NO_THREAD)
+target_link_libraries(GenerateGeoJsonForFlow PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
+
 add_executable(GenerateGeoJsonForVehicles GenerateGeoJsonForVehicles.cc)
 target_compile_definitions(GenerateGeoJsonForVehicles PRIVATE CSV_IO_NO_THREAD)
 target_link_libraries(GenerateGeoJsonForVehicles PRIVATE nlohmann_json::nlohmann_json kassert ${BOOST_LIBRARIES})
