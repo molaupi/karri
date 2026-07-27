@@ -30,9 +30,10 @@ quality <- function(fileBase, numVehicles=NULL, reqIdSubset=NULL) {
   legstats <- read.csv(paste0(fileBase, ".legstats.csv"))
   bestasgns <- read.csv(paste0(fileBase, ".bestassignments.csv"))
   bestasgns <- bestasgns[order(bestasgns$request_id),]
-  numAccepted <- sum(bestasgns["accepted"] == 1)
+  # numAccepted <- sum(bestasgns["accepted"] == 1)
   numTotal <- nrow(bestasgns)
-  bestasgns <- bestasgns[bestasgns["accepted"] == 1,]
+  numAccepted <- numTotal
+  # bestasgns <- bestasgns[bestasgns["accepted"] == 1,]
   
   if (is.null(numVehicles)) {
     eventsimstats <- read.csv(paste0(fileBase, ".eventsimulationstats.csv"))
@@ -43,6 +44,12 @@ quality <- function(fileBase, numVehicles=NULL, reqIdSubset=NULL) {
     asgnstats <- asgnstats[asgnstats$request_id %in% reqIdSubset,]
     bestasgns <- bestasgns[bestasgns$request_id %in% reqIdSubset,]
   }
+  
+  drive_time_total <- sum(legstats$drive_time)
+  op_time_total <- sum(legstats$stop_time) + sum(legstats$drive_time)
+  print(paste0("Total drive time = ", drive_time_total / 10 / 3600, " hours"))
+  print(paste0("Total operation time = ", op_time_total / 10 / 3600, " hours"))
+  
   
   df <- data.frame(
              wait_time_avg = c(mean(asgnstats$wait_time) / 10), # avg wait time for each request
