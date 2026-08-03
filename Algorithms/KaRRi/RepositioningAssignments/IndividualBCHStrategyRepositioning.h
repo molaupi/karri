@@ -53,6 +53,9 @@ namespace karri {
             // Run BCH searches in batches of K pickups
             const int numPickups = static_cast<int>(pdLocs.pickups.size());
             int pickupIdx = 0;
+            numEntriesScanned = 0;
+            int64_t numVerticesSettled = 0;
+            int64_t numEdgesRelaxed = 0;
 
             while (pickupIdx < numPickups) {
                 // Prepare batch arrays
@@ -80,14 +83,24 @@ namespace karri {
                 }
 
                 // Run one bundled BCH for the batch
-                runBchFromPickups(batchPickups, batchMinPDDists, sources_ranks, offsets);
+                runBchFromPickups(batchPickups, batchMinPDDists, sources_ranks, offsets, numVerticesSettled, numEdgesRelaxed);
             }
 
-            // For each candidate vehicle, compute exact location and exact CH distances to pickups, then try assignments
-            computeExactAndTryAssignments(pdDistances, pdLocs);
+            const auto searchTime = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().repositioningAssignmentsStats.searchTime += searchTime;
+            requestState.stats().repositioningAssignmentsStats.numEntriesScanned += numEntriesScanned;
+            requestState.stats().repositioningAssignmentsStats.numVerticesOrLabelsSettled += numVerticesSettled;
+            requestState.stats().repositioningAssignmentsStats.numEdgeRelaxationsInSearchGraph += numEdgesRelaxed;
+            timer.restart();
 
-            const auto time = timer.elapsed<std::chrono::nanoseconds>();
-            requestState.stats().palsAssignmentsStats.searchTime += time; // reuse stat
+            // For each candidate vehicle, compute exact location and exact CH distances to pickups, then try assignments
+            int64_t numAssignmentsTried = 0;
+            computeExactAndTryAssignments(pdDistances, pdLocs, numAssignmentsTried);
+
+            const auto tryAssignmentsTime = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().repositioningAssignmentsStats.numCandidateVehicles += candidateSubset.size();
+            requestState.stats().repositioningAssignmentsStats.numAssignmentsTried += numAssignmentsTried;
+            requestState.stats().repositioningAssignmentsStats.tryAssignmentsTime += tryAssignmentsTime;
         }
 
     private:
@@ -103,6 +116,7 @@ namespace karri {
                     return true;
                 // distFromV[i] is the distance from pickup i head to v in the CH downward graph
                 for (const auto &entry : parent.repositionBuckets.getBucketOf(v)) {
+                    ++parent.numEntriesScanned;
                     const int vehId = entry.targetId;
                     // lbDistToPickup is a DistanceLabel: vectorized distances for the K pickups
                     const DistanceLabel lbDistToPickup = distFromV + entry.distToTarget;
@@ -129,7 +143,9 @@ namespace karri {
         void runBchFromPickups(const std::array<const PDLoc*, K> &pickups,
                                const std::array<int, K> &minPDDists,
                                const std::array<int, K> &sources_ranks,
-                               const std::array<int, K> &offsets) {
+                               const std::array<int, K> &offsets,
+                               int64_t &numVerticesSettled,
+                               int64_t &numEdgesRelaxed) {
             // set current context arrays for ScanBucket
             for (int i = 0; i < K; ++i) {
                 currentPickups[i] = pickups[i];
@@ -138,6 +154,8 @@ namespace karri {
 
             // Run bundled reverse search
             reverseSearch.runWithOffset(sources_ranks, offsets);
+            numVerticesSettled += reverseSearch.getNumVerticesSettled();
+            numEdgesRelaxed += reverseSearch.getNumEdgeRelaxations();
 
             // clear context
             for (int i = 0; i < K; ++i) {
@@ -147,7 +165,8 @@ namespace karri {
             currentMinPDDistances = DistanceLabel();
         }
 
-        void computeExactAndTryAssignments(const PDDistancesT &pdDistances, const PDLocs &pdLocs) {
+        void computeExactAndTryAssignments(const PDDistancesT &pdDistances, const PDLocs &pdLocs,
+            int64_t &numAssignmentsTried) {
             Assignment asgn;
             for (const auto vehId : candidateSubset) {
                 const auto &veh = fleet[vehId];
@@ -174,6 +193,7 @@ namespace karri {
                         asgn.dropoff = d;
                         asgn.distToDropoff = pdDistances.getDirectDistance(asgn.pickup.id, asgn.dropoff.id);
                         requestState.tryAssignment(asgn);
+                        ++numAssignmentsTried;
                     }
                 }
             }
@@ -196,6 +216,7 @@ namespace karri {
         // Current per-search context accessed by ScanBucket: K pickups in a batch
         std::array<const PDLoc*, K> currentPickups{};
         DistanceLabel currentMinPDDistances{};
+        int64_t numEntriesScanned;
 
         using ReverseSearchType = typename CHEnvT::template UpwardSearch<ScanBucket, dij::NoCriterion, LabelSet>;
         ReverseSearchType reverseSearch;

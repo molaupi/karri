@@ -124,7 +124,12 @@ namespace karri {
                   LogManager<LoggerT>::getLogger(stats::DalsAssignmentsPerformanceStats::LOGGER_NAME,
                                                  "request_id," +
                                                  std::string(
-                                                     stats::DalsAssignmentsPerformanceStats::LOGGER_COLS))),
+                                                 stats::DalsAssignmentsPerformanceStats::LOGGER_COLS))),
+          reposPerfLogger(
+              LogManager<LoggerT>::getLogger(stats::RepositioningAssignmentsPerformanceStats::LOGGER_NAME,
+                                             "request_id," +
+                                             std::string(
+                                                 stats::RepositioningAssignmentsPerformanceStats::LOGGER_COLS))),
               updatePerfLogger(LogManager<LoggerT>::getLogger(stats::UpdatePerformanceStats::LOGGER_NAME,
                                                               "request_id," +
                                                               std::string(
@@ -321,6 +326,8 @@ namespace karri {
                     << requestState.stats().palsAssignmentsStats.getLoggerRow() << "\n";
             dalsPerfLogger << requestState.originalRequest.requestId << ","
                     << requestState.stats().dalsAssignmentsStats.getLoggerRow() << "\n";
+            reposPerfLogger << requestState.originalRequest.requestId << ","
+                    << requestState.stats().repositioningAssignmentsStats.getLoggerRow() << "\n";
             updatePerfLogger << requestState.originalRequest.requestId << ","
                     << requestState.stats().updateStats.getLoggerRow() << "\n";
         }
@@ -379,8 +386,11 @@ namespace karri {
             KASSERT(routeState.isRepositioning(vehId));
 
             // For a repositioning assignment, we first remove the repositioning bucket entries:
+            Timer timer;
             const auto reposPath = recomputeRepositioningPath(vehId);
             repositioningBucketsEnv.removeRepositioningBucketEntries(*asgn.vehicle, reposPath);
+            const auto delReposBucketEntriesTime = timer.elapsed<std::chrono::nanoseconds>();
+            requestState.stats().updateStats.repositioningBucketsDeleteEntriesTime += delReposBucketEntriesTime;
 
             // We now update the route state to cancel repositioning and insert a new intermediate stop at the
             // vehicle's current location.
@@ -396,7 +406,7 @@ namespace karri {
             ++asgn.pickupStopIdx;
             ++asgn.dropoffStopIdx;
 
-            Timer timer;
+            timer.restart();
             auto [pickupIndex, dropoffIndex] = routeState.insert(asgn, requestState);
             const auto routeUpdateTime = timer.elapsed<std::chrono::nanoseconds>();
             requestState.stats().updateStats.updateRoutesTime += routeUpdateTime;
@@ -532,6 +542,7 @@ namespace karri {
         LoggerT &pbnsPerfLogger;
         LoggerT &palsPerfLogger;
         LoggerT &dalsPerfLogger;
+        LoggerT &reposPerfLogger;
         LoggerT &updatePerfLogger;
     };
 }
