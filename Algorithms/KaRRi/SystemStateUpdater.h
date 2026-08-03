@@ -229,7 +229,7 @@ namespace karri {
 
             // Choose a random idle vehicle to reposition.
             const auto& idle = routeState.getIdleVehicles();
-            if (idle.size() == 0)
+            if (idle.size() == 0 || seenOriginLocations.empty())
                 return INVALID_ID;
             std::uniform_int_distribution<size_t> vehDis(0, idle.size() - 1);
             const int vehId = *(idle.begin() + vehDis(gen));

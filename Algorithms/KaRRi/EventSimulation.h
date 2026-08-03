@@ -43,7 +43,7 @@ namespace karri {
 
         // Every REPOSITIONING_INTERVAL timesteps, an idle vehicle starts repositioning. We trigger this event using
         // a dummy vehicle event in the queue that reoccurs every REPOSITIONING_INTERVAL timesteps.
-        static constexpr int REPOSITIONING_INTERVAL = 6000;
+        static constexpr int REPOSITIONING_INTERVAL = 600;
 
         enum VehicleState {
             OUT_OF_SERVICE,
