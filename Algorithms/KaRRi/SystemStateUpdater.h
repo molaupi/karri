@@ -31,6 +31,7 @@
 #include "Algorithms/KaRRi/LastStopSearches/OnlyLastStopsAtVerticesBucketSubstitute.h"
 #include "PathTracker.h"
 #include "Algorithms/KaRRi/PointToPointPathComputer.h"
+#include "Algorithms/KaRRi/RepositioningStrategies/RandomRepositioningStrategy.h"
 
 namespace karri {
     // Updates the system state consisting of the route state (schedules of vehicles and additional information about
@@ -42,10 +43,12 @@ namespace karri {
         typename CHEnvT,
         typename CurVehLocsT,
         typename PathTrackerT,
+        typename RepositioningStrategyT = RepositioningStrategies::RandomRepositioningStrategy,
         typename LoggerT = NullLogger>
     class SystemStateUpdater {
 
         static constexpr bool USE_DETERMINISTIC_REPOSITIONING_TARGETS = true;
+
 
     public:
         SystemStateUpdater(const InputGraphT &inputGraph, const Fleet &fleet, RequestState &requestState,
@@ -53,7 +56,8 @@ namespace karri {
                            PathTrackerT &pathTracker,
                            RouteState &routeState, EllipticBucketsEnvT &ellipticBucketsEnv,
                            RepositioningBucketsEnvT &repositioningBucketsEnv,
-                           LastStopBucketsEnvT &lastStopBucketsEnv, CHEnvT &chEnv)
+                           LastStopBucketsEnvT &lastStopBucketsEnv, CHEnvT &chEnv,
+                           RepositioningStrategyT &repositioningStrategy)
             : inputGraph(inputGraph),
         fleet(fleet),
               requestState(requestState),
@@ -64,8 +68,7 @@ namespace karri {
               repositioningBucketsEnv(repositioningBucketsEnv),
               lastStopBucketsEnv(lastStopBucketsEnv),
               pathComputer(inputGraph, chEnv),
-        seenOriginLocations(),
-        gen(USE_DETERMINISTIC_REPOSITIONING_TARGETS? 0 : std::random_device{}()),
+        repositioningStrategy(repositioningStrategy),
               bestAssignmentsLogger(LogManager<LoggerT>::getLogger("bestassignments.csv",
                                                                    "request_id,"
                                                                    "request_time,"
@@ -149,7 +152,7 @@ namespace karri {
             requestState.chosenPDLocsRoadCategoryStats().incCountForCat(inputGraph.osmRoadCategory(asgn.dropoff.loc));
             assert(asgn.vehicle != nullptr);
 
-            seenOriginLocations.push_back(requestState.originalRequest.origin);
+            repositioningStrategy.notifyRequestIncoming(requestState.originalRequest);
 
             const auto vehId = asgn.vehicle->vehicleId;
             const auto numStopsBefore = routeState.numStopsOf(vehId);
@@ -226,18 +229,10 @@ namespace karri {
 
         // Notify that an idle vehicle should start repositioning. Returns ID of repositioning vehicle.
         int notifyRepositioningEvent(const int now) {
+            auto [vehId, target] = repositioningStrategy.pickRepositioningVehicleAndTarget(routeState);
 
-            // Choose a random idle vehicle to reposition.
-            const auto& idle = routeState.getIdleVehicles();
-            if (idle.size() == 0 || seenOriginLocations.empty())
+            if (vehId == INVALID_ID || target == INVALID_EDGE)
                 return INVALID_ID;
-            std::uniform_int_distribution<size_t> vehDis(0, idle.size() - 1);
-            const int vehId = *(idle.begin() + vehDis(gen));
-
-            // Choose a repositioning target. We pick one of the previously seen origin locations at random
-            // (weighted by how many times the location has occurred).
-            std::uniform_int_distribution<size_t> targetLocDis(0, seenOriginLocations.size() - 1);
-            const int target = seenOriginLocations[targetLocDis(gen)];
 
             startRepositioning(fleet[vehId], target, now);
 
@@ -528,9 +523,8 @@ namespace karri {
         // Path computer
         PointToPointPathComputer<InputGraphT, CHEnvT> pathComputer;
 
-        // Track seen origin locations of requests. Used to pick repositioning target locations.
-        std::vector<int> seenOriginLocations;
-        std::mt19937 gen;
+        // Repositioning strategy
+        RepositioningStrategyT &repositioningStrategy;
 
         // Performance Loggers
         LoggerT &bestAssignmentsLogger;

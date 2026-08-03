@@ -73,6 +73,7 @@
 #include "Algorithms/KaRRi/EventSimulation.h"
 #include "Algorithms/KaRRi/AssignmentAcceptance.h"
 #include "Algorithms/KaRRi/RepositioningAssignments/IndividualBCHStrategyRepositioning.h"
+#include "Algorithms/KaRRi/RepositioningStrategies/RandomRepositioningStrategy.h"
 #include "Algorithms/KaRRi/RepositioningAssignments/RepositioningAssignmentsFinder.h"
 
 #ifdef KARRI_USE_CCHS
@@ -608,10 +609,13 @@ int main(int argc, char *argv[]) {
 #endif
 
 
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, RepositioningBucketsEnv, LastStopBucketsEnv, VehCHEnv, CurVehLocToPickupSearchesImpl, VehPathTracker, std::ofstream>;
+        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, RepositioningBucketsEnv, LastStopBucketsEnv, VehCHEnv, CurVehLocToPickupSearchesImpl, VehPathTracker, RepositioningStrategies::RandomRepositioningStrategy, std::ofstream>;
+        
+        RepositioningStrategies::RandomRepositioningStrategy repositioningStrategy(fleet);
+        
         SystemStateUpdaterImpl
                 systemStateUpdater(vehicleInputGraph, fleet, reqState, curVehLocToPickupSearches,
-                                   pathTracker, routeState, ellipticBucketsEnv, repositioningBucketsEnv, lastStopBucketsEnv, *vehChEnv);
+                                   pathTracker, routeState, ellipticBucketsEnv, repositioningBucketsEnv, lastStopBucketsEnv, *vehChEnv, repositioningStrategy);
 
 
         // Acceptance mechanism for requests:
