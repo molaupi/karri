@@ -63,6 +63,8 @@
 #include "Algorithms/KaRRi/DalsAssignments/DALSAssignmentsFinder.h"
 #include "Algorithms/KaRRi/LastStopSearches/SortedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/LastStopSearches/UnsortedLastStopBucketsEnvironment.h"
+#include "Algorithms/KaRRi/LastStopSearches/RepositioningBucketsEnvironment.h"
+
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
 #include "Algorithms/KaRRi/RequestState/PDLocsFinder.h"
@@ -70,6 +72,8 @@
 #include "Algorithms/KaRRi/SystemStateUpdater.h"
 #include "Algorithms/KaRRi/EventSimulation.h"
 #include "Algorithms/KaRRi/AssignmentAcceptance.h"
+#include "Algorithms/KaRRi/RepositioningAssignments/IndividualBCHStrategyRepositioning.h"
+#include "Algorithms/KaRRi/RepositioningAssignments/RepositioningAssignmentsFinder.h"
 
 #ifdef KARRI_USE_CCHS
 #include "Algorithms/KaRRi/CCHEnvironment.h"
@@ -448,6 +452,10 @@ int main(int argc, char *argv[]) {
         // Last stop bucket environment (or substitute) also serves as a source of information on the last stops at vertices.
         using LastStopAtVerticesInfo = LastStopBucketsEnv;
 
+        // Construct Repositioning buckets environment
+        using RepositioningBucketsEnv = RepositioningBucketsEnvironment<VehicleInputGraph, VehCHEnv>;
+        RepositioningBucketsEnv repositioningBucketsEnv(vehicleInputGraph, *vehChEnv, reqState.stats().updateStats);
+
         using EllipticBCHLabelSet = std::conditional_t<KARRI_ELLIPTIC_BCH_USE_SIMD,
                 SimdLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>,
                 BasicLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>>;
@@ -556,6 +564,12 @@ int main(int argc, char *argv[]) {
         using DALSInsertionsFinderImpl = DALSAssignmentsFinder<DALSStrategy>;
         DALSInsertionsFinderImpl dalsInsertionsFinder(dalsStrategy);
 
+        using RepositioningFinderStrategy = IndividualBCHStrategyRepositioning<VehicleInputGraph, VehCHEnv, RepositioningBucketsEnv, PDDistancesImpl, CurVehLocToPickupSearchesImpl, PALSLabelSet>;
+        RepositioningFinderStrategy repositioningFinderStrategy(vehicleInputGraph, fleet, *vehChEnv, calc, repositioningBucketsEnv, routeState, curVehLocToPickupSearches, reqState);
+        using ReposInsertionsFinderImpl = RepositioningAssignmentsFinder<VehicleInputGraph, PDDistancesImpl, RepositioningFinderStrategy>;
+        ReposInsertionsFinderImpl reposInsertionsFinder(repositioningFinderStrategy);
+
+
         using PDLocsFinder = PDLocsFinder<VehicleInputGraph, PsgInputGraph, VehicleToPDLocQueryImpl>;
         PsgInputGraph revPsgGraph = psgInputGraph.getReverseGraph();
         PDLocsFinder findPdLocsInRadiusQuery(vehicleInputGraph, psgInputGraph, revPsgGraph, vehicleToPdLocQuery);
@@ -577,11 +591,12 @@ int main(int argc, char *argv[]) {
                 PBNSInsertionsFinderImpl,
                 PALSInsertionsFinderImpl,
                 DALSInsertionsFinderImpl,
+        ReposInsertionsFinderImpl,
                 RelevantPDLocsFilterImpl>;
         InsertionFinderImpl insertionFinder(reqState, vehicleInputGraph, fleet, routeState,
                                             requestStateInitializer, findPdLocsInRadiusQuery, pdLocsAtExistingStops, ellipticSearches, ffPDDistanceQuery,
                                             ordinaryInsertionsFinder, pbnsInsertionsFinder, palsInsertionsFinder,
-                                            dalsInsertionsFinder, relevantPdLocsFilter);
+                                            dalsInsertionsFinder, reposInsertionsFinder, relevantPdLocsFilter);
 
 
 #if KARRI_OUTPUT_VEHICLE_PATHS
@@ -593,16 +608,11 @@ int main(int argc, char *argv[]) {
 #endif
 
 
-        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, LastStopBucketsEnv, CurVehLocToPickupSearchesImpl, VehPathTracker, std::ofstream>;
+        using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, RepositioningBucketsEnv, LastStopBucketsEnv, VehCHEnv, CurVehLocToPickupSearchesImpl, VehPathTracker, std::ofstream>;
         SystemStateUpdaterImpl
-                systemStateUpdater(vehicleInputGraph, reqState, curVehLocToPickupSearches,
-                                   pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
+                systemStateUpdater(vehicleInputGraph, fleet, reqState, curVehLocToPickupSearches,
+                                   pathTracker, routeState, ellipticBucketsEnv, repositioningBucketsEnv, lastStopBucketsEnv, *vehChEnv);
 
-
-        // Initialize last stop state for initial locations of vehicles
-        for (const auto &veh: fleet) {
-            lastStopBucketsEnv.generateIdleBucketEntries(veh);
-        }
 
         // Acceptance mechanism for requests:
         TripTimeThresholdAssignmentAcceptance acceptance(routeState);

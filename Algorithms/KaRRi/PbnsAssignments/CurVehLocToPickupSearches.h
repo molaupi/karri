@@ -188,7 +188,7 @@ namespace karri {
         void computeExactDistancesVia(const Vehicle &vehicle, const std::vector<PDLoc> &pickups) {
             KASSERT(pickups.size() == curNumPickups);
 
-            assert(routeState.numStopsOf(vehicle.vehicleId) > 1);
+            // assert(routeState.numStopsOf(vehicle.vehicleId) > 1);
             curLeeway = routeState.leewayOfLegStartingAt(routeState.stopIdsFor(vehicle.vehicleId)[0]);
             if (waitingQueue.empty()) return;
 

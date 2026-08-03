@@ -53,10 +53,13 @@ namespace karri {
             const auto &vehId = veh.vehicleId;
             assert(routeState.numStopsOf(vehId) > 0);
 
-
             const auto prevOrCurLoc = routeState.stopLocationsFor(vehId)[0];
             const auto &schedDepTimes = routeState.schedDepTimesFor(vehId);
             const auto &schedArrTimes = routeState.schedArrTimesFor(vehId);
+
+            // If the vehicle is technically idle but currently repositioning, its next location is the repositioning
+            // target instead of the next stop.
+            const bool isRepositioning = routeState.isRepositioning(vehId);
 
             // Vehicle before the start of its service time is at its initial location and can leave at the start of its
             // service time at the earliest
@@ -65,7 +68,7 @@ namespace karri {
             }
 
             // If vehicle is idling, it is at its stop 0 and can leave now
-            if (routeState.numStopsOf(vehId) == 1) {
+            if (routeState.numStopsOf(vehId) == 1 && !isRepositioning) {
                 return {prevOrCurLoc, now};
             }
 
@@ -74,11 +77,12 @@ namespace karri {
                 return {prevOrCurLoc, schedDepTimes[0]};
             }
 
-            const auto nextLoc = routeState.stopLocationsFor(vehId)[1];
+            const auto nextLoc = isRepositioning? routeState.getRepositioningTargetLocation(vehId) : routeState.stopLocationsFor(vehId)[1];
 
-            // Is vehicle already at stop 1?
-            if (schedArrTimes[1] - inputGraph.travelTime(nextLoc) < now) {
-                return {nextLoc, schedArrTimes[1]};
+            // Is vehicle already at next location?
+            const int arrTimeAtNext = isRepositioning? routeState.getRepositioningArrivalTime(vehId) : schedArrTimes[1];
+            if (arrTimeAtNext - inputGraph.travelTime(nextLoc) < now) {
+                return {nextLoc, arrTimeAtNext};
             }
 
             // Reconstruct path that vehicle is taking:
@@ -91,7 +95,7 @@ namespace karri {
             // to the pickup.
             // (This sounds like a pathologically rare case, but it actually happens on the Berlin-1pct input.)
             chQuery.run(ch.rank(inputGraph.edgeHead(prevOrCurLoc)), ch.rank(inputGraph.edgeTail(nextLoc)));
-            assert(schedDepTimes[0] + chQuery.getDistance() + inputGraph.travelTime(nextLoc) == schedArrTimes[1]);
+            assert(schedDepTimes[0] + chQuery.getDistance() + inputGraph.travelTime(nextLoc) == (isRepositioning? routeState.getRepositioningArrivalTime(vehId) : schedArrTimes[1]));
 
             path.clear();
             unpacker.unpackUpDownPath(chQuery.getUpEdgePath(), chQuery.getDownEdgePath(), path);

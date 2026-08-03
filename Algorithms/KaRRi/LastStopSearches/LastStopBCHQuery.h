@@ -100,7 +100,6 @@ namespace karri {
                     for (const auto& entry : nonIdleBucket) {
                         ++numEntriesScannedHere;
                         const int& vehId = entry.targetId;
-                        assert(search.routeState.numStopsOf(vehId) > 1);
                         const DistanceLabel arrTimeAtV = entry.distToTarget;
                         const DistanceLabel arrTimeAtPDLoc = arrTimeAtV + distFromV;
                         const auto atLeastAsGoodAsCurBest = ~search.pruner.doesArrTimeNotAdmitBestAsgn(arrTimeAtPDLoc,distFromV);
@@ -109,7 +108,6 @@ namespace karri {
 
                         if (!search.pruner.isVehicleEligible(vehId))
                             continue;
-
 
                         const auto depTimeAtLastStop = search.routeState.schedDepTimesFor(vehId)[search.routeState.numStopsOf(vehId) - 1];
                         const auto distViaV = arrTimeAtPDLoc - depTimeAtLastStop;

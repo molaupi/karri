@@ -343,9 +343,9 @@ namespace karri::DropoffAfterLastStopStrategies {
                 // Continue with assignments for pickups where exact distance via vehicle location is needed
                 curVehLocToPickupSearches.computeExactDistancesVia(fleet[vehId], pdLocs.pickups);
                 for (const auto &continuation: pbnsContinuations) {
-                    assert(continuation.pickupID >= 0 && continuation.pickupID < requestState.numPickups());
-                    assert(continuation.fromDropoffID >= 0 && continuation.fromDropoffID < requestState.numDropoffs());
-                    asgn.pickup = &pdLocs.pickups[continuation.pickupID];
+                    assert(continuation.pickupID >= 0 && continuation.pickupID < pdLocs.numPickups());
+                    assert(continuation.fromDropoffID >= 0 && continuation.fromDropoffID < pdLocs.numDropoffs());
+                    asgn.pickup = pdLocs.pickups[continuation.pickupID];
 
                     asgn.distToPickup = curVehLocToPickupSearches.getDistance(vehId,
                                                                               continuation.pickupID);
@@ -390,7 +390,7 @@ namespace karri::DropoffAfterLastStopStrategies {
         }
 
         void runSearchesForDropoffBatch(const unsigned int firstDropoffId, const PDLocs &pdLocs) {
-            assert(firstDropoffId % K == 0 && firstDropoffId < requestState.numDropoffs());
+            assert(firstDropoffId % K == 0 && firstDropoffId < pdLocs.numDropoffs());
             const int batchIdx = firstDropoffId / K;
 
             std::array<int, K> dropoffTails;

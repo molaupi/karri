@@ -41,11 +41,16 @@ namespace karri {
             typename ScheduledStopsT>
     class EventSimulation {
 
+        // Every REPOSITIONING_INTERVAL timesteps, an idle vehicle starts repositioning. We trigger this event using
+        // a dummy vehicle event in the queue that reoccurs every REPOSITIONING_INTERVAL timesteps.
+        static constexpr int REPOSITIONING_INTERVAL = 6000;
+
         enum VehicleState {
             OUT_OF_SERVICE,
             IDLING,
             DRIVING,
-            STOPPING
+            STOPPING,
+            REPOSITIONING
         };
 
         enum RequestState {
@@ -75,12 +80,13 @@ namespace karri {
                 const ScheduledStopsT &scheduledStops,
                 const bool verbose = false)
                 : fleet(fleet),
+            DUMMY_VEHICLE_ID_REPOSITIONING_TIMER(fleet.size()),
                   requests(requests),
                   assignmentFinder(assignmentFinder),
                     assignmentAcceptance(assignmentAcceptance),
                   systemStateUpdater(systemStateUpdater),
                   scheduledStops(scheduledStops),
-                  vehicleEvents(fleet.size()),
+                  vehicleEvents(fleet.size() + 1),
                   requestEvents(requests.size()),
                   vehicleState(fleet.size(), OUT_OF_SERVICE),
                   requestState(requests.size(), NOT_RECEIVED),
@@ -112,6 +118,8 @@ namespace karri {
                 vehicleEvents.insert(veh.vehicleId, veh.startOfServiceTime);
             for (const auto &req: requests)
                 requestEvents.insert(req.requestId, req.requestTime);
+
+            vehicleEvents.insert(DUMMY_VEHICLE_ID_REPOSITIONING_TIMER, REPOSITIONING_INTERVAL);
         }
 
         void run() {
@@ -146,6 +154,14 @@ namespace karri {
     private:
 
         void handleVehicleEvent(const int vehId, const int occTime) {
+
+            // If this is a dummy repositioning event, process it and continue
+            if (vehId == DUMMY_VEHICLE_ID_REPOSITIONING_TIMER) {
+                handleRepositioningTimerEvent(occTime);
+                return;
+            }
+
+            // Process regular vehicle event
             switch (vehicleState[vehId]) {
                 case OUT_OF_SERVICE:
                     handleVehicleStartup(vehId, occTime);
@@ -158,6 +174,9 @@ namespace karri {
                     break;
                 case STOPPING:
                     handleVehicleDepartureFromStop(vehId, occTime);
+                    break;
+                case REPOSITIONING:
+                    handleVehicleArrivalAtRepositioningTarget(vehId, occTime);
                     break;
                 default:
                     break;
@@ -185,11 +204,41 @@ namespace karri {
             }
         }
 
+        void handleRepositioningTimerEvent(const int occTime) {
+            Timer timer;
+
+            // If no more future vehicle events exist, stop repositioning loop (end of simulation):
+            if (vehicleEvents.size() == 1) {
+                KASSERT(vehicleEvents.minId() == DUMMY_VEHICLE_ID_REPOSITIONING_TIMER);
+                int id, key;
+                vehicleEvents.deleteMin(id, key);
+                return;
+            }
+
+            // Reinsert repositioning timer event into queue:
+            vehicleEvents.increaseKey(DUMMY_VEHICLE_ID_REPOSITIONING_TIMER, occTime + REPOSITIONING_INTERVAL);
+
+            const int vehId = systemStateUpdater.notifyRepositioningEvent(occTime);
+            if (vehId == INVALID_ID)
+                return;
+
+            // Insert repositioning arrival event for vehicle:
+            KASSERT(vehicleState[vehId] == IDLING);
+            vehicleState[vehId] = REPOSITIONING;
+            vehicleEvents.updateKey(vehId, std::min(scheduledStops.getRepositioningArrivalTime(vehId), fleet[vehId].endOfServiceTime));
+
+
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            eventSimulationStatsLogger << occTime << ",RepositioningStart," << time << '\n';
+        }
+
         void handleVehicleStartup(const int vehId, const int occTime) {
             assert(vehicleState[vehId] == OUT_OF_SERVICE);
             assert(fleet[vehId].startOfServiceTime == occTime);
             unused(occTime);
             Timer timer;
+
+            systemStateUpdater.notifyStartup(fleet[vehId]);
 
             // Vehicle may have already been assigned stops. In this case it will start driving right away:
             if (scheduledStops.hasNextScheduledStop(vehId)) {
@@ -220,6 +269,29 @@ namespace karri {
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",VehicleShutdown," << time << '\n';
+        }
+
+        void handleVehicleArrivalAtRepositioningTarget(const int vehId, const int occTime) {
+            KASSERT(vehicleState[vehId] == REPOSITIONING);
+            KASSERT(occTime == scheduledStops.getRepositioningArrivalTime(vehId) || occTime == fleet[vehId].endOfServiceTime);
+            Timer timer;
+
+            // Log finished repositioning leg
+            const auto prevStop = scheduledStops.getCurrentOrPrevScheduledStop(vehId);
+            legStatsLogger << vehId << ','
+                           << prevStop.depTime - prevStop.arrTime << ','
+                           << prevStop.depTime << ','
+                           << occTime << ','
+                           << occTime - prevStop.depTime << ','
+                           << prevStop.occupancyInFollowingLeg << '\n';
+
+            vehicleState[vehId] = IDLING;
+            vehicleEvents.increaseKey(vehId, fleet[vehId].endOfServiceTime);
+
+            systemStateUpdater.notifyRepositioningFinished(fleet[vehId]);
+
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            eventSimulationStatsLogger << occTime << ",RepositioningArrival," << time << '\n';
         }
 
         void handleVehicleArrivalAtStop(const int vehId, const int occTime) {
@@ -344,6 +416,8 @@ namespace karri {
                     // Update event time to departure time at current stop since it may have changed
                     vehicleEvents.updateKey(vehId, scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime);
                     break;
+                case REPOSITIONING:
+                    [[fallthrough]];
                 case IDLING:
                     vehicleState[vehId] = VehicleState::DRIVING;
                     [[fallthrough]];
@@ -386,6 +460,7 @@ namespace karri {
 
 
         const Fleet &fleet;
+        int DUMMY_VEHICLE_ID_REPOSITIONING_TIMER;
         const std::vector<Request> &requests;
         AssignmentFinderT &assignmentFinder;
         const AssignmentAcceptanceT &assignmentAcceptance;
