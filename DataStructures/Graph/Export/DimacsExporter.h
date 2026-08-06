@@ -69,6 +69,10 @@ public:
             outco << "c Coordinates (longitude, latitude) in WGS84 system stored as integers with unit 1/" << LatLng::PRECISION << " degrees\n";
     }
 
+    void finalize() {
+        // no op
+    }
+
     void writeHeader(int numVertices, int numEdges) {
         outgr << "p sp " << numVertices << " " << numEdges << "\n";
         outco << "p aux sp co " << numVertices << "\n";

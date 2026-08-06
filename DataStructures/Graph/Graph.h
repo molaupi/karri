@@ -799,6 +799,8 @@ public:
                 ex.finalizeEdge();
             }
         }
+
+        ex.finalize();
     }
 
     // Reads a graph from a binary file. Attributes that are present in the file, but not associated

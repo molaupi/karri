@@ -33,6 +33,8 @@ public:
 
     void init(std::string /*filename*/) {}
 
+    void finalize() {}
+
     void writeHeader(int /*numVertices*/, int /*numEdges*/) {}
 
     void startVertex(const int /*vertexId*/) {}

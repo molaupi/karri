@@ -58,6 +58,8 @@
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "Tools/ContainerHelpers.h"
 #include "DataStructures/Graph/Export/DimacsExporter.h"
+#include "DataStructures/Graph/Export/RoutingKitExporter.h"
+#include "DataStructures/Graph/Import/RoutingKitImporter.h"
 
 inline void printUsage() {
   std::cout <<
@@ -66,10 +68,10 @@ inline void printUsage() {
       "possibly extracting the largest strongly connected component of the input graph.\n"
       "  -s <fmt>          source file format\n"
       "                      possible values:\n"
-      "                        binary default dimacs matsim osm visum xatf\n"
+      "                        binary default dimacs matsim osm routingkit visum xatf\n"
       "  -d <fmt>          destination file format\n"
       "                      possible values:\n"
-      "                        binary default dimacs\n"
+      "                        binary default dimacs routingkit\n"
       "  -c                compress the output file(s), if available\n"
       "  -p <file>         extract a region given as an OSM POLY file\n"
       "  -scc              extract the largest strongly connected component\n"
@@ -134,6 +136,8 @@ inline GraphT importGraph(const CommandLineParser& clp) {
     return GraphT(infile, MatSimImporter(sys, crs));
   } else if (format == "osm") {
     return GraphT(infile, VehicleOsmImporter());
+  } else if (format == "routingkit") {
+    return GraphT(infile, RoutingKitImporter());
   } else if (format == "visum") {
     const auto sys = clp.getValue<std::string>("ts", "P");
     const auto crs = clp.getValue<int>("cs", 31467);
@@ -189,6 +193,9 @@ inline void exportGraph(const CommandLineParser& clp, const GraphT& graph) {
     doExport(clp, graph, exporter);
   } else if (format == "dimacs") {
       DimacsExporter<TravelTimeAttribute, LatLngAttribute> exporter(compress);
+      doExport(clp, graph, exporter);
+  } else if (format == "routingkit") {
+      RoutingKitExporter exporter(compress);
       doExport(clp, graph, exporter);
   } else {
     throw std::invalid_argument("unrecognized output file format -- '" + format + "'");
