@@ -28,6 +28,7 @@
 #include "DataStructures/Geometry/LatLng.h"
 #include "DataStructures/Containers/BitVector.h"
 #include "DataStructures/Graph/Attributes/LatLngAttribute.h"
+#include "DataStructures/Utilities/OriginDestination.h"
 #include "DataStructures/Graph/Graph.h"
 #include "DataStructures/Graph/Attributes/EdgeIdAttribute.h"
 #include "DataStructures/Graph/Attributes/EdgeTailAttribute.h"
@@ -43,7 +44,8 @@ inline void printUsage() {
               "Outputs all request origin and destination edges in a given road network as GeoJson.\n"
               "  -g <file>         input road network in binary format.\n"
               "  -r <file>         input requests in CSV format.\n"
-              "  -vertices         if set, outputs GeoJson for small squares around head vertices of origin/destination\n"
+              "  -input-vertices   if set, treats IDs in input as vertex IDs instead of edge IDs.\n"
+              "  -output-vertices  if set, outputs GeoJson for small squares around head vertices of origin/destination\n"
               "  -vertex-width <length>     side-length of square around vertex in meters, default: 50m\n"
               "  -vertex-opacity <value>     opacity of vertex squares, default: 0.1\n"
               "  -csv-in-LOUD-format    if set, assumes that input files are in the format used by LOUD.\n"
@@ -122,18 +124,18 @@ nlohmann::json generateGeoJsonFeatureForVertex(const InputGraphT &inputGraph, co
 
 template<typename InputGraphT>
 nlohmann::json
-generateGeoJsonObjectForRequestVertices(const InputGraphT &inputGraph, const std::vector<karri::Request> &requests,
+generateGeoJsonObjectForVertices(const InputGraphT &inputGraph, const std::vector<OriginDestination> &odPairs,
                                         const int sideLengthInM, const double opacity) {
     // Construct the needed GeoJSON object
     nlohmann::json topGeoJson;
     topGeoJson["type"] = "FeatureCollection";
 
-    for (const auto &req: requests) {
-
+    for (int i = 0; i < odPairs.size(); ++i) {
+        const auto &od = odPairs[i];
         topGeoJson["features"].push_back(
-                generateGeoJsonFeatureForVertex(inputGraph, inputGraph.edgeHead(req.origin), req.requestId, "origin", sideLengthInM, opacity));
+                generateGeoJsonFeatureForVertex(inputGraph, od.origin, i, "origin", sideLengthInM, opacity));
         topGeoJson["features"].push_back(
-                generateGeoJsonFeatureForVertex(inputGraph, inputGraph.edgeHead(req.destination), req.requestId, "destination", sideLengthInM, opacity));
+                generateGeoJsonFeatureForVertex(inputGraph, od.destination, i, "destination", sideLengthInM, opacity));
 
     }
 
@@ -176,17 +178,17 @@ nlohmann::json generateGeoJsonFeatureForEdge(const InputGraphT &inputGraph, cons
 
 template<typename InputGraphT>
 nlohmann::json
-generateGeoJsonObjectForRequestEdges(const InputGraphT &inputGraph, const std::vector<karri::Request> &requests) {
+generateGeoJsonObjectForEdges(const InputGraphT &inputGraph, const std::vector<OriginDestination> &odPairs) {
     // Construct the needed GeoJSON object
     nlohmann::json topGeoJson;
     topGeoJson["type"] = "FeatureCollection";
 
-    for (const auto &req: requests) {
-
+    for (int i = 0; i < odPairs.size(); ++i) {
+        const auto &od = odPairs[i];
         topGeoJson["features"].push_back(
-                generateGeoJsonFeatureForEdge(inputGraph, req.origin, req.requestId, "origin"));
+                generateGeoJsonFeatureForEdge(inputGraph, od.origin, i, "origin"));
         topGeoJson["features"].push_back(
-                generateGeoJsonFeatureForEdge(inputGraph, req.destination, req.requestId, "destination"));
+                generateGeoJsonFeatureForEdge(inputGraph, od.destination, i, "destination"));
 
     }
 
@@ -212,65 +214,41 @@ int main(int argc, char *argv[]) {
         if (!endsWith(outputFileName, ".geojson"))
             outputFileName += ".geojson";
 
-        const bool outputVertices = clp.isSet("vertices");
+        const bool inputVertices = clp.isSet("input-vertices");
+        const bool outputVertices = clp.isSet("output-vertices") || inputVertices;
 
 
         // Read the source network from file.
         std::cout << "Reading source network from file... " << std::flush;
-        using InputGraph = StaticGraph<VertexAttrs<LatLngAttribute>, EdgeAttrs<EdgeIdAttribute, EdgeTailAttribute, OsmRoadCategoryAttribute>>;
+        using InputGraph = StaticGraph<VertexAttrs<LatLngAttribute>, EdgeAttrs<EdgeTailAttribute, OsmRoadCategoryAttribute>>;
         std::ifstream inputGraphFile(inputGraphFileName, std::ios::binary);
         if (!inputGraphFile.good())
             throw std::invalid_argument("file not found -- '" + inputGraphFileName + "'");
         InputGraph inputGraph(inputGraphFile);
         inputGraphFile.close();
-        std::vector<int32_t> origIdToSeqId;
-        if (inputGraph.numEdges() > 0 && inputGraph.edgeId(0) == INVALID_ID) {
-            origIdToSeqId.assign(inputGraph.numEdges(), INVALID_ID);
-            std::iota(origIdToSeqId.begin(), origIdToSeqId.end(), 0);
-            FORALL_VALID_EDGES(inputGraph, v, e) {
-                    assert(inputGraph.edgeId(e) == INVALID_ID);
-                    inputGraph.edgeId(e) = e;
-                    inputGraph.edgeTail(e) = v;
-                }
-        } else {
-            FORALL_VALID_EDGES(inputGraph, v, e) {
-                    assert(inputGraph.edgeId(e) != INVALID_ID);
-                    if (inputGraph.edgeId(e) >= origIdToSeqId.size()) {
-                        const auto numElementsToBeInserted = inputGraph.edgeId(e) + 1 - origIdToSeqId.size();
-                        origIdToSeqId.insert(origIdToSeqId.end(), numElementsToBeInserted, INVALID_ID);
-                    }
-                    assert(origIdToSeqId[inputGraph.edgeId(e)] == INVALID_ID);
-                    origIdToSeqId[inputGraph.edgeId(e)] = e;
-                    inputGraph.edgeId(e) = e;
-                    inputGraph.edgeTail(e) = v;
-                }
+        FORALL_VALID_EDGES(inputGraph, v, e) {
+            inputGraph.edgeTail(e) = v;
         }
         std::cout << "done.\n";
 
         // Read the request data from file.
         std::cout << "Reading request data from file... " << std::flush;
-        std::vector<karri::Request> requests;
+        std::vector<OriginDestination> odPairs;
         int origin, destination, requestTime;
         io::CSVReader<3, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_extra_column, "pickup_spot", "dropoff_spot", "min_dep_time");
+            reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time");
         } else {
-            reqFileReader.read_header(io::ignore_extra_column, "origin", "destination", "req_time");
+            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time");
         }
 
         while (reqFileReader.read_row(origin, destination, requestTime)) {
-            if (origin < 0 || origin >= origIdToSeqId.size() || origIdToSeqId[origin] == INVALID_ID)
-                throw std::invalid_argument("invalid location -- '" + std::to_string(origin) + "'");
-            if (destination < 0 || destination >= origIdToSeqId.size() ||
-                origIdToSeqId[destination] == INVALID_ID)
-                throw std::invalid_argument("invalid location -- '" + std::to_string(destination) + "'");
-            const auto originSeqId = origIdToSeqId[origin];
-            const auto destSeqId = origIdToSeqId[destination];
-            const int requestId = static_cast<int>(requests.size());
-            assert(inputGraph.edgeTail(originSeqId) != EdgeTailAttribute::defaultValue());
-            assert(inputGraph.edgeTail(destSeqId) != EdgeTailAttribute::defaultValue());
-            requests.push_back({requestId, originSeqId, destSeqId, requestTime * 10});
+            if (!inputVertices && outputVertices) {
+                origin = inputGraph.edgeHead(origin);
+                destination = inputGraph.edgeHead(destination);
+            }
+            odPairs.emplace_back(origin, destination);
         }
         std::cout << "done.\n";
 
@@ -278,11 +256,11 @@ int main(int argc, char *argv[]) {
         std::cout << "Generating GeoJson object ..." << std::flush;
         nlohmann::json geoJson;
         if (!outputVertices) {
-            geoJson = generateGeoJsonObjectForRequestEdges(inputGraph, requests);
+            geoJson = generateGeoJsonObjectForEdges(inputGraph, odPairs);
         } else {
             const int sideLengthInM = clp.getValue<int>("vertex-width", 50);
             const double opacity = clp.getValue<double>("vertex-opacity", 0.1);
-            geoJson = generateGeoJsonObjectForRequestVertices(inputGraph, requests, sideLengthInM, opacity);
+            geoJson = generateGeoJsonObjectForVertices(inputGraph, odPairs, sideLengthInM, opacity);
         }
         std::cout << " done." << std::endl;
 
