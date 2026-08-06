@@ -21,6 +21,7 @@ namespace karri {
             chQuery.run(ch.rank(inputGraph.edgeHead(fromEdge)), ch.rank(inputGraph.edgeTail(toEdge)));
             outPath.clear();
             unpacker.unpackUpDownPath(chQuery.getUpEdgePath(), chQuery.getDownEdgePath(), outPath);
+            outPath.push_back(toEdge);
             return chQuery.getDistance() + inputGraph.travelTime(toEdge);
         }
 
