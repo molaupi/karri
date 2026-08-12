@@ -33,6 +33,11 @@ target_compile_definitions(ConvertGraph PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(ConvertGraph PRIVATE ${FULL_WARNINGS})
 target_link_libraries(ConvertGraph proj routingkit kassert rapidxml fast_cpp_csv_parser)
 
+add_executable(FlowsRoutingKitToCsv FlowsRoutingKitToCsv.cc)
+target_compile_definitions(FlowsRoutingKitToCsv PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(FlowsRoutingKitToCsv PRIVATE ${FULL_WARNINGS})
+target_link_libraries(FlowsRoutingKitToCsv routingkit kassert rapidxml fast_cpp_csv_parser)
+
 add_executable(GenerateODPairs GenerateODPairs.cc)
 target_compile_definitions(GenerateODPairs PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(GenerateODPairs PRIVATE ${FULL_WARNINGS})
@@ -50,6 +55,11 @@ add_executable(DrawRandomDepartureTimes DrawRandomDepartureTimes.cc)
 target_compile_definitions(DrawRandomDepartureTimes PRIVATE CSV_IO_NO_THREAD)
 target_compile_options(DrawRandomDepartureTimes PRIVATE ${FULL_WARNINGS})
 target_link_libraries(DrawRandomDepartureTimes fast_cpp_csv_parser)
+
+add_executable(ODPairsCsvToRoutingKit ODPairsCsvToRoutingKit.cc)
+target_compile_definitions(ODPairsCsvToRoutingKit PRIVATE CSV_IO_NO_THREAD)
+target_compile_options(ODPairsCsvToRoutingKit PRIVATE ${FULL_WARNINGS})
+target_link_libraries(ODPairsCsvToRoutingKit routingkit kassert fast_cpp_csv_parser)
 
 add_executable(OsmToCarAndPassengerGraph OsmToCarAndPassengerGraph.cc)
 target_compile_definitions(OsmToCarAndPassengerGraph PRIVATE CSV_IO_NO_THREAD)

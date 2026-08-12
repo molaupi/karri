@@ -58,6 +58,7 @@
 #include "Tools/CommandLine/CommandLineParser.h"
 #include "Tools/ContainerHelpers.h"
 #include "DataStructures/Graph/Export/DimacsExporter.h"
+#include "DataStructures/Graph/Export/LinTimInfrastructureExporter.h"
 #include "DataStructures/Graph/Export/RoutingKitExporter.h"
 #include "DataStructures/Graph/Import/RoutingKitImporter.h"
 
@@ -71,7 +72,7 @@ inline void printUsage() {
       "                        binary default dimacs matsim osm routingkit visum xatf\n"
       "  -d <fmt>          destination file format\n"
       "                      possible values:\n"
-      "                        binary default dimacs routingkit\n"
+      "                        binary default dimacs routingkit lintim_infrastructure\n"
       "  -c                compress the output file(s), if available\n"
       "  -p <file>         extract a region given as an OSM POLY file\n"
       "  -scc              extract the largest strongly connected component\n"
@@ -196,6 +197,9 @@ inline void exportGraph(const CommandLineParser& clp, const GraphT& graph) {
       doExport(clp, graph, exporter);
   } else if (format == "routingkit") {
       RoutingKitExporter exporter(compress);
+      doExport(clp, graph, exporter);
+  } else if (format == "lintim_infrastructure") {
+      LinTimInfrastructureExporter exporter(compress);
       doExport(clp, graph, exporter);
   } else {
     throw std::invalid_argument("unrecognized output file format -- '" + format + "'");
