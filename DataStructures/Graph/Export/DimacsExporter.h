@@ -117,6 +117,10 @@ public:
         outco << "v " << currentVertex << " " << currentVertexCoord.x() << " " << currentVertexCoord.y() << "\n";
     }
 
+    void startOutEdges(const int /*tail*/) {}
+
+    void finalizeOutEdges(const int /*tail*/) {}
+
     void startEdge(const int tail, const int head) {
         currentEdgeTail = tail + 1; // Vertex IDs are 1-based in DIMACS format.
         currentEdgeHead = head + 1;

@@ -793,11 +793,13 @@ public:
         }
 
         for (int v = 0; v < numVertices(); ++v) {
+            ex.startOutEdges(v);
             for (int e = firstEdge(v); e != lastEdge(v); ++e) {
                 ex.startEdge(v, edgeHeads[e]);
                 RUN_FORALL(ex.template setCurrentEdgeAttributeValue<EdgeAttributes>(EdgeAttributes::values[e]));
                 ex.finalizeEdge();
             }
+            ex.finalizeOutEdges(v);
         }
 
         ex.finalize();

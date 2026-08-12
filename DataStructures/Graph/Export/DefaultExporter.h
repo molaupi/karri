@@ -44,6 +44,10 @@ public:
 
     void finalizeVertex() {}
 
+    void startOutEdges(const int /*tail*/) {}
+
+    void finalizeOutEdges(const int /*tail*/) {}
+
     void startEdge(int /*tail*/, int /*head*/) {}
 
     template<typename Attr>

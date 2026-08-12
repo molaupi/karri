@@ -59,11 +59,7 @@ class RoutingKitExporter {
     longitude.reserve(numVertices);
   }
 
-  void startVertex(const int v) {
-    // Vertices are visited in order of increasing ID, so the number of edges output so far is
-    // exactly the first out-edge of v.
-    firstOut[v] = static_cast<uint32_t>(head.size());
-  }
+  void startVertex(const int ) {}
 
   template<typename Attr, typename DUMMY = void>
   struct SetCurrentVertexAttributeValue {
@@ -91,6 +87,12 @@ class RoutingKitExporter {
     latitude.push_back(currentVertexLat);
     longitude.push_back(currentVertexLng);
   }
+
+  void startOutEdges(const int tail) {
+    firstOut[tail] = static_cast<int>(head.size());
+  }
+
+  void finalizeOutEdges(const int /*tail*/) {}
 
   void startEdge(const int /*tail*/, const int head) {
     currentEdgeHead = static_cast<uint32_t>(head);
