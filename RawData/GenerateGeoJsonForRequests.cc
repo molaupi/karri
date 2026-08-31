@@ -238,9 +238,9 @@ int main(int argc, char *argv[]) {
         io::CSVReader<3, io::trim_chars<' '>> reqFileReader(requestFileName);
 
         if (csvFilesInLoudFormat) {
-            reqFileReader.read_header(io::ignore_missing_column, "pickup_spot", "dropoff_spot", "min_dep_time");
+            reqFileReader.read_header(io::ignore_missing_column | io::ignore_extra_column, "pickup_spot", "dropoff_spot", "min_dep_time");
         } else {
-            reqFileReader.read_header(io::ignore_missing_column, "origin", "destination", "req_time");
+            reqFileReader.read_header(io::ignore_missing_column | io::ignore_extra_column, "origin", "destination", "req_time");
         }
 
         while (reqFileReader.read_row(origin, destination, requestTime)) {
