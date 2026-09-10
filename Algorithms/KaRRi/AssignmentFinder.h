@@ -104,22 +104,22 @@ namespace karri {
             ellipticBchSearches.run(feasibleEllipticPickups, feasibleEllipticDropoffs, pdLocs);
 
             // Filter feasible PD-locations between ordinary stops:
-            const auto relOrdinaryPickups = relevantPdLocsFilter.filterOrdinaryPickups(feasibleEllipticPickups, reqState, pdLocs);
-            const auto relOrdinaryDropoffs = relevantPdLocsFilter.filterOrdinaryDropoffs(feasibleEllipticDropoffs, reqState, pdLocs);
+            const auto relOrdinaryPickups = relevantPdLocsFilter.filterOrdinaryPickups(feasibleEllipticPickups, feasibleEllipticDropoffs, reqState, pdLocs);
+            const auto relOrdinaryDropoffs = relevantPdLocsFilter.filterOrdinaryDropoffs(feasibleEllipticPickups, feasibleEllipticDropoffs, reqState, pdLocs);
 
             // Try ordinary assignments:
             ordAssignments.findAssignments(relOrdinaryPickups, relOrdinaryDropoffs, ffPdDistances, pdLocs);
 
             // Filter feasible pickups before next stops:
             const auto relPickupsBeforeNextStop = relevantPdLocsFilter.filterPickupsBeforeNextStop(
-                    feasibleEllipticPickups, reqState, pdLocs);
+                    feasibleEllipticPickups, feasibleEllipticDropoffs, reqState, pdLocs);
 
             // Try DALS assignments:
             dalsAssignments.findAssignments(relOrdinaryPickups, relPickupsBeforeNextStop, pdLocs);
 
             // Filter feasible dropoffs before next stop:
             const auto relDropoffsBeforeNextStop = relevantPdLocsFilter.filterDropoffsBeforeNextStop(
-                    feasibleEllipticDropoffs, reqState, pdLocs);
+                    feasibleEllipticPickups, feasibleEllipticDropoffs, reqState, pdLocs);
 
             // Try PBNS assignments:
             pbnsAssignments.findAssignments(relPickupsBeforeNextStop, relOrdinaryDropoffs, relDropoffsBeforeNextStop,

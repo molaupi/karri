@@ -47,12 +47,13 @@ namespace karri {
         }
 
         RelevantPDLocs
-        filterOrdinaryPickups(FeasibleDistancesT &feasiblePickupDistances, RequestState &requestState,
+        filterOrdinaryPickups(FeasibleDistancesT &feasiblePickupDistances, FeasibleDistancesT &feasibleDropoffDistances,
+            RequestState &requestState,
                               const PDLocs &pdLocs) {
             Timer timer;
 
             int numRelStops = 0;
-            const auto rel = filter<false, false>(feasiblePickupDistances, pdLocs.numPickups(), numRelStops,
+            const auto rel = filter<false, false>(feasiblePickupDistances, feasibleDropoffDistances, pdLocs.numPickups(), numRelStops,
                                                   requestState, pdLocs);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
@@ -64,12 +65,12 @@ namespace karri {
 
 
         RelevantPDLocs
-        filterOrdinaryDropoffs(FeasibleDistancesT &feasibleDropoffDistances, RequestState &requestState,
+        filterOrdinaryDropoffs(FeasibleDistancesT &feasiblePickupDistances, FeasibleDistancesT &feasibleDropoffDistances, RequestState &requestState,
                                const PDLocs &pdLocs) {
             Timer timer;
 
             int numRelStops = 0;
-            const auto rel = filter<false, true>(feasibleDropoffDistances, pdLocs.numDropoffs(), numRelStops,
+            const auto rel = filter<false, true>(feasiblePickupDistances, feasibleDropoffDistances, pdLocs.numDropoffs(), numRelStops,
                                                  requestState, pdLocs);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
@@ -80,12 +81,12 @@ namespace karri {
         }
 
         RelevantPDLocs
-        filterPickupsBeforeNextStop(FeasibleDistancesT &feasiblePickupDistances, RequestState &requestState,
+        filterPickupsBeforeNextStop(FeasibleDistancesT &feasiblePickupDistances, FeasibleDistancesT &feasibleDropoffDistances, RequestState &requestState,
                                     const PDLocs &pdLocs) {
             Timer timer;
 
             int numRelStops = 0;
-            const auto rel = filter<true, false>(feasiblePickupDistances, pdLocs.numPickups(), numRelStops,
+            const auto rel = filter<true, false>(feasiblePickupDistances, feasibleDropoffDistances, pdLocs.numPickups(), numRelStops,
                                                  requestState, pdLocs);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
@@ -94,13 +95,13 @@ namespace karri {
             return rel;
         }
 
-        RelevantPDLocs filterDropoffsBeforeNextStop(FeasibleDistancesT &feasibleDropoffDistances,
+        RelevantPDLocs filterDropoffsBeforeNextStop(FeasibleDistancesT &feasiblePickupDistances, FeasibleDistancesT &feasibleDropoffDistances,
                                                     RequestState &requestState,
                                                     const PDLocs &pdLocs) {
             Timer timer;
 
             int numRelStops = 0;
-            const auto rel = filter<true, true>(feasibleDropoffDistances, pdLocs.numDropoffs(), numRelStops,
+            const auto rel = filter<true, true>(feasiblePickupDistances, feasibleDropoffDistances, pdLocs.numDropoffs(), numRelStops,
                                                 requestState, pdLocs);
 
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
@@ -112,7 +113,8 @@ namespace karri {
 
     private:
         template<bool beforeNextStop, bool isDropoff>
-        RelevantPDLocs filter(FeasibleDistancesT &feasible, const int numPDLocs, int &numStopsRelevant,
+        RelevantPDLocs filter(FeasibleDistancesT &feasiblePickups, FeasibleDistancesT &feasibleDropoffs,
+            const int numPDLocs, int &numStopsRelevant,
                               const RequestState &requestState, const PDLocs &pdLocs) {
             // For each stop s, prune the pickups and dropoffs deemed relevant for an ordinary assignment after s by
             // checking them against constraints and lower bounds.
@@ -121,6 +123,8 @@ namespace karri {
             numStopsRelevant = 0;
 
             RelevantPDLocs rel(fleet.size());
+
+            auto &feasible = isDropoff? feasibleDropoffs : feasiblePickups;
 
             vehiclesWithFeasibleDistances.clear();
             for (const auto &stopId: feasible.getStopIdsWithRelevantPDLocs()) {
@@ -143,12 +147,23 @@ namespace karri {
 
                 const int totalNumRelPdLocsBefore = static_cast<int>(rel.relevantSpots.size());
 
+                findFullLegs(veh, feasiblePickups, feasibleDropoffs);
+                int curFullLeg = 0;
 
                 // Track relevant PD locs for each stop in the relevant PD locs data structure.
                 // Entries are ordered by vehicle and by stop.
                 constexpr int beginStopIdx = beforeNextStop ? 0 : 1;
                 const int endStopIdx = beforeNextStop ? 1 : (isDropoff ? numStops : numStops - 1);
                 for (int i = beginStopIdx; i < endStopIdx; ++i) {
+
+                    while (i > fullLegs[curFullLeg].stopIndex)
+                        ++curFullLeg;
+
+                    if (isDropoff && i < fullLegs[curFullLeg].earliestPickup)
+                        continue;
+                    if (!isDropoff && i > fullLegs[curFullLeg].latestDropoff)
+                        continue;
+
                     if ((!isDropoff || beforeNextStop) &&
                         occupancies[i] + requestState.originalRequest.numRiders > veh.capacity)
                         continue;
@@ -222,6 +237,33 @@ namespace karri {
                 }));
 
             return rel;
+        }
+
+        void findFullLegs(const Vehicle &veh, FeasibleDistancesT &feasiblePickups, FeasibleDistancesT &feasibleDropoffs) {
+            int earliestPickup = INFTY;
+            int latestDropoff = -1;
+            const int vehId = veh.vehicleId;
+            const auto numStops = routeState.numStopsOf(vehId);
+            const auto stopIds = routeState.stopIdsFor(vehId);
+            const auto occs = routeState.occupanciesFor(vehId);
+            fullLegs.clear();
+            for (int i = 0; i < numStops - 1; ++i) {
+                const int stopId = stopIds[i];
+                if (feasibleDropoffs.hasPotentiallyRelevantPDLocs(stopId))
+                    latestDropoff = i; // move as far back as possible
+                if (occs[i] == veh.capacity) {
+                    // Full leg found
+                    fullLegs.push_back(FullLeg(i, earliestPickup, latestDropoff));
+                    earliestPickup = INFTY;
+                    latestDropoff = -1;
+                }
+                if (earliestPickup == INFTY && feasiblePickups.hasPotentiallyRelevantPDLocs(stopId))
+                    earliestPickup = i; // set only on first of this stretch between full legs
+            }
+
+            // Sentinel full leg after end of route:
+            latestDropoff = numStops - 1;
+            fullLegs.push_back(FullLeg(numStops - 1, earliestPickup, latestDropoff));
         }
 
         inline bool isPickupRelevant(const Vehicle &veh, const int stopIndex, const unsigned int pickupId,
@@ -363,5 +405,17 @@ namespace karri {
         const RouteState &routeState;
 
         LightweightSubset vehiclesWithFeasibleDistances;
+
+
+        // Describes a leg where a vehicle's passenger capacity is reached.
+        struct FullLeg {
+            // The leg is between this and the next stop.
+            int stopIndex = INVALID_INDEX;
+            // The smallest stop index between this and the previous full leg at which a pickup can be made (or INFTY if none).
+            int earliestPickup = INFTY;
+            // The largest stop index between this and the previous full leg at which a dropoff can be made (or -1 if none).
+            int latestDropoff = -1;
+        };
+        std::vector<FullLeg> fullLegs;
     };
 }
