@@ -94,6 +94,31 @@ namespace karri::mode_choice {
             return logit.select(entries);
         }
 
+        double howMuchWorseWasTaxiThan(const TransportMode mode) const {
+            if (mode == TransportMode::Taxi)
+                return 1.0;
+
+            int entryIdxTaxi = 0;
+            for (; entryIdxTaxi < entries.size(); ++entryIdxTaxi) {
+                if (entries[entryIdxTaxi].option == TransportMode::Taxi) {
+                    break;
+                }
+            }
+            if (entryIdxTaxi == entries.size())
+                return static_cast<double>(INFTY);
+
+            int entryIdxOther = 0;
+            for (; entryIdxOther < entries.size(); ++entryIdxOther) {
+                if (entries[entryIdxOther].option == mode) {
+                    break;
+                }
+            }
+            KASSERT(entryIdxOther < entries.size());
+
+            // ratio between other probability and taxi probability
+            return logit.expUtilities[entryIdxOther] / logit.expUtilities[entryIdxTaxi];
+        }
+
         const ModeChoiceInputStats &getStats() const {
             return stats;
         }

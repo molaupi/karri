@@ -46,7 +46,7 @@ namespace karri::RepositioningStrategies {
 
         // Notify the strategy about a request that has been processed by the dispatcher and the chosen mode.
         // Returns true if repositioning should be started now or false otherwise.
-        bool notifyRequestProcessed(const Request &, const mode_choice::TransportMode, const int, const int) {
+        bool notifyRequestProcessed(const Request &, const mode_choice::TransportMode, const double) {
             return false;
         }
 

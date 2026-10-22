@@ -588,11 +588,11 @@ namespace karri {
             markAsNonIdlingIfIdling(vehId);
         }
 
-        // Notifies the repositioning strategy that a request has been processed with the given mode and trip time.
+        // Notifies the repositioning strategy that a request has been processed with the given mode and mode choice score.
         // Returns true if a repositioning operation should be started.
         bool notifyRequestProcessed(const Request &request, const mode_choice::TransportMode mode,
-                                    const int directOdDist, const int tripTime) {
-            return repositioningStrategy.notifyRequestProcessed(request, mode, directOdDist, tripTime);
+                                    const double score) {
+            return repositioningStrategy.notifyRequestProcessed(request, mode, score);
         }
 
         // Computes the trip time of the rider of the given request according to the best assignment in the request

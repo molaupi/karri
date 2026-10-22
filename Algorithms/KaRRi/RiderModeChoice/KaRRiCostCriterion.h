@@ -78,6 +78,14 @@ namespace karri::mode_choice {
             return TransportMode::Taxi;
         }
 
+        double howMuchWorseWasTaxiThan(const TransportMode mode) const {
+            if (mode == TransportMode::Taxi)
+                return 1.0;
+
+            KASSERT(mode == TransportMode::Ped);
+            return static_cast<double>(taxiCost) / walkingCost;
+        }
+
         const ModeChoiceInputStats &getStats() const {
             return stats;
         }

@@ -9,6 +9,10 @@
 
 #include "types.h"
 
+namespace karri::mode_choice {
+    class UtilityLogitCriterion;
+}
+
 namespace karri::mode_choice::utility_logit {
 /**
  * A simple Logit utility distribution function. Keeps utilities and probabilities vector as reused state. Utility
@@ -33,6 +37,9 @@ namespace karri::mode_choice::utility_logit {
 #endif
 
     private:
+
+        friend class karri::mode_choice::UtilityLogitCriterion;
+
         const std::vector<T> &options;
         mutable std::vector<double> utilities;
         mutable std::vector<double> expUtilities;

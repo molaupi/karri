@@ -83,6 +83,10 @@ namespace karri::mode_choice {
             return choice;
         }
 
+        double howMuchWorseWasTaxiThan(const TransportMode mode) const {
+            return criterion.howMuchWorseWasTaxiThan(mode);
+        }
+
     private:
 
         template<typename AsgnFinderResponseT>

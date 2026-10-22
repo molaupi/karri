@@ -70,19 +70,9 @@ namespace karri::RepositioningStrategies {
 
         // Notify the strategy about a request that has been processed by the dispatcher and the chosen mode.
         // Returns true if repositioning should be started now or false otherwise.
-        bool notifyRequestProcessed(const Request &request, const mode_choice::TransportMode mode, const int directOdDist, const int tripTime) {
+        // Score determines whether this request is considered bad. Higher scores are worse.
+        bool notifyRequestProcessed(const Request &request, const mode_choice::TransportMode mode, const double score) {
             unused(mode);
-
-            // Ignore trips with invalid trip time
-            if (tripTime >= INFTY)
-                return false;
-
-            // Short distance requests do not partake
-            static constexpr int IGNORE_SHORT_DISTANCE_REQUESTS_THRESHOLD = 6000; // 10 min
-            if (directOdDist <= IGNORE_SHORT_DISTANCE_REQUESTS_THRESHOLD)
-                return false;
-
-            const auto score = static_cast<double>(tripTime) / directOdDist;
 
             // Add delay of request to running quantile
             runningScoreQuantile.addValue(score);
