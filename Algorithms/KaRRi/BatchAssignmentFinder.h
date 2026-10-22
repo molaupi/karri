@@ -50,10 +50,10 @@ namespace karri {
         std::vector<RequestState> findBestAssignmentsForBatchParallel(std::vector<Request>& requestBatch, const int now, std::vector<stats::DispatchingPerformanceStats>& stats) {
 
             std::sort(requestBatch.begin(), requestBatch.end(), [this](const Request& a, const Request& b) {
-                const auto& aRankSrc = ch.rank(graph.edgeHead(a.origin));
-                const auto& aRankDst = ch.rank(graph.edgeTail(a.destination));
-                const auto& bRankSrc = ch.rank(graph.edgeHead(b.origin));
-                const auto& bRankDst = ch.rank(graph.edgeTail(b.destination));
+                const auto aRankSrc = ch.rank(graph.edgeHead(a.origin));
+                const auto aRankDst = ch.rank(graph.edgeTail(a.destination));
+                const auto bRankSrc = ch.rank(graph.edgeHead(b.origin));
+                const auto bRankDst = ch.rank(graph.edgeTail(b.destination));
                 return aRankSrc < bRankSrc || (aRankSrc == bRankSrc && aRankDst < bRankDst);
             });
 

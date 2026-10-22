@@ -255,7 +255,7 @@ namespace karri {
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 
             vehicleId = veh.vehicleId;
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto numStops = routeState.numStopsOf(veh.vehicleId);
             const bool isIdle = numStops == 1;
             depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
 
@@ -302,7 +302,7 @@ namespace karri {
 
         template<bool isIdle>
         void generateBucketEntries(const Vehicle &veh, stats::UpdatePerformanceStats& stats) {
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto numStops = routeState.numStopsOf(veh.vehicleId);
 
             Timer timer;
             const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[numStops - 1];
@@ -332,7 +332,7 @@ namespace karri {
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 
             vehicleId = veh.vehicleId;
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto numStops = routeState.numStopsOf(veh.vehicleId);
             depTimeOfVehAtLastStop = routeState.schedDepTimesFor(veh.vehicleId)[numStops - 1];
 
             entriesVisitedInSearch = 0;

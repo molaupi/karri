@@ -251,7 +251,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             FORALL_INCIDENT_EDGES(oppositeGraph, v, e) {
                 const auto w = oppositeGraph.edgeHead(e);
                 if (w == v) continue;
-                const auto &bucketAtW = vertexLabelBuckets.getBucketOf(w);
+                const auto bucketAtW = vertexLabelBuckets.getBucketOf(w);
 
                 // Check if labelAtW is dominated by any closed labels at w.
                 for (const auto &closedLabel: bucketAtW.closed()) {
@@ -400,7 +400,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                         continue;
 
 
-                    const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[routeState.numStopsOf(vehId) - 1];
+                    const int depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[routeState.numStopsOf(vehId) - 1];
                     const int fullDistToDropoff = arrTimeAtDropoff - depTimeAtLastStop;
                     const DropoffLabel labelAtVeh = {dropoff.id, fullDistToDropoff};
                     insertLabelAtVehicleAndClean(vehId, labelAtVeh, requestState, pdLocs);

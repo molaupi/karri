@@ -163,7 +163,7 @@ namespace karri {
 
             Timer timer;
             vehicleId = veh.vehicleId;
-            const auto &numStops = routeState.numStopsOf(veh.vehicleId);
+            const auto numStops = routeState.numStopsOf(veh.vehicleId);
             const auto stopLoc = routeState.stopLocationsFor(veh.vehicleId)[numStops - 1];
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 

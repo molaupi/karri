@@ -113,7 +113,7 @@ namespace karri {
                     if constexpr (BUCKETS_ARE_SOURCE) {
                         curFeasible->updateDistanceFromStopToPDLoc(entry.targetId, curFirstIdOfBatch, distViaV, v);
                     } else {
-                        const auto &prevStopId = routeState.idOfPreviousStopOf(entry.targetId);
+                        const auto prevStopId = routeState.idOfPreviousStopOf(entry.targetId);
                         KASSERT(prevStopId != INVALID_ID);
                         curFeasible->updateDistanceFromPDLocToNextStop(prevStopId, curFirstIdOfBatch, distViaV, v);
                     }

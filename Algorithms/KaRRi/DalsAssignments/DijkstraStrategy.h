@@ -174,7 +174,7 @@ namespace karri::DropoffAfterLastStopStrategies {
             using namespace time_utils;
 
             const auto &pdLocs = *curPdLocs;
-            const auto &vehiclesWithLastStopAtV = lastStopsAtVertices.vehiclesWithLastStopAt(v);
+            const auto vehiclesWithLastStopAtV = lastStopsAtVertices.vehiclesWithLastStopAt(v);
 
             if (vehiclesWithLastStopAtV.empty())
                 return;

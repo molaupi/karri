@@ -204,7 +204,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         void updateDistancesForLastStopsAt(const int v, const DistanceLabel &distFromV,
                                            const RequestState &requestState) {
-            const auto &vehiclesWithLastStopAtV = lastStopsAtVertices.vehiclesWithLastStopAt(v);
+            const auto vehiclesWithLastStopAtV = lastStopsAtVertices.vehiclesWithLastStopAt(v);
 
             if (vehiclesWithLastStopAtV.empty())
                 return;

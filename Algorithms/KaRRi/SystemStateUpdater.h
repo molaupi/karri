@@ -695,11 +695,11 @@ namespace karri {
             }
 
             const auto &vehId = bestAsgn.vehicle->vehicleId;
-            const auto &numStops = routeState.numStopsOf(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
             using time_utils::getVehDepTimeAtStopForRequest;
-            const auto &vehDepTimeBeforePickup = getVehDepTimeAtStopForRequest(vehId, bestAsgn.pickupStopIdx,
+            const auto vehDepTimeBeforePickup = getVehDepTimeAtStopForRequest(vehId, bestAsgn.pickupStopIdx,
                                                                                requestState, routeState);
-            const auto &vehDepTimeBeforeDropoff = getVehDepTimeAtStopForRequest(vehId, bestAsgn.dropoffStopIdx,
+            const auto vehDepTimeBeforeDropoff = getVehDepTimeAtStopForRequest(vehId, bestAsgn.dropoffStopIdx,
                 requestState, routeState);
             bestAssignmentsLogger
                     << vehId << ","
@@ -889,7 +889,7 @@ namespace karri {
                                                       const int depTimeAtLastStopBefore,
                                                       stats::UpdatePerformanceStats &stats) {
             const auto vehId = asgn.vehicle->vehicleId;
-            const auto &numStops = routeState.numStopsOf(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
             const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx + insertedIntermediateStopForReroute;
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + insertedIntermediateStopForReroute
                                                + !pickupAtExistingStop;
@@ -922,7 +922,7 @@ namespace karri {
                                                            std::vector<int> &vehIdsToGenerateNonIdleEntriesFor,
                                                            std::vector<int> &stopIdsToUpdateEntriesFor) {
             const auto vehId = asgn.vehicle->vehicleId;
-            const auto &numStops = routeState.numStopsOf(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
             const bool pickupAtExistingStop = pickupIndex == asgn.pickupStopIdx;
             const bool dropoffAtExistingStop = dropoffIndex == asgn.dropoffStopIdx + !pickupAtExistingStop;
             const auto depTimeAtLastStopAfter = routeState.schedDepTimesFor(vehId)[numStops - 1];

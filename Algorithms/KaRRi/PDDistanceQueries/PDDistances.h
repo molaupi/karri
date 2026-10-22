@@ -63,7 +63,7 @@ namespace karri {
         }
 
         const DistanceLabel &getDirectDistancesForBatchOfPickups(const unsigned int firstPickupIdInBatch,
-                                                                 const unsigned int &dropoffId) const {
+                                                                 const unsigned int dropoffId) const {
             return labelFor(firstPickupIdInBatch, dropoffId);
         }
 

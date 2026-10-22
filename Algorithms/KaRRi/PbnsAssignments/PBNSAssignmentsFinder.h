@@ -158,7 +158,7 @@ namespace karri {
                                               RequestState &requestState,
                                               const PDDistancesT &pdDistances,
                                               const PDLocs &pdLocs) {
-            const auto &relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(veh.vehicleId);
+            const auto relOrdinaryDropoffsForVeh = relOrdinaryDropoffs.relevantSpotsFor(veh.vehicleId);
 
             Assignment asgn(&veh);
 

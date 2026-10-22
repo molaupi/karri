@@ -93,8 +93,8 @@ namespace karri {
             const auto arrTime = routeState.schedArrTimesFor(veh.vehicleId)[0];
             const auto depTime = routeState.schedDepTimesFor(veh.vehicleId)[0];
 
-            const auto &requestIdsAtStop = requestIdsAt(idOfCompletedStop);
-            const auto &pdLocTypesAtStop = pdLocTypesAt(idOfCompletedStop);
+            const auto requestIdsAtStop = requestIdsAt(idOfCompletedStop);
+            const auto pdLocTypesAtStop = pdLocTypesAt(idOfCompletedStop);
             assert(requestIdsAtStop.size() == pdLocTypesAtStop.size());
             const auto numEvents = requestIdsAtStop.size();
 
@@ -159,7 +159,7 @@ namespace karri {
 
         void reconstructPathOfRouteLeg(const int vehId) {
             // Called when departing stop 0, so we reconstruct the path of the leg to stop 0.
-            const auto &stopLoc = routeState.stopLocationsFor(vehId)[0];
+            const auto stopLoc = routeState.stopLocationsFor(vehId)[0];
             legPath.clear();
             computePathBetweenEdgesAndAppend(lastEdgeOfPrevLeg[vehId], stopLoc, legPath);
         }

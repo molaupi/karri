@@ -119,7 +119,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
                 const DistanceLabel directDist = strat.curReqState->minDirectPDDist;
                 const auto detourTillDepAtPickup = distancesToPickups + InputConfig::getInstance().stopTime;
-                const auto &stopIdx = strat.routeState.numStopsOf(vehId) - 1;
+                const auto stopIdx = strat.routeState.numStopsOf(vehId) - 1;
                 const int vehDepTimeAtLastStop = time_utils::getVehDepTimeAtStopForRequest(vehId, stopIdx,
                                                                                            *strat.curReqState,
                                                                                            strat.routeState);

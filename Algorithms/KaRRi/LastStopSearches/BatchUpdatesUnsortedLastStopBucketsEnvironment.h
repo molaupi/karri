@@ -219,7 +219,7 @@ namespace karri {
     private:
 
         void addEntryInsertions(const int vehId) {
-            const auto &numStops = routeState.numStopsOf(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
 
             const auto stopLoc = routeState.stopLocationsFor(vehId)[numStops - 1];
             const auto stopVertex = inputGraph.edgeHead(stopLoc);

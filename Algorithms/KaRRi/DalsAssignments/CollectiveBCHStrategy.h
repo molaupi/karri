@@ -191,8 +191,8 @@ namespace karri::DropoffAfterLastStopStrategies {
                             distFromLastStopToDropoff, asgn.dropoff, requestState) > requestState.getBestCost())
                         break;  // no need to check pickup before next stop
 
-                    const auto &numStops = routeState.numStopsOf(vehId);
-                    const auto &occupancies = routeState.occupanciesFor(vehId);
+                    const auto numStops = routeState.numStopsOf(vehId);
+                    const auto occupancies = routeState.occupanciesFor(vehId);
 
                     asgn.vehicle = &fleet[vehId];
                     asgn.distToDropoff = distFromLastStopToDropoff;
@@ -313,7 +313,7 @@ namespace karri::DropoffAfterLastStopStrategies {
                     continue;
 
                 leftToCheck.clear();
-                const auto &numStops = routeState.numStopsOf(vehId);
+                const auto numStops = routeState.numStopsOf(vehId);
                 asgn.vehicle = &fleet[vehId];
                 asgn.dropoffStopIdx = numStops - 1;
 

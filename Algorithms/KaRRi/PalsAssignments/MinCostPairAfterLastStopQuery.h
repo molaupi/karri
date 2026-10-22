@@ -479,7 +479,7 @@ namespace karri::PickupAfterLastStopStrategies {
             FORALL_INCIDENT_EDGES(oppositeGraph, v, e) {
                 const auto w = oppositeGraph.edgeHead(e);
                 if (w == v) continue;
-                const auto &bucketAtW = reverseLabelBuckets.getBucketOf(w);
+                const auto bucketAtW = reverseLabelBuckets.getBucketOf(w);
 
                 // Check if labelAtW is dominated by any closed labels at w.
                 for (const auto &closedLabel: bucketAtW.closed()) {
@@ -611,8 +611,8 @@ namespace karri::PickupAfterLastStopStrategies {
                         break;
 
                     const int &vehId = entry.targetId;
-                    const int &numStops = routeState.numStopsOf(vehId);
-                    const int &depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1];
+                    const int numStops = routeState.numStopsOf(vehId);
+                    const int depTimeAtLastStop = routeState.schedDepTimesFor(vehId)[numStops - 1];
                     const int fullDistToPickup = vehArrTimeAtPickup - depTimeAtLastStop;
 
                     tryTentativeAssignment(vehId, fullDistToPickup, asgn, requestState);
@@ -624,7 +624,7 @@ namespace karri::PickupAfterLastStopStrategies {
 
         inline void tryTentativeAssignment(const int vehId, const int fullDistToPickup, Assignment &asgn,
                                            const RequestState &requestState) {
-            const int &numStops = routeState.numStopsOf(vehId);
+            const int numStops = routeState.numStopsOf(vehId);
             asgn.vehicle = &fleet[vehId];
             asgn.pickupStopIdx = numStops - 1;
             asgn.dropoffStopIdx = numStops - 1;

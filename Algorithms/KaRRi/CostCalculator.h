@@ -154,7 +154,7 @@ namespace karri {
             using namespace time_utils;
 
             const int vehId = veh.vehicleId;
-            const auto &numStops = routeState.numStopsOf(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
 
             Assignment asgn(&veh, pickup);
             asgn.distToPickup = distToPickup;
@@ -308,7 +308,7 @@ namespace karri {
             const LabelMask distToPickupInftyMask = ~(distancesToPickups < INFTY);
             const DistanceLabel adaptedDistToPickup = select(distToPickupInftyMask, 0, distancesToPickups);
 
-            const auto &stopIdx = routeState.numStopsOf(vehId) - 1;
+            const auto stopIdx = routeState.numStopsOf(vehId) - 1;
             const int vehDepTimeAtLastStop = getVehDepTimeAtStopForRequest(vehId, stopIdx, context, routeState);
 
 

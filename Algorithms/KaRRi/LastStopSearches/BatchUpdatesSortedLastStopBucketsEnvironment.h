@@ -252,7 +252,7 @@ namespace karri {
 
 
         void addIdleBucketEntryInsertions(const int vehId) {
-            const auto &numStops = routeState.numStopsOf(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
 
             const auto stopLoc = routeState.stopLocationsFor(vehId)[numStops - 1];
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
@@ -272,7 +272,7 @@ namespace karri {
         }
 
         void addNonIdleBucketEntryInsertions(const int vehId) {
-            const auto &numStops = routeState.numStopsOf(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
 
             const auto stopLoc = routeState.stopLocationsFor(vehId)[numStops - 1];
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
@@ -344,7 +344,7 @@ namespace karri {
             const auto stopLoc = routeState.stopLocationsFor(vehId)[stopIndex];
             const auto stopVertex = inputGraph.edgeHead(stopLoc);
 
-            const auto &numStops = routeState.numStopsOf(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
             KASSERT(numStops > 1);
             auto &search = addEntryInsertionsAndDeletionsForNewScheduleOfNonIdleVehicleSearch.local();
             auto &nonIdleEntryInsertions = nonIdleInsertions.local();

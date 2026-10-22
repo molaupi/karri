@@ -56,8 +56,8 @@ namespace karri {
 
 
             const auto prevOrCurLoc = routeState.stopLocationsFor(vehId)[0];
-            const auto &schedDepTimes = routeState.schedDepTimesFor(vehId);
-            const auto &schedArrTimes = routeState.schedArrTimesFor(vehId);
+            const auto schedDepTimes = routeState.schedDepTimesFor(vehId);
+            const auto schedArrTimes = routeState.schedArrTimesFor(vehId);
 
             // If the vehicle is technically idle but currently repositioning, its next location is the repositioning
             // target instead of the next stop.

@@ -138,9 +138,9 @@ namespace karri {
 
             auto numAssignmentsTriedWithOrdinaryDropoff = 0;
 
-            const auto &numStops = routeState.numStopsOf(vehId);
-            const auto &stopLocations = routeState.stopLocationsFor(vehId);
-            const auto &occupancies = routeState.occupanciesFor(vehId);
+            const auto numStops = routeState.numStopsOf(vehId);
+            const auto stopLocations = routeState.stopLocationsFor(vehId);
+            const auto occupancies = routeState.occupanciesFor(vehId);
 
             // Compute smallest stop index after pickup at which capacity of vehicle would be broken (end of route
             // if never broken). Dropoff has to be made before or at this index.
@@ -216,8 +216,8 @@ namespace karri {
 
                 // With lower bounds on the distances, we check whether an assignment better than the best known is
                 // possible at this stop.
-                const auto &feasiblePickupsAtStop = feasiblePickups.feasiblePdLocsFor(stopId);
-                const auto &feasibleDropoffsAtStop = feasibleDropoffs.feasiblePdLocsFor(stopId);
+                const auto feasiblePickupsAtStop = feasiblePickups.feasiblePdLocsFor(stopId);
+                const auto feasibleDropoffsAtStop = feasibleDropoffs.feasiblePdLocsFor(stopId);
                 asgn.pickup = pdLocs.pickups[feasiblePickupsAtStop.begin()->pdId];
                 asgn.dropoff = pdLocs.dropoffs[feasibleDropoffsAtStop.begin()->pdId];
                 asgn.distToPickup = feasiblePickups.minDistToPDLocFor(stopId);
