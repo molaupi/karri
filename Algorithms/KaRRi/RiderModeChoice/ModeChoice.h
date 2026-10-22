@@ -53,7 +53,7 @@ namespace karri::mode_choice {
             }
 
             const auto &bestAsgn = resp.getBestAssignment();
-            if (bestAsgn.vehicle) {
+            if (bestAsgn.vehicle && !doesTaxiAsgnBreakMcConstraints(bestAsgn, resp)) {
                 criterion.registerTaxi(bestAsgn, resp);
             }
 
@@ -84,6 +84,29 @@ namespace karri::mode_choice {
         }
 
     private:
+
+        template<typename AsgnFinderResponseT>
+        bool doesTaxiAsgnBreakMcConstraints(const Assignment &assignment, const AsgnFinderResponseT &resp) {
+            static const auto& ic = InputConfig::getInstance();
+            if (!ic.useModeChoiceConstraints)
+                return false;
+
+            using namespace time_utils;
+            const auto depTimeAtPickup = getActualDepTimeAtPickup(assignment, resp, routeState);
+            const auto initialPickupDetour = calcInitialPickupDetour(assignment, depTimeAtPickup, resp,
+                                                                     routeState);
+            const auto dropoffAtExistingStop = isDropoffAtExistingStop(assignment, routeState);
+            const auto arrTimeAtDropoff = getArrTimeAtDropoff(depTimeAtPickup, assignment, initialPickupDetour,
+                                                              dropoffAtExistingStop, routeState);
+
+            // Check if ride-pooling trip exceeds mode choice constraints relative to direct trip
+            const int maxTripTime = static_cast<int>(ic.modeChoiceAlpha * resp.originalReqDirectDist) + ic.modeChoiceBeta;
+            const int tripTime = arrTimeAtDropoff + assignment.dropoff.walkingDist - resp.originalRequest.requestTime;
+            // Wait time for constraints contains pickup walking
+            const int waitTime = depTimeAtPickup - resp.originalRequest.requestTime;
+            return tripTime > maxTripTime || waitTime > ic.modeChoiceMaxWaitTime;
+        }
+
         CriterionT criterion;
         const RouteState &routeState;
         const bool allowPublicTransport;

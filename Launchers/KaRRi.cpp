@@ -147,10 +147,14 @@ inline void printUsage() {
             "  -s <sec>                   stop time (in s). (dflt: 60s)\n"
             "  -w <sec>                   maximum added wait time after accepting ride (in s). (dflt: 600s)\n"
             "  -a <factor>               model parameter alpha' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1.4)\n"
-            "  -b <seconds>              model parameter beta' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1200)\n"
+            "  -b <seconds>              model parameter beta' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1200s)\n"
             "  -soft-w <sec>              if soft constraints (CMake parameter), penalty for wait times greater than soft-w (dflt: 600s).\n"
             "  -soft-a <factor>           if soft constraints (CMake parameter), penalty for trip times greater than soft-a * OD-dist + soft-b (dflt: 1.4)\n"
-            "  -soft-b <seconds>          if soft constraints (CMake parameter), penalty for trip times greater than soft-a * OD-dist + soft-b  (dflt: 1200)\n"
+            "  -soft-b <seconds>          if soft constraints (CMake parameter), penalty for trip times greater than soft-a * OD-dist + soft-b  (dflt: 900s)\n"
+            "  -enable-mc-constraints     if set, uses mode choice constraints relative to direct travel distance (see mc-w, mc-a, mc-b)\n"
+            "  -mc-w <sec>                if MC constraints (input parameter), in mode choice a RP trip is always rejected if wait time exceeds mc-w. (dflt: 900s)\n"
+            "  -mc-a <factor>             if MC constraints (input parameter), in mode choice a RP trip is always rejected if the travel time exceeds mc-a * OD-dist + mc-b (dflt: 1.7)\n"
+            "  -mc-b <sec>                if MC constraints (input parameter), in mode choice a RP trip is always rejected if the travel time exceeds mc-a * OD-dist + mc-b (dflt: 1200s)\n"
             "  -seq-and-non-batched       if set, dispatches requests one-by-one instead of batched and without multithreading (original KaRRi mode).\n"
             "  -i <seconds>               interval duration for batch of requests in seconds (dflt: 60). No effect if -seq-and-non-batched is set.\n"
             "  -p-radius <m>              default walking radius (in m) for pickup locations around origin if not specified by request (dflt: 417m = 5min at 5km/h)\n"
@@ -360,7 +364,11 @@ int main(int argc, char *argv[]) {
         inputConfig.hardConstraintBeta = clp.getValue<int>("b", 600) * 10;
         inputConfig.softConstraintMaxWaitTime = clp.getValue<int>("soft-w", 600) * 10;
         inputConfig.softConstraintAlpha = clp.getValue<double>("soft-a", 1.4);
-        inputConfig.softConstraintBeta = clp.getValue<int>("soft-b", 1200) * 10;
+        inputConfig.softConstraintBeta = clp.getValue<int>("soft-b", 900) * 10;
+        inputConfig.useModeChoiceConstraints = clp.isSet("enable-mc-constraints");
+        inputConfig.modeChoiceMaxWaitTime = clp.getValue<int>("mc-w", 900) * 10;
+        inputConfig.modeChoiceAlpha = clp.getValue<double>("mc-a", 1.7);
+        inputConfig.modeChoiceBeta = clp.getValue<int>("mc-b", 1200) * 10;
         inputConfig.requestBatchInterval = clp.getValue<int>("i", 5) * 10;
         inputConfig.sampleSingleFrequency = clp.getValue<int>("sample-freq", 0);
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");

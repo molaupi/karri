@@ -44,13 +44,17 @@ namespace karri {
         InputConfig(InputConfig const&) = delete;
         void operator=(InputConfig const&) = delete;
 
-        int softConstraintMaxWaitTime = -1;
         int stopTime = -1;
         int maxNumPickups = -1;
         int maxNumDropoffs = -1;
+        int softConstraintMaxWaitTime = -1;
         double softConstraintAlpha = -1.0;
         int softConstraintBeta = -1;
         int requestBatchInterval = -1;
+        bool useModeChoiceConstraints = false;
+        int modeChoiceMaxWaitTime = -1;
+        double modeChoiceAlpha = -1.0;
+        int modeChoiceBeta = -1;
 
         int sampleSingleFrequency = 0;
 
