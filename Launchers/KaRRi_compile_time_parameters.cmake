@@ -248,6 +248,10 @@ else ()
     target_compile_definitions(karri PRIVATE KARRI_REPOSITIONING_STRATEGY=${REPOSITION_RANDOM_CODE}) # Reposition random idle vehicle
 endif ()
 
+## Quantile of running score distribution above which a processed request triggers repositioning (LONGEST_IDLE).
+set(KARRI_REPOSITION_TRIGGER_SCORE_QUANTILE 0.95 CACHE STRING "Requests with score in upper quantile of running score distribution trigger repositioning. (Applies for KARRI_REPOSITIONING_STRATEGY = LONGEST_IDLE, dflt: 0.95)")
+target_compile_definitions(karri PRIVATE KARRI_REPOSITION_TRIGGER_SCORE_QUANTILE=${KARRI_REPOSITION_TRIGGER_SCORE_QUANTILE})
+
 if (KARRI_USE_CCHS AND NOT ${KARRI_REPOSITIONING_STRATEGY} STREQUAL NONE)
     message(FATAL_ERROR "Repositioning (KARRI_REPOSITIONING_STRATEGY != NONE) is not supported with CCHs (KARRI_USE_CCHS=ON).")
 endif ()

@@ -73,6 +73,7 @@ namespace karri {
             int requestId;
             mode_choice::TransportMode mode;
             double score;
+            int directOdDist;
         };
 
         // Key for event queues.
@@ -344,7 +345,9 @@ namespace karri {
             std::sort(processedRequests.begin(), processedRequests.end(), [](const auto &r1, const auto &r2) {
                 return r1.requestId < r2.requestId;
             });
-            for (const auto &[reqId, mode, score]: processedRequests) {
+            for (const auto &[reqId, mode, score, directOdDist]: processedRequests) {
+                if (directOdDist >= InputConfig::getInstance().repositioningShortRangeThreshold)
+                    continue;
                 const bool repositionNow = systemStateUpdater.notifyRequestProcessed(requests[reqId], mode, score);
                 if (repositionNow)
                     handleRepositioningEvent(now);
@@ -476,7 +479,7 @@ namespace karri {
 
             componentTimer.restart();
             systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse);
-            processedRequests.push_back({request.requestId, mode, taxiModeChoiceScore});
+            processedRequests.push_back({request.requestId, mode, taxiModeChoiceScore, asgnFinderResponse.originalReqDirectDist});
             if (mode == TransportMode::Taxi) {
                 systemStateUpdater.insertSingleBestAssignment(asgnFinderResponse, stats);
                 updateSimulationForAssignment(asgnFinderResponse);
@@ -564,7 +567,7 @@ namespace karri {
                         KASSERT(mode != TransportMode::Taxi);
 
                         systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
-                        processedRequests.push_back({requestBatch[i].requestId, mode, taxiModeChoiceScore});
+                        processedRequests.push_back({requestBatch[i].requestId, mode, taxiModeChoiceScore, responses[i].originalReqDirectDist});
 
                         if (mode == TransportMode::Ped) {
                             processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
@@ -631,7 +634,7 @@ namespace karri {
                     const double taxiModeChoiceScore = riderModeChoice.howMuchWorseWasTaxiThan(modes[i]);
                     if (modes[i] != TransportMode::Taxi) {
                         systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
-                        processedRequests.push_back({requestBatch[i].requestId, modes[i], taxiModeChoiceScore});
+                        processedRequests.push_back({requestBatch[i].requestId, modes[i], taxiModeChoiceScore, responses[i].originalReqDirectDist});
                         if (modes[i] == TransportMode::Ped) {
                             processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
                         } else if (modes[i] == TransportMode::Car) {
@@ -699,7 +702,7 @@ namespace karri {
                 for (const auto &resp: acceptedResponses) {
                     systemStateUpdater.writeBestAssignmentToLogger(resp);
                     const double taxiModeChoiceScore = riderModeChoice.howMuchWorseWasTaxiThan(TransportMode::Taxi);
-                    processedRequests.push_back({resp.originalRequest.requestId, TransportMode::Taxi, taxiModeChoiceScore});
+                    processedRequests.push_back({resp.originalRequest.requestId, TransportMode::Taxi, taxiModeChoiceScore, resp.originalReqDirectDist});
                 }
 
                 systemStateUpdater.insertBatchOfBestAssignments(acceptedResponses, acceptedStats, now, iteration);

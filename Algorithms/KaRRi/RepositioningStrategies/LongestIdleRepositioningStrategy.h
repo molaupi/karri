@@ -77,9 +77,9 @@ namespace karri::RepositioningStrategies {
             // Add delay of request to running quantile
             runningScoreQuantile.addValue(score);
 
-            // If the score of this request is in the 90th percentile of requests processed so far, we consider it a
-            // bad assignment and we allow repositioning to the requests origin location to improve the assignment for
-            // future requests in the vicinity.
+            // If the score of this request is in the upper TRIGGER_SCORE_QUANTILE quantile of requests processed so
+            // far, we consider it a bad assignment and we allow repositioning to the requests origin location to
+            // improve the assignment for future requests in the vicinity.
             if (score < runningScoreQuantile.getQuantile())
                 return false;
             seenOriginLocations.emplace_back(request.origin, request.requestTime);
@@ -130,7 +130,8 @@ namespace karri::RepositioningStrategies {
 
     private:
 
-        RunningQuantile<0.9, double> runningScoreQuantile;
+        static constexpr double TRIGGER_SCORE_QUANTILE = KARRI_REPOSITION_TRIGGER_SCORE_QUANTILE;
+        RunningQuantile<TRIGGER_SCORE_QUANTILE, double> runningScoreQuantile;
 
         // Track seen origin locations and their request time for target selection
         std::vector<std::pair<int, int>> seenOriginLocations;

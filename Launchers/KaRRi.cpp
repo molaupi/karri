@@ -172,6 +172,7 @@ inline void printUsage() {
             "  -max-num-threads <int>     set the maximum number of threads to use (dflt: 1). No effect if -seq-and-non-batched is set.\n"
             "  -pt-journeys <file>        public transport journey data in CSV format (needed for mode choice with PT).\n"
             "  -sample-freq <int>         frequency (in number of requests) at which requests will be dispatched individually to sample single request dispatching time (set to 0 to disable (default)).\n"
+            "  -repos-short-range <sec>   only requests with a direct travel time shorter than this are passed to the repositioning strategy (dflt: 600s).\n"
             "  -o <file>                  generate output files at name <file> (specify name without file suffix).\n"
             "  -help                      show usage help text.\n";
 }
@@ -371,6 +372,7 @@ int main(int argc, char *argv[]) {
         inputConfig.modeChoiceBeta = clp.getValue<int>("mc-b", 1200) * 10;
         inputConfig.requestBatchInterval = clp.getValue<int>("i", 5) * 10;
         inputConfig.sampleSingleFrequency = clp.getValue<int>("sample-freq", 0);
+        inputConfig.repositioningShortRangeThreshold = clp.getValue<int>("repos-short-range", 600) * 10;
         const auto vehicleNetworkFileName = clp.getValue<std::string>("veh-g");
         const auto passengerNetworkFileName = clp.getValue<std::string>("psg-g");
         const auto vehicleFileName = clp.getValue<std::string>("v");
