@@ -45,7 +45,7 @@ namespace karri {
             typename CostFunctionT,
             typename EllipticBucketsT,
             bool AreEllipticBucketsSortedByRemainingLeeway,
-            typename FeasibleEllipticDistancesT,
+            typename EllipticBCHSearchResultT,
             typename LabelSetT>
     class EllipticBCHSearches {
 
@@ -122,7 +122,7 @@ namespace karri {
                 return false;
             }
 
-            void setCurFeasible(FeasibleEllipticDistancesT *const newCurFeasible) {
+            void setCurFeasible(EllipticBCHSearchResultT *const newCurFeasible) {
                 curFeasible = newCurFeasible;
             }
 
@@ -136,7 +136,7 @@ namespace karri {
             int &numEntriesVisited;
             int &numEntriesVisitedWithDistSmallerLeeway;
 
-            FeasibleEllipticDistancesT *curFeasible;
+            EllipticBCHSearchResultT *curFeasible;
             int curFirstIdOfBatch;
         };
 
@@ -170,37 +170,37 @@ namespace karri {
 
 
         // Run Elliptic BCH searches for pickups and dropoffs
-        void run(FeasibleEllipticDistancesT &feasibleEllipticPickups,
-                 FeasibleEllipticDistancesT &feasibleEllipticDropoffs,
+        void run(EllipticBCHSearchResultT &pickupsSearchResult,
+                 EllipticBCHSearchResultT &dropoffsSearchResult,
                  const RequestState& requestState,
                  const PDLocs& pdLocs,
                  stats::EllipticBCHPerformanceStats& stats) {
 
             // Run for pickups:
             Timer timer;
-            std::get<1>(toQuery.getPruningCriterion().criterions).setCurFeasible(&feasibleEllipticPickups);
-            std::get<1>(fromQuery.getPruningCriterion().criterions).setCurFeasible(&feasibleEllipticPickups);
+            std::get<1>(toQuery.getPruningCriterion().criterions).setCurFeasible(&pickupsSearchResult);
+            std::get<1>(fromQuery.getPruningCriterion().criterions).setCurFeasible(&pickupsSearchResult);
             runBCHSearchesFromAndTo(requestState, pdLocs.pickups);
             const int64_t pickupTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.pickupTime += pickupTime;
             stats.pickupNumEdgeRelaxations += totalNumEdgeRelaxations;
             stats.pickupNumVerticesSettled += totalNumVerticesSettled;
             stats.pickupNumEntriesScanned += totalNumEntriesScanned;
-            stats.pickupNumVehiclesSeen += feasibleEllipticPickups.numVehiclesWithRelevantPDLocs();
-            stats.pickupNumStopsSeen += feasibleEllipticPickups.numStopsWithRelevantPDLocs();
+            stats.pickupNumVehiclesSeen += pickupsSearchResult.numVehiclesWithRelevantPDLocs();
+            stats.pickupNumStopsSeen += pickupsSearchResult.numStopsWithRelevantPDLocs();
 
             // Run for dropoffs:
             timer.restart();
-            std::get<1>(toQuery.getPruningCriterion().criterions).setCurFeasible(&feasibleEllipticDropoffs);
-            std::get<1>(fromQuery.getPruningCriterion().criterions).setCurFeasible(&feasibleEllipticDropoffs);
+            std::get<1>(toQuery.getPruningCriterion().criterions).setCurFeasible(&dropoffsSearchResult);
+            std::get<1>(fromQuery.getPruningCriterion().criterions).setCurFeasible(&dropoffsSearchResult);
             runBCHSearchesFromAndTo(requestState, pdLocs.dropoffs);
             const int64_t dropoffTime = timer.elapsed<std::chrono::nanoseconds>();
             stats.dropoffTime += dropoffTime;
             stats.dropoffNumEdgeRelaxations += totalNumEdgeRelaxations;
             stats.dropoffNumVerticesSettled += totalNumVerticesSettled;
             stats.dropoffNumEntriesScanned += totalNumEntriesScanned;
-            stats.dropoffNumVehiclesSeen += feasibleEllipticDropoffs.numVehiclesWithRelevantPDLocs();
-            stats.dropoffNumStopsSeen += feasibleEllipticDropoffs.numStopsWithRelevantPDLocs();
+            stats.dropoffNumVehiclesSeen += dropoffsSearchResult.numVehiclesWithRelevantPDLocs();
+            stats.dropoffNumStopsSeen += dropoffsSearchResult.numStopsWithRelevantPDLocs();
         }
 
         void init(const RequestState&, const PDLocs&, stats::EllipticBCHPerformanceStats&) {

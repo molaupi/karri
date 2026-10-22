@@ -28,6 +28,7 @@
 #include "Tools/Timer.h"
 #include "Algorithms/KaRRi/BaseObjects/Assignment.h"
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
+#include "Algorithms/KaRRi/EllipticBCH/FeasiblePDLocs.h"
 #include "Algorithms/KaRRi/PDDistanceQueries/PDDistances.h"
 
 namespace karri {
@@ -36,7 +37,8 @@ namespace karri {
 // next stop but before the vehicle's last stop. This includes ordinary paired assignments where the pickup and dropoff
 // are inserted between the same pair of existing stops.
 //
-// Works based on filtered relevant PD locs.
+// Non-paired assignments are based on filtered relevant PD locs. Paired assignments are based on the feasible PD locs
+// since the Pareto-based filtering of relevant PD locs does not apply to paired assignments.
     template<typename PDDistancesT>
     class OrdinaryAssignmentsFinder {
 
@@ -49,11 +51,12 @@ namespace karri {
                   routeState(routeState) {}
 
         void findAssignments(const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs,
+                             const FeasiblePDLocs& feasiblePickups, const FeasiblePDLocs& feasibleDropoffs,
                              RequestState& requestState,
                              const PDDistancesT& pdDistances,
                              const PDLocs& pdLocs, stats::OrdAssignmentsPerformanceStats& stats) {
             findOrdinaryAssignments(relPickups, relDropoffs, requestState, pdLocs, stats);
-            findOrdinaryPairedAssignments(pdDistances, relPickups, relDropoffs, requestState, pdLocs, stats);
+            findOrdinaryPairedAssignments(feasiblePickups, feasibleDropoffs, pdDistances, requestState, pdLocs, stats);
         }
 
         void init(const RequestState&, const PDLocs&, stats::OrdAssignmentsPerformanceStats&) {
@@ -137,9 +140,23 @@ namespace karri {
 
             const auto &numStops = routeState.numStopsOf(vehId);
             const auto &stopLocations = routeState.stopLocationsFor(vehId);
+            const auto &occupancies = routeState.occupanciesFor(vehId);
+
+            // Compute smallest stop index after pickup at which capacity of vehicle would be broken (end of route
+            // if never broken). Dropoff has to be made before or at this index.
+            int capacityBrokenIndex = asgn.pickupStopIdx;
+            while (capacityBrokenIndex < numStops &&
+                   occupancies[capacityBrokenIndex] + requestState.originalRequest.numRiders <= asgn.vehicle->capacity)
+                ++capacityBrokenIndex;
 
             for (auto dropoffIt = startItInRegularDropoffs; dropoffIt < relevantDropoffs.end(); ++dropoffIt) {
                 const auto &dropoffEntry = *dropoffIt;
+
+                // All remaining dropoffs would be after the stop where capacity is broken. (Dropoff may still be made
+                // at an existing stop at capacityBrokenIndex.)
+                if (dropoffEntry.stopIndex > capacityBrokenIndex)
+                    break;
+
                 asgn.dropoff = pdLocs.dropoffs[dropoffEntry.pdId];
 
                 if (dropoffEntry.stopIndex + 1 < numStops &&
@@ -167,126 +184,104 @@ namespace karri {
         }
 
 
-        void findOrdinaryPairedAssignments(const PDDistancesT& pdDistances, const RelevantPDLocs& relPickups, const RelevantPDLocs& relDropoffs,
-                                           RequestState& requestState, const PDLocs& pdLocs,
-                                           stats::OrdAssignmentsPerformanceStats& stats) {
+        void findOrdinaryPairedAssignments(const FeasiblePDLocs &feasiblePickups,
+                                           const FeasiblePDLocs &feasibleDropoffs,
+                                           const PDDistancesT &pdDistances,
+                                           RequestState &requestState, const PDLocs &pdLocs,
+                                           stats::OrdAssignmentsPerformanceStats &stats) {
 
             Timer timer;
             int numAssignmentsTried = 0;
 
-            // Try pairs with pickup at existing stop
             Assignment asgn;
             const auto &minDirectDistance = requestState.minDirectPDDist;
 
-            unsigned int minPickupId = INVALID_ID, minDropoffId = INVALID_ID;
-            int minDistToPickup, minDistFromDropoff;
-            RelevantPDLocs::It pickupIt, dropoffIt;
-            for (const auto &vehId: relPickups.getVehiclesWithRelevantPDLocs()) {
-                if (!relDropoffs.hasRelevantSpotsFor(vehId))
+            for (const auto &stopId: feasiblePickups.getStopIdsWithFeasiblePDLocs()) {
+                if (!feasibleDropoffs.hasFeasiblePDLocs(stopId))
+                    continue;
+                const int vehId = routeState.vehicleIdOf(stopId);
+                const int stopPos = routeState.stopPositionOf(stopId);
+                const auto &veh = fleet[vehId];
+
+                if (stopPos == 0 || stopPos == routeState.numStopsOf(vehId) - 1)
                     continue;
 
-                const auto &veh = fleet[vehId];
-                const auto &stopLocations = routeState.stopLocationsFor(vehId);
+                if (routeState.occupanciesFor(vehId)[stopPos] + requestState.originalRequest.numRiders > veh.capacity)
+                    continue;
 
+                const auto nextStopLoc = routeState.stopLocationsFor(vehId)[stopPos + 1];
                 asgn.vehicle = &veh;
+                asgn.pickupStopIdx = stopPos;
+                asgn.dropoffStopIdx = stopPos;
 
-                const auto relevantPickups = relPickups.relevantSpotsFor(vehId);
-                const auto relevantDropoffs = relDropoffs.relevantSpotsFor(vehId);
+                // With lower bounds on the distances, we check whether an assignment better than the best known is
+                // possible at this stop.
+                const auto &feasiblePickupsAtStop = feasiblePickups.feasiblePdLocsFor(stopId);
+                const auto &feasibleDropoffsAtStop = feasibleDropoffs.feasiblePdLocsFor(stopId);
+                asgn.pickup = pdLocs.pickups[feasiblePickupsAtStop.begin()->pdId];
+                asgn.dropoff = pdLocs.dropoffs[feasibleDropoffsAtStop.begin()->pdId];
+                asgn.distToPickup = feasiblePickups.minDistToPDLocFor(stopId);
+                asgn.distToDropoff = minDirectDistance;
+                const int minDistFromDropoff = feasibleDropoffs.minDistFromPDLocToNextStopOf(stopId);
+                asgn.distFromDropoff = minDistFromDropoff;
+                if (calculator.calcCostLowerBoundForOrdinaryPairedAssignment(asgn, requestState) >
+                    requestState.getBestCost())
+                    continue;
 
-                pickupIt = relevantPickups.begin();
-                dropoffIt = relevantDropoffs.begin();
-                while (pickupIt < relevantPickups.end() && dropoffIt < relevantDropoffs.end()) {
+                // Filter feasible pickups and dropoffs at this stop using cost lower bounds. (Pareto-based
+                // filtering does not apply to paired assignments.)
+                pickupsForPaired.clear();
+                for (const auto &entry: feasiblePickupsAtStop) {
+                    const auto &p = pdLocs.pickups[entry.pdId];
+                    if (calculator.calcMinCostForPickupBetweenStops(veh, stopPos, p, entry.distToPDLoc,
+                                                                    entry.distFromPDLocToNextStop, requestState) >
+                        requestState.getBestCost())
+                        continue;
+                    // Lower bound for this pickup with any dropoff
+                    asgn.pickup = p;
+                    asgn.distToPickup = entry.distToPDLoc;
+                    asgn.distToDropoff = pdDistances.getMinDirectDistanceForPickup(entry.pdId);
+                    asgn.distFromDropoff = minDistFromDropoff;
+                    if (calculator.calcCostLowerBoundForOrdinaryPairedAssignment(asgn, requestState) >
+                        requestState.getBestCost())
+                        continue;
+                    pickupsForPaired.push_back(entry);
+                }
+                if (pickupsForPaired.empty())
+                    continue;
 
-                    // Alternating sweep over pickups and dropoffs which pause once they meet or pass the other sweep.
-                    while (pickupIt < relevantPickups.end() && pickupIt->stopIndex < dropoffIt->stopIndex)
-                        ++pickupIt;
-                    if (pickupIt == relevantPickups.end())
-                        break;
-                    while (dropoffIt < relevantDropoffs.end() && dropoffIt->stopIndex < pickupIt->stopIndex)
-                        ++dropoffIt;
-                    if (dropoffIt == relevantDropoffs.end())
-                        break;
-
-                    // If both sweeps paused at the same stopIndex, there are pickups and dropoffs at this stop.
-                    // We attempt a paired assignment.
-                    if (pickupIt->stopIndex == dropoffIt->stopIndex) {
-                        const auto stopPos = pickupIt->stopIndex;
-
-                        if (routeState.occupanciesFor(vehId)[stopPos] + requestState.originalRequest.numRiders > veh.capacity) {
-                            continue;
-                        }
-
-                        const auto beginOfStopInPickups = pickupIt;
-                        const auto beginOfStopInDropoffs = dropoffIt;
-
-                        // Iterate over all pickups/dropoffs at this stop once to find a lower bound on the cost of any
-                        // paired assignment here
-                        minDistToPickup = INFTY;
-                        minDistFromDropoff = INFTY;
-
-                        while (pickupIt < relevantPickups.end() && pickupIt->stopIndex == stopPos) {
-                            const auto &entry = *pickupIt;
-                            if (entry.distToPDLoc < minDistToPickup) {
-                                minDistToPickup = entry.distToPDLoc;
-                                minPickupId = entry.pdId;
-                            }
-                            ++pickupIt;
-                        }
-
-                        while (dropoffIt < relevantDropoffs.end() && dropoffIt->stopIndex == stopPos) {
-                            const auto &entry = *dropoffIt;
-                            if (entry.distFromPDLocToNextStop < minDistFromDropoff) {
-                                minDistFromDropoff = entry.distFromPDLocToNextStop;
-                                minDropoffId = entry.pdId;
-                            }
-                            ++dropoffIt;
-                        }
-
-                        if (minDistToPickup == INFTY || minDistFromDropoff == INFTY)
-                            continue;
-
-                        const auto endOfStopInPickups = pickupIt;
-                        const auto endOfStopInDropoffs = dropoffIt;
-
-                        // With collected lower bounds, we check whether an assignment better than the best known is possible with this vehicle
-                        asgn.pickup = pdLocs.pickups[minPickupId];
-                        asgn.dropoff = pdLocs.dropoffs[minDropoffId];
-                        asgn.pickupStopIdx = stopPos;
-                        asgn.dropoffStopIdx = stopPos;
-                        asgn.distToPickup = minDistToPickup;
-                        asgn.distToDropoff = minDirectDistance;
-                        asgn.distFromDropoff = minDistFromDropoff;
-                        const auto lowerBoundCost =
-                                calculator.calcCostLowerBoundForOrdinaryPairedAssignment(asgn, requestState);
-                        if (lowerBoundCost > requestState.getBestCost())
-                            continue;
-
-
-                        // Try paired assignment for every combination of relevant pickup and dropoff
-                        for (auto dropoffIt2 = beginOfStopInDropoffs; dropoffIt2 < endOfStopInDropoffs; ++dropoffIt2) {
-                            const auto &dropoffEntry = *dropoffIt2;
-                            asgn.dropoff = pdLocs.dropoffs[dropoffEntry.pdId];
-
-                            if (stopLocations[stopPos + 1] == asgn.dropoff.loc)
-                                continue; // if dropoff coincides with the following stop, an ordinary non-paired assignment with dropoffIndex = pickupIndex + 1 will cover this case
-
-                            asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
-                            for (auto pickupIt2 = beginOfStopInPickups; pickupIt2 < endOfStopInPickups; ++pickupIt2) {
-                                const auto &pickupEntry = *pickupIt2;
-                                asgn.pickup = pdLocs.pickups[pickupEntry.pdId];
-                                if (asgn.pickup.loc == asgn.dropoff.loc)
-                                    continue;
-                                asgn.distToPickup = pickupEntry.distToPDLoc;
-
-                                assert(asgn.distToPickup < INFTY && asgn.distFromDropoff < INFTY);
-                                asgn.distToDropoff = pdDistances.getDirectDistance(asgn.pickup, asgn.dropoff);
-                                requestState.tryAssignmentWithKnownCost(asgn, calculator.calc(asgn, requestState));
-                                ++numAssignmentsTried;
-                            }
-                        }
-                    }
+                dropoffsForPaired.clear();
+                for (const auto &entry: feasibleDropoffsAtStop) {
+                    const auto &d = pdLocs.dropoffs[entry.pdId];
+                    // If dropoff coincides with the following stop, an ordinary non-paired assignment with
+                    // dropoffIndex = pickupIndex + 1 will cover this case
+                    if (nextStopLoc == d.loc)
+                        continue;
+                    const bool atStop = d.loc == routeState.stopLocationsFor(vehId)[stopPos];
+                    if (calculator.calcMinCostForDropoffBetweenStops(veh, stopPos, d, entry.distToPDLoc,
+                                                                     entry.distFromPDLocToNextStop, atStop,
+                                                                     requestState) > requestState.getBestCost())
+                        continue;
+                    dropoffsForPaired.push_back(entry);
                 }
 
+                // Try paired assignment for every combination of relevant pickup and dropoff
+                for (const auto &pickupEntry: pickupsForPaired) {
+                    asgn.pickup = pdLocs.pickups[pickupEntry.pdId];
+                    asgn.distToPickup = pickupEntry.distToPDLoc;
+
+                    for (const auto &dropoffEntry: dropoffsForPaired) {
+                        asgn.dropoff = pdLocs.dropoffs[dropoffEntry.pdId];
+                        if (asgn.pickup.loc == asgn.dropoff.loc)
+                            continue;
+
+                        asgn.distFromDropoff = dropoffEntry.distFromPDLocToNextStop;
+                        KASSERT(asgn.distToPickup < INFTY && asgn.distFromDropoff < INFTY);
+                        asgn.distToDropoff = pdDistances.getDirectDistance(asgn.pickup, asgn.dropoff);
+                        requestState.tryAssignmentWithKnownCost(asgn, calculator.calc(asgn, requestState));
+                        ++numAssignmentsTried;
+                    }
+                }
             }
 
             const auto pairedTime = timer.elapsed<std::chrono::nanoseconds>();
@@ -297,5 +292,8 @@ namespace karri {
         const Fleet &fleet;
         CostCalculator calculator;
         const RouteState &routeState;
+
+        std::vector<FeasiblePDLocs::FeasiblePDLoc> pickupsForPaired;
+        std::vector<FeasiblePDLocs::FeasiblePDLoc> dropoffsForPaired;
     };
 }

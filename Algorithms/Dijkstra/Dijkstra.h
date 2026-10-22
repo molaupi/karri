@@ -229,6 +229,17 @@ public:
     }
 
 
+    // Runs a shortest-path search from multiple roots, with the distance of each root initialized to the
+    // corresponding value in offsets (if provided). When offsets is empty, all offsets are 0.
+    void runWithMultipleRoots(const std::vector<int> &roots, const std::vector<int> &offsets = {}) requires (K == 1) {
+        initMultipleRoots(roots, offsets);
+        while (!queue.empty()) {
+            if (stopSearch(queue.minId(), distanceLabels[queue.minId()], distanceLabels))
+                break;
+            settleNextVertex();
+        }
+    }
+
     // Returns the shortest-path distance from the i-th source to t.
     int getDistance(const int t, const int i = 0) {
         return distanceLabels[t][i];
@@ -295,6 +306,30 @@ private:
 
         for (auto i = 0; i < K; ++i) {
             const auto s = sources[i];
+            if (!queue.contains(s))
+                queue.insert(s, distanceLabels[s].getKey());
+        }
+    }
+
+    // Resets the distance labels and inserts all given roots into the queue (only for K == 1).
+    void initMultipleRoots(const std::vector<int> &roots, const std::vector<int> &offsets) requires (K == 1) {
+        assert(offsets.empty() || offsets.size() == roots.size());
+        numEdgeRelaxations = 0;
+        numVerticesSettled = 0;
+        distanceLabels.init();
+        queue.clear();
+
+        for (size_t i = 0; i < roots.size(); ++i) {
+            const auto s = roots[i];
+            const auto offset = offsets.empty() ? 0 : offsets[i];
+            if (offset < distanceLabels[s][0]) {
+                distanceLabels[s][0] = offset;
+                parent.setVertex(s, s, true);
+                parent.setEdge(s, INVALID_EDGE, true);
+            }
+        }
+
+        for (const auto &s: roots) {
             if (!queue.contains(s))
                 queue.insert(s, distanceLabels[s].getKey());
         }

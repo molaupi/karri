@@ -211,6 +211,47 @@ namespace karri {
             }
 
             const auto distToCurLoc = vehLocation.depTimeAtHead - routeState.schedDepTimesFor(vehicle.vehicleId)[0];
+            computeDistancesFromLocation(vehicle.vehicleId, vehLocation, distToCurLoc, pdLocs);
+        }
+
+        // Computes the exact distances from the given current location of a vehicle that is currently repositioning
+        // to all pickups added using addPickupForProcessing() (since the last call to this function or
+        // initialize()). The distances include the time it takes the vehicle to reach the head of its current edge
+        // from now on, i.e. the distance to a pickup is the time from now until the vehicle reaches the pickup.
+        void computeExactDistancesForRepositioningVehicle(const Vehicle &vehicle, const VehicleLocation &vehLocation,
+                                                          const PDLocs &pdLocs) {
+            KASSERT(routeState.isRepositioning(vehicle.vehicleId));
+            KASSERT(vehLocation.depTimeAtHead >= currentTime);
+            curLeeway = INFTY;
+            if (waitingQueue.empty()) return;
+
+            if (!knowsCurrentLocationOf(vehicle.vehicleId)) {
+                currentVehicleLocations[vehicle.vehicleId] = vehLocation;
+                vehiclesWithKnownLocation.push_back(vehicle.vehicleId);
+            }
+
+            computeDistancesFromLocation(vehicle.vehicleId, vehLocation, vehLocation.depTimeAtHead - currentTime,
+                                         pdLocs);
+        }
+
+        int64_t getTotalLocatingVehiclesTimeForRequest() const {
+            return totalLocatingVehiclesTimeForRequest;
+        }
+
+        int64_t getTotalVehicleToPickupSearchTimeForRequest() const {
+            return totalVehicleToPickupSearchTimeForRequest;
+        }
+
+        int64_t getTotalNumCHSearchesRunForRequest() const {
+            return totalNumCHSearchesRunForRequest;
+        }
+
+    private:
+
+        // Runs the bundled searches from the given vehicle location to all pickups in the waiting queue. The given
+        // offset is added to all distances. Searches are pruned at the current leeway (curLeeway).
+        void computeDistancesFromLocation(const int vehId, const VehicleLocation &vehLocation, const int distToCurLoc,
+                                          const PDLocs &pdLocs) {
 
             int numChSearchesRun = 0;
             Timer timer;
@@ -223,10 +264,10 @@ namespace karri {
             for (auto it = waitingQueue.begin(); it != waitingQueue.end();) {
                 const auto pickupId = it->first;
 
-                if (!knowsDistance(vehicle.vehicleId, pickupId)) {
+                if (!knowsDistance(vehId, pickupId)) {
                     const auto pickupLocation = pdLocs.pickups[pickupId].loc;
                     if (vehLocation.location == pickupLocation) {
-                        const int idx = vehicle.vehicleId * curNumPickups + pickupId;
+                        const int idx = vehId * curNumPickups + pickupId;
                         distances[idx] = distToCurLoc;
                     } else {
                         targets[i] = ch.rank(inputGraph.edgeTail(pickupLocation));
@@ -262,7 +303,7 @@ namespace karri {
 
                     // Set found distances.
                     for (int j = 0; j < endOfBatch; ++j) {
-                        const int idx = vehicle.vehicleId * curNumPickups + curPickupIds[j];
+                        const int idx = vehId * curNumPickups + curPickupIds[j];
                         distances[idx] = tentativeDistances[j];
                     }
 
@@ -277,19 +318,6 @@ namespace karri {
             totalNumCHSearchesRunForRequest += numChSearchesRun;
         }
 
-        int64_t getTotalLocatingVehiclesTimeForRequest() const {
-            return totalLocatingVehiclesTimeForRequest;
-        }
-
-        int64_t getTotalVehicleToPickupSearchTimeForRequest() const {
-            return totalVehicleToPickupSearchTimeForRequest;
-        }
-
-        int64_t getTotalNumCHSearchesRunForRequest() const {
-            return totalNumCHSearchesRunForRequest;
-        }
-
-    private:
 
         void clearDistances() {
 

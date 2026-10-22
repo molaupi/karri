@@ -45,7 +45,8 @@ namespace karri {
             OUT_OF_SERVICE,
             IDLING,
             DRIVING,
-            STOPPING
+            STOPPING,
+            REPOSITIONING
         };
 
         enum RequestState {
@@ -65,6 +66,14 @@ namespace karri {
             int walkingTimeFromDropoff;
             int assignmentCost;
             int directOdDist;
+        };
+
+        // Mode and trip time of a request that has been processed, memorized to notify the repositioning strategy.
+        struct ProcessedRequest {
+            int requestId;
+            mode_choice::TransportMode mode;
+            int directOdDist;
+            int tripTime;
         };
 
         // Key for event queues.
@@ -200,6 +209,9 @@ namespace karri {
                 case STOPPING:
                     handleVehicleDepartureFromStop(vehId, occTime);
                     break;
+                case REPOSITIONING:
+                    handleVehicleArrivalAtRepositioningTarget(vehId, occTime);
+                    break;
                 default:
                     break;
             }
@@ -256,6 +268,7 @@ namespace karri {
                 vehicleState[vehId] = IDLING;
                 vehicleEvents.increaseKey(vehId, {fleet[vehId].endOfServiceTime, vehId});
             }
+            systemStateUpdater.notifyStartup(fleet[vehId]);
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",VehicleStartup," << time << '\n';
@@ -278,6 +291,84 @@ namespace karri {
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << occTime << ",VehicleShutdown," << time << '\n';
+        }
+
+        void handleVehicleArrivalAtRepositioningTarget(const int vehId, const int occTime) {
+            KASSERT(vehicleState[vehId] == REPOSITIONING);
+            KASSERT(occTime == std::min(scheduledStops.getRepositioningArrivalTime(vehId),
+                                        fleet[vehId].endOfServiceTime));
+            Timer timer;
+
+            // Log finished repositioning leg
+            const auto prevStop = scheduledStops.getCurrentOrPrevScheduledStop(vehId);
+            legStatsLogger << vehId << ',' << prevStop.stopLocation << ','
+                    << scheduledStops.getRepositioningTargetLocation(vehId) << ','
+                    << prevStop.depTime - prevStop.arrTime << ','
+                    << prevStop.depTime << ','
+                    << occTime << ','
+                    << occTime - prevStop.depTime << ','
+                    << prevStop.occupancyInFollowingLeg << '\n';
+
+            vehicleState[vehId] = IDLING;
+            vehicleEvents.increaseKey(vehId, {fleet[vehId].endOfServiceTime, vehId});
+            systemStateUpdater.notifyRepositioningFinished(fleet[vehId], occTime);
+
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            eventSimulationStatsLogger << occTime << ",RepositioningArrival," << time << '\n';
+        }
+
+        // Asks the system state updater to start repositioning an idle vehicle. If repositioning is started,
+        // the vehicle's state and next event are updated.
+        void handleRepositioningEvent(const int occTime) {
+            Timer timer;
+
+            const int vehId = systemStateUpdater.notifyRepositioningEvent(occTime);
+            if (vehId == INVALID_ID)
+                return;
+
+            // Insert repositioning arrival event for vehicle:
+            KASSERT(vehicleState[vehId] == IDLING);
+            vehicleState[vehId] = REPOSITIONING;
+            vehicleEvents.updateKey(vehId, {
+                                        std::min(scheduledStops.getRepositioningArrivalTime(vehId),
+                                                 fleet[vehId].endOfServiceTime),
+                                        vehId
+                                    });
+
+            const auto time = timer.elapsed<std::chrono::nanoseconds>();
+            eventSimulationStatsLogger << occTime << ",RepositioningStart," << time << '\n';
+        }
+
+        // Notifies the repositioning strategy about all processed requests in order of request ID and starts
+        // repositioning operations if the strategy demands it.
+        void notifyRepositioningAboutProcessedRequests(const int now) {
+            std::sort(processedRequests.begin(), processedRequests.end(), [](const auto &r1, const auto &r2) {
+                return r1.requestId < r2.requestId;
+            });
+            for (const auto &[reqId, mode, directOdDist, tripTime]: processedRequests) {
+                const bool repositionNow = systemStateUpdater.notifyRequestProcessed(
+                    requests[reqId], mode, directOdDist, tripTime);
+                if (repositionNow)
+                    handleRepositioningEvent(now);
+            }
+            processedRequests.clear();
+        }
+
+        // Memorizes a processed request with the chosen mode to notify the repositioning strategy later.
+        template<typename AssignmentFinderResponseT>
+        void memorizeProcessedRequest(const AssignmentFinderResponseT &asgnFinderResponse,
+                                      const mode_choice::TransportMode mode) {
+            using mode_choice::TransportMode;
+            const int reqId = asgnFinderResponse.originalRequest.requestId;
+            int tripTime = INFTY; // Assume car or no mode has infinitely bad trip time
+            if (mode == TransportMode::Taxi) {
+                tripTime = systemStateUpdater.calcTripTimeForBestAssignment(asgnFinderResponse);
+            } else if (mode == TransportMode::Ped) {
+                tripTime = asgnFinderResponse.odWalkingDist;
+            } else if (mode == TransportMode::PublicTransport) {
+                tripTime = ptJourneyData[reqId].totalJourneyTimeTenthsOfSeconds();
+            }
+            processedRequests.push_back({reqId, mode, asgnFinderResponse.originalReqDirectDist, tripTime});
         }
 
         void handleVehicleArrivalAtStop(const int vehId, const int occTime) {
@@ -403,6 +494,7 @@ namespace karri {
 
             componentTimer.restart();
             systemStateUpdater.writeBestAssignmentToLogger(asgnFinderResponse);
+            memorizeProcessedRequest(asgnFinderResponse, mode);
             if (mode == TransportMode::Taxi) {
                 systemStateUpdater.insertSingleBestAssignment(asgnFinderResponse, stats);
                 updateSimulationForAssignment(asgnFinderResponse);
@@ -422,6 +514,9 @@ namespace karri {
                 }
             }
             const auto updateSystemStateTime = componentTimer.elapsed<std::chrono::nanoseconds>();
+
+            // Possibly start repositioning based on processed request.
+            notifyRepositioningAboutProcessedRequests(now);
 
             ++progressBar;
 
@@ -486,6 +581,7 @@ namespace karri {
                         KASSERT(mode != TransportMode::Taxi);
 
                         systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
+                        memorizeProcessedRequest(responses[i], mode);
 
                         if (mode == TransportMode::Ped) {
                             processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
@@ -551,6 +647,7 @@ namespace karri {
                                                           ptJourneyData[requestBatch[i].requestId]);
                     if (modes[i] != TransportMode::Taxi) {
                         systemStateUpdater.writeBestAssignmentToLogger(responses[i]);
+                        memorizeProcessedRequest(responses[i], modes[i]);
                         if (modes[i] == TransportMode::Ped) {
                             processChoiceOnlyWalking(responses[i], stats[i], requestBatch[i].requestId, now);
                         } else if (modes[i] == TransportMode::Car) {
@@ -617,6 +714,7 @@ namespace karri {
                 auto acceptedStats = IteratorRange(stats.begin() + firstFinishedTaxi, stats.end());
                 for (const auto &resp: acceptedResponses) {
                     systemStateUpdater.writeBestAssignmentToLogger(resp);
+                    memorizeProcessedRequest(resp, TransportMode::Taxi);
                 }
 
                 systemStateUpdater.insertBatchOfBestAssignments(acceptedResponses, acceptedStats, now, iteration);
@@ -641,6 +739,10 @@ namespace karri {
 
             const auto time = timer.elapsed<std::chrono::nanoseconds>();
             eventSimulationStatsLogger << now << ",RequestBatchDispatch," << time << '\n';
+
+            // Once all requests of the batch have been processed, possibly start repositioning based on the processed
+            // requests.
+            notifyRepositioningAboutProcessedRequests(now);
         }
 
         template<typename AssignmentFinderResponseT>
@@ -717,6 +819,8 @@ namespace karri {
                                                 scheduledStops.getCurrentOrPrevScheduledStop(vehId).depTime, vehId
                                             });
                     break;
+                case REPOSITIONING:
+                    [[fallthrough]];
                 case IDLING:
                     vehicleState[vehId] = VehicleState::DRIVING;
                     [[fallthrough]];
@@ -809,6 +913,8 @@ namespace karri {
         std::vector<RequestState> requestState;
 
         std::vector<RequestData> requestData;
+
+        std::vector<ProcessedRequest> processedRequests;
 
         std::ofstream &eventSimulationStatsLogger;
         std::ofstream &batchDispatchStatsLogger;

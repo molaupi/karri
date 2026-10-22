@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/CH/CHPathUnpacker.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
@@ -58,6 +59,10 @@ namespace karri {
             const auto &schedDepTimes = routeState.schedDepTimesFor(vehId);
             const auto &schedArrTimes = routeState.schedArrTimesFor(vehId);
 
+            // If the vehicle is technically idle but currently repositioning, its next location is the repositioning
+            // target instead of the next stop.
+            const bool isRepositioning = routeState.isRepositioning(vehId);
+
             // Vehicle before the start of its service time is at its initial location and can leave at the start of its
             // service time at the earliest
             if (veh.startOfServiceTime >= now) {
@@ -65,7 +70,7 @@ namespace karri {
             }
 
             // If vehicle is idling, it is at its stop 0 and can leave now
-            if (routeState.numStopsOf(vehId) == 1) {
+            if (routeState.numStopsOf(vehId) == 1 && !isRepositioning) {
                 return {prevOrCurLoc, now};
             }
 
@@ -74,11 +79,23 @@ namespace karri {
                 return {prevOrCurLoc, schedDepTimes[0]};
             }
 
-            const auto nextLoc = routeState.stopLocationsFor(vehId)[1];
+            // For a repositioning vehicle, find the current edge on the stored repositioning path.
+            if (isRepositioning) {
+                const auto &reposPath = routeState.getRepositioningPath(vehId);
+                const auto &reposPathTimes = routeState.getRepositioningPathTimes(vehId);
+                const auto it = std::lower_bound(reposPathTimes.begin(), reposPathTimes.end(), now);
+                if (it == reposPathTimes.end())
+                    return {reposPath.back(), reposPathTimes.back()};
+                const auto idx = it - reposPathTimes.begin();
+                return {reposPath[idx], reposPathTimes[idx]};
+            }
 
-            // Is vehicle already at stop 1?
-            if (schedArrTimes[1] - inputGraph.travelTime(nextLoc) < now) {
-                return {nextLoc, schedArrTimes[1]};
+            const auto nextLoc = routeState.stopLocationsFor(vehId)[1];
+            const int arrTimeAtNext = schedArrTimes[1];
+
+            // Is vehicle already at next location?
+            if (arrTimeAtNext - inputGraph.travelTime(nextLoc) < now) {
+                return {nextLoc, arrTimeAtNext};
             }
 
             // Reconstruct path that vehicle is taking:
@@ -91,7 +108,7 @@ namespace karri {
             // to the pickup.
             // (This sounds like a pathologically rare case, but it actually happens on the Berlin-1pct input.)
             chQuery.run(ch.rank(inputGraph.edgeHead(prevOrCurLoc)), ch.rank(inputGraph.edgeTail(nextLoc)));
-            KASSERT(schedDepTimes[0] + chQuery.getDistance() + inputGraph.travelTime(nextLoc) == schedArrTimes[1]);
+            KASSERT(schedDepTimes[0] + chQuery.getDistance() + inputGraph.travelTime(nextLoc) == arrTimeAtNext);
 
             path.clear();
             unpacker.unpackUpDownPath(chQuery.getUpEdgePath(), chQuery.getDownEdgePath(), path);

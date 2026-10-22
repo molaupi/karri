@@ -48,7 +48,8 @@
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
-#include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
+#include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearchResult.h"
+#include "Algorithms/KaRRi/EllipticBCH/FeasiblePDLocs.h"
 #include "Algorithms/KaRRi/EllipticBCH/BatchUpdatesEllipticBucketsEnvironment.h"
 #include "Algorithms/KaRRi/EllipticBCH/SingleUpdatesEllipticBucketsEnvironment.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
@@ -79,6 +80,11 @@
 #include "Algorithms/KaRRi/EllipticBCH/SingleAndBatchEllipticBucketsEnvironment.h"
 #include "Algorithms/KaRRi/LastStopSearches/SingleAndBatchedLastStopBucketsEnvironment.h"
 #include "Algorithms/KaRRi/RiderModeChoice/KaRRiCostCriterion.h"
+#include "Algorithms/KaRRi/LastStopSearches/RepositioningBucketsEnvironment.h"
+#include "Algorithms/KaRRi/PointToPointPathComputer.h"
+#include "Algorithms/KaRRi/RepositioningStrategies/NoOpRepositioningStrategy.h"
+#include "Algorithms/KaRRi/RepositioningStrategies/LongestIdleRepositioningStrategy.h"
+#include "Algorithms/KaRRi/RepositioningStrategies/RandomRepositioningStrategy.h"
 
 #include "Parallel/hardware_topology.h"
 #include "Parallel/tbb_initializer.h"
@@ -237,6 +243,27 @@ KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
     using LastStopAtVerticesInfo = LastStopBucketsEnv;
 
 
+    // Construct repositioning strategy and buckets for repositioning vehicles:
+#if KARRI_REPOSITIONING_STRATEGY == KARRI_REPOSITION_NONE
+    using RepositioningStrategyImpl = RepositioningStrategies::NoOpRepositioningStrategy;
+    RepositioningStrategyImpl repositioningStrategy;
+    // If there is no repositioning, we don't need to deal with repositioning assignments
+    using RepositioningBucketsEnv = NoOpRepositioningBucketsEnvironment;
+    RepositioningBucketsEnv repositioningBucketsEnv;
+#else
+#if KARRI_REPOSITIONING_STRATEGY == KARRI_REPOSITION_LONGEST_IDLE
+    using RepositioningStrategyImpl = RepositioningStrategies::LongestIdleRepositioningStrategy;
+#else // KARRI_REPOSITIONING_STRATEGY == KARRI_REPOSITION_RANDOM
+    using RepositioningStrategyImpl = RepositioningStrategies::RandomRepositioningStrategy;
+#endif
+    RepositioningStrategyImpl repositioningStrategy(fleet);
+    using RepositioningBucketsEnv = RepositioningBucketsEnvironment<VehicleInputGraph, VehCHEnv>;
+    RepositioningBucketsEnv repositioningBucketsEnv(vehicleInputGraph, vehChEnv);
+#endif
+    using PathComputerImpl = PointToPointPathComputer<VehicleInputGraph, VehCHEnv>;
+    PathComputerImpl pathComputer(vehicleInputGraph, vehChEnv);
+
+
     using PDLocsAtExistingStopsFinderImpl = PDLocsAtExistingStopsFinder<VehicleInputGraph, VehCHEnv, EllipticBuckets,
         LastStopAtVerticesInfo>;
     PDLocsAtExistingStopsFinderImpl pdLocsAtExistingStops(vehicleInputGraph, vehChEnv,
@@ -246,11 +273,12 @@ KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
 
     using ThreadLocalAssignmentFinderFactoryImpl = ThreadLocalAssignmentFinderFactory<VehicleInputGraph, PsgInputGraph,
         VehCHEnv, PsgCHEnv, EllipticBuckets, ELLIPTIC_SORTED_BUCKETS, PDLocsAtExistingStopsFinderImpl, LastStopBuckets,
-        LAST_STOP_SORTED_BUCKETS, LastStopBucketsEnv>;
+        LAST_STOP_SORTED_BUCKETS, LastStopBucketsEnv, RepositioningBucketsEnv>;
     ThreadLocalAssignmentFinderFactoryImpl asgnFinderFactory(vehicleInputGraph, revVehicleGraph, psgInputGraph,
                                                              revPsgGraph, vehChEnv, psgChEnv, ellipticSourceBuckets,
                                                              ellipticTargetBuckets, pdLocsAtExistingStops,
-                                                             lastStopBuckets, lastStopBucketsEnv, fleet, routeState);
+                                                             lastStopBuckets, lastStopBucketsEnv,
+                                                             repositioningBucketsEnv, fleet, routeState);
     using InsertionFinderImpl = BatchAssignmentFinder<VehicleInputGraph, VehCHEnv,
         ThreadLocalAssignmentFinderFactoryImpl>;
     InsertionFinderImpl insertionFinder(vehicleInputGraph, vehChEnv, asgnFinderFactory);
@@ -271,10 +299,11 @@ KARRI_DALS_STRATEGY == KARRI_COL || KARRI_DALS_STRATEGY == KARRI_IND
     using VehicleLocatorImpl = VehicleLocator<VehicleInputGraph, VehCHEnv>;
     VehicleLocatorImpl ssuLocator(vehicleInputGraph, vehChEnv, routeState);
     using SystemStateUpdaterImpl = SystemStateUpdater<VehicleInputGraph, EllipticBucketsEnv, ELLIPTIC_SORTED_BUCKETS,
-        LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, BATCHED_DISPATCHING, std::ofstream,
-        ComponentPerfLogger>;
+        LastStopBucketsEnv, VehicleLocatorImpl, VehPathTracker, RepositioningBucketsEnv, RepositioningStrategyImpl,
+        PathComputerImpl, BATCHED_DISPATCHING, std::ofstream, ComponentPerfLogger>;
     SystemStateUpdaterImpl systemStateUpdater(vehicleInputGraph, fleet, ssuLocator,
-                                              pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv);
+                                              pathTracker, routeState, ellipticBucketsEnv, lastStopBucketsEnv,
+                                              repositioningBucketsEnv, repositioningStrategy, pathComputer);
 
 
     // Rider mode choice mechanism for requests:

@@ -30,6 +30,7 @@
 #include "Tools/Constants.h"
 #include "DataStructures/Utilities/DynamicRagged2DArrays.h"
 #include "DataStructures/Containers/BitVector.h"
+#include "DataStructures/Containers/Subset.h"
 
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/VehicleLocation.h"
@@ -77,7 +78,13 @@ namespace karri {
                   stopIdOfMaxLegLength(INVALID_ID),
                   unusedStopIds(),
                   nextUnusedStopId(fleet.size()),
-                  maxStopId(fleet.size() - 1) {
+                  maxStopId(fleet.size() - 1),
+                  idleVehicles(fleet.size()),
+                  repositioningTarget(fleet.size(), INVALID_EDGE),
+                  repositioningArrTimeAtTarget(fleet.size(), INFTY),
+                  repositioningPaths(fleet.size()),
+                  repositioningPathTimes(fleet.size()),
+                  numRepositioningVehicles(0) {
             for (auto i = 0; i < fleet.size(); ++i) {
                 pos[i].start = i;
                 pos[i].end = i + 1;
@@ -345,8 +352,12 @@ namespace karri {
             } else {
                 // If vehicle is currently idle, the vehicle can leave its current stop at the earliest when the
                 // request is dispatched. In that case, we update the arrival time to count the idling as one stopTime.
-                schedDepTimes[end - 1] = std::max(schedDepTimes[end - 1], requestState.dispatchingTime);
-                schedArrTimes[end - 1] = schedDepTimes[end - 1] - InputConfig::getInstance().stopTime;
+                // (If the last stop is an intermediate stop at the current location of a vehicle whose repositioning
+                // has just been cancelled, the vehicle is not idling, and the schedule at that stop is already correct.)
+                if (!isIntermediateStop[end - 1]) {
+                    schedDepTimes[end - 1] = std::max(schedDepTimes[end - 1], requestState.dispatchingTime);
+                    schedArrTimes[end - 1] = schedDepTimes[end - 1] - InputConfig::getInstance().stopTime;
+                }
                 ++pickupIndex;
                 ++dropoffIndex;
                 dynamic_ragged2d::stableInsertion(vehId, pickupIndex, getUnusedStopId(), pos, stopIds, stopLocations,
@@ -547,6 +558,155 @@ namespace karri {
             updateMaxLegLength(vehId, 1, 1);
         }
 
+        // Idle vehicles are vehicles that are in service, have no further stops (i.e. only stop 0), are not currently
+        // making a stop, and are not currently repositioning.
+        void markAsIdling(const int vehId) {
+            idleVehicles.insert(vehId);
+        }
+
+        void markAsNonIdling(const int vehId) {
+            idleVehicles.remove(vehId);
+        }
+
+        bool isIdling(const int vehId) const {
+            return idleVehicles.contains(vehId);
+        }
+
+        const Subset &getIdleVehicles() const {
+            return idleVehicles;
+        }
+
+        // Repositioning: A repositioning vehicle is technically idle (it only has stop 0) but is currently driving
+        // from the location of stop 0 to its repositioning target. It departed from stop 0 at the scheduled departure
+        // time of stop 0.
+        bool isRepositioning(const int vehId) const {
+            KASSERT(vehId >= 0 && vehId < pos.size());
+            return repositioningTarget[vehId] != INVALID_EDGE;
+        }
+
+        int numVehiclesRepositioning() const {
+            return numRepositioningVehicles;
+        }
+
+        int getRepositioningTargetLocation(const int vehId) const {
+            KASSERT(vehId >= 0 && vehId < pos.size());
+            KASSERT(isRepositioning(vehId));
+            return repositioningTarget[vehId];
+        }
+
+        int getRepositioningArrivalTime(const int vehId) const {
+            KASSERT(vehId >= 0 && vehId < pos.size());
+            KASSERT(isRepositioning(vehId));
+            return repositioningArrTimeAtTarget[vehId];
+        }
+
+        // Path of edges (after the location of stop 0, ending with the target location) that a repositioning
+        // vehicle drives.
+        const std::vector<int> &getRepositioningPath(const int vehId) const {
+            KASSERT(isRepositioning(vehId));
+            return repositioningPaths[vehId];
+        }
+
+        // For each edge on the repositioning path, the time at which the vehicle reaches the head of the edge.
+        const std::vector<int> &getRepositioningPathTimes(const int vehId) const {
+            KASSERT(isRepositioning(vehId));
+            return repositioningPathTimes[vehId];
+        }
+
+        // Marks an idle vehicle as repositioning towards the target location starting now along the given path of
+        // edges (ending with the target). pathTimes contains the time at which the vehicle reaches the head of each
+        // edge on the path.
+        void markAsRepositioning(const int vehId, const int now, const std::vector<int> &path,
+                                 const std::vector<int> &pathTimes) {
+            KASSERT(vehId >= 0 && vehId < pos.size());
+            KASSERT(numStopsOf(vehId) == 1);
+            KASSERT(!isRepositioning(vehId));
+            KASSERT(schedDepTimes[pos[vehId].start] <= now);
+            KASSERT(!path.empty() && path.size() == pathTimes.size());
+            repositioningTarget[vehId] = path.back();
+            repositioningArrTimeAtTarget[vehId] = pathTimes.back();
+            repositioningPaths[vehId] = path;
+            repositioningPathTimes[vehId] = pathTimes;
+            ++numRepositioningVehicles;
+
+            // The vehicle departs from stop 0 now. Like for an idle vehicle that is assigned a request, the idling at
+            // the stop is counted as one stop time.
+            const int start = pos[vehId].start;
+            schedDepTimes[start] = now;
+            schedArrTimes[start] = now - InputConfig::getInstance().stopTime;
+
+            idleVehicles.remove(vehId);
+        }
+
+        // Finishes the repositioning of a vehicle. The vehicle is idle at the repositioning target afterward.
+        void finishRepositioning(const int vehId) {
+            KASSERT(vehId >= 0 && vehId < pos.size());
+            KASSERT(numStopsOf(vehId) == 1);
+            KASSERT(isRepositioning(vehId));
+
+            const int start = pos[vehId].start;
+            stopLocations[start] = repositioningTarget[vehId];
+            schedArrTimes[start] = repositioningArrTimeAtTarget[vehId];
+            schedDepTimes[start] = repositioningArrTimeAtTarget[vehId];
+
+            clearRepositioning(vehId);
+        }
+
+        // Cancels an ongoing repositioning trip and creates an intermediate stop at the vehicle's current location
+        // (analogous to an intermediate stop for a PBNS reroute) so that a new pickup and dropoff can be inserted after
+        // it. The intermediate stop becomes the new last stop. It gets an arrival time equal to now, so it is reached
+        // immediately, making it the new stop 0. The vehicle can depart from it at depTime (when it reaches the head
+        // of its current edge).
+        void cancelRepositioningAndCreateIntermediateStopAtCurrentLocation(const int vehId, const int location,
+                                                                           const int now, const int depTime) {
+            KASSERT(vehId >= 0 && vehId < pos.size());
+            KASSERT(numStopsOf(vehId) == 1);
+            KASSERT(isRepositioning(vehId));
+            KASSERT(depTime >= now);
+
+            clearRepositioning(vehId);
+
+            dynamic_ragged2d::stableInsertion(vehId, 1, getUnusedStopId(), pos, stopIds, stopLocations,
+                                              schedArrTimes, schedDepTimes, vehWaitTimesPrefixSum, maxArrTimes, occupancies,
+                                              numDropoffsPrefixSum, vehWaitTimesUntilDropoffsPrefixSum, isIntermediateStop);
+            const auto start = pos[vehId].start;
+            const auto end = pos[vehId].end;
+            stopLocations[start + 1] = location;
+            schedArrTimes[start + 1] = now;
+            schedDepTimes[start + 1] = depTime;
+            maxArrTimes[start + 1] = now;
+            occupancies[start + 1] = occupancies[start];
+            numDropoffsPrefixSum[start + 1] = numDropoffsPrefixSum[start];
+            vehWaitTimesPrefixSum[start + 1] = vehWaitTimesPrefixSum[start];
+            vehWaitTimesUntilDropoffsPrefixSum[start + 1] = vehWaitTimesUntilDropoffsPrefixSum[start];
+            isIntermediateStop[start + 1] = static_cast<uint8_t>(true);
+
+            // Update mappings from the stop ids to ids of previous stop, to position in the route, to the leeway and
+            // to the vehicle id.
+            const int newStopId = stopIds[start + 1];
+            const auto newMinSize = newStopId + 1;
+            if (stopIdToIdOfPrevStop.size() < newMinSize) {
+                stopIdToIdOfPrevStop.resize(newMinSize, INVALID_ID);
+                stopIdToPosition.resize(newMinSize, INVALID_INDEX);
+                stopIdToLeeway.resize(newMinSize, 0);
+                stopIdToVehicleId.resize(newMinSize, INVALID_ID);
+                rangeOfRequestsPickedUpAtStop.resize(newMinSize);
+                rangeOfRequestsDroppedOffAtStop.resize(newMinSize);
+            }
+            KASSERT(start == pos[vehId].start && end == pos[vehId].end);
+            stopIdToVehicleId[newStopId] = vehId;
+            stopIdToIdOfPrevStop[newStopId] = stopIds[start];
+            stopIdToPosition[newStopId] = 1;
+            // Leeways are updated when the request is inserted after the intermediate stop.
+            stopIdToLeeway[newStopId] = 0;
+
+            const auto legLength = schedArrTimes[start + 1] - schedDepTimes[start];
+            if (legLength >= maxLegLength) {
+                maxLegLength = legLength;
+                stopIdOfMaxLegLength = stopIds[start];
+            }
+        }
+
         // Scheduled stop interface for event simulation
         struct ScheduledStop {
             int stopId;
@@ -586,6 +746,14 @@ namespace karri {
         }
 
     private:
+
+        void clearRepositioning(const int vehId) {
+            repositioningTarget[vehId] = INVALID_EDGE;
+            repositioningArrTimeAtTarget[vehId] = INFTY;
+            repositioningPaths[vehId].clear();
+            repositioningPathTimes[vehId].clear();
+            --numRepositioningVehicles;
+        }
 
         ScheduledStop getScheduledStop(const int vehId, const int stopIndex) const {
             assert(numStopsOf(vehId) > stopIndex);
@@ -850,5 +1018,13 @@ namespace karri {
 
         // Optional callback for verifying direct distances
         DistanceChecker distanceChecker;
+
+        // Idle vehicles and repositioning state
+        Subset idleVehicles;
+        std::vector<int> repositioningTarget;
+        std::vector<int> repositioningArrTimeAtTarget;
+        std::vector<std::vector<int>> repositioningPaths;
+        std::vector<std::vector<int>> repositioningPathTimes;
+        int numRepositioningVehicles;
     };
 }

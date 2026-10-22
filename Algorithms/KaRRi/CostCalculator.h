@@ -190,6 +190,28 @@ namespace karri {
         }
 
 
+        // Lower bound on the cost of an assignment using a vehicle that is currently repositioning, given a lower
+        // bound on the distance from the vehicle's current location (counted from now) to the pickup and a lower
+        // bound on the distance from the pickup to the dropoff.
+        template<typename RequestContext>
+        int calcCostLowerBoundForRepositioningAssignment(const int minDistToPickup,
+                                                         const int minDistToDropoff,
+                                                         const RequestContext &context) const {
+            if (minDistToPickup >= INFTY || minDistToDropoff >= INFTY)
+                return INFTY;
+
+            // A repositioning vehicle is never at an existing stop, so the pickup and dropoff each require one stop
+            // time.
+            const int minDepTimeAtPickup = context.dispatchingTime + minDistToPickup + stopTime;
+            const int minDetour = minDepTimeAtPickup + minDistToDropoff + stopTime - context.dispatchingTime;
+            const int minTripTime = minDepTimeAtPickup + minDistToDropoff - context.originalRequest.requestTime;
+            const int minWaitViolationCost = F::calcWaitViolationCost(minDepTimeAtPickup, context);
+            const int minTripCost = F::calcTripCost(minTripTime, context);
+
+            // Vehicle has no other stops so no added trip costs for existing passengers.
+            return F::calcVehicleCost(minDetour) + minWaitViolationCost + minTripCost;
+        }
+
         template<typename RequestContext>
         int calcCostLowerBoundForPickupAfterLastStopIndependentOfVehicle(const int distToPickup,
                                                                          const int minDistToDropoff,
@@ -501,6 +523,69 @@ namespace karri {
                     context.originalRequest.requestTime + psgTimeTillDepAtPickup, context);
             // Pickup after last stop so no added trip costs for existing passengers.
             return detourCost + tripCost + walkingCost + waitViolationCost;
+        }
+
+        // Returns a lower bound on the cost of any assignment that inserts the given pickup between the stops at
+        // stopIndex and stopIndex + 1 (with the dropoff inserted later or between the same stops), or INFTY if the
+        // pickup detour violates hard constraints. Writes the departure time at the pickup and the initial pickup
+        // detour to the given out parameters.
+        template<typename RequestContext>
+        int calcMinCostForPickupBetweenStops(const Vehicle &veh, const int stopIndex, const PDLoc &pickup,
+                                             const int distFromStopToPickup, const int distFromPickupToNextStop,
+                                             const RequestContext &context,
+                                             int &depTimeAtPickup, int &initialPickupDetour) const {
+            using namespace time_utils;
+            if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
+                return INFTY;
+            depTimeAtPickup = getActualDepTimeAtPickup(veh.vehicleId, stopIndex, distFromStopToPickup, pickup,
+                                                       context, routeState);
+            initialPickupDetour = calcInitialPickupDetour(veh.vehicleId, stopIndex, INVALID_INDEX, depTimeAtPickup,
+                                                          distFromPickupToNextStop, context, routeState);
+            if (doesPickupDetourViolateHardConstraints(veh, context, stopIndex, initialPickupDetour, routeState))
+                return INFTY;
+            return calcMinKnownPickupSideCost(veh, stopIndex, initialPickupDetour, pickup.walkingDist,
+                                              depTimeAtPickup, context);
+        }
+
+        template<typename RequestContext>
+        int calcMinCostForPickupBetweenStops(const Vehicle &veh, const int stopIndex, const PDLoc &pickup,
+                                             const int distFromStopToPickup, const int distFromPickupToNextStop,
+                                             const RequestContext &context) const {
+            int depTimeAtPickup, initialPickupDetour;
+            return calcMinCostForPickupBetweenStops(veh, stopIndex, pickup, distFromStopToPickup,
+                                                    distFromPickupToNextStop, context, depTimeAtPickup,
+                                                    initialPickupDetour);
+        }
+
+        // Returns a lower bound on the cost of any assignment that inserts the given dropoff between the stops at
+        // stopIndex and stopIndex + 1 (with the pickup inserted earlier or between the same stops), or INFTY if the
+        // dropoff detour violates hard constraints. Writes the initial dropoff detour to the given out parameter.
+        template<typename RequestContext>
+        int calcMinCostForDropoffBetweenStops(const Vehicle &veh, const int stopIndex, const PDLoc &dropoff,
+                                              const int distFromStopToDropoff, const int distFromDropoffToNextStop,
+                                              const bool isDropoffAtExistingStop, const RequestContext &context,
+                                              int &initialDropoffDetour) const {
+            using namespace time_utils;
+            if (distFromStopToDropoff >= INFTY || distFromDropoffToNextStop >= INFTY)
+                return INFTY;
+            initialDropoffDetour = calcInitialDropoffDetour(veh.vehicleId, stopIndex, distFromStopToDropoff,
+                                                            distFromDropoffToNextStop, isDropoffAtExistingStop,
+                                                            routeState);
+            assert(initialDropoffDetour >= 0);
+            if (doesDropoffDetourViolateHardConstraints(veh, context, stopIndex, initialDropoffDetour, routeState))
+                return INFTY;
+            return calcMinKnownDropoffSideCost(veh, stopIndex, initialDropoffDetour, dropoff.walkingDist, context);
+        }
+
+        template<typename RequestContext>
+        int calcMinCostForDropoffBetweenStops(const Vehicle &veh, const int stopIndex, const PDLoc &dropoff,
+                                              const int distFromStopToDropoff, const int distFromDropoffToNextStop,
+                                              const bool isDropoffAtExistingStop,
+                                              const RequestContext &context) const {
+            int initialDropoffDetour;
+            return calcMinCostForDropoffBetweenStops(veh, stopIndex, dropoff, distFromStopToDropoff,
+                                                     distFromDropoffToNextStop, isDropoffAtExistingStop, context,
+                                                     initialDropoffDetour);
         }
 
         // Calculates the cost for the pickup side of an assignment that can be known without knowing which

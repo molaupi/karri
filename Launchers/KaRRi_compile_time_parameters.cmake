@@ -221,3 +221,38 @@ if (KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS)
 else(KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS)
     target_compile_definitions(karri PRIVATE KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS=false)
 endif (KARRI_COL_PALS_ONLY_PROMISING_DROPOFFS)
+
+# Repositioning of idle vehicles
+
+## Choose repositioning strategy. NONE disables repositioning (and repositioning assignments) completely.
+set(REPOSITION_NONE_CODE 1)
+set(REPOSITION_LONGEST_IDLE_CODE 2)
+set(REPOSITION_RANDOM_CODE 3)
+target_compile_definitions(karri PRIVATE KARRI_REPOSITION_NONE=${REPOSITION_NONE_CODE})
+target_compile_definitions(karri PRIVATE KARRI_REPOSITION_LONGEST_IDLE=${REPOSITION_LONGEST_IDLE_CODE})
+target_compile_definitions(karri PRIVATE KARRI_REPOSITION_RANDOM=${REPOSITION_RANDOM_CODE})
+set(KARRI_REPOSITION_STRAT_ARG_VALUES NONE LONGEST_IDLE RANDOM)
+
+set(KARRI_REPOSITIONING_STRATEGY NONE CACHE STRING "Strategy for choosing repositioning operations. Possible values: NONE (dflt), LONGEST_IDLE, RANDOM")
+set_property(CACHE KARRI_REPOSITIONING_STRATEGY PROPERTY STRINGS ${KARRI_REPOSITION_STRAT_ARG_VALUES})
+list(FIND KARRI_REPOSITION_STRAT_ARG_VALUES ${KARRI_REPOSITIONING_STRATEGY} index)
+if (index EQUAL -1)
+    message(FATAL_ERROR "KARRI_REPOSITIONING_STRATEGY must be one of ${KARRI_REPOSITION_STRAT_ARG_VALUES}")
+endif ()
+
+if (${KARRI_REPOSITIONING_STRATEGY} STREQUAL NONE)
+    target_compile_definitions(karri PRIVATE KARRI_REPOSITIONING_STRATEGY=${REPOSITION_NONE_CODE}) # No repositioning
+elseif (${KARRI_REPOSITIONING_STRATEGY} STREQUAL LONGEST_IDLE)
+    target_compile_definitions(karri PRIVATE KARRI_REPOSITIONING_STRATEGY=${REPOSITION_LONGEST_IDLE_CODE}) # Reposition vehicle that has been idle the longest
+else ()
+    target_compile_definitions(karri PRIVATE KARRI_REPOSITIONING_STRATEGY=${REPOSITION_RANDOM_CODE}) # Reposition random idle vehicle
+endif ()
+
+if (KARRI_USE_CCHS AND NOT ${KARRI_REPOSITIONING_STRATEGY} STREQUAL NONE)
+    message(FATAL_ERROR "Repositioning (KARRI_REPOSITIONING_STRATEGY != NONE) is not supported with CCHs (KARRI_USE_CCHS=ON).")
+endif ()
+
+## If set, use this value as fixed seed for repositioning target RNG. Use for debugging.
+if (DEFINED KARRI_REPOSITIONING_FIXED_SEED)
+    target_compile_definitions(karri PRIVATE KARRI_REPOSITIONING_FIXED_SEED=${KARRI_REPOSITIONING_FIXED_SEED})
+endif (DEFINED KARRI_REPOSITIONING_FIXED_SEED)

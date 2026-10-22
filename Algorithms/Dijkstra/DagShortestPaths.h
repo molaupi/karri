@@ -95,6 +95,28 @@ class DagShortestPaths {
       settleNextVertex();
   }
 
+  // Runs a shortest-path search from multiple roots, with the distance of each root initialized to the
+  // corresponding value in offsets (if provided). When offsets is empty, all offsets are 0.
+  void runWithMultipleRoots(const std::vector<int>& roots, const std::vector<int>& offsets = {}) {
+    assert(offsets.empty() || offsets.size() == roots.size());
+    distanceLabels.init();
+    queue.clear();
+    for (size_t i = 0; i < roots.size(); ++i) {
+      const int r = roots[i];
+      const int offset = offsets.empty() ? 0 : offsets[i];
+      if (offset < distanceLabels[r][0]) {
+        distanceLabels[r] = offset;
+        parent.setVertex(r, r, true);
+        parent.setEdge(r, INVALID_EDGE, true);
+      }
+      if (!queue.contains(r))
+        queue.insert(r, r);
+    }
+
+    while (!queue.empty())
+      settleNextVertex();
+  }
+
   // Returns the shortest-path distance to t.
   int getDistance(const int t) {
     return distanceLabels[t][0];

@@ -28,6 +28,7 @@
 
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <type_traits>
 
 #include <vectorclass.h>
@@ -148,6 +149,15 @@ public:
             return !anySet(~mask);
         }
 
+        // Returns a bit mask where the i-th bit is set iff the i-th component is marked (requires K <= 64).
+        uint64_t toBits() const {
+            static_assert(K <= 64);
+            uint64_t bits = 0;
+            for (int i = 0; i < NUM_VECTORS; ++i)
+                bits |= static_cast<uint64_t>(to_bits(isMarked[i])) << (i * VECTOR_SIZE);
+            return bits;
+        }
+
         BooleanLabel isMarked; // Flags indicating for each component if it is marked.
     };
 
@@ -204,6 +214,12 @@ public:
             assert(i >= 0);
             assert(i < K);
             return values[i / VECTOR_SIZE].extract(i % VECTOR_SIZE);
+        }
+
+        // Stores the K distance values in this label to the given array.
+        void storeTo(int *out) const {
+            for (int i = 0; i < NUM_VECTORS; ++i)
+                values[i].store(out + i * VECTOR_SIZE);
         }
 
         // Returns the packed sum of lhs and rhs.

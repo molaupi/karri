@@ -83,8 +83,15 @@ namespace karri::stats {
         int64_t dropoffNumVehiclesSeen;
         int64_t dropoffNumStopsSeen;
 
+        // Time for consolidating the elliptic BCH search results into feasible PD locs
+        int64_t constructFeasiblePDLocsTime;
+        int64_t pickupNumFeasibleStops;
+        int64_t pickupNumFeasiblePDLocs;
+        int64_t dropoffNumFeasibleStops;
+        int64_t dropoffNumFeasiblePDLocs;
+
         int64_t getTotalTime() const {
-            return initializationTime + pickupTime + dropoffTime;
+            return initializationTime + pickupTime + dropoffTime + constructFeasiblePDLocsTime;
         }
 
         void clear() {
@@ -101,6 +108,11 @@ namespace karri::stats {
             dropoffNumEntriesScanned = 0;
             dropoffNumVehiclesSeen = 0;
             dropoffNumStopsSeen = 0;
+            constructFeasiblePDLocsTime = 0;
+            pickupNumFeasibleStops = 0;
+            pickupNumFeasiblePDLocs = 0;
+            dropoffNumFeasibleStops = 0;
+            dropoffNumFeasiblePDLocs = 0;
         }
 
         static constexpr auto LOGGER_NAME = "perf_ellipticbch.csv";
@@ -118,6 +130,11 @@ namespace karri::stats {
                 "dropoff_num_entries_scanned,"
                 "dropoff_num_vehicles_seen,"
                 "dropoff_num_stops_seen,"
+                "construct_feasible_pd_locs_time,"
+                "pickup_num_feasible_stops,"
+                "pickup_num_feasible_pd_locs,"
+                "dropoff_num_feasible_stops,"
+                "dropoff_num_feasible_pd_locs,"
                 "total_time";
 
 
@@ -136,6 +153,11 @@ namespace karri::stats {
                << dropoffNumEntriesScanned << ", "
                << dropoffNumVehiclesSeen << ", "
                << dropoffNumStopsSeen << ", "
+               << constructFeasiblePDLocsTime << ", "
+               << pickupNumFeasibleStops << ", "
+               << pickupNumFeasiblePDLocs << ", "
+               << dropoffNumFeasibleStops << ", "
+               << dropoffNumFeasiblePDLocs << ", "
                << getTotalTime();
             return ss.str();
         }
@@ -479,6 +501,73 @@ namespace karri::stats {
 
     };
 
+    struct RepositioningAssignmentsPerformanceStats {
+        int64_t initializationTime;
+
+        int64_t numEdgeRelaxationsInSearchGraph;
+        int64_t numVerticesOrLabelsSettled;
+        int64_t numEntriesScanned;
+        int64_t searchTime;
+
+        int64_t numCandidateVehicles;
+        int64_t numAssignmentsTried;
+        int64_t locatingVehiclesTime;
+        int64_t numCHSearches;
+        int64_t directCHSearchTime;
+        int64_t tryAssignmentsTime;
+
+        int64_t getTotalTime() const {
+            return initializationTime + searchTime + locatingVehiclesTime + directCHSearchTime + tryAssignmentsTime;
+        }
+
+        void clear() {
+            initializationTime = 0;
+            numEdgeRelaxationsInSearchGraph = 0;
+            numVerticesOrLabelsSettled = 0;
+            numEntriesScanned = 0;
+            searchTime = 0;
+            numCandidateVehicles = 0;
+            numAssignmentsTried = 0;
+            locatingVehiclesTime = 0;
+            numCHSearches = 0;
+            directCHSearchTime = 0;
+            tryAssignmentsTime = 0;
+        }
+
+        static constexpr auto LOGGER_NAME = "perf_repositioning.csv";
+        static constexpr auto LOGGER_COLS =
+                "initialization_time,"
+                "num_edge_relaxations,"
+                "num_vertices_or_labels_settled,"
+                "num_entries_scanned,"
+                "search_time,"
+                "num_candidate_vehicles,"
+                "num_assignments_tried,"
+                "locating_vehicles_time,"
+                "num_ch_searches,"
+                "direct_ch_search_time,"
+                "try_assignments_time,"
+                "total_time";
+
+
+        std::string getLoggerRow() const {
+            std::stringstream ss;
+            ss << initializationTime << ", "
+               << numEdgeRelaxationsInSearchGraph << ", "
+               << numVerticesOrLabelsSettled << ", "
+               << numEntriesScanned << ", "
+               << searchTime << ", "
+               << numCandidateVehicles << ", "
+               << numAssignmentsTried << ", "
+               << locatingVehiclesTime << ", "
+               << numCHSearches << ", "
+               << directCHSearchTime << ", "
+               << tryAssignmentsTime << ", "
+               << getTotalTime();
+            return ss.str();
+        }
+    };
+
     struct UpdatePerformanceStats {
 
         int64_t elliptic_generate_numVerticesInSearchSpace;
@@ -499,12 +588,16 @@ namespace karri::stats {
 
         int64_t lastStopsAtVerticesUpdateTime;
 
+        int64_t repositioningBucketsGenerateEntriesTime;
+        int64_t repositioningBucketsDeleteEntriesTime;
+
         int64_t updateRoutesTime;
 
         int64_t getTotalTime() const {
             return elliptic_generate_time + elliptic_update_time +
                    elliptic_delete_time + lastStopBucketsGenerateEntriesTime + lastStopBucketsUpdateEntriesTime +
-                   lastStopBucketsDeleteEntriesTime + lastStopsAtVerticesUpdateTime + updateRoutesTime;
+                   lastStopBucketsDeleteEntriesTime + lastStopsAtVerticesUpdateTime +
+                   repositioningBucketsGenerateEntriesTime + repositioningBucketsDeleteEntriesTime + updateRoutesTime;
         }
 
         void clear() {
@@ -521,6 +614,8 @@ namespace karri::stats {
             lastStopBucketsUpdateEntriesTime = 0;
             lastStopBucketsDeleteEntriesTime = 0;
             lastStopsAtVerticesUpdateTime = 0;
+            repositioningBucketsGenerateEntriesTime = 0;
+            repositioningBucketsDeleteEntriesTime = 0;
             updateRoutesTime = 0;
         }
 
@@ -539,6 +634,8 @@ namespace karri::stats {
                 "last_stop_buckets_update_entries_time,"
                 "last_stop_buckets_delete_entries_time,"
                 "last_stop_at_vertices_update_time,"
+                "repositioning_buckets_generate_entries_time,"
+                "repositioning_buckets_delete_entries_time,"
                 "update_routes_time,"
                 "total_time";
 
@@ -558,6 +655,8 @@ namespace karri::stats {
             << lastStopBucketsUpdateEntriesTime << ", "
                << lastStopBucketsDeleteEntriesTime << ", "
                << lastStopsAtVerticesUpdateTime << ", "
+               << repositioningBucketsGenerateEntriesTime << ", "
+               << repositioningBucketsDeleteEntriesTime << ", "
                << updateRoutesTime << ", "
                << getTotalTime();
             return ss.str();
@@ -581,6 +680,7 @@ namespace karri::stats {
         PbnsAssignmentsPerformanceStats pbnsAssignmentsStats;
         PalsAssignmentsPerformanceStats palsAssignmentsStats;
         DalsAssignmentsPerformanceStats dalsAssignmentsStats;
+        RepositioningAssignmentsPerformanceStats repositioningAssignmentsStats;
         UpdatePerformanceStats updateStats;
 
         int64_t getTotalTime() const {
@@ -591,6 +691,7 @@ namespace karri::stats {
                    pbnsAssignmentsStats.getTotalTime() +
                    palsAssignmentsStats.getTotalTime() +
                    dalsAssignmentsStats.getTotalTime() +
+                   repositioningAssignmentsStats.getTotalTime() +
                    updateStats.getTotalTime();
         }
 
@@ -604,6 +705,7 @@ namespace karri::stats {
             pbnsAssignmentsStats.clear();
             palsAssignmentsStats.clear();
             dalsAssignmentsStats.clear();
+            repositioningAssignmentsStats.clear();
             updateStats.clear();
         }
 
@@ -618,6 +720,7 @@ namespace karri::stats {
                 "pbns_assignments_time,"
                 "pals_assignments_time,"
                 "dals_assignments_time,"
+                "repositioning_assignments_time,"
                 "update_time,"
                 "total_time";
 
@@ -633,6 +736,7 @@ namespace karri::stats {
                << pbnsAssignmentsStats.getTotalTime() << ", "
                << palsAssignmentsStats.getTotalTime() << ", "
                << dalsAssignmentsStats.getTotalTime() << ", "
+               << repositioningAssignmentsStats.getTotalTime() << ", "
                << updateStats.getTotalTime() << ", "
                << getTotalTime();
             return ss.str();

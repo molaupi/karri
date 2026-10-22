@@ -34,7 +34,8 @@
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
 #include "Algorithms/KaRRi/BaseObjects/Request.h"
 #include "Algorithms/KaRRi/PbnsAssignments/VehicleLocator.h"
-#include "Algorithms/KaRRi/EllipticBCH/FeasibleEllipticDistances.h"
+#include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearchResult.h"
+#include "Algorithms/KaRRi/EllipticBCH/FeasiblePDLocs.h"
 #include "Algorithms/KaRRi/EllipticBCH/BatchUpdatesEllipticBucketsEnvironment.h"
 #include "Algorithms/KaRRi/EllipticBCH/EllipticBCHSearches.h"
 #include "Algorithms/KaRRi/EllipticBCH/PDLocsAtExistingStopsFinder.h"
@@ -50,6 +51,9 @@
 #include "Algorithms/KaRRi/RequestState/VehicleToPDLocQuery.h"
 #include "Algorithms/KaRRi/RequestState/RequestStateInitializer.h"
 #include "Algorithms/KaRRi/AssignmentFinder.h"
+#include "Algorithms/KaRRi/RepositioningAssignments/RepositioningAssignmentsFinder.h"
+#include "Algorithms/KaRRi/RepositioningAssignments/NoOpRepositioningAssignmentsFinder.h"
+#include "Algorithms/KaRRi/RepositioningAssignments/CollectiveBCHStrategyRepositioning.h"
 
 
 #include "Algorithms/KaRRi/PDDistanceQueries/BCHStrategy.h"
@@ -96,7 +100,8 @@ namespace karri {
         typename PDLocsAtExistingStopsFinderT,
         typename LastStopBucketsT,
         bool AreLastStopBucketsSorted,
-        typename LastStopAtVerticesInfo>
+        typename LastStopAtVerticesInfo,
+        typename RepositioningBucketsEnvT>
     struct ThreadLocalAssignmentFinderFactory {
     private:
         const VehicleInputGraph &vehicleInputGraph;
@@ -110,6 +115,7 @@ namespace karri {
         const PDLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder;
         const LastStopBucketsT &lastStopBuckets;
         const LastStopAtVerticesInfo &lastStopAtVerticesInfo;
+        const RepositioningBucketsEnvT &repositioningBucketsEnv;
         const Fleet &fleet;
         const RouteState &routeState;
 
@@ -120,17 +126,19 @@ namespace karri {
             SimdLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO>,
             BasicLabelSet<KARRI_ELLIPTIC_BCH_LOG_K, ParentInfo::NO_PARENT_INFO> >;
 
-        using FeasibleEllipticDistancesImpl = FeasibleEllipticDistances<EllipticBCHLabelSet>;
-        tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticPickups;
-        tbb::enumerable_thread_specific<FeasibleEllipticDistancesImpl> feasibleEllipticDropoffs;
+        using EllipticBCHSearchResultImpl = EllipticBCHSearchResult<EllipticBCHLabelSet>;
+        tbb::enumerable_thread_specific<EllipticBCHSearchResultImpl> pickupsEllipticResult;
+        tbb::enumerable_thread_specific<EllipticBCHSearchResultImpl> dropoffsEllipticResult;
+
+        tbb::enumerable_thread_specific<FeasiblePDLocs> feasiblePickups;
+        tbb::enumerable_thread_specific<FeasiblePDLocs> feasibleDropoffs;
 
         using EllipticBCHSearchesImpl = EllipticBCHSearches<VehicleInputGraph, VehCHEnv, CostCalculator::CostFunction,
-            EllipticBucketsT, AreEllipticBucketsSortedByRemainingLeeway, FeasibleEllipticDistancesImpl,
+            EllipticBucketsT, AreEllipticBucketsSortedByRemainingLeeway, EllipticBCHSearchResultImpl,
             EllipticBCHLabelSet>;
         tbb::enumerable_thread_specific<EllipticBCHSearchesImpl> ellipticSearches;
 
-        using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<FeasibleEllipticDistancesImpl, VehicleInputGraph,
-            VehCHEnv>;
+        using RelevantPDLocsFilterImpl = RelevantPDLocsFilter<VehicleInputGraph, VehCHEnv>;
         tbb::enumerable_thread_specific<RelevantPDLocsFilterImpl> relevantPdLocsFilter;
 
         using VehicleToPDLocQueryImpl = VehicleToPDLocQuery<VehicleInputGraph>;
@@ -272,6 +280,28 @@ namespace karri {
         using DALSInsertionsFinderImpl = DALSAssignmentsFinder<DALSStrategy>;
         tbb::enumerable_thread_specific<DALSInsertionsFinderImpl> dalsInsertionsFinder;
 
+#if KARRI_REPOSITIONING_STRATEGY == KARRI_REPOSITION_NONE
+        // If there is no repositioning, we don't need to deal with repositioning assignments.
+        using RepositioningInsertionsFinderImpl = NoOpRepositioningAssignmentsFinder;
+        static RepositioningInsertionsFinderImpl makeRepositioningInsertionsFinder(
+            tbb::enumerable_thread_specific<int> &) {
+            return {};
+        }
+        tbb::enumerable_thread_specific<int> repositioningStrategy; // placeholder
+#else
+        using RepositioningStrategyImpl = CollectiveBCHStrategyRepositioning<VehicleInputGraph, VehCHEnv,
+            typename RepositioningBucketsEnvT::BucketContainer, VehicleLocatorImpl, CurVehLocToPickupSearchesImpl,
+            PDDistancesImpl>;
+        tbb::enumerable_thread_specific<RepositioningStrategyImpl> repositioningStrategy;
+
+        using RepositioningInsertionsFinderImpl = RepositioningAssignmentsFinder<RepositioningStrategyImpl>;
+        static RepositioningInsertionsFinderImpl makeRepositioningInsertionsFinder(
+            tbb::enumerable_thread_specific<RepositioningStrategyImpl> &repositioningStrategy) {
+            return RepositioningInsertionsFinderImpl(repositioningStrategy.local());
+        }
+#endif
+        tbb::enumerable_thread_specific<RepositioningInsertionsFinderImpl> repositioningInsertionsFinder;
+
         using RequestStateInitializerImpl = RequestStateInitializer<VehicleInputGraph, PsgInputGraph, VehCHEnv,
             PsgCHEnv>;
         tbb::enumerable_thread_specific<RequestStateInitializerImpl> requestStateInitializer;
@@ -291,6 +321,7 @@ namespace karri {
                                            const PDLocsAtExistingStopsFinderT &pdLocsAtExistingStopsFinder,
                                            const LastStopBucketsT &lastStopBuckets,
                                            const LastStopAtVerticesInfo &lastStopAtVerticesInfo,
+                                           const RepositioningBucketsEnvT &repositioningBucketsEnv,
                                            const Fleet &fleet,
                                            const RouteState &routeState)
             : vehicleInputGraph(vehicleInputGraph),
@@ -304,17 +335,24 @@ namespace karri {
               pdLocsAtExistingStopsFinder(pdLocsAtExistingStopsFinder),
               lastStopBuckets(lastStopBuckets),
               lastStopAtVerticesInfo(lastStopAtVerticesInfo),
+              repositioningBucketsEnv(repositioningBucketsEnv),
               fleet(fleet),
               routeState(routeState),
               locator([&]() {
                   return VehicleLocatorImpl(
                       vehicleInputGraph, vehChEnv, routeState);
               }),
-              feasibleEllipticPickups([&]() {
-                  return FeasibleEllipticDistancesImpl(fleet.size(), routeState);
+              pickupsEllipticResult([&]() {
+                  return EllipticBCHSearchResultImpl(fleet.size(), routeState);
               }),
-              feasibleEllipticDropoffs([&]() {
-                  return FeasibleEllipticDistancesImpl(fleet.size(), routeState);
+              dropoffsEllipticResult([&]() {
+                  return EllipticBCHSearchResultImpl(fleet.size(), routeState);
+              }),
+              feasiblePickups([&]() {
+                  return FeasiblePDLocs(routeState);
+              }),
+              feasibleDropoffs([&]() {
+                  return FeasiblePDLocs(routeState);
               }),
               ellipticSearches([&]() {
                   return EllipticBCHSearchesImpl(
@@ -356,6 +394,16 @@ namespace karri {
               dalsInsertionsFinder([&]() {
                   return DALSInsertionsFinderImpl(dalsStrategy.local());
               }),
+#if KARRI_REPOSITIONING_STRATEGY != KARRI_REPOSITION_NONE
+              repositioningStrategy([&]() {
+                  return RepositioningStrategyImpl(vehicleInputGraph, fleet, vehChEnv,
+                                                   repositioningBucketsEnv.getBuckets(), routeState, locator.local(),
+                                                   curVehLocToPickupSearches.local());
+              }),
+#endif
+              repositioningInsertionsFinder([&]() {
+                  return makeRepositioningInsertionsFinder(repositioningStrategy);
+              }),
               requestStateInitializer([&]() {
                   return RequestStateInitializerImpl(vehicleInputGraph, psgInputGraph, vehChEnv, psgChEnv);
               }),
@@ -366,7 +414,7 @@ namespace karri {
 
         using InsertionFinderImpl = AssignmentFinder<
             VehicleInputGraph,
-            FeasibleEllipticDistancesImpl,
+            EllipticBCHSearchResultImpl,
             RequestStateInitializerImpl,
             PDLocsFinderImpl,
             PDLocsAtExistingStopsFinderT,
@@ -376,6 +424,7 @@ namespace karri {
             PBNSInsertionsFinderImpl,
             PALSInsertionsFinderImpl,
             DALSInsertionsFinderImpl,
+            RepositioningInsertionsFinderImpl,
             RelevantPDLocsFilterImpl>;
 
         InsertionFinderImpl getThreadLocalAssignmentFinder() {
@@ -383,14 +432,17 @@ namespace karri {
                                        requestStateInitializer.local(),
                                        pdLocsFinder.local(),
                                        pdLocsAtExistingStopsFinder,
-                                       feasibleEllipticPickups.local(),
-                                       feasibleEllipticDropoffs.local(),
+                                       pickupsEllipticResult.local(),
+                                       dropoffsEllipticResult.local(),
+                                       feasiblePickups.local(),
+                                       feasibleDropoffs.local(),
                                        ellipticSearches.local(),
                                        ffPDDistanceQuery.local(),
                                        ordinaryInsertionsFinder.local(),
                                        pbnsInsertionsFinder.local(),
                                        palsInsertionsFinder.local(),
                                        dalsInsertionsFinder.local(),
+                                       repositioningInsertionsFinder.local(),
                                        relevantPdLocsFilter.local());
         }
     };

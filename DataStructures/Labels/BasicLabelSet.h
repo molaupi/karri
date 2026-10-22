@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <type_traits>
 
 #include "DataStructures/Labels/ParentInfo.h"
@@ -131,6 +132,15 @@ public:
             return !anySet(~mask);
         }
 
+        // Returns a bit mask where the i-th bit is set iff the i-th component is marked (requires K <= 64).
+        uint64_t toBits() const {
+            static_assert(K <= 64);
+            uint64_t bits = 0;
+            for (int i = 0; i < K; ++i)
+                bits |= static_cast<uint64_t>(isMarked[i]) << i;
+            return bits;
+        }
+
         std::array<bool, K> isMarked; // Flags indicating for each component if it is marked.
     };
 
@@ -161,6 +171,11 @@ public:
             assert(i >= 0);
             assert(i < K);
             return values[i];
+        }
+
+        // Stores the K distance values in this label to the given array.
+        void storeTo(int *out) const {
+            std::copy(values.begin(), values.end(), out);
         }
 
         // Returns the packed sum of lhs and rhs.
