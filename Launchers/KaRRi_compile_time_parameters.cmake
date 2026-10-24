@@ -253,7 +253,7 @@ set(KARRI_REPOSITION_TRIGGER_SCORE_QUANTILE 0.95 CACHE STRING "Requests with sco
 target_compile_definitions(karri PRIVATE KARRI_REPOSITION_TRIGGER_SCORE_QUANTILE=${KARRI_REPOSITION_TRIGGER_SCORE_QUANTILE})
 
 ## Time in seconds after which seen request origins time out as valid repositioning targets.
-set(KARRI_REPOSITIONING_SEEN_ORIGIN_TIMEOUT_SECONDS 3600 CACHE STRING "Seen request origins time out as valid repositioning targets after this many seconds. (Applies for KARRI_REPOSITIONING_STRATEGY = LONGEST_IDLE or RANDOM, dflt: 3600)")
+set(KARRI_REPOSITIONING_SEEN_ORIGIN_TIMEOUT_SECONDS 1800 CACHE STRING "Seen request origins time out as valid repositioning targets after this many seconds. (Applies for KARRI_REPOSITIONING_STRATEGY = LONGEST_IDLE or RANDOM, dflt: 3600)")
 target_compile_definitions(karri PRIVATE KARRI_REPOSITIONING_SEEN_ORIGIN_TIMEOUT_SECONDS=${KARRI_REPOSITIONING_SEEN_ORIGIN_TIMEOUT_SECONDS})
 
 if (KARRI_USE_CCHS AND NOT ${KARRI_REPOSITIONING_STRATEGY} STREQUAL NONE)
