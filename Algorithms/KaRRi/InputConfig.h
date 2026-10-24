@@ -58,8 +58,6 @@ namespace karri {
 
         int sampleSingleFrequency = 0;
 
-        int repositioningShortRangeThreshold = -1;
-
         int hardConstraintMaxAddedWaitTime = -1;
         double hardConstraintAlpha = -1.0;
         int hardConstraintBeta = -1;
