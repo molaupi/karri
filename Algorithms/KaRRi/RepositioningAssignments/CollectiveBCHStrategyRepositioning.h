@@ -196,7 +196,8 @@ namespace karri {
             stats.numEntriesScanned += numEntriesScanned;
             stats.numVerticesOrLabelsSettled += reverseSearch.getNumVerticesSettled();
             stats.numEdgeRelaxationsInSearchGraph += reverseSearch.getNumEdgeRelaxations();
-            stats.numCandidateVehicles += candidateVehicles.size();
+            stats.numRepositioningVehiclesTotal += routeState.numVehiclesRepositioning();
+            stats.numVehiclesAfterPathBCH += candidateVehicles.size();
 
             // For each candidate vehicle, compute exact location and exact distances to pickups, then try assignments.
             tryAssignmentsForCandidateVehicles(requestState, pdDistances, pdLocs, stats);
@@ -267,6 +268,8 @@ namespace karri {
                         minDistToPickup, pdDistances.getMinDirectDistance(), requestState);
                 if (minCost > requestState.getBestCost())
                     continue;
+
+                ++stats.numVehiclesAfterOneToAny;
 
                 // Compute exact distances from current vehicle location to all pickups
                 for (const auto &p: pdLocs.pickups)
