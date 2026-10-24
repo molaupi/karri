@@ -46,7 +46,7 @@ namespace karri::RepositioningStrategies {
         static constexpr bool USE_DETERMINISTIC = true;
 
         // Seen origin locations time out as valid repositioning targets after SEEN_ORIGIN_TIMEOUT time steps.
-        static constexpr int SEEN_ORIGIN_TIMEOUT = 36000; // one hour
+        static constexpr int SEEN_ORIGIN_TIMEOUT = KARRI_REPOSITIONING_SEEN_ORIGIN_TIMEOUT_SECONDS * 10; // time steps are tenths of seconds
 
         explicit RandomRepositioningStrategy(const Fleet &)
             : seenOriginLocations(),
