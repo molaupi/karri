@@ -346,7 +346,7 @@ namespace karri {
                 return r1.requestId < r2.requestId;
             });
             for (const auto &[reqId, mode, score, directOdDist]: processedRequests) {
-                if (directOdDist >= InputConfig::getInstance().repositioningShortRangeThreshold)
+                if (mode != mode_choice::TransportMode::Car)
                     continue;
                 const bool repositionNow = systemStateUpdater.notifyRequestProcessed(requests[reqId], mode, score);
                 if (repositionNow)
