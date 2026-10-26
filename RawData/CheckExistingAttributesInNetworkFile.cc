@@ -39,6 +39,7 @@
 #include "DataStructures/Graph/Attributes/UnpackingInfoAttribute.h"
 #include "DataStructures/Graph/Attributes/CoordinateAttribute.h"
 #include "DataStructures/Graph/Attributes/OsmNodeIdAttribute.h"
+#include "DataStructures/Graph/Attributes/PsgEdgeToCarEdgeAttribute.h"
 #include "DataStructures/Graph/Attributes/SequentialVertexIdAttribute.h"
 #include "DataStructures/Graph/Attributes/VertexIdAttribute.h"
 
@@ -75,7 +76,9 @@ int main(int argc, char *argv[]) {
                 TravelTimeAttribute,
                 TraversalCostAttribute,
                 UnpackingInfoAttribute,
-                XatfRoadCategoryAttribute
+                XatfRoadCategoryAttribute,
+        CarEdgeToPsgEdgeAttribute,
+        PsgEdgeToCarEdgeAttribute
         >;
         using VertexAttributes = VertexAttrs<
                 CoordinateAttribute,
@@ -94,6 +97,9 @@ int main(int argc, char *argv[]) {
             inputGraph.edgeId(e) = e;
         }
         std::cout << "done.\n";
+
+        std::cout << "|V| = " << inputGraph.numVertices() << std::endl;
+        std::cout << "|E| = " << inputGraph.numEdges() << std::endl;
 
 
         if (inputGraph.get<CapacityAttribute>(0) != CapacityAttribute::defaultValue())
@@ -124,6 +130,22 @@ int main(int argc, char *argv[]) {
             std::cout << "Has XatfRoadCategoryAttribute." << std::endl;
 
 
+        int countCarToPsg = 0;
+        FORALL_EDGES(inputGraph, e) {
+            countCarToPsg += (inputGraph.get<CarEdgeToPsgEdgeAttribute>(e) != CarEdgeToPsgEdgeAttribute::defaultValue());
+        }
+        if (countCarToPsg > 0) {
+            std::cout << "Has CarEdgeToPsgEdgeAttribute (" << countCarToPsg << "/" << inputGraph.numEdges() << " edges with valid mapping)." << std::endl;
+        }
+
+        int countPsgToCar = 0;
+        FORALL_EDGES(inputGraph, e) {
+            countPsgToCar += (inputGraph.get<PsgEdgeToCarEdgeAttribute>(e) != PsgEdgeToCarEdgeAttribute::defaultValue());
+        }
+        if (countPsgToCar > 0) {
+            std::cout << "Has PsgEdgeToCarEdgeAttribute (" << countPsgToCar << "/" << inputGraph.numEdges() << " edges with valid mapping)." << std::endl;
+        }
+
         if (inputGraph.get<CoordinateAttribute>(0) != CoordinateAttribute::defaultValue())
             std::cout << "Has CoordinateAttribute." << std::endl;
         if (inputGraph.get<LatLngAttribute>(0) != LatLngAttribute::defaultValue())
@@ -134,6 +156,8 @@ int main(int argc, char *argv[]) {
             std::cout << "Has SequentialVertexIdAttribute." << std::endl;
         if (inputGraph.get<VertexIdAttribute>(0) != VertexIdAttribute::defaultValue())
             std::cout << "Has VertexIdAttribute." << std::endl;
+
+
 
 
     } catch (std::exception &e) {
