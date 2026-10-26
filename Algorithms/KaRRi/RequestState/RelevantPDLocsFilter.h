@@ -23,48 +23,52 @@
 /// ******************************************************************************
 
 
-
 #pragma once
 
 #include "Algorithms/KaRRi/RequestState/RelevantPDLocs.h"
 #include "Algorithms/KaRRi/EllipticBCH/FeasiblePDLocs.h"
 #include "DataStructures/Containers/LightweightSubset.h"
+#include "DataStructures/Pareto/KeepAllMockParetoBag.h"
 #include "DataStructures/Pareto/ParetoBag.h"
 
 namespace karri {
-
-// Filters the feasible PD locs found by the elliptic BCH searches to the pickups/dropoffs that are relevant for
-// certain stops and assignment types.
-//
-// Filtering is based on two observations:
-// 1. Cost: A PD loc is irrelevant at a stop if a lower bound on the cost of any assignment using the PD loc at the
-//    stop is worse than the cost of the best known assignment. Thus, filtering should happen as late as possible to
-//    obtain a tight upper bound (best known cost).
-// 2. Pareto-optimality: For non-paired ordinary assignments (pickup and dropoff not inserted between the same pair
-//    of stops) and the PD loc that is inserted after an ordinary stop (i.e. after stop 0), a pickup p can only be
-//    part of the best assignment for a given pickup stop if no other pickup p' at the same stop has both a smaller
-//    fixed cost (walking and wait time violation cost) and a smaller detour (i.e. an earlier arrival at the next stop)
-//    than p. Similarly, a dropoff d can only be part of the best assignment if no other dropoff d' at the same stop
-//    has both a smaller fixed cost (walking and trip time cost from the stop to the destination) and a smaller detour.
-//    Since every other part of the cost of an assignment is monotonous in the respective detour, the dominated PD loc
-//    cannot lead to a better assignment for any choice of the remaining assignment parameters.
-//    Pareto-optimality does not apply to paired assignments or to pickups before the next stop (as the exact
-//    departure time at the pickup depends on the current location of the vehicle). Paired assignments use the
-//    unfiltered FeasiblePDLocs instead.
+    // Filters the feasible PD locs found by the elliptic BCH searches to the pickups/dropoffs that are relevant for
+    // certain stops and assignment types.
+    //
+    // Filtering is based on two observations:
+    // 1. Cost: A PD loc is irrelevant at a stop if a lower bound on the cost of any assignment using the PD loc at the
+    //    stop is worse than the cost of the best known assignment. Thus, filtering should happen as late as possible to
+    //    obtain a tight upper bound (best known cost).
+    // 2. Pareto-optimality: For non-paired ordinary assignments (pickup and dropoff not inserted between the same pair
+    //    of stops) and the PD loc that is inserted after an ordinary stop (i.e. after stop 0), a pickup p can only be
+    //    part of the best assignment for a given pickup stop if no other pickup p' at the same stop has both a smaller
+    //    fixed cost (walking and wait time violation cost) and a smaller detour (i.e. an earlier arrival at the next stop)
+    //    than p. Similarly, a dropoff d can only be part of the best assignment if no other dropoff d' at the same stop
+    //    has both a smaller fixed cost (walking and trip time cost from the stop to the destination) and a smaller detour.
+    //    Since every other part of the cost of an assignment is monotonous in the respective detour, the dominated PD loc
+    //    cannot lead to a better assignment for any choice of the remaining assignment parameters.
+    //    Pareto-optimality does not apply to paired assignments or to pickups before the next stop (as the exact
+    //    departure time at the pickup depends on the current location of the vehicle). Paired assignments use the
+    //    unfiltered FeasiblePDLocs instead.
     template<typename InputGraphT, typename CHEnvT>
     class RelevantPDLocsFilter {
-
         using F = CostCalculator::CostFunction;
 
-    public:
 
+        template<typename EntryT>
+        using ParetoBagType = std::conditional_t<KARRI_USE_PARETO_PD_LOC_FILTER,
+            ParetoBag<EntryT>,
+            KeepAllMockParetoBag<EntryT> >;
+
+    public:
         RelevantPDLocsFilter(const Fleet &fleet, const InputGraphT &inputGraph, const CHEnvT &,
                              const RouteState &routeState)
-                : fleet(fleet),
-                  inputGraph(inputGraph),
-                  calculator(routeState),
-                  routeState(routeState),
-                  vehiclesWithFeasibleDistances(fleet.size()) {}
+            : fleet(fleet),
+              inputGraph(inputGraph),
+              calculator(routeState),
+              routeState(routeState),
+              vehiclesWithFeasibleDistances(fleet.size()) {
+        }
 
 
         RelevantPDLocs
@@ -79,6 +83,8 @@ namespace karri {
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             stats.filterRelevantPDLocsTime += time;
             stats.numRelevantStopsForPickups += numRelStops;
+            if (numRelStops != 0)
+                stats.avgNumPickupsPerRelStop += static_cast<double>(rel.relevantSpots.size()) / numRelStops;
 
             return rel;
         }
@@ -95,6 +101,8 @@ namespace karri {
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             stats.filterRelevantPDLocsTime += time;
             stats.numRelevantStopsForDropoffs += numRelStops;
+            if (numRelStops != 0)
+                stats.avgNumDropoffsPerRelStop += static_cast<double>(rel.relevantSpots.size()) / numRelStops;
 
             return rel;
         }
@@ -111,11 +119,12 @@ namespace karri {
             const int64_t time = timer.elapsed<std::chrono::nanoseconds>();
             stats.filterRelevantPDLocsTime += time;
             stats.numRelevantStopsForPickups += numRelStops;
+            if (numRelStops != 0)
+                stats.avgNumPickupsPerRelStop += static_cast<double>(rel.relevantSpots.size()) / numRelStops;
             return rel;
         }
 
     private:
-
         // Relevant PD loc with the values of the Pareto criteria.
         struct RelevantPDLocWithCriteria {
             RelevantPDLocs::RelevantPDLoc relPdLoc;
@@ -180,7 +189,6 @@ namespace karri {
                 // Entries are ordered by vehicle and by stop.
                 const int endStopIdx = isDropoff ? numStops : numStops - 1;
                 for (int i = 1; i < endStopIdx; ++i) {
-
                     if (!isDropoff && occupancies[i] + requestState.originalRequest.numRiders > veh.capacity)
                         continue;
 
@@ -208,8 +216,10 @@ namespace karri {
                     // Check each feasible PD loc for relevance and add relevant PD locs to Pareto bag for this stop.
                     paretoBag.clear();
                     for (const auto &[id, distToPDLoc, distFromPDLoc]: feasible.feasiblePdLocsFor(stopId)) {
-                        RelevantPDLocWithCriteria candidate{{i, static_cast<unsigned int>(id), distToPDLoc, distFromPDLoc},
-                                                            INFTY, INFTY, INFTY, false};
+                        RelevantPDLocWithCriteria candidate{
+                            {i, static_cast<unsigned int>(id), distToPDLoc, distFromPDLoc},
+                            INFTY, INFTY, INFTY, false
+                        };
                         bool isRelevant;
                         if constexpr (isDropoff) {
                             isRelevant = computeCriteriaForRelevantDropoff(veh, i, pdLocs[id], distToPDLoc,
@@ -224,6 +234,7 @@ namespace karri {
 
                     for (const auto &spotWithCriteria: paretoBag)
                         rel.relevantSpots.push_back(spotWithCriteria.relPdLoc);
+
                 }
 
                 // If vehicle has at least one stop with relevant PD loc, add the vehicle
@@ -234,9 +245,9 @@ namespace karri {
             }
 
             KASSERT(std::all_of(rel.relevantSpots.begin(), rel.relevantSpots.end(),
-                                [&](const auto &h) {
-                                    return h.distToPDLoc < INFTY && h.distFromPDLocToNextStop < INFTY;
-                                }));
+                [&](const auto &h) {
+                return h.distToPDLoc < INFTY && h.distFromPDLocToNextStop < INFTY;
+                }));
 
             return rel;
         }
@@ -293,9 +304,9 @@ namespace karri {
             }
 
             KASSERT(std::all_of(rel.relevantSpots.begin(), rel.relevantSpots.end(),
-                                [&](const auto &h) {
-                                    return h.distToPDLoc < INFTY && h.distFromPDLocToNextStop < INFTY;
-                                }));
+                [&](const auto &h) {
+                return h.distToPDLoc < INFTY && h.distFromPDLocToNextStop < INFTY;
+                }));
 
             return rel;
         }
@@ -319,10 +330,10 @@ namespace karri {
                                      const RequestState &requestState,
                                      int &depTimeAtPickup, int &initialPickupDetour) const {
             KASSERT(routeState.occupanciesFor(veh.vehicleId)[stopIndex] + requestState.originalRequest.numRiders <=
-                    veh.capacity);
+                veh.capacity);
             KASSERT(distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY ||
-                    distFromStopToPickup + distFromPickupToNextStop >=
-                    time_utils::calcLengthOfLegStartingAt(stopIndex, veh.vehicleId, routeState));
+                distFromStopToPickup + distFromPickupToNextStop >=
+                time_utils::calcLengthOfLegStartingAt(stopIndex, veh.vehicleId, routeState));
 
             // If cost for only pickup side is already worse than best known cost for a whole assignment, then
             // this pickup is not relevant at this stop.
@@ -450,6 +461,6 @@ namespace karri {
         const RouteState &routeState;
 
         LightweightSubset vehiclesWithFeasibleDistances;
-        ParetoBag<RelevantPDLocWithCriteria> paretoBag;
+        ParetoBagType<RelevantPDLocWithCriteria> paretoBag;
     };
 }

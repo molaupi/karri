@@ -199,7 +199,9 @@ namespace karri::stats {
         int64_t initializationTime;
 
         int64_t numRelevantStopsForPickups;
+        double avgNumPickupsPerRelStop;
         int64_t numRelevantStopsForDropoffs;
+        double avgNumDropoffsPerRelStop;
         int64_t filterRelevantPDLocsTime;
 
         int64_t numCandidateVehicles;
@@ -215,7 +217,9 @@ namespace karri::stats {
         void clear() {
             initializationTime = 0;
             numRelevantStopsForPickups = 0;
+            avgNumPickupsPerRelStop = 0.0;
             numRelevantStopsForDropoffs = 0;
+            avgNumDropoffsPerRelStop = 0.0;
             filterRelevantPDLocsTime = 0;
 
             numCandidateVehicles = 0;
@@ -228,7 +232,9 @@ namespace karri::stats {
         static constexpr auto LOGGER_COLS =
                 "initialization_time,"
                 "num_relevant_stops_for_pickups,"
+                "avg_num_pickups_per_rel_stop,"
                 "num_relevant_stops_for_dropoffs,"
+                "avg_num_dropoffs_per_rel_stop,"
                 "filter_relevant_pd_locs_time,"
                 "num_candidate_vehicles,"
                 "num_assignments_tried,"
@@ -241,7 +247,9 @@ namespace karri::stats {
             std::stringstream ss;
             ss << initializationTime << ", "
                     << numRelevantStopsForPickups << ", "
+                    << avgNumPickupsPerRelStop << ", "
                     << numRelevantStopsForDropoffs << ", "
+                    << avgNumDropoffsPerRelStop << ", "
                     << filterRelevantPDLocsTime << ", "
                     << numCandidateVehicles << ", "
                     << numAssignmentsTried << ", "
@@ -256,7 +264,9 @@ namespace karri::stats {
         int64_t initializationTime;
 
         int64_t numRelevantStopsForPickups;
+        double avgNumPickupsPerRelStop;
         int64_t numRelevantStopsForDropoffs;
+        double avgNumDropoffsPerRelStop;
         int64_t filterRelevantPDLocsTime;
 
         int64_t locatingVehiclesTime;
@@ -274,7 +284,9 @@ namespace karri::stats {
         void clear() {
             initializationTime = 0;
             numRelevantStopsForPickups = 0;
+            avgNumPickupsPerRelStop = 0.0;
             numRelevantStopsForDropoffs = 0;
+            avgNumDropoffsPerRelStop = 0.0;
             filterRelevantPDLocsTime = 0;
 
             locatingVehiclesTime = 0;
@@ -290,7 +302,9 @@ namespace karri::stats {
         static constexpr auto LOGGER_COLS =
                 "initialization_time,"
                 "num_relevant_stops_for_pickups,"
+                "avg_num_pickups_per_rel_stop,"
                 "num_relevant_stops_for_dropoffs,"
+                "avg_num_dropoffs_per_rel_stop,"
                 "filter_relevant_pd_locs_time,"
                 "locating_vehicles_time,"
                 "num_ch_searches,"
@@ -305,7 +319,9 @@ namespace karri::stats {
             std::stringstream ss;
             ss << initializationTime << ", "
                     << numRelevantStopsForPickups << ", "
+                    << avgNumPickupsPerRelStop << ", "
                     << numRelevantStopsForDropoffs << ", "
+                    << avgNumDropoffsPerRelStop << ", "
                     << filterRelevantPDLocsTime << ", "
                     << locatingVehiclesTime << ", "
                     << numCHSearches << ", "

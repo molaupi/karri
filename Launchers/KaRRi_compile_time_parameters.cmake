@@ -93,6 +93,14 @@ if (KARRI_USE_CCHS)
     target_compile_definitions(karri PRIVATE KARRI_USE_CCHS)
 endif (KARRI_USE_CCHS)
 
+# Use Pareto-filtering of pickups and dropoffs for ordinary-ish insertions? (only has an effect with meeting points)
+option(KARRI_USE_PARETO_PD_LOC_FILTER "Use Pareto-filtering of pickups and dropoffs for ordinary-ish insertions? (only has an effect with meeting points)" ON)
+if (KARRI_USE_PARETO_PD_LOC_FILTER)
+    target_compile_definitions(karri PRIVATE KARRI_USE_PARETO_PD_LOC_FILTER=true)
+else(KARRI_USE_PARETO_PD_LOC_FILTER)
+    target_compile_definitions(karri PRIVATE KARRI_USE_PARETO_PD_LOC_FILTER=false)
+endif (KARRI_USE_PARETO_PD_LOC_FILTER)
+
 ## Elliptic BCH Searches Config
 set(KARRI_ELLIPTIC_BCH_LOG_K 0 CACHE STRING "Given value i, KaRRi runs 2^i elliptic BCH searches simultaneously as bundled search.")
 target_compile_definitions(karri PRIVATE KARRI_ELLIPTIC_BCH_LOG_K=${KARRI_ELLIPTIC_BCH_LOG_K})
