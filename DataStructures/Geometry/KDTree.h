@@ -105,14 +105,54 @@ class KDTree {
     buckets.pop_back();
   }
 
+  // Determines a split of the records in the range [first, last), which are ordered by the
+  // coordinate splitDim. Records whose coordinate is at most splitVal go to the left child, all other
+  // records to the right child. Splits as close to the median as possible such that both children
+  // are nonempty. Returns the index of the first record in the right child, or -1 if all records
+  // have the same coordinate (i.e., no such split exists).
+  static int findSplit(const std::vector<Record>& records, const int first, const int last,
+                       const int splitDim, int32_t& splitVal) {
+    const auto median = (first + last) / 2;
+    const auto medianVal = records[median].coordinates[splitDim];
+
+    // Try to put all records with the median coordinate into the left child.
+    auto middle = median;
+    while (middle < last && records[middle].coordinates[splitDim] == medianVal) ++middle;
+    if (middle < last) {
+      splitVal = medianVal;
+      return middle;
+    }
+
+    // All records from the median on have the median coordinate. Put them into the right child.
+    middle = median;
+    while (middle > first && records[middle - 1].coordinates[splitDim] == medianVal) --middle;
+    if (middle > first) {
+      splitVal = records[middle - 1].coordinates[splitDim];
+      return middle;
+    }
+    return -1;
+  }
+
   // Builds a kd-tree for the records in the range [first, last).
-  void buildKDTree(const int first, const int last, const int splitDim) {
+  void buildKDTree(const int first, const int last, int splitDim) {
     assert(0 <= first); assert(first <= last); assert(last < recordsByX.size());
     assert(splitDim == 0 || splitDim == 1);
     const auto root = tree.size();
     tree.emplace_back();
 
-    if (last - first <= BUCKET_SIZE) {
+    // Determine the split. If all records have the same coordinate in the preferred dimension, try
+    // the other dimension. If all records are at the same point, we cannot split at all.
+    auto middle = -1;
+    int32_t splitVal = 0;
+    if (last - first > BUCKET_SIZE) {
+      middle = findSplit(splitDim == 0 ? recordsByX : recordsByY, first, last, splitDim, splitVal);
+      if (middle == -1) {
+        splitDim = !splitDim;
+        middle = findSplit(splitDim == 0 ? recordsByX : recordsByY, first, last, splitDim, splitVal);
+      }
+    }
+
+    if (middle == -1) {
       tree[root].isLeaf = true;
       tree[root].splitDim = 0;
       tree[root].splitVal = 0;
@@ -121,16 +161,12 @@ class KDTree {
       return;
     }
 
+    assert(first < middle); assert(middle < last);
     tree[root].isLeaf = false;
     tree[root].splitDim = splitDim;
+    tree[root].splitVal = splitVal;
 
     if (splitDim == 0) {
-      // Determine the split value.
-      auto middle = (first + last) / 2;
-      tree[root].splitVal = recordsByX[middle].coordinates[splitDim];
-      while (recordsByX[middle].coordinates[splitDim] == tree[root].splitVal) ++middle;
-      assert(middle <= last);
-
       // Partition the record list ordered by the y-coordinate with respect to the x-coordinate.
       auto smallRecords = recordsByY.begin() + first;
       auto largeRecords = tmpStorage.begin();
@@ -149,12 +185,6 @@ class KDTree {
       tree[root].rightChild = tree.size();
       buildKDTree(middle, last, !splitDim);
     } else {
-      // Determine the split value.
-      auto middle = (first + last) / 2;
-      tree[root].splitVal = recordsByY[middle].coordinates[splitDim];
-      while (recordsByY[middle].coordinates[splitDim] == tree[root].splitVal) ++middle;
-      assert(middle <= last);
-
       // Partition the record list ordered by the x-coordinate with respect to the y-coordinate.
       auto smallRecords = recordsByX.begin() + first;
       auto largeRecords = tmpStorage.begin();
