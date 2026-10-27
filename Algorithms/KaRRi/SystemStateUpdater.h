@@ -172,7 +172,12 @@ namespace karri {
                                                                "total_time\n")),
               lastStopBucketUpdateLogger(LogManager<LoggerT>::getLogger("last_stop_bucket_update_stats.csv",
                                                                         LastStopBucketUpdateStats::getLoggerCols() +
-                                                                        "\n")) {
+                                                                        "\n")),
+              repositioningUpdatesLogger(LogManager<LoggerT>::getLogger("repositioning_updates.csv",
+                                                                        "vehicle_id,"
+                                                                        "type,"
+                                                                        "occurence_time,"
+                                                                        "running_time\n")) {
             // Initialize last stop state for initial locations of vehicles
             if constexpr (BATCHED_DISPATCHING) {
                 for (const auto &veh: fleet) {
@@ -203,8 +208,7 @@ namespace karri {
             const bool wasRepositioning = routeState.isRepositioning(vehId);
             const auto asgn = wasRepositioning
                                   ? cancelRepositioningForAssignment(asgnFinderResponse.getBestAssignment(),
-                                                                     asgnFinderResponse.dispatchingTime,
-                                                                     stats.updateStats)
+                                                                     asgnFinderResponse.dispatchingTime)
                                   : asgnFinderResponse.getBestAssignment();
             markAsNonIdlingIfIdling(vehId);
 
@@ -312,8 +316,7 @@ namespace karri {
                 // intermediate stop.
                 const bool wasRepositioning = routeState.isRepositioning(vehId);
                 const auto asgn = wasRepositioning
-                                      ? cancelRepositioningForAssignment(asgnFinderResponse.getBestAssignment(), now,
-                                                                         stats)
+                                      ? cancelRepositioningForAssignment(asgnFinderResponse.getBestAssignment(), now)
                                       : asgnFinderResponse.getBestAssignment();
                 markAsNonIdlingIfIdling(vehId);
 
@@ -622,6 +625,9 @@ namespace karri {
             KASSERT(!routeState.isRepositioning(vehId));
             KASSERT(routeState.schedDepTimesFor(vehId)[0] <= now);
 
+            Timer timer;
+            stats::UpdatePerformanceStats placeholderStats{};
+
             // Compute path from current vehicle location to repositioning target
             const int curLoc = routeState.stopLocationsFor(vehId)[0];
             const int distToTarget = curLoc == target ? 0 : pathComputer.computePathEdges(curLoc, target, pathEdges);
@@ -633,7 +639,6 @@ namespace karri {
                 return INVALID_ID;
             }
 
-            stats::UpdatePerformanceStats placeholderStats{};
 
             // Remove idle last stop bucket entries since vehicle is no longer idle. There are no pending last stop
             // bucket updates, so we can remove the entries directly.
@@ -654,8 +659,10 @@ namespace karri {
             repositioningStrategy.notifyBecameNonIdle(vehId);
 
             // Generate bucket entries for repositioning
-            repositioningBucketsEnv.generateRepositioningBucketEntries(veh, computeVertexPath(curLoc, pathEdges),
-                                                                       placeholderStats);
+            repositioningBucketsEnv.generateRepositioningBucketEntries(veh, computeVertexPath(curLoc, pathEdges));
+
+            const auto runningTime = timer.elapsed<std::chrono::nanoseconds>();
+            repositioningUpdatesLogger << vehId << ",start," << now << "," << runningTime << "\n";
             return vehId;
         }
 
@@ -664,8 +671,9 @@ namespace karri {
             const auto vehId = veh.vehicleId;
             KASSERT(routeState.isRepositioning(vehId));
 
+            Timer timer;
             stats::UpdatePerformanceStats placeholderStats{};
-            removeRepositioningBucketEntries(veh, placeholderStats);
+            removeRepositioningBucketEntries(veh);
             routeState.finishRepositioning(vehId);
 
             // If the vehicle remains in service, it is now idle at the target. Generate idle last stop bucket entries.
@@ -678,6 +686,9 @@ namespace karri {
                     lastStopBucketsEnv.generateIdleBucketEntries(veh, placeholderStats);
                 }
             }
+
+            const auto runningTime = timer.elapsed<std::chrono::nanoseconds>();
+            repositioningUpdatesLogger << vehId << ",end_reach_target," << now << "," << runningTime << "\n";
         }
 
         void writeBestAssignmentToLogger(const RequestState &requestState) {
@@ -768,34 +779,37 @@ namespace karri {
         }
 
         // Removes the repositioning bucket entries of a repositioning vehicle.
-        void removeRepositioningBucketEntries(const Vehicle &veh, stats::UpdatePerformanceStats &stats) {
+        void removeRepositioningBucketEntries(const Vehicle &veh) {
             const auto vehId = veh.vehicleId;
             KASSERT(routeState.isRepositioning(vehId));
 
             const auto fromEdge = routeState.stopLocationsFor(vehId)[0];
             repositioningBucketsEnv.removeRepositioningBucketEntries(
-                veh, computeVertexPath(fromEdge, routeState.getRepositioningPath(vehId)), stats);
+                veh, computeVertexPath(fromEdge, routeState.getRepositioningPath(vehId)));
         }
 
         // Cancels the repositioning of the vehicle of the given assignment and creates an intermediate stop at the
         // vehicle's current location (analogous to a PBNS reroute). Returns the assignment adapted to the new route,
         // i.e. a regular assignment after the intermediate stop. Since the vehicle had no elliptic or last stop
         // bucket entries while repositioning, all of them are generated for the new route afterward.
-        Assignment cancelRepositioningForAssignment(const Assignment &asgn, const int now,
-                                                    stats::UpdatePerformanceStats &stats) {
+        // The running time of the cancellation is logged as a repositioning update, not as part of the update
+        // stats of the request.
+        Assignment cancelRepositioningForAssignment(const Assignment &asgn, const int now) {
             const auto &veh = *asgn.vehicle;
             const auto vehId = veh.vehicleId;
             KASSERT(routeState.isRepositioning(vehId));
             KASSERT(asgn.pickupStopIdx == 0 && asgn.dropoffStopIdx == 0);
 
-            removeRepositioningBucketEntries(veh, stats);
-
             Timer timer;
+            removeRepositioningBucketEntries(veh);
+
             const auto loc = vehicleLocator.computeCurrentLocation(veh, now);
             KASSERT(loc.depTimeAtHead >= now);
             routeState.cancelRepositioningAndCreateIntermediateStopAtCurrentLocation(vehId, loc.location, now,
                                                                                      loc.depTimeAtHead);
-            stats.updateRoutesTime += timer.elapsed<std::chrono::nanoseconds>();
+
+            const auto runningTime = timer.elapsed<std::chrono::nanoseconds>();
+            repositioningUpdatesLogger << vehId << ",end_assignment," << now << "," << runningTime << "\n";
 
             // The distance to the pickup is counted from now. Now it is counted from the departure at the
             // intermediate stop.
@@ -980,5 +994,8 @@ namespace karri {
         LoggerT &batchInsertLogger;
 
         LoggerT &lastStopBucketUpdateLogger;
+
+        // Logs start and end events of repositioning procedures with the running time of the according updates.
+        LoggerT &repositioningUpdatesLogger;
     };
 }

@@ -30,9 +30,7 @@
 #include "Algorithms/Buckets/BucketEntry.h"
 #include "Algorithms/CH/CH.h"
 #include "Algorithms/KaRRi/BaseObjects/Vehicle.h"
-#include "Algorithms/KaRRi/Stats/PerformanceStats.h"
 #include "DataStructures/Containers/Subset.h"
-#include "Tools/Timer.h"
 
 namespace karri {
 
@@ -86,23 +84,17 @@ namespace karri {
         }
 
         // Generate bucket entries for a vehicle along the given path (vector of vertices).
-        void generateRepositioningBucketEntries(const Vehicle &veh, const std::vector<int> &path,
-                                                stats::UpdatePerformanceStats &stats) {
-            Timer timer;
+        void generateRepositioningBucketEntries(const Vehicle &veh, const std::vector<int> &path) {
             curVehId = veh.vehicleId;
 
             roots.clear();
             for (const int vertex: path)
                 roots.push_back(ch.rank(vertex));
             genSearch.runWithMultipleRoots(roots);
-
-            stats.repositioningBucketsGenerateEntriesTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
         // Remove bucket entries for a vehicle for the union of the upward search spaces of all vertices on the path.
-        void removeRepositioningBucketEntries(const Vehicle &veh, const std::vector<int> &path,
-                                              stats::UpdatePerformanceStats &stats) {
-            Timer timer;
+        void removeRepositioningBucketEntries(const Vehicle &veh, const std::vector<int> &path) {
             int64_t numEntriesVisited = 0;
 
             deleteSearchSpace.clear();
@@ -118,8 +110,6 @@ namespace karri {
                     deleteSearchSpace.insert(searchGraph.edgeHead(e));
                 }
             }
-
-            stats.repositioningBucketsDeleteEntriesTime += timer.elapsed<std::chrono::nanoseconds>();
         }
 
     private:
@@ -151,11 +141,9 @@ namespace karri {
             return buckets;
         }
 
-        void generateRepositioningBucketEntries(const Vehicle &, const std::vector<int> &,
-                                                stats::UpdatePerformanceStats &) {}
+        void generateRepositioningBucketEntries(const Vehicle &, const std::vector<int> &) {}
 
-        void removeRepositioningBucketEntries(const Vehicle &, const std::vector<int> &,
-                                              stats::UpdatePerformanceStats &) {}
+        void removeRepositioningBucketEntries(const Vehicle &, const std::vector<int> &) {}
 
     private:
         BucketContainer buckets;

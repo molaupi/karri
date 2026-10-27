@@ -605,16 +605,12 @@ namespace karri::stats {
 
         int64_t lastStopsAtVerticesUpdateTime;
 
-        int64_t repositioningBucketsGenerateEntriesTime;
-        int64_t repositioningBucketsDeleteEntriesTime;
-
         int64_t updateRoutesTime;
 
         int64_t getTotalTime() const {
             return elliptic_generate_time + elliptic_update_time +
                    elliptic_delete_time + lastStopBucketsGenerateEntriesTime + lastStopBucketsUpdateEntriesTime +
-                   lastStopBucketsDeleteEntriesTime + lastStopsAtVerticesUpdateTime +
-                   repositioningBucketsGenerateEntriesTime + repositioningBucketsDeleteEntriesTime + updateRoutesTime;
+                   lastStopBucketsDeleteEntriesTime + lastStopsAtVerticesUpdateTime + updateRoutesTime;
         }
 
         void clear() {
@@ -631,8 +627,6 @@ namespace karri::stats {
             lastStopBucketsUpdateEntriesTime = 0;
             lastStopBucketsDeleteEntriesTime = 0;
             lastStopsAtVerticesUpdateTime = 0;
-            repositioningBucketsGenerateEntriesTime = 0;
-            repositioningBucketsDeleteEntriesTime = 0;
             updateRoutesTime = 0;
         }
 
@@ -651,8 +645,6 @@ namespace karri::stats {
                 "last_stop_buckets_update_entries_time,"
                 "last_stop_buckets_delete_entries_time,"
                 "last_stop_at_vertices_update_time,"
-                "repositioning_buckets_generate_entries_time,"
-                "repositioning_buckets_delete_entries_time,"
                 "update_routes_time,"
                 "total_time";
 
@@ -672,8 +664,6 @@ namespace karri::stats {
                     << lastStopBucketsUpdateEntriesTime << ", "
                     << lastStopBucketsDeleteEntriesTime << ", "
                     << lastStopsAtVerticesUpdateTime << ", "
-                    << repositioningBucketsGenerateEntriesTime << ", "
-                    << repositioningBucketsDeleteEntriesTime << ", "
                     << updateRoutesTime << ", "
                     << getTotalTime();
             return ss.str();
