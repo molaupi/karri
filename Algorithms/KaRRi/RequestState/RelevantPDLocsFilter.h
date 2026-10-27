@@ -137,16 +137,12 @@ namespace karri {
             // for dropoffs: fixed cost of dropoff (walking cost and trip cost from stop to destination)
             int fixedCost;
 
-            // Initial detour caused by the PD loc (for pickups, this is equivalent to the arrival time at the next stop)
+            // Initial detour caused by the PD loc (for pickups, this is equivalent to the arrival time at the next
+            // stop). Dropoffs at an existing stop have a detour of 0 while all other dropoffs have a positive detour
+            // (due to the stop time). Thus, a dropoff at an existing stop is never dominated by one that is not.
             int detour;
 
-            // Dropoffs at an existing stop do not incur an additional stop time. To be safe, we never let a dropoff
-            // that is not at the existing stop dominate one that is.
-            bool atExistingStop;
-
             static bool dominates(const RelevantPDLocWithCriteria &a, const RelevantPDLocWithCriteria &b) {
-                if (b.atExistingStop && !a.atExistingStop)
-                    return false;
                 return a.fixedCost <= b.fixedCost && a.detour <= b.detour &&
                        (a.fixedCost < b.fixedCost || a.detour < b.detour);
             }
@@ -309,8 +305,8 @@ namespace karri {
                                      const RequestState &requestState) const {
             KASSERT(routeState.occupanciesFor(veh.vehicleId)[stopIndex] + requestState.originalRequest.numRiders <=
                 veh.capacity);
-            KASSERT(distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY ||
-                distFromStopToPickup + distFromPickupToNextStop >=
+            KASSERT(distFromStopToPickup < INFTY && distFromPickupToNextStop < INFTY);
+            KASSERT(distFromStopToPickup + distFromPickupToNextStop >=
                 time_utils::calcLengthOfLegStartingAt(stopIndex, veh.vehicleId, routeState));
 
             // If cost for only pickup side is already worse than best known cost for a whole assignment, then
@@ -332,12 +328,9 @@ namespace karri {
             KASSERT(stopIndex > 0 && stopIndex < routeState.numStopsOf(vehId) - 1);
             KASSERT(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <=
                 veh.capacity);
-            KASSERT(distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY ||
-                distFromStopToPickup + distFromPickupToNextStop >=
+            KASSERT(distFromStopToPickup < INFTY && distFromPickupToNextStop < INFTY);
+            KASSERT(distFromStopToPickup + distFromPickupToNextStop >=
                 calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
-
-            if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
-                return;
 
             // If the pickup coincides with the location of the next stop, a pickup at the next stop is at least as
             // good for non-paired assignments. It is considered at the next stop.
@@ -353,15 +346,16 @@ namespace karri {
                                                                     routeState);
             const RelevantPDLocWithCriteria candidate{
                 {stopIndex, static_cast<unsigned int>(pickupId), distFromStopToPickup, distFromPickupToNextStop},
-                F::calcWalkingCost(pickup.walkingDist), initialPickupDetour, false
+                F::calcWalkingCost(pickup.walkingDist), initialPickupDetour
             };
             if (paretoBag.isDominated(candidate))
                 return;
 
-            // If cost for only pickup side is already worse than best known cost for a whole assignment, then
-            // this pickup is not relevant at this stop.
-            if (doesPickupDetourViolateHardConstraints(veh, requestState, stopIndex, initialPickupDetour, routeState))
+            if (violatesMaxArrTimeAtNextStop(vehId, stopIndex, initialPickupDetour))
                 return;
+
+            // If cost for only pickup side is already worse than best known cost for a whole assignment, then
+            // this pickup is not relevant at this stop. (Also checks the service time constraint.)
             const int minCost = calculator.calcMinKnownPickupSideCost(veh, stopIndex, initialPickupDetour,
                                                                       pickup.walkingDist, depTimeAtPickup,
                                                                       requestState);
@@ -393,7 +387,7 @@ namespace karri {
                 if (!isDropoffAtExistingStop)
                     return;
                 const auto candidate = makeDropoffCandidate(stopIndex, dropoffId, dropoff, distFromStopToDropoff,
-                                                            distFromDropoffToNextStop, 0, true);
+                                                            distFromDropoffToNextStop, 0);
                 if (!paretoBag.isDominated(candidate))
                     paretoBag.addNonDominatedCandidate(candidate);
                 return;
@@ -402,24 +396,23 @@ namespace karri {
             if (stopLocations[stopIndex + 1] == dropoff.loc)
                 return;
 
-            if (distFromStopToDropoff >= INFTY || distFromDropoffToNextStop >= INFTY)
-                return;
+            KASSERT(distFromStopToDropoff < INFTY && distFromDropoffToNextStop < INFTY);
 
             // Compute Pareto criteria and check whether dropoff is dominated.
             const int initialDropoffDetour = calcInitialDropoffDetour(vehId, stopIndex, distFromStopToDropoff,
                                                                       distFromDropoffToNextStop,
                                                                       isDropoffAtExistingStop, routeState);
-            KASSERT(initialDropoffDetour >= 0);
+            KASSERT(isDropoffAtExistingStop ? initialDropoffDetour == 0 : initialDropoffDetour > 0);
             const auto candidate = makeDropoffCandidate(stopIndex, dropoffId, dropoff, distFromStopToDropoff,
-                                                        distFromDropoffToNextStop, initialDropoffDetour,
-                                                        isDropoffAtExistingStop);
+                                                        distFromDropoffToNextStop, initialDropoffDetour);
             if (paretoBag.isDominated(candidate))
                 return;
 
-            // If cost for only dropoff side is already worse than best known cost for a whole assignment, then
-            // this dropoff is not relevant at this stop.
-            if (doesDropoffDetourViolateHardConstraints(veh, requestState, stopIndex, initialDropoffDetour, routeState))
+            if (violatesMaxArrTimeAtNextStop(vehId, stopIndex, initialDropoffDetour))
                 return;
+
+            // If cost for only dropoff side is already worse than best known cost for a whole assignment, then
+            // this dropoff is not relevant at this stop. (Also checks the service time constraint.)
             const int minCost = calculator.calcMinKnownDropoffSideCost(veh, stopIndex, initialDropoffDetour,
                                                                        dropoff.walkingDist, requestState);
             if (minCost >= INFTY || minCost > requestState.getBestCost())
@@ -432,17 +425,25 @@ namespace karri {
                                                                      const PDLoc &dropoff,
                                                                      const int distFromStopToDropoff,
                                                                      const int distFromDropoffToNextStop,
-                                                                     const int initialDropoffDetour,
-                                                                     const bool isDropoffAtExistingStop) {
+                                                                     const int initialDropoffDetour) {
             // The trip time of the rider is the time until the vehicle departs from the stop before the dropoff
             // (which depends on the pickup) plus the time from the stop to the destination. The cost for the latter
             // part is independent of the pickup since the trip cost is linear in the trip time.
             const int tripTimeFromStop = distFromStopToDropoff + dropoff.walkingDist;
             return {
                 {stopIndex, static_cast<unsigned int>(dropoffId), distFromStopToDropoff, distFromDropoffToNextStop},
-                F::calcWalkingCost(dropoff.walkingDist) + F::calcTripCost(tripTimeFromStop), initialDropoffDetour,
-                isDropoffAtExistingStop
+                F::calcWalkingCost(dropoff.walkingDist) + F::calcTripCost(tripTimeFromStop), initialDropoffDetour
             };
+        }
+
+        // Checks whether the given detour of a PD loc inserted after the stop at stopIndex moves the arrival at the
+        // next stop past its latest permissible arrival time. The feasible PD locs only guarantee that the detour does
+        // not exceed the leeway of the leg, which may be larger if the vehicle waits at the next stop. Additionally,
+        // the detour of a pickup includes the time the vehicle may wait for the passenger to walk to the pickup.
+        inline bool violatesMaxArrTimeAtNextStop(const int vehId, const int stopIndex, const int detour) const {
+            KASSERT(stopIndex + 1 < routeState.numStopsOf(vehId));
+            return detour != 0 && routeState.schedArrTimesFor(vehId)[stopIndex + 1] + detour >
+                                  routeState.maxArrTimesFor(vehId)[stopIndex + 1];
         }
 
         inline int getMinCostForPickup(const Vehicle &veh, const int stopIndex, const int minDistToPickup,
