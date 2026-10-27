@@ -741,8 +741,8 @@ namespace karri {
 
             // Assign rider to walk to their destination and insert event for their arrival.
             requestState[reqId] = WALKING_TO_DEST;
-            requestData[reqId].assignmentCost = CostCalculator::calcCostForNotUsingVehicle(
-                asgnFinderResponse.odWalkingDist, asgnFinderResponse);
+            requestData[reqId].assignmentCost =
+                    CostCalculator::calcCostForNotUsingVehicle(asgnFinderResponse.odWalkingDist);
             requestData[reqId].directOdDist = asgnFinderResponse.originalReqDirectDist;
             requestData[reqId].depTime = occTime;
             requestData[reqId].walkingTimeToPickup = 0;

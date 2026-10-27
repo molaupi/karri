@@ -47,9 +47,6 @@ namespace karri {
         int stopTime = -1;
         int maxNumPickups = -1;
         int maxNumDropoffs = -1;
-        int softConstraintMaxWaitTime = -1;
-        double softConstraintAlpha = -1.0;
-        int softConstraintBeta = -1;
         int requestBatchInterval = -1;
         bool useModeChoiceConstraints = false;
         int modeChoiceMaxWaitTime = -1;

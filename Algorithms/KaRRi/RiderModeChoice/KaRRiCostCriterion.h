@@ -25,10 +25,10 @@ namespace karri::mode_choice {
             stats.reset();
         }
 
-        void registerPed(const int walkingTimeTenthsOfSeconds, const RequestState &requestState) {
+        void registerPed(const int walkingTimeTenthsOfSeconds, const RequestState &) {
             KASSERT(walkingTimeTenthsOfSeconds >= 0 && walkingTimeTenthsOfSeconds < INFTY);
             if constexpr (!AlwaysVehicle) {
-                walkingCost = CostCalculator::calcCostForNotUsingVehicle(walkingTimeTenthsOfSeconds, requestState);
+                walkingCost = CostCalculator::calcCostForNotUsingVehicle(walkingTimeTenthsOfSeconds);
             }
             stats.walkTravelTime = tenthsOfSecondsToMinutes(walkingTimeTenthsOfSeconds);
         }

@@ -62,15 +62,6 @@ namespace karri {
             return dispatchingTime + pickup.walkingDist;
         }
 
-        int getSoftConstraintOriginalReqMaxTripTime() const {
-            assert(originalReqDirectDist >= 0);
-            return static_cast<int>(InputConfig::getInstance().softConstraintAlpha * static_cast<double>(originalReqDirectDist)) + InputConfig::getInstance().softConstraintBeta;
-        }
-
-        int getSoftConstraintMaxDepTimeAtPickup() const {
-            return originalRequest.requestTime + InputConfig::getInstance().softConstraintMaxWaitTime;
-        }
-
         int getHardConstrainttMaxTripTime(const int asgnTripTime) const {
             return static_cast<int>(InputConfig::getInstance().hardConstraintAlpha * static_cast<double>(asgnTripTime)) + InputConfig::getInstance().hardConstraintBeta;
         }

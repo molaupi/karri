@@ -148,9 +148,6 @@ inline void printUsage() {
             "  -w <sec>                   maximum added wait time after accepting ride (in s). (dflt: 600s)\n"
             "  -a <factor>               model parameter alpha' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1.4)\n"
             "  -b <seconds>              model parameter beta' for max trip time after being assigned = pa * asgn trip time + pb (dflt: 1200s)\n"
-            "  -soft-w <sec>              if soft constraints (CMake parameter), penalty for wait times greater than soft-w (dflt: 600s).\n"
-            "  -soft-a <factor>           if soft constraints (CMake parameter), penalty for trip times greater than soft-a * OD-dist + soft-b (dflt: 1.4)\n"
-            "  -soft-b <seconds>          if soft constraints (CMake parameter), penalty for trip times greater than soft-a * OD-dist + soft-b  (dflt: 900s)\n"
             "  -enable-mc-constraints     if set, uses mode choice constraints relative to direct travel distance (see mc-w, mc-a, mc-b)\n"
             "  -mc-w <sec>                if MC constraints (input parameter), in mode choice a RP trip is always rejected if wait time exceeds mc-w. (dflt: 900s)\n"
             "  -mc-a <factor>             if MC constraints (input parameter), in mode choice a RP trip is always rejected if the travel time exceeds mc-a * OD-dist + mc-b (dflt: 1.7)\n"
@@ -362,9 +359,6 @@ int main(int argc, char *argv[]) {
         inputConfig.hardConstraintMaxAddedWaitTime = clp.getValue<int>("w", 600) * 10;
         inputConfig.hardConstraintAlpha = clp.getValue<double>("a", 1.4);
         inputConfig.hardConstraintBeta = clp.getValue<int>("b", 600) * 10;
-        inputConfig.softConstraintMaxWaitTime = clp.getValue<int>("soft-w", 600) * 10;
-        inputConfig.softConstraintAlpha = clp.getValue<double>("soft-a", 1.4);
-        inputConfig.softConstraintBeta = clp.getValue<int>("soft-b", 900) * 10;
         inputConfig.useModeChoiceConstraints = clp.isSet("enable-mc-constraints");
         inputConfig.modeChoiceMaxWaitTime = clp.getValue<int>("mc-w", 900) * 10;
         inputConfig.modeChoiceAlpha = clp.getValue<double>("mc-a", 1.7);

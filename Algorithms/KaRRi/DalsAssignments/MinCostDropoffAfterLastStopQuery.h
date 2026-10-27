@@ -186,10 +186,9 @@ namespace karri::DropoffAfterLastStopStrategies {
             const auto maxTripDiff = maxDetourDiff + walkDiff;
 
             using F = CostCalculator::CostFunction;
-            const auto costDiffNoTripVio =
+            const auto costDiff =
                     F::VEH_WEIGHT * maxDetourDiff + F::PSG_WEIGHT * maxTripDiff + F::WALK_WEIGHT * walkDiff;
-            const auto costDiffTripVio = costDiffNoTripVio + F::TRIP_VIO_WEIGHT * maxTripDiff;
-            return costDiffNoTripVio < 0 && costDiffTripVio < 0;
+            return costDiff < 0;
         }
 
 

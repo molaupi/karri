@@ -293,12 +293,10 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto maxDetourDiff = label1.directDistance - label2.directDistance;
             const auto maxTripDiff = maxDetourDiff + dropoff1.walkingDist - dropoff2.walkingDist;
             const auto walkDiff = dropoff1.walkingDist - dropoff2.walkingDist;
-            const auto maxTripVioDiff = F::TRIP_VIO_WEIGHT * std::max(maxTripDiff, 0);
 
             const auto maxCostDiff = F::VEH_WEIGHT * maxDetourDiff +
                                      F::PSG_WEIGHT * maxTripDiff +
-                                     F::WALK_WEIGHT * walkDiff +
-                                     maxTripVioDiff;
+                                     F::WALK_WEIGHT * walkDiff;
             return maxCostDiff < 0;
         }
 
@@ -319,18 +317,13 @@ namespace karri::PickupAfterLastStopStrategies {
             PDDistanceLabel maxDetourDiff = distancesToDropoff1 - distancesToDropoff2;
             PDDistanceLabel maxTripDiff = maxDetourDiff + walkDiff;
 
-            PDDistanceLabel maxTripVioDiff = maxTripDiff;
-            maxTripVioDiff.max(ZERO_DIST_LABEL);
-            maxTripVioDiff.multiplyWithScalar(F::TRIP_VIO_WEIGHT);
-
             maxDetourDiff.multiplyWithScalar(F::VEH_WEIGHT);
             maxTripDiff.multiplyWithScalar(F::PSG_WEIGHT);
             walkDiff.multiplyWithScalar(F::WALK_WEIGHT);
 
             const auto maxCostDiff = maxDetourDiff +
                                      maxTripDiff +
-                                     walkDiff +
-                                     maxTripVioDiff;
+                                     walkDiff;
 
             // Construct mask that is set wherever distancesToDropoff1 is INVALID_DIST
             const PDLabelMask invalidMask = distancesToDropoff1 == INVALID_DIST_LABEL;
@@ -530,13 +523,9 @@ namespace karri::PickupAfterLastStopStrategies {
             const auto walkDiff =
                     pickup1.walkingDist + dropoff1.walkingDist - pickup2.walkingDist - dropoff2.walkingDist;
 
-            const auto maxWaitVioDiff = F::WAIT_VIO_WEIGHT * std::max(maxDepTimeDiff, 0);
-            const auto maxTripVioDiff = F::TRIP_VIO_WEIGHT * std::max(maxTripDiff, 0);
-
             const auto maxCostDiff = F::VEH_WEIGHT * maxDetourDiff +
                                      F::PSG_WEIGHT * maxTripDiff +
-                                     F::WALK_WEIGHT * walkDiff +
-                                     maxWaitVioDiff + maxTripVioDiff;
+                                     F::WALK_WEIGHT * walkDiff;
             return maxCostDiff < 0;
         }
 

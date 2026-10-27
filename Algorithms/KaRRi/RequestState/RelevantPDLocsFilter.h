@@ -42,14 +42,18 @@ namespace karri {
     // 2. Pareto-optimality: For non-paired ordinary assignments (pickup and dropoff not inserted between the same pair
     //    of stops) and the PD loc that is inserted after an ordinary stop (i.e. after stop 0), a pickup p can only be
     //    part of the best assignment for a given pickup stop if no other pickup p' at the same stop has both a smaller
-    //    fixed cost (walking and wait time violation cost) and a smaller detour (i.e. an earlier arrival at the next stop)
-    //    than p. Similarly, a dropoff d can only be part of the best assignment if no other dropoff d' at the same stop
-    //    has both a smaller fixed cost (walking and trip time cost from the stop to the destination) and a smaller detour.
+    //    fixed cost (walking cost) and a smaller detour (i.e. an earlier arrival at the next stop) than p. Similarly, a
+    //    dropoff d can only be part of the best assignment if no other dropoff d' at the same stop has both a smaller
+    //    fixed cost (walking and trip time cost from the stop to the destination) and a smaller detour.
     //    Since every other part of the cost of an assignment is monotonous in the respective detour, the dominated PD loc
     //    cannot lead to a better assignment for any choice of the remaining assignment parameters.
     //    Pareto-optimality does not apply to paired assignments or to pickups before the next stop (as the exact
     //    departure time at the pickup depends on the current location of the vehicle). Paired assignments use the
     //    unfiltered FeasiblePDLocs instead.
+    //
+    // The Pareto criteria of a PD loc are cheap to compute while a cost lower bound is comparatively expensive. Thus, for
+    // each PD loc, we first check whether it is dominated by a relevant PD loc at the same stop and only compute the cost
+    // lower bound for PD locs that are not dominated.
     template<typename InputGraphT, typename CHEnvT>
     class RelevantPDLocsFilter {
         using F = CostCalculator::CostFunction;
@@ -129,13 +133,9 @@ namespace karri {
         struct RelevantPDLocWithCriteria {
             RelevantPDLocs::RelevantPDLoc relPdLoc;
 
-            // For pickups: fixed cost of pickup (walking cost and wait time violation cost);
-            // for dropoffs: fixed cost of dropoff (walking cost and linear part of trip cost from stop to destination)
+            // For pickups: fixed cost of pickup (walking cost);
+            // for dropoffs: fixed cost of dropoff (walking cost and trip cost from stop to destination)
             int fixedCost;
-
-            // For dropoffs: if trip cost is not linear (trip time violation is penalized), time from departure at
-            // stop to arrival at destination; otherwise 0.
-            int tripTimeFromStop;
 
             // Initial detour caused by the PD loc (for pickups, this is equivalent to the arrival time at the next stop)
             int detour;
@@ -147,9 +147,8 @@ namespace karri {
             static bool dominates(const RelevantPDLocWithCriteria &a, const RelevantPDLocWithCriteria &b) {
                 if (b.atExistingStop && !a.atExistingStop)
                     return false;
-                return a.fixedCost <= b.fixedCost && a.tripTimeFromStop <= b.tripTimeFromStop &&
-                       a.detour <= b.detour &&
-                       (a.fixedCost < b.fixedCost || a.tripTimeFromStop < b.tripTimeFromStop || a.detour < b.detour);
+                return a.fixedCost <= b.fixedCost && a.detour <= b.detour &&
+                       (a.fixedCost < b.fixedCost || a.detour < b.detour);
             }
         };
 
@@ -216,20 +215,11 @@ namespace karri {
                     // Check each feasible PD loc for relevance and add relevant PD locs to Pareto bag for this stop.
                     paretoBag.clear();
                     for (const auto &[id, distToPDLoc, distFromPDLoc]: feasible.feasiblePdLocsFor(stopId)) {
-                        RelevantPDLocWithCriteria candidate{
-                            {i, static_cast<unsigned int>(id), distToPDLoc, distFromPDLoc},
-                            INFTY, INFTY, INFTY, false
-                        };
-                        bool isRelevant;
                         if constexpr (isDropoff) {
-                            isRelevant = computeCriteriaForRelevantDropoff(veh, i, pdLocs[id], distToPDLoc,
-                                                                           distFromPDLoc, requestState, candidate);
+                            tryAddRelevantDropoff(veh, i, id, pdLocs[id], distToPDLoc, distFromPDLoc, requestState);
                         } else {
-                            isRelevant = computeCriteriaForRelevantPickup(veh, i, pdLocs[id], distToPDLoc,
-                                                                          distFromPDLoc, requestState, candidate);
+                            tryAddRelevantPickup(veh, i, id, pdLocs[id], distToPDLoc, distFromPDLoc, requestState);
                         }
-                        if (isRelevant)
-                            paretoBag.addCandidate(candidate);
                     }
 
                     for (const auto &spotWithCriteria: paretoBag)
@@ -317,18 +307,6 @@ namespace karri {
                                      const int distFromStopToPickup,
                                      const int distFromPickupToNextStop,
                                      const RequestState &requestState) const {
-            int depTimeAtPickup, initialPickupDetour;
-            return isPickupRelevant(veh, stopIndex, pickup, distFromStopToPickup, distFromPickupToNextStop,
-                                    requestState, depTimeAtPickup, initialPickupDetour);
-        }
-
-        // Checks whether a pickup is relevant at a stop for an assignment where the pickup is inserted between
-        // the stop and the next stop. Writes departure time at pickup and initial pickup detour to out parameters.
-        inline bool isPickupRelevant(const Vehicle &veh, const int stopIndex, const PDLoc &pickup,
-                                     const int distFromStopToPickup,
-                                     const int distFromPickupToNextStop,
-                                     const RequestState &requestState,
-                                     int &depTimeAtPickup, int &initialPickupDetour) const {
             KASSERT(routeState.occupanciesFor(veh.vehicleId)[stopIndex] + requestState.originalRequest.numRiders <=
                 veh.capacity);
             KASSERT(distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY ||
@@ -339,46 +317,66 @@ namespace karri {
             // this pickup is not relevant at this stop.
             const int minCost = calculator.calcMinCostForPickupBetweenStops(veh, stopIndex, pickup,
                                                                             distFromStopToPickup,
-                                                                            distFromPickupToNextStop, requestState,
-                                                                            depTimeAtPickup, initialPickupDetour);
+                                                                            distFromPickupToNextStop, requestState);
             return minCost < INFTY && minCost <= requestState.getBestCost();
         }
 
-        // Checks whether the pickup is relevant for a non-paired ordinary assignment at the given stop. If so,
-        // computes the Pareto criteria for the pickup.
-        inline bool computeCriteriaForRelevantPickup(const Vehicle &veh, const int stopIndex, const PDLoc &pickup,
-                                                     const int distFromStopToPickup,
-                                                     const int distFromPickupToNextStop,
-                                                     const RequestState &requestState,
-                                                     RelevantPDLocWithCriteria &criteria) const {
-            KASSERT(stopIndex < routeState.numStopsOf(veh.vehicleId) - 1);
+        // Checks whether the pickup is relevant for a non-paired ordinary assignment at the given stop. If so, adds it
+        // to the Pareto bag. The cost lower bound is only computed if the pickup is not dominated by a relevant pickup
+        // that is already in the Pareto bag.
+        inline void tryAddRelevantPickup(const Vehicle &veh, const int stopIndex, const int pickupId,
+                                         const PDLoc &pickup, const int distFromStopToPickup,
+                                         const int distFromPickupToNextStop, const RequestState &requestState) {
+            using namespace time_utils;
+            const int &vehId = veh.vehicleId;
+            KASSERT(stopIndex > 0 && stopIndex < routeState.numStopsOf(vehId) - 1);
+            KASSERT(routeState.occupanciesFor(vehId)[stopIndex] + requestState.originalRequest.numRiders <=
+                veh.capacity);
+            KASSERT(distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY ||
+                distFromStopToPickup + distFromPickupToNextStop >=
+                calcLengthOfLegStartingAt(stopIndex, vehId, routeState));
+
+            if (distFromStopToPickup >= INFTY || distFromPickupToNextStop >= INFTY)
+                return;
 
             // If the pickup coincides with the location of the next stop, a pickup at the next stop is at least as
             // good for non-paired assignments. It is considered at the next stop.
-            if (pickup.loc == routeState.stopLocationsFor(veh.vehicleId)[stopIndex + 1])
-                return false;
+            if (pickup.loc == routeState.stopLocationsFor(vehId)[stopIndex + 1])
+                return;
 
-            int depTimeAtPickup, initialPickupDetour;
-            if (!isPickupRelevant(veh, stopIndex, pickup, distFromStopToPickup, distFromPickupToNextStop,
-                                  requestState, depTimeAtPickup, initialPickupDetour))
-                return false;
+            // Compute Pareto criteria and check whether pickup is dominated. The detour is equivalent to the arrival
+            // time at the next stop.
+            const int depTimeAtPickup = getActualDepTimeAtPickup(vehId, stopIndex, distFromStopToPickup, pickup,
+                                                                 requestState, routeState);
+            const int initialPickupDetour = calcInitialPickupDetour(vehId, stopIndex, INVALID_INDEX, depTimeAtPickup,
+                                                                    distFromPickupToNextStop, requestState,
+                                                                    routeState);
+            const RelevantPDLocWithCriteria candidate{
+                {stopIndex, static_cast<unsigned int>(pickupId), distFromStopToPickup, distFromPickupToNextStop},
+                F::calcWalkingCost(pickup.walkingDist), initialPickupDetour, false
+            };
+            if (paretoBag.isDominated(candidate))
+                return;
 
-            // The detour is equivalent to the arrival time at the next stop.
-            criteria.fixedCost = F::calcWalkingCost(pickup.walkingDist) +
-                                 F::calcWaitViolationCost(depTimeAtPickup, requestState);
-            criteria.tripTimeFromStop = 0;
-            criteria.detour = initialPickupDetour;
-            criteria.atExistingStop = false;
-            return true;
+            // If cost for only pickup side is already worse than best known cost for a whole assignment, then
+            // this pickup is not relevant at this stop.
+            if (doesPickupDetourViolateHardConstraints(veh, requestState, stopIndex, initialPickupDetour, routeState))
+                return;
+            const int minCost = calculator.calcMinKnownPickupSideCost(veh, stopIndex, initialPickupDetour,
+                                                                      pickup.walkingDist, depTimeAtPickup,
+                                                                      requestState);
+            if (minCost >= INFTY || minCost > requestState.getBestCost())
+                return;
+
+            paretoBag.addNonDominatedCandidate(candidate);
         }
 
-        // Checks whether the dropoff is relevant for a non-paired ordinary assignment at the given stop. If so,
-        // computes the Pareto criteria for the dropoff.
-        inline bool computeCriteriaForRelevantDropoff(const Vehicle &veh, const int stopIndex, const PDLoc &dropoff,
-                                                      const int distFromStopToDropoff,
-                                                      const int distFromDropoffToNextStop,
-                                                      const RequestState &requestState,
-                                                      RelevantPDLocWithCriteria &criteria) const {
+        // Checks whether the dropoff is relevant for a non-paired ordinary assignment at the given stop. If so, adds it
+        // to the Pareto bag. The cost lower bound is only computed if the dropoff is not dominated by a relevant
+        // dropoff that is already in the Pareto bag.
+        inline void tryAddRelevantDropoff(const Vehicle &veh, const int stopIndex, const int dropoffId,
+                                          const PDLoc &dropoff, const int distFromStopToDropoff,
+                                          const int distFromDropoffToNextStop, const RequestState &requestState) {
             using namespace time_utils;
 
             const int &vehId = veh.vehicleId;
@@ -393,42 +391,58 @@ namespace karri {
             KASSERT(!isDropoffAtExistingStop || distFromStopToDropoff == 0);
             if (stopIndex == numStops - 1 || occupancy + requestState.originalRequest.numRiders > veh.capacity) {
                 if (!isDropoffAtExistingStop)
-                    return false;
-                setDropoffCriteria(dropoff, 0, 0, true, criteria);
-                return true;
+                    return;
+                const auto candidate = makeDropoffCandidate(stopIndex, dropoffId, dropoff, distFromStopToDropoff,
+                                                            distFromDropoffToNextStop, 0, true);
+                if (!paretoBag.isDominated(candidate))
+                    paretoBag.addNonDominatedCandidate(candidate);
+                return;
             }
 
             if (stopLocations[stopIndex + 1] == dropoff.loc)
-                return false;
+                return;
+
+            if (distFromStopToDropoff >= INFTY || distFromDropoffToNextStop >= INFTY)
+                return;
+
+            // Compute Pareto criteria and check whether dropoff is dominated.
+            const int initialDropoffDetour = calcInitialDropoffDetour(vehId, stopIndex, distFromStopToDropoff,
+                                                                      distFromDropoffToNextStop,
+                                                                      isDropoffAtExistingStop, routeState);
+            KASSERT(initialDropoffDetour >= 0);
+            const auto candidate = makeDropoffCandidate(stopIndex, dropoffId, dropoff, distFromStopToDropoff,
+                                                        distFromDropoffToNextStop, initialDropoffDetour,
+                                                        isDropoffAtExistingStop);
+            if (paretoBag.isDominated(candidate))
+                return;
 
             // If cost for only dropoff side is already worse than best known cost for a whole assignment, then
             // this dropoff is not relevant at this stop.
-            int initialDropoffDetour;
-            const int minCost = calculator.calcMinCostForDropoffBetweenStops(veh, stopIndex, dropoff,
-                                                                             distFromStopToDropoff,
-                                                                             distFromDropoffToNextStop,
-                                                                             isDropoffAtExistingStop, requestState,
-                                                                             initialDropoffDetour);
+            if (doesDropoffDetourViolateHardConstraints(veh, requestState, stopIndex, initialDropoffDetour, routeState))
+                return;
+            const int minCost = calculator.calcMinKnownDropoffSideCost(veh, stopIndex, initialDropoffDetour,
+                                                                       dropoff.walkingDist, requestState);
             if (minCost >= INFTY || minCost > requestState.getBestCost())
-                return false;
+                return;
 
-            setDropoffCriteria(dropoff, distFromStopToDropoff, initialDropoffDetour, isDropoffAtExistingStop,
-                               criteria);
-            return true;
+            paretoBag.addNonDominatedCandidate(candidate);
         }
 
-        static inline void setDropoffCriteria(const PDLoc &dropoff, const int distFromStopToDropoff,
-                                              const int initialDropoffDetour, const bool isDropoffAtExistingStop,
-                                              RelevantPDLocWithCriteria &criteria) {
+        static inline RelevantPDLocWithCriteria makeDropoffCandidate(const int stopIndex, const int dropoffId,
+                                                                     const PDLoc &dropoff,
+                                                                     const int distFromStopToDropoff,
+                                                                     const int distFromDropoffToNextStop,
+                                                                     const int initialDropoffDetour,
+                                                                     const bool isDropoffAtExistingStop) {
             // The trip time of the rider is the time until the vehicle departs from the stop before the dropoff
             // (which depends on the pickup) plus the time from the stop to the destination. The cost for the latter
-            // part is independent of the pickup if the trip cost is linear in the trip time. Otherwise, we need to
-            // additionally consider the trip time from the stop as a Pareto criterion.
+            // part is independent of the pickup since the trip cost is linear in the trip time.
             const int tripTimeFromStop = distFromStopToDropoff + dropoff.walkingDist;
-            criteria.fixedCost = F::calcWalkingCost(dropoff.walkingDist) + F::PSG_WEIGHT * tripTimeFromStop;
-            criteria.tripTimeFromStop = F::TRIP_VIO_WEIGHT == 0 ? 0 : tripTimeFromStop;
-            criteria.detour = initialDropoffDetour;
-            criteria.atExistingStop = isDropoffAtExistingStop;
+            return {
+                {stopIndex, static_cast<unsigned int>(dropoffId), distFromStopToDropoff, distFromDropoffToNextStop},
+                F::calcWalkingCost(dropoff.walkingDist) + F::calcTripCost(tripTimeFromStop), initialDropoffDetour,
+                isDropoffAtExistingStop
+            };
         }
 
         inline int getMinCostForPickup(const Vehicle &veh, const int stopIndex, const int minDistToPickup,

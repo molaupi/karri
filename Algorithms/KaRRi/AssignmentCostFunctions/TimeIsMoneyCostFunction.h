@@ -28,37 +28,21 @@
 namespace karri {
 
 
-    template<int PASSENGER_COST_SCALE = 1, int WALKING_COST_SCALE = 0, int VEHICLE_COST_SCALE = 1, int WAIT_TIME_VIOLATION_WEIGHT = 0, int TRIP_TIME_VIOLATION_WEIGHT = 0>
+    template<int PASSENGER_COST_SCALE = 1, int WALKING_COST_SCALE = 0, int VEHICLE_COST_SCALE = 1>
     struct TimeIsMoneyCostFunction {
 
         static constexpr int PSG_WEIGHT = PASSENGER_COST_SCALE;
         static constexpr int WALK_WEIGHT = WALKING_COST_SCALE;
         static constexpr int VEH_WEIGHT = VEHICLE_COST_SCALE;
-        static constexpr int WAIT_VIO_WEIGHT = WAIT_TIME_VIOLATION_WEIGHT;
-        static constexpr int TRIP_VIO_WEIGHT = TRIP_TIME_VIOLATION_WEIGHT;
 
-        template<typename RequestContext>
-        static inline int calcTripCost(const int tripTime, const RequestContext &context) {
-
-            const auto maxTripTime = context.getSoftConstraintOriginalReqMaxTripTime();
-            const auto regularCost = PASSENGER_COST_SCALE * tripTime;
-            const auto violationPenalty = TRIP_TIME_VIOLATION_WEIGHT * std::max(tripTime - maxTripTime, 0);
-
-            return regularCost + violationPenalty;
+        static constexpr inline int calcTripCost(const int tripTime) {
+            return PASSENGER_COST_SCALE * tripTime;
         }
 
-        template<typename DistanceLabel, typename RequestContext>
-        static inline DistanceLabel calcKTripCosts(const DistanceLabel &tripTime, const RequestContext &context) {
-
-            DistanceLabel regularCost = tripTime;
-            regularCost.multiplyWithScalar(PASSENGER_COST_SCALE);
-
-            const DistanceLabel maxTripTime = DistanceLabel(context.getSoftConstraintOriginalReqMaxTripTime());
-            DistanceLabel violationCost = tripTime - maxTripTime;
-            violationCost.max(0);
-            violationCost.multiplyWithScalar(TRIP_TIME_VIOLATION_WEIGHT);
-
-            const DistanceLabel cost = regularCost + violationCost;
+        template<typename DistanceLabel>
+        static constexpr inline DistanceLabel calcKTripCosts(const DistanceLabel &tripTime) {
+            auto cost = tripTime;
+            cost.multiplyWithScalar(PASSENGER_COST_SCALE);
             return cost;
         }
 
@@ -73,20 +57,6 @@ namespace karri {
             auto cost = walkingDist;
             cost.multiplyWithScalar(WALKING_COST_SCALE);
             return cost;
-        }
-
-        template<typename RequestContext>
-        static inline int calcWaitViolationCost(const int actualDepTimeAtPickup, const RequestContext &context) {
-            return WAIT_TIME_VIOLATION_WEIGHT * std::max(actualDepTimeAtPickup - context.getSoftConstraintMaxDepTimeAtPickup(), 0);
-        }
-
-        template<typename DistanceLabel, typename RequestContext>
-        static inline DistanceLabel calcKWaitViolationCosts(const DistanceLabel &actualDepTimeAtPickup,
-                                                            const RequestContext &context) {
-            DistanceLabel violationCost = actualDepTimeAtPickup - DistanceLabel(context.getSoftConstraintMaxDepTimeAtPickup());
-            violationCost.max(0);
-            violationCost.multiplyWithScalar(WAIT_TIME_VIOLATION_WEIGHT);
-            return violationCost;
         }
 
         static inline int calcChangeInTripCostsOfExistingPassengers(const int addedTripTimeForExistingPassengers) {

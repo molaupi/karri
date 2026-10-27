@@ -30,12 +30,24 @@ struct ParetoBag {
     // Adds the candidate to the bag unless it is dominated by an entry in the bag. Removes all entries that are
     // dominated by the candidate. Returns true if the candidate was added.
     bool addCandidate(const T &candidate) {
-        // Check if this entry is dominated by any of the entries in the bag.
+        if (isDominated(candidate))
+            return false;
+        addNonDominatedCandidate(candidate);
+        return true;
+    }
+
+    // Returns true if the candidate is dominated by any of the entries in the bag.
+    bool isDominated(const T &candidate) const {
         for (const auto &existing: entries) {
             if (T::dominates(existing, candidate))
-                return false;
+                return true;
         }
+        return false;
+    }
 
+    // Adds a candidate that is known not to be dominated by any entry in the bag (see isDominated()). Removes all
+    // entries that are dominated by the candidate.
+    void addNonDominatedCandidate(const T &candidate) {
         // Remove all existing entries that are dominated by the new entry (without maintaining order):
         int k = 0;
         while (k < entries.size()) {
@@ -49,7 +61,6 @@ struct ParetoBag {
 
         // Add the new entry
         entries.push_back(candidate);
-        return true;
     }
 
 };

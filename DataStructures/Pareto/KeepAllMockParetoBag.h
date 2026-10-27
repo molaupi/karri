@@ -26,4 +26,12 @@ struct KeepAllMockParetoBag {
         return true;
     }
 
+    bool isDominated(const T &) const {
+        return false;
+    }
+
+    void addNonDominatedCandidate(const T &candidate) {
+        entries.push_back(candidate);
+    }
+
 };
